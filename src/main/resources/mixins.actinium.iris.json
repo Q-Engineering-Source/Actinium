@@ -25,6 +25,7 @@
     "features.iris.LayerEndermanEyesIrisMixin",
     "features.iris.LayerSpiderEyesIrisMixin",
     "features.iris.LocaleIrisMixin",
+    "features.iris.MekanismGlowBlendMixin",
     "features.iris.MixinGameSettingsClouds",
     "features.iris.MinecraftGlDebugMixin",
     "features.iris.ModelBoxAccessor",

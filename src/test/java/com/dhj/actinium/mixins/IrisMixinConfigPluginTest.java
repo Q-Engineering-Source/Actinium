@@ -10,6 +10,9 @@ class IrisMixinConfigPluginTest {
         "com.dhj.actinium.mixin.features.iris.ParticleManagerCullingMixin";
     private static final String PARTICLE_CULLING_MARKER =
         "bl4ckscor3.mod.particleculling.mixin.MixinParticleManager";
+    private static final String MEKANISM_GLOW_BLEND_MIXIN =
+        "com.dhj.actinium.mixin.features.iris.MekanismGlowBlendMixin";
+    private static final String MEKANISM_RENDERER_MARKER = "mekanism.client.render.MekanismRenderer";
 
     @Test
     void dropsCullingMixinWhenParticleCullingIsPresent() {
@@ -28,4 +31,14 @@ class IrisMixinConfigPluginTest {
         assertTrue(IrisMixinConfigPlugin.shouldApply(otherMixin, PARTICLE_CULLING_MARKER::equals));
         assertTrue(IrisMixinConfigPlugin.shouldApply(otherMixin, className -> false));
     }
+
+    @Test
+    void appliesMekanismGlowBlendMixinOnlyWhenRendererClassIsPresent() {
+        assertTrue(IrisMixinConfigPlugin.shouldApply(
+            MEKANISM_GLOW_BLEND_MIXIN,
+            MEKANISM_RENDERER_MARKER::equals
+        ));
+        assertFalse(IrisMixinConfigPlugin.shouldApply(MEKANISM_GLOW_BLEND_MIXIN, className -> false));
+    }
+
 }

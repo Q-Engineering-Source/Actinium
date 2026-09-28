@@ -34,6 +34,10 @@ public final class IrisMixinConfigPlugin implements IMixinConfigPlugin {
 
     private static final String PARTICLE_CULLING_MARKER = "bl4ckscor3.mod.particleculling.mixin.MixinParticleManager";
 
+    private static final String MEKANISM_GLOW_BLEND_MIXIN = "com.dhj.actinium.mixin.features.iris.MekanismGlowBlendMixin";
+
+    private static final String MEKANISM_RENDERER_MARKER = "mekanism.client.render.MekanismRenderer";
+
     @Override
     public void onLoad(String mixinPackage) {
     }
@@ -49,6 +53,9 @@ public final class IrisMixinConfigPlugin implements IMixinConfigPlugin {
     }
 
     static boolean shouldApply(String mixinClassName, Predicate<String> classPresent) {
+        if (MEKANISM_GLOW_BLEND_MIXIN.equals(mixinClassName)) {
+            return classPresent.test(MEKANISM_RENDERER_MARKER);
+        }
         if (CULLING_MIXIN.equals(mixinClassName)) {
             return !classPresent.test(PARTICLE_CULLING_MARKER);
         }

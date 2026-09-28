@@ -96,6 +96,10 @@ dependencies {
     modImplementation 'curse.maven:stellarcore-1064321:8406201'
     modImplementation 'curse.maven:modern-splash-629058:8487408'
 
+    // Mekanism-CE-Unofficial 10.0.5.021 (issue #194: shader rendering repro on large machines).
+    // Runtime-only because Actinium has no compile-time references to Mekanism.
+    modRuntimeOnly 'curse.maven:mekanism-ce-unofficial-840735:8862568'
+
     // Draconic Evolution
     modCompileOnly 'maven.modrinth:draconic-evolution:2.3.28.354'
     modCompileOnly 'maven.modrinth:brandons-core:2.4.20.162'
