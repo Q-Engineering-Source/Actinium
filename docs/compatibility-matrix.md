@@ -172,6 +172,12 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 > 自己的光影状态，并用 `HandRenderer.DEPTH`（0.125）的投影压缩替代 OptiFine 的
 > `applyHandDepth`。Complementary Reimagined r5.5.1 + Distant Horizons 实测确认。
 
+> 2026-09-21 追加：NTM-Space 0.9.2 的 Stardar（系统地图）GUI 一打开即崩溃的修复
+> （issue #170，`Unsupported HBM RenderUtil attribute bits: 0x4`）——见下方
+> [模组与环境](#模组与环境) 的 HBM 行与 [docs/compat/hbm.md](compat/hbm.md)。
+> `HbmRenderStateCompat.toGlMask` 将未映射的 HBM attribute 位按 HBM 原有语义忽略；
+> 星图实机确认待补充。
+
 > 2026-09-22 追加：MMCE 使用的方块隐藏（Component Model Hider 1.0，modid
 > `component_model_hider`）在 Actinium 下整体失效的修复——见下方
 > [模组与环境](#模组与环境) 的 Component Model Hider 行与
@@ -219,7 +225,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 | VoxelMap         | 部分 | 条件 Mixin（CPU 纹理路径 + 线性过滤 + scissor 重路由 + HudCaching alpha 保护） | 1.9.25 小地图黑屏/黑块已修复（dev 验证圆内正常显示地图内容、HUD 不被缓存隐藏，见 [docs/compat/voxelmap.md](compat/voxelmap.md)）；已知缺口：与 StellarCore `HudCaching` 组合时小地图圆周仍可能残留黑块（VoxelMap 全屏清 alpha + DST_ALPHA 混合与 HUD 缓存 FBO 的第三方冲突，`HudCaching=false` 即消失，非本模组缺陷）；验证 VoxelMap 需停用 JourneyMap（二者频道冲突） |
 | ModernUI         | 代码支持 | GUI scale hook                     | 尚缺当前运行时验证记录      |
 | Mekanism-CE-Unofficial | 部分 | 条件 Mixin（Mekanism glow pass 的 deferred alpha blend 与 Iris blend lock 桥接） | 10.0.5.021（CurseForge `840735:8862568`）：MakeUp UltraFast 9.1f 下大型化学清洗机贴图已恢复，详见 [docs/compat/mekanism.md](compat/mekanism.md)；其他光影包及手持模型回归待验证 |
-| HBM's Nuclear Tech - Community Edition | 已验证 | 条件 Mixin（RenderUtil 状态栈 + Sedna 武器手部深度）+ early Mixin（TileEntityRendererDispatcher 世界 lightmap 同步，注入体按 `isHbmInstalled()` 门控） | 2.5.0.5（CurseForge 1312314:8330665）：FENSU 与其他 HBM 机器的 WaveFront raw VAO 模型在实际场景中正常显示；修复前的 stale lightmap、黑色剪影和 depth 恢复异常不再复现；第一人称手持 Sedna 系武器在光影下清空世界深度导致的深度崩坏已修复（2026-09-21，Complementary Reimagined r5.5.1 + Distant Horizons 实测确认，详见 [docs/compat/hbm.md](compat/hbm.md)）；Java 25.0.3、Cleanroom 0.6.12-alpha dev 回归通过 |
+| HBM's Nuclear Tech - Community Edition | 已验证 | 条件 Mixin（RenderUtil 状态栈 + Sedna 武器手部深度）+ early Mixin（TileEntityRendererDispatcher 世界 lightmap 同步，注入体按 `isHbmInstalled()` 门控） | 2.5.0.5（CurseForge 1312314:8330665）：FENSU 与其他 HBM 机器的 WaveFront raw VAO 模型在实际场景中正常显示；修复前的 stale lightmap、黑色剪影和 depth 恢复异常不再复现；第一人称手持 Sedna 系武器在光影下清空世界深度导致的深度崩坏已修复（2026-09-21，Complementary Reimagined r5.5.1 + Distant Horizons 实测确认，详见 [docs/compat/hbm.md](compat/hbm.md)）；Java 25.0.3、Cleanroom 0.6.12-alpha dev 回归通过；2.6.1.0 + NTM-Space 0.9.2：issue #170 的 Stardar GUI 未映射 attribute 位崩溃已修复，星图实机确认待补充（详见 [docs/compat/hbm.md](compat/hbm.md)） |
 | Depths Update    | 已验证 | 兼容门控（`compat/depthsupdate`：公开 API 推导 section 范围 + storage 索引映射） | 1.0.0-a10：扩展世界高度（默认 -64..320）下 Y<0 与 Y>255 的方块不再缺失（渲染器原先硬编码 0-255）；dev 实测正常；无 Depths 时回退 vanilla 行为 |
 | EnderIO CEu / EnderCore CEu | 已验证 | 无（核心渲染语义修复，非模组接入） | 5.4.2 + EnderCore 0.5.81：光影开启时流体罐内液体被罐体玻璃窗深度遮挡的问题已修复（`cb4feaa5`，translucent terrain pass 不再写深度）；MakeUp Ultra Fast 9.4c + Cleanroom 0.5.17-alpha 实测通过；2026-09-02 修复 #85（`da83c59`）引入的回潮——translucent pass 被错误翻转为写深度导致有无光影流体均被玻璃遮挡，已恢复 vanilla 深度语义，双路径实测通过 |
 | Snow! Real Magic! | 已验证 | 兼容门控（SRM 的 snow_layer 块退回 vanilla dispatcher 路径） | 0.7.4：带雪栅栏不渲染已修复（SRM 把被覆盖方块替换为带 SnowTile 的雪层、仅在 `BlockRendererDispatcher.renderBlock` 内重绘，快速区块路径已绕过）；`6aee395`，dev 运行验证通过（MakeUp Ultra Fast 下无光影 + 光影各验一次） |

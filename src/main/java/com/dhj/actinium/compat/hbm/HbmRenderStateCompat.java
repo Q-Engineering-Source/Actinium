@@ -23,7 +23,8 @@ public final class HbmRenderStateCompat {
     private static final int HBM_POLYGON_BIT = 0x00008;
     private static final int HBM_FOG_BIT = 0x00080;
     private static final int HBM_ALL_BITS = 0xFFFFF;
-    private static final int HBM_SUPPORTED_BITS = 0x461C8;
+    /** The HBM bits this class maps onto a GLSM state group, i.e. the union of the seven bits above. */
+    private static final int HBM_MAPPED_BITS = 0x461C8;
 
     private HbmRenderStateCompat() {
     }
@@ -81,13 +82,19 @@ public final class HbmRenderStateCompat {
             skyLight(combinedLight));
     }
 
+    /**
+     * Translates an HBM attribute mask into the GLSM state groups that must be saved for it.
+     *
+     * <p>Bits this class does not map are ignored, mirroring HBM's own {@code pushAttrib}: that
+     * method tests one {@code if ((mask & bit) != 0)} per attribute group and simply captures
+     * nothing for a bit it does not know. Failing on such a bit instead takes the whole client
+     * down, which is how NTM-Space 0.9.2's Stardar GUI crashed the game (issue #170: its
+     * {@code GUIMachineStardar.drawSystemMap} pushes {@code 0x4}, a bit absent from both HBM's
+     * capture chain and this mapping). The only cost of skipping an unmapped bit is that whatever
+     * GL state it stood for is not restored, which is exactly the state HBM itself leaves behind.</p>
+     */
     static int toGlMask(int hbmMask) {
-        int normalizedMask = hbmMask == HBM_ALL_BITS ? HBM_SUPPORTED_BITS : hbmMask;
-        int unsupportedBits = normalizedMask & ~HBM_SUPPORTED_BITS;
-        if (unsupportedBits != 0) {
-            throw new IllegalArgumentException(
-                "Unsupported HBM RenderUtil attribute bits: 0x" + Integer.toHexString(unsupportedBits));
-        }
+        int normalizedMask = hbmMask == HBM_ALL_BITS ? HBM_MAPPED_BITS : hbmMask;
 
         // HBM always captures shade model, which GLSM groups with GL_LIGHTING_BIT.
         int glMask = GL11.GL_LIGHTING_BIT;
