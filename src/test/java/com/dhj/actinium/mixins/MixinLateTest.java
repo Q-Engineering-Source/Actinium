@@ -73,6 +73,7 @@ class MixinLateTest {
                 "mixins.actinium.storagedrawers.json",
                 "mixins.actinium.scannable.json",
                 "mixins.actinium.littletiles.json",
+                "mixins.actinium.architecturecraft.json",
                 "mixins.actinium.obscuretooltips.json"
             ),
             Set.copyOf(MixinLate.configsFor(modId -> true, className -> true))

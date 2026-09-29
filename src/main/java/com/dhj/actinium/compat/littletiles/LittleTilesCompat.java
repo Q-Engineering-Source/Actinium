@@ -1,19 +1,37 @@
 package com.dhj.actinium.compat.littletiles;
 
 import com.creativemd.creativecore.client.rendering.model.BufferBuilderUtils;
+import com.creativemd.creativecore.common.utils.mc.ColorUtils;
 import com.creativemd.littletiles.client.render.cache.IRenderDataCache;
 import com.creativemd.littletiles.client.render.cache.LayeredRenderBufferCache;
 import com.creativemd.littletiles.common.tileentity.TileEntityLittleTiles;
 import com.dhj.actinium.render.terrain.ActiniumWorldRenderer;
 import com.dhj.actinium.render.terrain.compile.VintageChunkBuildContext;
 import com.dhj.actinium.world.WorldSlice;
+import com.dhj.actinium.mixin.mod.littletiles.mixinterface.AccessorAmbientOcclusionFace;
+import com.dhj.actinium.mixin.mod.littletiles.mixinterface.AccessorVertexLighterFlat;
+import dhj.embeddedt.embeddium.api.shader.buffer.BufferBuilderExtension;
+import dhj.embeddedt.embeddium.api.shader.buffer.VanillaQuadContext;
+import dhj.embeddedt.embeddium.api.shader.vertex.ExtendedDataHelper;
+import net.coderbot.iris.block_rendering.BlockRenderingSettings;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.BufferBuilder;
+import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.math.BlockPos;
+import net.minecraftforge.client.model.pipeline.BlockInfo;
+import net.minecraftforge.client.model.pipeline.LightUtil;
+import net.minecraftforge.client.model.pipeline.VertexLighterFlat;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import static net.minecraft.block.material.Material.LAVA;
+import static net.minecraft.block.material.Material.WATER;
 
 /**
  * Compatibility for {@code LittleTiles} (mod id {@code littletiles}).
@@ -42,6 +60,173 @@ import java.nio.ByteBuffer;
  */
 public final class LittleTilesCompat {
     private LittleTilesCompat() {
+    }
+
+    /** Returns whether LittleTiles must keep AO in the shader's separate vertex-alpha channel. */
+    public static boolean shouldWriteSeparateAo() {
+        return BlockRenderingSettings.INSTANCE.shouldUseSeparateAo();
+    }
+
+    /** Captures the current quad's colors before CreativeCore overwrites its vanilla lighting. */
+    public static int[] snapshotCurrentQuadColors(BufferBuilder buffer) {
+        int[] colors = new int[4];
+        for (int index = 1; index <= 4; index++) {
+            colors[index - 1] = BufferBuilderUtils.get(buffer, buffer.getColorIndex(index));
+        }
+        return colors;
+    }
+
+    /** Reads the AO scalar for each recent quad vertex from the lighting path CreativeCore used. */
+    public static float[] snapshotSeparateAoFactors(Object ambientOcclusionFace,
+                                                    VertexLighterFlat lighter,
+                                                    BakedQuad quad,
+                                                    int[] colorsBeforeOverwrite) {
+        if (!shouldWriteSeparateAo()) {
+            return null;
+        }
+
+        if (ambientOcclusionFace != null) {
+            if (!(ambientOcclusionFace instanceof AccessorAmbientOcclusionFace accessor)) {
+                throw new IllegalStateException("LittleTiles AO face is missing Actinium's accessor");
+            }
+            float[] vertexFactors = accessor.actinium$getVertexColorMultiplier();
+            float[] bufferOrderFactors = new float[4];
+            for (int index = 1; index <= 4; index++) {
+                bufferOrderFactors[index - 1] = vertexFactors[4 - index];
+            }
+            return bufferOrderFactors;
+        }
+
+        if (lighter != null) {
+            if (!(lighter instanceof AccessorVertexLighterFlat accessor)) {
+                throw new IllegalStateException("LittleTiles Forge light pipeline is missing Actinium's accessor");
+            }
+            BlockInfo blockInfo = accessor.actinium$getBlockInfo();
+            int originalMultiplier = blockInfo.getColorMultiplier(quad.getTintIndex());
+            float[] factors = new float[4];
+            for (int i = 0; i < factors.length; i++) {
+                factors[i] = extractAoFactor(colorsBeforeOverwrite[i], originalMultiplier);
+            }
+            return factors;
+        }
+
+        return null;
+    }
+
+    /** Moves CreativeCore's CPU-baked AO factor out of RGB and into alpha for the active pack. */
+    public static void moveCurrentQuadAoToAlpha(BufferBuilder buffer,
+                                                BakedQuad quad,
+                                                float[] aoFactors) {
+        int[] colorsAfterOverwrite = snapshotCurrentQuadColors(buffer);
+        float directionalDiffuse = BlockRenderingSettings.INSTANCE.shouldDisableDirectionalShading()
+                && quad.shouldApplyDiffuseLighting()
+                ? LightUtil.diffuseLight(quad.getFace())
+                : 1.0F;
+        float[] alphaFactors = aoFactors != null ? Arrays.copyOf(aoFactors, aoFactors.length) : null;
+        if (alphaFactors != null && directionalDiffuse > 0.000001F && directionalDiffuse != 1.0F) {
+            for (int i = 0; i < alphaFactors.length; i++) {
+                alphaFactors[i] = Math.max(0.0F, Math.min(1.0F, alphaFactors[i] / directionalDiffuse));
+            }
+        }
+
+        if (alphaFactors != null) {
+            for (int index = 1; index <= 4; index++) {
+                int outputColor = colorsAfterOverwrite[index - 1];
+                float bakedShading = aoFactors[index - 1];
+                float ao = alphaFactors[index - 1];
+                int red = ColorUtils.getRed(outputColor);
+                int green = ColorUtils.getGreen(outputColor);
+                int blue = ColorUtils.getBlue(outputColor);
+                if (bakedShading > 0.000001F) {
+                    red = Math.min(255, Math.round(red / bakedShading));
+                    green = Math.min(255, Math.round(green / bakedShading));
+                    blue = Math.min(255, Math.round(blue / bakedShading));
+                }
+                int alpha = Math.max(0, Math.min(255, Math.round(ColorUtils.getAlpha(outputColor) * ao)));
+                buffer.putColorRGBA(buffer.getColorIndex(index), red, green, blue, alpha);
+            }
+        }
+    }
+
+    private static float extractAoFactor(int packedColor, int originalMultiplier) {
+        float factor = ColorUtils.getRed(originalMultiplier) > 0
+                ? (float) ColorUtils.getRed(packedColor) / ColorUtils.getRed(originalMultiplier)
+                : ColorUtils.getGreen(originalMultiplier) > 0
+                        ? (float) ColorUtils.getGreen(packedColor) / ColorUtils.getGreen(originalMultiplier)
+                        : ColorUtils.getBlue(originalMultiplier) > 0
+                                ? (float) ColorUtils.getBlue(packedColor) / ColorUtils.getBlue(originalMultiplier)
+                                : 1.0f;
+        return Float.isFinite(factor) ? factor : 1.0f;
+    }
+
+    /** Clears the temporary cube state after LittleTiles finishes writing one face. */
+    public static void endEmbeddedBlockRender(BufferBuilder buffer) {
+        if (buffer instanceof BufferBuilderExtension extension) {
+            extension.actinium$setActiveQuadContext(null);
+        }
+    }
+
+    /** Snapshots source builder contexts before LittleTiles retains its buffer. */
+    public static void captureCachedQuadContexts(LittleTilesQuadContextCarrier cache, BufferBuilder builder) {
+        if (!(builder instanceof BufferBuilderExtension extension)) {
+            throw new IllegalStateException("LittleTiles cache builder is missing Actinium's quad-context extension");
+        }
+        cache.actinium$setQuadContexts(extension.actinium$copyQuadContexts());
+    }
+
+    /** Mirrors LittleTiles' first-then-second raw byte concatenation for shader contexts. */
+    public static void combineCachedQuadContexts(IRenderDataCache output, IRenderDataCache first, IRenderDataCache second) {
+        if (output == null) {
+            return;
+        }
+
+        List<VanillaQuadContext> firstContexts = cachedQuadContexts(first);
+        List<VanillaQuadContext> secondContexts = cachedQuadContexts(second);
+        if (firstContexts.isEmpty() && secondContexts.isEmpty()) {
+            return;
+        }
+        if (!(output instanceof LittleTilesQuadContextCarrier carrier)) {
+            throw new IllegalStateException("LittleTiles combined cache is missing its quad-context carrier");
+        }
+
+        List<VanillaQuadContext> merged = new ArrayList<>(firstContexts.size() + secondContexts.size());
+        merged.addAll(firstContexts);
+        merged.addAll(secondContexts);
+        carrier.actinium$setQuadContexts(merged);
+    }
+
+    /** Copies contexts when LittleTiles wraps cached data in a GPU buffer link. */
+    public static void copyCachedQuadContexts(IRenderDataCache output, IRenderDataCache source) {
+        List<VanillaQuadContext> contexts = cachedQuadContexts(source);
+        if (contexts.isEmpty()) {
+            return;
+        }
+        if (!(output instanceof LittleTilesQuadContextCarrier carrier)) {
+            throw new IllegalStateException("LittleTiles copied cache is missing its quad-context carrier");
+        }
+        carrier.actinium$setQuadContexts(contexts);
+    }
+
+    private static List<VanillaQuadContext> cachedQuadContexts(IRenderDataCache cache) {
+        return cache instanceof LittleTilesQuadContextCarrier carrier
+                ? carrier.actinium$getQuadContexts()
+                : List.of();
+    }
+
+    /** Starts a context for the constituent block state used by LittleTiles' face renderer. */
+    public static void beginEmbeddedBlockRender(BufferBuilder buffer, IBlockState state, BlockPos pos) {
+        if (buffer instanceof BufferBuilderExtension extension) {
+            short renderType = state.getMaterial() == WATER || state.getMaterial() == LAVA
+                    ? ExtendedDataHelper.FLUID_RENDER_TYPE
+                    : ExtendedDataHelper.BLOCK_RENDER_TYPE;
+            extension.actinium$setActiveQuadContext(new VanillaQuadContext(
+                    pos.getX() & 15,
+                    pos.getY() & 15,
+                    pos.getZ() & 15,
+                    state,
+                    renderType
+            ));
+        }
     }
 
     /**
@@ -84,11 +269,26 @@ public final class LittleTilesCompat {
                 if (source == null || data.vertexCount() == 0) {
                     continue;
                 }
+                int sourceVertexCount = data.vertexCount();
+                if ((sourceVertexCount & 3) != 0) {
+                    throw new IllegalStateException("LittleTiles cache contains an incomplete quad at " + te.getPos());
+                }
+                int sourceQuadCount = sourceVertexCount / 4;
+                List<VanillaQuadContext> contexts = cachedQuadContexts(data);
+                if (contexts.size() != sourceQuadCount) {
+                    throw new IllegalStateException("LittleTiles cache context count " + contexts.size()
+                            + " does not match its " + sourceQuadCount + " quads at " + te.getPos()
+                            + " in layer " + layer);
+                }
                 BufferBuilder buffer = buildContext.getBufferForLayer(layer);
+                if (!(buffer instanceof BufferBuilderExtension extension)) {
+                    throw new IllegalStateException("Actinium chunk buffer is missing its quad-context extension");
+                }
                 // Same append mechanics LittleTiles itself uses on the vanilla upload buffer:
                 // grow first, then raw-copy the bytes and bump the vertex count.
                 BufferBuilderUtils.growBufferSmall(buffer, data.length() + buffer.getVertexFormat().getSize());
                 BufferBuilderUtils.addBuffer(buffer, source.duplicate(), data.length(), data.vertexCount());
+                extension.actinium$appendQuadContexts(contexts);
             }
         }
     }

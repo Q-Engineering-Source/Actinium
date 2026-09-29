@@ -257,6 +257,16 @@ public abstract class BufferBuilderMixin implements BufferBuilderExtension, Proj
     }
 
     @Override
+    public List<VanillaQuadContext> actinium$copyQuadContexts() {
+        return new ArrayList<>(this.actinium$quadContexts);
+    }
+
+    @Override
+    public void actinium$appendQuadContexts(List<VanillaQuadContext> contexts) {
+        this.actinium$quadContexts.addAll(contexts);
+    }
+
+    @Override
     public boolean actinium$isDrawing() {
         return this.isDrawing;
     }

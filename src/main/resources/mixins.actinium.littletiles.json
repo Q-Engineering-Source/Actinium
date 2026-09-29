@@ -9,7 +9,14 @@
   "server": [],
   "client": [
     "MixinChunkBuilderMeshingTaskLittleTiles",
-    "MixinTileEntityRenderManager"
+    "MixinTileEntityRenderManager",
+    "MixinLittleTilesBufferBuilderWrapper",
+    "MixinLittleTilesBufferLink",
+    "MixinLittleTilesRenderBufferCache",
+    "MixinLittleTilesBlockRenderCache",
+    "MixinCreativeModelPipeline",
+    "mixinterface.AccessorAmbientOcclusionFace",
+    "mixinterface.AccessorVertexLighterFlat"
   ],
   "injectors": {
     "defaultRequire": 1
