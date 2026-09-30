@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProgramIdFallbackTest {
@@ -30,6 +31,11 @@ class ProgramIdFallbackTest {
             List.of(ProgramId.DhWater, ProgramId.DhTerrain),
             fallbackChain(ProgramId.DhWater)
         );
+    }
+
+    @Test
+    void translucentBlockProgramDoesNotOverrideVanillaBlendByDefault() {
+        assertNull(ProgramId.BlockTrans.getBlendModeOverride());
     }
 
     @Test

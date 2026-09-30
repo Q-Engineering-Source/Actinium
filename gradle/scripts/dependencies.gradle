@@ -100,6 +100,10 @@ dependencies {
     // Runtime-only because Actinium has no compile-time references to Mekanism.
     modRuntimeOnly 'curse.maven:mekanism-ce-unofficial-840735:8862568'
 
+    // Immersive Engineering 0.12-98 (issue #197: exercise the Garden Cloche translucent block-entity pass).
+    // Runtime-only because Actinium does not compile against IE classes.
+    modRuntimeOnly 'curse.maven:immersive-engineering-231951:2974106'
+
     // Draconic Evolution
     modCompileOnly 'maven.modrinth:draconic-evolution:2.3.28.354'
     modCompileOnly 'maven.modrinth:brandons-core:2.4.20.162'

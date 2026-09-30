@@ -1,6 +1,6 @@
 # Actinium 兼容性矩阵
 
-最后更新：2026-09-29。
+最后更新：2026-09-30。
 
 状态定义：`已验证` 表示在记录的版本和场景中通过；`部分` 表示能运行但存在已知缺口；
 `无法启用` 表示光影包不能成功开启；`未验证` 不代表不兼容。更新记录时必须填写 Actinium commit、
@@ -8,6 +8,13 @@
 
 本轮验证环境：Actinium `30c7ffb`、Java 25.0.3、Cleanroom 0.5.12-alpha、Distant Horizons 3.1.2-b、
 Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
+
+> 2026-09-30 追加：Immersive Engineering 0.12-98 Garden Cloche 在 shader 下玻璃不透明（issue #197）已修复；
+> 用户确认 Solas Shader V3.7b 下玻璃恢复半透明。根因是 `ProgramId.BlockTrans` 默认强制关闭 blend，
+> 锁住 GLSM 后延迟了方块实体自身的标准 alpha blend 请求；移除该默认值后，shader pack 显式 blend directive
+> 仍优先。ITT 3.2 与 Photon v1.3b 仍受其 1.12.2 block shader fallback 限制，见
+> [docs/compat/immersiveengineering.md](compat/immersiveengineering.md)。验证基于分支
+> `fix/ie-cloche-transparency`（`c318ed54`）。
 
 > 2026-09-29 追加：LittleTiles 1.5.87 在 shader 下与普通整块光照不一致（issue #193）已由用户在
 > Photon v1.3b dev 环境确认修复；验证场景含相邻原版橡木木板、ArchitectureCraft shape 与 LittleTiles
@@ -208,9 +215,10 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 | BSL                                | 10.0          | 已验证  | 世界加载、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载、Distant Horizons LOD      | -         | `f261611`   |
 | Complementary Reimagined / Unbound | r5.5.1        | 已验证  | 开启、世界渲染、Distant Horizons LOD、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载   | -         | `f261611`   |
 | Bliss                              | 2.1.2         | 已验证  | 开启、世界渲染、Distant Horizons LOD、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载   | -         | `28d976d`   |
-| iterationT                         | 3.2.0         | 已验证  | 开启、世界渲染、Distant Horizons LOD、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载   | -         | `30c7ffb`   |
+| iterationT                         | 3.2.0         | 部分    | 开启、世界渲染、Distant Horizons LOD、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载   | Immersive Engineering Garden Cloche 玻璃泛白；该包 block shader 将输出 alpha 固定为 1 | `fix/ie-cloche-transparency` (`c318ed54` 基线) |
 | iterationRP                        | 0.7.7 / 0.8.7 | 已验证  | 开启、世界渲染、Distant Horizons LOD、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载   | -         | `28d976d`   |
-| Photon                             | v1.3b         | 部分    | 开启、世界渲染、地形、水（2026-08-31 水面修复后）、GUI、LittleTiles/ArchitectureCraft 相邻方块光照（issue #193，2026-09-29） | 阴影/实体/维度切换/重载等场景待补充验证；选项菜单部分元素缺失（GTAO 等 profile 项告警，与水面无关） | `fix/photon-water-surface` |
+| Photon                             | v1.3b         | 部分    | 开启、世界渲染、地形、水（2026-08-31 水面修复后）、GUI、LittleTiles/ArchitectureCraft 相邻方块光照（issue #193，2026-09-29） | IE Garden Cloche 玻璃发黑：1.12.2 配置禁用专用 `gbuffers_block_translucent` 程序并回退 solid block shader；阴影/实体/维度切换/重载等场景待补充验证；选项菜单部分元素缺失（GTAO 等 profile 项告警，与水面无关） | `fix/ie-cloche-transparency` (`c318ed54` 基线) |
+| Solas Shader                      | V3.7b         | 部分    | Immersive Engineering 0.12-98 Garden Cloche（泥土 + 种子）玻璃半透明，issue #197，用户确认（2026-09-30） | 其他渲染路径未验证 | `fix/ie-cloche-transparency` (`c318ed54` 基线) |
 | SEUS PTGI HRR                      | Test 2.1      | 无法启用 | -                                                              | 光影包不能成功开启 | `f261611`   |
 
 ## 模组与环境
@@ -218,6 +226,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 | 组件               | 状态   | 接入方式                               | 备注               |
 |------------------|------|------------------------------------|------------------|
 | Cleanroom Loader | 必需   | Forge/Cleanroom 启动与 MixinBootstrap | 当前目标运行环境         |
+| Immersive Engineering | 部分（Solas V3.7b 场景已验证） | 无 Mixin（Iris `BlockTrans` 默认 blend 状态修正） | 0.12-98：Garden Cloche 玻璃不透明（issue #197）已由用户在 Solas V3.7b 下确认修复；ITT 3.2 与 Photon v1.3b 因各自 1.12.2 shader fallback 仍呈现泛白/发黑，详见 [docs/compat/immersiveengineering.md](compat/immersiveengineering.md) |
 | LittleTiles      | 部分（Photon v1.3b 实测通过） | 条件 Mixin（shader quad context + 独立 AO 顶点通道） | 1.5.87 + CreativeCore 1.10.71（issue #193）：放置的微型方块在光影下比相邻原版方块暗；已修复并经用户确认，Solas 与其他 shader pack 待回归，详见 [docs/compat/littletiles.md](compat/littletiles.md) |
 | ArchitectureCraft | 部分（Photon v1.3b 实测通过） | 条件 Mixin（`RenderTargetWorld#setLight` 的 AO / 方向着色拆分） | 1.12-3.108：用户发现放置 shape 有同类偏暗现象；与原版木板、LittleTiles 同场验证，其他 shader pack 待回归，详见 [docs/compat/architecturecraft.md](compat/architecturecraft.md) |
 | ReplayMod        | 已验证（视频渲染） | 高优先级 selection-box outline scope + GLSM PBO offset readback | 1.12.2-2.6.13 在 BSL_v10.1p1 视频导出时的 G-buffer 状态崩溃及 PBO `glReadPixels(..., long)` 缺失重载已修复；Cleanroom 0.6.13-alpha 整合包实测确认，详见 [docs/compat/replaymod.md](compat/replaymod.md) |
