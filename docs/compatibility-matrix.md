@@ -1,6 +1,6 @@
 # Actinium 兼容性矩阵
 
-最后更新：2026-09-30。
+最后更新：2026-10-02。
 
 状态定义：`已验证` 表示在记录的版本和场景中通过；`部分` 表示能运行但存在已知缺口；
 `无法启用` 表示光影包不能成功开启；`未验证` 不代表不兼容。更新记录时必须填写 Actinium commit、
@@ -8,6 +8,10 @@
 
 本轮验证环境：Actinium `30c7ffb`、Java 25.0.3、Cleanroom 0.5.12-alpha、Distant Horizons 3.1.2-b、
 Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
+
+> 2026-10-02 追加：ScalingGUIs 1.12.2-1.0.3.1 与 RSO 页 GUI Scale 滑块的冲突已做兼容——检测到该
+> mod 时，Actinium 将滑块替换为复用其 "GUI Scales" 文本的无背景按钮，并直接打开其配置 GUI；未加载时
+> 维持原滑块。实机验证待用户确认，详见 [docs/compat/scalingguis.md](compat/scalingguis.md)。
 
 > 2026-09-30 追加：Immersive Engineering 0.12-98 Garden Cloche 在 shader 下玻璃不透明（issue #197）已修复；
 > 用户确认 Solas Shader V3.7b 下玻璃恢复半透明。根因是 `ProgramId.BlockTrans` 默认强制关闭 blend，
@@ -237,6 +241,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 | Lumenized        | 已验证（启动） | 条件 Mixin（bloom 兼容层，类探测门控 `class:gregtech.client.utils.BloomEffectUtil`） | 1.0.3：bloom 兼容层使其泛光真实生效（depth 共享 + FBO 清理 + composite 深度测试 + GL 状态守护，取代已移除的 bloomStyle=0 safe mode）；第一人称手部/所持物品全黑已由 `BloomStateGuard` 修复并实机确认（真因为 Unreal 管线对 2..4 号纹理单元的 TEXTURE_2D 使能泄漏，守护覆盖全部纹理单元），详见 [docs/compat/lumenized.md](compat/lumenized.md) |
 | StellarCore      | 已验证  | 无（不再需要配置规避） | HUD 缓存相关 GUI/HUD 症状实为 Draconic Evolution 引起（2026-08-12 实测归因修正）；DE 兼容桥修复后 HUD 正常，`HudCaching`/`HUDFramebuffer` 可恢复开启，详见 [docs/compat/stellarcore.md](compat/stellarcore.md) |
 | Draconic Evolution | 已验证 | 条件 Mixin（CCL GlStateTracker 兼容桥） | DE 2.3.28.354 在场时云异常/草方块侧面偏绿/主菜单消失；根因为 DE 每帧 HUD 经 CCL GlStateTracker 基于冻结的原版 GlStateManager 字段重置 GL 状态，已由 `mixins.actinium.ccl.json` 兼容桥修复（dev 回归通过，生产整合包全量回归待做），详见 [docs/compat/draconic-evolution.md](compat/draconic-evolution.md) |
+| ScalingGUIs | 待实机验证 | `Mods.SCALINGGUIS` 门控 + RSO 外部按钮 | 1.12.2-1.0.3.1：RSO 页的 GUI Scale 滑块替换为打开其配置 GUI 的无背景按钮；未加载时保留原滑块，详见 [docs/compat/scalingguis.md](compat/scalingguis.md) |
 | Fluidlogged API  | 代码支持 | compile-only API、条件调用              | 尚缺当前运行时验证记录      |
 | Gibbed           | 代码支持 | late Mixin、模型批处理路径                 | 尚缺当前运行时验证记录      |
 | Chunk Animator   | 部分 | 条件桥（ChunkAnimationProvider）+ 动画 section 单独绘制 | 1.12.2-1.2.1（236484:3850023）dev 运行通过（coremod 加载、兼容层启用、进世界无异常）；动画视觉确认待补，详见 [docs/compat/chunkanimator.md](compat/chunkanimator.md) |

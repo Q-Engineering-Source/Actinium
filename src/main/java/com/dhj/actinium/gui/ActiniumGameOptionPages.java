@@ -2,6 +2,8 @@ package com.dhj.actinium.gui;
 
 import com.google.common.collect.ImmutableList;
 import com.dhj.actinium.config.ActiniumRuntimeOptions;
+import com.dhj.actinium.compat.scalingguis.ScalingGuiCompat;
+import com.gtnewhorizon.gtnhlib.compat.Mods;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.I18n;
@@ -9,6 +11,7 @@ import net.minecraft.client.settings.GameSettings;
 import dhj.embeddedt.embeddium.api.options.OptionIdentifier;
 import dhj.embeddedt.embeddium.api.options.control.ControlValueFormatter;
 import dhj.embeddedt.embeddium.api.options.control.CyclingControl;
+import dhj.embeddedt.embeddium.api.options.control.ExternalButtonControl;
 import dhj.embeddedt.embeddium.api.options.control.SliderControl;
 import dhj.embeddedt.embeddium.api.options.control.TickBoxControl;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
@@ -52,6 +55,33 @@ public class ActiniumGameOptionPages {
             opts.advanced.useFastLitItemDisplayLists = value;
             FastLitItemDisplayListCache.clear();
         }
+    }
+
+    private static OptionImpl<GameSettings, Integer> createGuiScaleSliderOption() {
+        return OptionImpl.createBuilder(int.class, vanillaOpts)
+                .setId(StandardOptions.Option.GUI_SCALE.cast())
+                .setName(TextComponent.translatable("options.guiScale"))
+                .setTooltip(TextComponent.translatable("sodium.options.gui_scale.tooltip"))
+                .setControl(option -> new SliderControl(option, 0, MuiGuiScaleHook.getMaxGuiScale(), 1, ControlValueFormatter.guiScale()))
+                .setBinding((opts, value) -> {
+                    opts.guiScale = value;
+
+                    Minecraft mc = Minecraft.getMinecraft();
+                    mc.resize(mc.displayWidth, mc.displayHeight);
+                }, opts -> opts.guiScale)
+                .build();
+    }
+
+    private static OptionImpl<GameSettings, Void> createGuiScaleExternalButtonOption() {
+        return OptionImpl.createBuilder(Void.class, vanillaOpts)
+                .setId(StandardOptions.Option.GUI_SCALE)
+                .setName(TextComponent.translatable("options.guiScale"))
+                .setTooltip(TextComponent.translatable("scalingguis.videosettings.button.tooltip"))
+                .setControl(option -> new ExternalButtonControl(option,
+                        ScalingGuiCompat::openConfigScreen,
+                        TextComponent.translatable("scalingguis.videosettings.button")))
+                .setBinding((opts, value) -> { }, opts -> null)
+                .build();
     }
 
     private static OptionImpl<SodiumGameOptions, Boolean> createModelRendererBatchingOption(TextComponent tooltip) {
@@ -122,18 +152,9 @@ public class ActiniumGameOptionPages {
 
         groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.WINDOW)
-                .add(OptionImpl.createBuilder(int.class, vanillaOpts)
-                        .setId(StandardOptions.Option.GUI_SCALE.cast())
-                        .setName(TextComponent.translatable("options.guiScale"))
-                        .setTooltip(TextComponent.translatable("sodium.options.gui_scale.tooltip"))
-                        .setControl(option -> new SliderControl(option, 0, MuiGuiScaleHook.getMaxGuiScale(), 1, ControlValueFormatter.guiScale()))
-                        .setBinding((opts, value) -> {
-                            opts.guiScale = value;
-
-                            Minecraft mc = Minecraft.getMinecraft();
-                            mc.resize(mc.displayWidth, mc.displayHeight);
-                        }, opts -> opts.guiScale)
-                        .build())
+                .add(Mods.SCALINGGUIS
+                        ? createGuiScaleExternalButtonOption()
+                        : createGuiScaleSliderOption())
                 .add(OptionImpl.createBuilder(FullscreenMode.class, sodiumOpts)
                         .setId(StandardOptions.Option.FULLSCREEN_MODE.cast())
                         .setName(TextComponent.translatable("celeritas.options.fullscreen_mode.name"))
