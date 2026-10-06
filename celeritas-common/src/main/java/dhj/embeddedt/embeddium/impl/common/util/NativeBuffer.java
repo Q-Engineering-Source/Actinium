@@ -5,16 +5,15 @@ import it.unimi.dsi.fastutil.objects.Reference2ReferenceMaps;
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import com.mitchej123.lwjgl.LWJGLServiceProvider;
+import com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities;
 
 import java.lang.ref.PhantomReference;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
-
-import static com.mitchej123.lwjgl.LWJGLServiceProvider.LWJGL;
 
 public class NativeBuffer {
     private static final Logger LOGGER = LogManager.getLogger(NativeBuffer.class);
@@ -23,7 +22,7 @@ public class NativeBuffer {
     private static final Reference2ReferenceMap<Reference<NativeBuffer>, BufferReference> ACTIVE_BUFFERS =
             Reference2ReferenceMaps.synchronize(new Reference2ReferenceOpenHashMap<>());
 
-    private static long ALLOCATED = 0L;
+    private static final AtomicLong ALLOCATED = new AtomicLong();
 
     // Re-assigned by ensureCapacity when the native block is swapped for a larger one.
     private BufferReference ref;
@@ -42,18 +41,25 @@ public class NativeBuffer {
 
     public static NativeBuffer copy(ByteBuffer src) {
         NativeBuffer dst = new NativeBuffer(src.remaining());
-        LWJGL.memCopy(src, dst.getDirectBuffer());
+        MemoryUtilities.memCopy(MemoryUtilities.memAddress(src), dst.ref.address, src.remaining());
         return dst;
     }
 
     public ByteBuffer getDirectBuffer() {
         this.ref.checkFreed();
 
-        return LWJGL.memByteBuffer(this.ref.address, this.ref.length);
+        return MemoryUtilities.memByteBuffer(this.ref.address, this.ref.length);
     }
 
     public void free() {
-        deallocate(this.ref);
+        try {
+            deallocate(this.ref);
+            // Explicitly freed mesh uploads need no later GC notification or retained trace.
+            ACTIVE_BUFFERS.remove(this.reclaimHandle);
+            this.reclaimHandle.clear();
+        } finally {
+            Reference.reachabilityFence(this);
+        }
     }
 
     /**
@@ -69,18 +75,19 @@ public class NativeBuffer {
             return;
         }
 
-        BufferReference replacement = allocate(capacity);
+        try {
+            BufferReference replacement = allocate(capacity);
+            BufferReference previous = this.ref;
+            MemoryUtilities.memCopy(previous.address, replacement.address, previous.length);
+            deallocate(previous);
+            this.ref = replacement;
 
-        LWJGL.memCopy(this.getDirectBuffer(), LWJGL.memByteBuffer(replacement.address, replacement.length));
-
-        BufferReference previous = this.ref;
-        deallocate(previous);
-        this.ref = replacement;
-
-        // The reclaim queue entry must follow the live block; the handle is guaranteed to be
-        // registered since this instance is still strongly reachable here.
-        if (ACTIVE_BUFFERS.replace(this.reclaimHandle, replacement) != previous) {
-            throw new IllegalStateException("NativeBuffer reclaim entry went missing while growing the buffer");
+            // The reclaim queue entry must follow the live block throughout replacement.
+            if (ACTIVE_BUFFERS.replace(this.reclaimHandle, replacement) != previous) {
+                throw new IllegalStateException("NativeBuffer reclaim entry went missing while growing the buffer");
+            }
+        } finally {
+            Reference.reachabilityFence(this);
         }
     }
 
@@ -118,7 +125,12 @@ public class NativeBuffer {
     }
 
     public static long getTotalAllocated() {
-        return ALLOCATED;
+        return ALLOCATED.get();
+    }
+
+    /** Number of allocations still registered for leak recovery, including live scratch buffers. */
+    public static int getTrackedBufferCount() {
+        return ACTIVE_BUFFERS.size();
     }
 
     private static StackTraceElement[] getStackTrace() {
@@ -132,9 +144,9 @@ public class NativeBuffer {
         int attempts = 0;
 
         while (++attempts <= MAX_ALLOCATION_ATTEMPTS) {
-            address = LWJGL.nmemAlloc(bytes);
+            address = MemoryUtilities.nmemAlloc(bytes);
 
-            if (address != LWJGLServiceProvider.NULL) {
+            if (address != MemoryUtilities.NULL) {
                 break;
             }
 
@@ -145,14 +157,14 @@ public class NativeBuffer {
             reclaim(true);
         }
 
-        if (address == LWJGLServiceProvider.NULL) {
+        if (address == MemoryUtilities.NULL) {
             throw new OutOfMemoryError("Couldn't allocate %s bytes after %s attempts".formatted(bytes, attempts));
         }
 
         StackTraceElement[] stackTrace = getStackTrace();
 
         BufferReference ref = new BufferReference(address, bytes, stackTrace);
-        ALLOCATED += ref.length;
+        ALLOCATED.addAndGet(ref.length);
 
         return ref;
     }
@@ -161,9 +173,9 @@ public class NativeBuffer {
         ref.checkFreed();
         ref.freed = true;
 
-        LWJGL.nmemFree(ref.address);
+        MemoryUtilities.nmemFree(ref.address);
 
-        ALLOCATED -= ref.length;
+        ALLOCATED.addAndGet(-ref.length);
     }
 
     private static class BufferReference {
@@ -187,4 +199,3 @@ public class NativeBuffer {
         }
     }
 }
-
