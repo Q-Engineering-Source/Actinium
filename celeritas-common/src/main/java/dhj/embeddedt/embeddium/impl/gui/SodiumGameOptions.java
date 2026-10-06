@@ -72,6 +72,7 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
 
     public static class PerformanceSettings {
         public int chunkBuilderThreads = 0;
+        public boolean trimChunkBuildScratch = true;
         @SerializedName("always_defer_chunk_updates_v2") // this will reset the option in older configs
         public boolean alwaysDeferChunkUpdates = true;
 

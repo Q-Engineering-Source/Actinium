@@ -2,6 +2,7 @@ package com.dhj.actinium.runtime;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import dhj.embeddedt.embeddium.impl.common.util.ScratchRetentionWindow;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
 
 public final class ActiniumRuntime {
@@ -34,14 +35,18 @@ public final class ActiniumRuntime {
     }
 
     private static SodiumGameOptions loadConfig() {
+        final SodiumGameOptions config;
         try {
-            return SodiumGameOptions.load();
+            config = SodiumGameOptions.load();
         } catch (Throwable t) {
             LOGGER.error("Failed to load configuration file", t);
             LOGGER.error("Using default configuration file in read-only mode");
-            SodiumGameOptions config = SodiumGameOptions.defaults();
-            config.setReadOnly();
-            return config;
+            final SodiumGameOptions defaults = SodiumGameOptions.defaults();
+            defaults.setReadOnly();
+            ScratchRetentionWindow.setEnabled(defaults.performance.trimChunkBuildScratch);
+            return defaults;
         }
+        ScratchRetentionWindow.setEnabled(config.performance.trimChunkBuildScratch);
+        return config;
     }
 }

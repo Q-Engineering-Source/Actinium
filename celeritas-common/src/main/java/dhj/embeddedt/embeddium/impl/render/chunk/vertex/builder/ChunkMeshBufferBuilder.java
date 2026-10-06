@@ -1,6 +1,7 @@
 package dhj.embeddedt.embeddium.impl.render.chunk.vertex.builder;
 
 import dhj.embeddedt.embeddium.impl.common.util.NativeBuffer;
+import dhj.embeddedt.embeddium.impl.common.util.ScratchRetentionWindow;
 import dhj.embeddedt.embeddium.impl.render.chunk.terrain.material.Material;
 import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.ChunkVertexEncoder;
 import dhj.embeddedt.embeddium.impl.render.chunk.sorting.SortState;
@@ -16,6 +17,7 @@ public class ChunkMeshBufferBuilder {
 
     private final int initialCapacity;
     private final TranslucentQuadRecorder analyzer;
+    private final ScratchRetentionWindow scratchRetention = new ScratchRetentionWindow();
 
     // Off-heap scratch storage retained across build tasks; only destroy() hands the block back
     // to the OS, while start() just resets the write position so the next task reuses the capacity.
@@ -128,6 +130,25 @@ public class ChunkMeshBufferBuilder {
     public void resetSortState() {
         if (this.analyzer != null) {
             this.analyzer.clear();
+        }
+    }
+
+    /** Reclaims oversized native and translucent-sort scratch after sustained low-use build work. */
+    public void finishTask(final boolean used) {
+        if (this.analyzer != null) {
+            this.analyzer.finishTask(used);
+        }
+        if (!ScratchRetentionWindow.isEnabled() || this.buffer == null) {
+            return;
+        }
+
+        final long capacity = this.buffer.getLength();
+        final long usedBytes = used ? (long) this.count * this.stride : 0;
+        if (this.scratchRetention.endTask(usedBytes, capacity, this.initialCapacity)) {
+            this.buffer.free();
+            this.buffer = null;
+            this.directBuffer = null;
+            this.count = 0;
         }
     }
 

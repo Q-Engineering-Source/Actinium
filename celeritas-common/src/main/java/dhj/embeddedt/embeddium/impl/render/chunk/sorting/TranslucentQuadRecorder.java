@@ -2,6 +2,7 @@ package dhj.embeddedt.embeddium.impl.render.chunk.sorting;
 
 import it.unimi.dsi.fastutil.bytes.ByteArrayList;
 import it.unimi.dsi.fastutil.floats.FloatArrayList;
+import dhj.embeddedt.embeddium.impl.common.util.ScratchRetentionWindow;
 import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.ChunkVertexEncoder;
 import dhj.embeddedt.embeddium.impl.util.QuadUtil;
 import org.joml.Vector3f;
@@ -14,6 +15,7 @@ public class TranslucentQuadRecorder {
     private final FloatArrayList quadNormals = new FloatArrayList(EXPECTED_QUADS * 3);
     private final FloatArrayList quadDots = new FloatArrayList(EXPECTED_QUADS);
     private final ByteArrayList quadFacings = new ByteArrayList(EXPECTED_QUADS);
+    private final ScratchRetentionWindow scratchRetention = new ScratchRetentionWindow();
 
     private final Vector3f[] vertexPositions = new Vector3f[4];
     private final Vector3f currentNormal = new Vector3f();
@@ -36,6 +38,25 @@ public class TranslucentQuadRecorder {
         quadDots.clear();
         quadFacings.clear();
         currentVertex = 0;
+    }
+
+    public void finishTask(final boolean used) {
+        if (!ScratchRetentionWindow.isEnabled()) {
+            return;
+        }
+
+        final long capacity = 4L * (quadCenters.elements().length + quadBounds.elements().length
+            + quadNormals.elements().length + quadDots.elements().length) + quadFacings.elements().length;
+        final long usage = used ? 4L * (quadCenters.size() + quadBounds.size() + quadNormals.size()
+            + quadDots.size()) + quadFacings.size() : 0;
+        if (scratchRetention.endTask(usage, capacity, 53_000)) {
+            clear();
+            quadCenters.trim(EXPECTED_QUADS * 3);
+            quadBounds.trim(EXPECTED_QUADS * 6);
+            quadNormals.trim(EXPECTED_QUADS * 3);
+            quadDots.trim(EXPECTED_QUADS);
+            quadFacings.trim(EXPECTED_QUADS);
+        }
     }
 
     private void calculateNormal() {
