@@ -1,149 +1,31 @@
 package com.dhj.actinium.mixin.vintage.core.startup;
 
-import com.dhj.actinium.debug.ActiniumStartupDebugConfig;
-import com.dhj.actinium.debug.CoreProfileContextAttributes;
-import com.dhj.actinium.debug.OpenGlVersion;
+import com.dhj.actinium.startup.CoreProfileDisplayCreator;
 import net.minecraft.client.Minecraft;
-import net.minecraftforge.client.ForgeHooksClient;
-import net.minecraftforge.common.ForgeEarlyConfig;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.lwjgl.LWJGLException;
-import org.lwjgl.LWJGLUtil;
-import org.lwjgl.opengl.ContextAttribs;
-import org.lwjgl.opengl.Display;
-import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.PixelFormat;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.Redirect;
 
+/** Keeps Minecraft's display startup flow intact while replacing its context creation call. */
 @Mixin(Minecraft.class)
 public abstract class MixinMinecraftCoreProfileDisplay {
-    @Unique
-    private static final Logger celeritas$LOGGER = LogManager.getLogger("Celeritas");
-
-    @Shadow
-    private boolean fullscreen;
-
-    @Inject(method = "createDisplay", at = @At("HEAD"), cancellable = true)
-    private void celeritas$createCoreProfileDisplay(CallbackInfo ci) throws LWJGLException {
-        final int originalMajor = ForgeEarlyConfig.OPENGL_VERSION_MAJOR;
-        final int originalMinor = ForgeEarlyConfig.OPENGL_VERSION_MINOR;
-        final boolean originalDebug = ForgeEarlyConfig.OPENGL_DEBUG_CONTEXT;
-        try {
-            celeritas$createCoreProfileDisplayInner(ci);
-        } finally {
-            // Don't leave the core-profile request persisted in forge_early.cfg: without Actinium,
-            // Cleanroom's default path expects the compatibility profile and fails to create a context.
-            // LWJGLXX syncs the request to the file while creating the context, so restore the fields
-            // and sync them back (see CoreProfileContextAttributes.persistForgeEarlyCompatProfile).
-            CoreProfileContextAttributes.restoreForgeEarlyCompatProfile(originalMajor, originalMinor, originalDebug);
-            CoreProfileContextAttributes.persistForgeEarlyCompatProfile();
-        }
-    }
-
-    @Unique
-    private void celeritas$createCoreProfileDisplayInner(CallbackInfo ci) throws LWJGLException {
-        Display.setResizable(true);
-        Display.setTitle("Cleanroom");
-
-        PixelFormat format = new PixelFormat().withDepthBits(24).withStencilBits(8);
-        int maxMajor = 4;
-        boolean macos = LWJGLUtil.getPlatform() == LWJGLUtil.PLATFORM_MACOSX;
-        int maxMinor = macos ? 1 : 6;
-        boolean lwjglDebug = ActiniumStartupDebugConfig.enableLwjglDebug();
-        Exception lastException = null;
-
-        for (int major = maxMajor; major >= 3; --major) {
-            int startMinor = major == 4 ? maxMinor : 3;
-            int endMinor = major == 3 ? 3 : 0;
-
-            for (int minor = startMinor; minor >= endMinor; --minor) {
-                // LWJGLXX ignores ContextAttribs and reads these fields instead, so keep them in sync on every platform.
-                CoreProfileContextAttributes.applyForgeEarlyCoreProfile(major, minor, lwjglDebug);
-                ContextAttribs attribs = CoreProfileContextAttributes.create(major, minor, lwjglDebug);
-                try {
-                    celeritas$createDisplay(format, attribs);
-                } catch (Exception e) {
-                    lastException = e;
-                    celeritas$LOGGER.debug(
-                        "Failed to create requested OpenGL {}.{} core profile context (debug={})",
-                        major,
-                        minor,
-                        lwjglDebug,
-                        e
-                    );
-                    celeritas$destroyDisplayAfterFailure();
-                    continue;
-                }
-
-                String actualVersionString = null;
-                OpenGlVersion actualVersion;
-                try {
-                    actualVersionString = GL11.glGetString(GL11.GL_VERSION);
-                    actualVersion = OpenGlVersion.parse(actualVersionString);
-                    if (!actualVersion.isAtLeast(3, 3)) {
-                        throw new IllegalStateException(
-                            "OpenGL 3.3 or newer is required, but the created context reports " + actualVersion
-                        );
-                    }
-                } catch (RuntimeException e) {
-                    lastException = celeritas$createContextValidationFailure(e);
-                    celeritas$LOGGER.warn(
-                        "Created requested OpenGL {}.{} core profile context, but actual GL_VERSION is unusable: {}",
-                        major,
-                        minor,
-                        actualVersionString,
-                        e
-                    );
-                    celeritas$destroyDisplayAfterFailure();
-                    continue;
-                }
-
-                celeritas$LOGGER.info(
-                    "Created OpenGL core profile context: requested={}.{} (debug={}), actual={}.{} ({})",
-                    major,
-                    minor,
-                    lwjglDebug,
-                    actualVersion.major(),
-                    actualVersion.minor(),
-                    actualVersionString
-                );
-                ForgeHooksClient.initializeWindowsInformation();
-                ForgeHooksClient.setWindowStyle(this.fullscreen);
-                ForgeHooksClient.initializeTaskbarAPI();
-                ci.cancel();
-                return;
-            }
-        }
-
-        throw new LWJGLException("Failed to create an OpenGL 3.3+ core profile context", lastException);
-    }
-
-    @Unique
-    private static Exception celeritas$createContextValidationFailure(RuntimeException e) {
-        // Keep the return type as Exception so CleanMix can still resolve the lastException frame during transformation.
-        return new LWJGLException("Created context does not provide valid OpenGL 3.3+", e);
-    }
-
-    @Unique
-    private static void celeritas$createDisplay(PixelFormat format, ContextAttribs attribs) throws LWJGLException {
-        Display.create(format, attribs);
-        if (!Display.isCreated()) {
-            throw new LWJGLException("Display.create returned without creating an OpenGL context");
-        }
-    }
-
-    @Unique
-    private static void celeritas$destroyDisplayAfterFailure() {
-        try {
-            Display.destroy();
-        } catch (RuntimeException destroyFailure) {
-            celeritas$LOGGER.warn("Failed to destroy an unsuccessful OpenGL context", destroyFailure);
-        }
+    /**
+     * Creates Actinium's core-profile context without bypassing other mixins on {@code createDisplay}.
+     *
+     * @param format pixel format requested by Minecraft
+     * @throws LWJGLException if no supported core-profile context can be created
+     */
+    @Redirect(
+        method = "createDisplay",
+        at = @At(
+            value = "INVOKE",
+            target = "Lorg/lwjgl/opengl/Display;create(Lorg/lwjgl/opengl/PixelFormat;)V",
+            remap = false
+        )
+    )
+    private void celeritas$createCoreProfileDisplay(PixelFormat format) throws LWJGLException {
+        CoreProfileDisplayCreator.create(format.withStencilBits(8));
     }
 }
