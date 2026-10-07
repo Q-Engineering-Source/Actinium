@@ -112,10 +112,6 @@ public class HandRenderer {
         if (!canRender(camera, gameRenderer) || !IrisApi.getInstance().isShaderPackInUse()) {
             return;
         }
-        this.handRenderCancelled = isHandRenderingCancelled(gameRenderer, tickDelta);
-        if (this.handRenderCancelled) {
-            return;
-        }
         Minecraft mc = Minecraft.getMinecraft();
 
         ACTIVE = true;
@@ -133,17 +129,23 @@ public class HandRenderer {
         GbufferPrograms.setBlockEntityDefaults();
 
         renderingSolid = true;
-        IrisGlDebug.logWorldPassState("before-render-item", WorldRenderingPhase.HAND_SOLID.name(), "hand-solid");
-        IrisGlDebug.beginFramebufferSamplePhase("hand-solid-draw");
+        mc.entityRenderer.enableLightmap();
         try {
-            IrisGlDebug.logCurrentFramebufferSamples("before-render-item", 1);
-            mc.entityRenderer.enableLightmap();
-            mc.entityRenderer.itemRenderer.renderItemInFirstPerson(tickDelta);
-            IrisGlDebug.markStage("hand-solid:render-item");
-            IrisGlDebug.logCurrentFramebufferSamples("after-render-item", 1);
-            IrisGlDebug.logWorldPassState("after-render-item", WorldRenderingPhase.HAND_SOLID.name(), "hand-solid");
+            this.handRenderCancelled = isHandRenderingCancelled(gameRenderer, tickDelta);
+            if (!this.handRenderCancelled) {
+                IrisGlDebug.logWorldPassState("before-render-item", WorldRenderingPhase.HAND_SOLID.name(), "hand-solid");
+                IrisGlDebug.beginFramebufferSamplePhase("hand-solid-draw");
+                try {
+                    IrisGlDebug.logCurrentFramebufferSamples("before-render-item", 1);
+                    mc.entityRenderer.itemRenderer.renderItemInFirstPerson(tickDelta);
+                    IrisGlDebug.markStage("hand-solid:render-item");
+                    IrisGlDebug.logCurrentFramebufferSamples("after-render-item", 1);
+                    IrisGlDebug.logWorldPassState("after-render-item", WorldRenderingPhase.HAND_SOLID.name(), "hand-solid");
+                } finally {
+                    IrisGlDebug.endFramebufferSamplePhase();
+                }
+            }
         } finally {
-            IrisGlDebug.endFramebufferSamplePhase();
             mc.entityRenderer.disableLightmap();
         }
 
