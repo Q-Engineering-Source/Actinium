@@ -1,5 +1,6 @@
 package com.dhj.actinium.render.terrain;
 
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import net.coderbot.iris.celeritas.WorldRendererCompat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.WorldClient;
@@ -113,7 +114,7 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
         super.drawChunkLayer(renderLayer, x, y, z);
         RenderDebugHooksHolder.check("actinium:draw-chunk-layer:" + renderLayer + ":after-super");
 
-        com.gtnewhorizons.angelica.glsm.GLStateManager.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+        GLStateManager.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
         RenderDebugHooksHolder.check("actinium:draw-chunk-layer:" + renderLayer + ":after-reset-color");
     }
 
@@ -136,7 +137,7 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
             }
         }
 
-        com.gtnewhorizons.angelica.glsm.GLStateManager.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+        GLStateManager.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
     }
 
     public void setCurrentViewport(Viewport viewport) {
@@ -242,6 +243,18 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
 
     @Override
     protected void renderBlockEntityList(List<TileEntity> list, TileEntityRenderContext tileEntityRenderContext) {
+        this.renderBlockEntityListInternal(list, tileEntityRenderContext, false);
+    }
+
+    @Override
+    protected void renderGlobalBlockEntityList(List<TileEntity> list, TileEntityRenderContext tileEntityRenderContext) {
+        this.renderBlockEntityListInternal(list, tileEntityRenderContext, true);
+    }
+
+    @SuppressWarnings("unused")
+    private void renderBlockEntityListInternal(
+        List<TileEntity> list, TileEntityRenderContext tileEntityRenderContext, boolean globalRendererList
+    ) {
         int pass = MinecraftForgeClient.getRenderPass();
         float partialTicks = tileEntityRenderContext.partialTicks;
 

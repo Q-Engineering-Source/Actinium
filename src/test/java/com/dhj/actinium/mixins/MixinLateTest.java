@@ -20,6 +20,13 @@ class MixinLateTest {
         );
 
         assertEquals(
+            Set.of("mixins.actinium.lumenized.json", "mixins.actinium.lumenizedperf.json"),
+            Set.copyOf(MixinLate.configsFor(
+                "lumenized"::equals, "gregtech.client.utils.BloomEffectUtil"::equals
+            ))
+        );
+
+        assertEquals(
             Set.of(),
             Set.copyOf(MixinLate.configsFor("lumenized"::equals, className -> false))
         );
@@ -60,6 +67,7 @@ class MixinLateTest {
                 "mixins.actinium.gibbed.json",
                 "mixins.actinium.ichunutil.json",
                 "mixins.actinium.lumenized.json",
+                "mixins.actinium.lumenizedperf.json",
                 "mixins.actinium.revoui.json",
                 "mixins.actinium.betterfoliage.json",
                 "mixins.actinium.rlfoliage.json",

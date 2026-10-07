@@ -1,6 +1,6 @@
 package com.dhj.actinium.mixin.vintage.features.textures;
 
-import com.google.common.collect.Iterators;
+import com.dhj.actinium.render.terrain.sprite.VisibleTextureIterator;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.sugar.Local;
 import net.minecraft.client.renderer.texture.Stitcher;
@@ -11,11 +11,11 @@ import dhj.embeddedt.embeddium.impl.util.collections.quadtree.Rect2i;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import com.dhj.actinium.runtime.ActiniumRuntime;
-import com.dhj.actinium.texture.SpriteExtension;
 import com.dhj.actinium.texture.TextureMapExtension;
 
 import java.util.Iterator;
@@ -23,6 +23,9 @@ import java.util.Map;
 
 @Mixin(TextureMap.class)
 public class MixinTextureAtlas implements TextureMapExtension {
+    @Unique
+    private final VisibleTextureIterator celeritas$visibleTextureIterator = new VisibleTextureIterator();
+
     @Shadow
     @Final
     private Map<String, TextureAtlasSprite> mapUploadedSprites;
@@ -65,7 +68,7 @@ public class MixinTextureAtlas implements TextureMapExtension {
     @ModifyExpressionValue(method = "updateAnimations", at = @At(value = "INVOKE", target = "Ljava/util/List;iterator()Ljava/util/Iterator;"))
     private Iterator<TextureAtlasSprite> getFilteredIterator(Iterator<TextureAtlasSprite> iterator) {
         if (ActiniumRuntime.options().performance.animateOnlyVisibleTextures) {
-            return Iterators.filter(iterator, sprite -> ((SpriteExtension)sprite).celeritas$shouldUpdate());
+            return this.celeritas$visibleTextureIterator.reset(iterator);
         } else {
             return iterator;
         }
