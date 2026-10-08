@@ -7,7 +7,7 @@ import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.ChunkVertexEncode
 import dhj.embeddedt.embeddium.impl.render.chunk.sorting.SortState;
 import dhj.embeddedt.embeddium.impl.render.chunk.sorting.TranslucentQuadRecorder;
 import org.jetbrains.annotations.Nullable;
-import static com.mitchej123.lwjgl.LWJGLServiceProvider.LWJGL;
+import com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities;
 import java.nio.ByteBuffer;
 import java.util.Objects;
 
@@ -54,7 +54,7 @@ public class ChunkMeshBufferBuilder {
             this.grow(vertexSize);
         }
 
-        long ptr = LWJGL.memAddress(this.directBuffer, vertexStart);
+        long ptr = MemoryUtilities.memAddress(this.directBuffer, vertexStart);
 
         if (this.analyzer != null) {
             for (ChunkVertexEncoder.Vertex vertex : vertices) {
