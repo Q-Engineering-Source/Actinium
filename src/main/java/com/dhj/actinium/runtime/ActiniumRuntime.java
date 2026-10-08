@@ -35,16 +35,14 @@ public final class ActiniumRuntime {
     }
 
     private static SodiumGameOptions loadConfig() {
-        final SodiumGameOptions config;
+        SodiumGameOptions config;
         try {
             config = SodiumGameOptions.load();
         } catch (Throwable t) {
             LOGGER.error("Failed to load configuration file", t);
             LOGGER.error("Using default configuration file in read-only mode");
-            final SodiumGameOptions defaults = SodiumGameOptions.defaults();
-            defaults.setReadOnly();
-            ScratchRetentionWindow.setEnabled(defaults.performance.trimChunkBuildScratch);
-            return defaults;
+            config = SodiumGameOptions.defaults();
+            config.setReadOnly();
         }
         ScratchRetentionWindow.setEnabled(config.performance.trimChunkBuildScratch);
         return config;
