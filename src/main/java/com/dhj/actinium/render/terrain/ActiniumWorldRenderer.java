@@ -243,18 +243,6 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
 
     @Override
     protected void renderBlockEntityList(List<TileEntity> list, TileEntityRenderContext tileEntityRenderContext) {
-        this.renderBlockEntityListInternal(list, tileEntityRenderContext, false);
-    }
-
-    @Override
-    protected void renderGlobalBlockEntityList(List<TileEntity> list, TileEntityRenderContext tileEntityRenderContext) {
-        this.renderBlockEntityListInternal(list, tileEntityRenderContext, true);
-    }
-
-    @SuppressWarnings("unused")
-    private void renderBlockEntityListInternal(
-        List<TileEntity> list, TileEntityRenderContext tileEntityRenderContext, boolean globalRendererList
-    ) {
         int pass = MinecraftForgeClient.getRenderPass();
         float partialTicks = tileEntityRenderContext.partialTicks;
 
