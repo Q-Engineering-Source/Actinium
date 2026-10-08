@@ -38,10 +38,10 @@
   活动纹理单元、**全部**纹理单元的绑定与 TEXTURE_2D 使能、混合/深度/剔除状态、program 0）。
   首次恢复时会把实际发生漂移的字段记录到日志（单次 INFO），用于定位泄漏源。
 
-## 空 ticket 组跳过（`mixins.actinium.lumenizedperf.json`）
+## 空 ticket 组跳过（`MixinBloomEmptyGroupPostProcess`）
 
-独立于主兼容层的性能优化配置，门控同为 `class:gregtech.client.utils.BloomEffectUtil`（类探测，
-与 mod id 无关）。`MixinBloomEmptyGroupPostProcess` 用 `compat/lumenized/BloomSubmissionState`
+主兼容层内的性能优化 mixin（`BloomEffectUtilInvoker` + `MixinBloomEmptyGroupPostProcess`，
+与兼容层同配置、同类探测门控）。`MixinBloomEmptyGroupPostProcess` 用 `compat/lumenized/BloomSubmissionState`
 跟踪每个 ticket 组：组内没有任何 ticket 进入 `IBloomEffect.renderBloomEffect` 时，跳过该组
 后续的逐组全屏后处理（renderLOG/renderUnity/renderUnreal 第二组与第 4/5 次
 `renderFullImageInFBO` 合成）。判据保守（effect 被调用即视为有内容），不会误跳过真实泛光。

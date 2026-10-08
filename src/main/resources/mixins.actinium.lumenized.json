@@ -12,7 +12,9 @@
     "MixinBloomEffectUtilClear",
     "MixinBloomEffectUtilStateGuard",
     "MixinShadersDepthTest",
-    "MixinDepthTextureUtil"
+    "MixinDepthTextureUtil",
+    "BloomEffectUtilInvoker",
+    "MixinBloomEmptyGroupPostProcess"
   ],
   "injectors": {
     "defaultRequire": 1

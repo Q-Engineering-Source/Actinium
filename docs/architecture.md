@@ -442,8 +442,7 @@ LWJGL 后端（并入本子项目）：
 | `mixins.actinium.hbm.early.json` | early（MixinEarly） | `MixinTileEntityRendererDispatcherLightmap` —— 原版 TE dispatcher 的世界 lightmap 同步（必须 early：目标类会被核心 mod 的 ASM 变压器在 late 窗口前拉起，late 配置会以 `MixinTargetAlreadyLoadedException` 中止启动；注入体按 `isHbmInstalled()` 门控） |
 | `mixins.actinium.gibbed.json` | late/conditional（gibbed） | `BasicGibMixin` |
 | `mixins.actinium.ichunutil.json` | late/conditional（ichunutil） | `mixin/mod/ichunutil` 3 类 |
-| `mixins.actinium.lumenized.json` | late/conditional（class:gregtech.client.utils.BloomEffectUtil） | `mixin/mod/lumenized` 5 类 |
-| `mixins.actinium.lumenizedperf.json` | late/conditional（class:gregtech.client.utils.BloomEffectUtil） | `mixin/mod/lumenized` 2 类（`BloomEffectUtilInvoker` + `MixinBloomEmptyGroupPostProcess`，bloom 空 ticket 组跳过后处理） |
+| `mixins.actinium.lumenized.json` | late/conditional（class:gregtech.client.utils.BloomEffectUtil） | `mixin/mod/lumenized` 7 类（bloom 兼容层 5 类 + 空 ticket 组跳过后处理 2 类） |
 | `mixins.actinium.revoui.json` | late/conditional（neofontrender_ui_enhancements） | `mixin/mod/revoui` 3 类 |
 | `mixins.actinium.betterfoliage.json` | late/conditional（betterfoliage） | `MixinChunkBuilderMeshingTaskBetterFoliage` |
 | `mixins.actinium.ccl.json` | late/conditional（codechickenlib） | `MixinGlStateTracker` |
