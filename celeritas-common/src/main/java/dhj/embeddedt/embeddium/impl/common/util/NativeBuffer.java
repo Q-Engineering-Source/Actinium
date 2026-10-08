@@ -129,7 +129,7 @@ public class NativeBuffer {
     }
 
     /** Number of allocations still registered for leak recovery, including live scratch buffers. */
-    public static int getTrackedBufferCount() {
+    static int getTrackedBufferCount() {
         return ACTIVE_BUFFERS.size();
     }
 
