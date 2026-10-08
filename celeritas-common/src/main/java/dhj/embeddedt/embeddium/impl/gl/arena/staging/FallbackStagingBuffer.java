@@ -9,6 +9,7 @@ import java.nio.ByteBuffer;
 
 public class FallbackStagingBuffer implements StagingBuffer {
     private final GlMutableBuffer fallbackBufferObject;
+    private boolean uploaded;
 
     public FallbackStagingBuffer(CommandList commandList) {
         this.fallbackBufferObject = commandList.createMutableBuffer();
@@ -18,11 +19,15 @@ public class FallbackStagingBuffer implements StagingBuffer {
     public void enqueueCopy(CommandList commandList, ByteBuffer data, GlBuffer dst, long writeOffset) {
         commandList.uploadData(this.fallbackBufferObject, data, GlBufferUsage.STREAM_COPY);
         commandList.copyBufferSubData(this.fallbackBufferObject, dst, 0, writeOffset, data.remaining());
+        this.uploaded = true;
     }
 
     @Override
     public void flush(CommandList commandList) {
-        commandList.allocateStorage(this.fallbackBufferObject, 0L, GlBufferUsage.STREAM_COPY);
+        if (this.uploaded) {
+            commandList.allocateStorage(this.fallbackBufferObject, 0L, GlBufferUsage.STREAM_COPY);
+            this.uploaded = false;
+        }
     }
 
     @Override

@@ -4,7 +4,9 @@ import dhj.embeddedt.embeddium.api.options.control.ControlValueFormatter;
 import dhj.embeddedt.embeddium.api.options.control.CyclingControl;
 import dhj.embeddedt.embeddium.api.options.control.SliderControl;
 import dhj.embeddedt.embeddium.api.options.control.TickBoxControl;
+import dhj.embeddedt.embeddium.api.options.OptionIdentifier;
 import dhj.embeddedt.embeddium.api.options.structure.*;
+import dhj.embeddedt.embeddium.impl.common.util.ScratchRetentionWindow;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
 import dhj.embeddedt.embeddium.impl.gui.framework.TextComponent;
 import dhj.embeddedt.embeddium.impl.render.ShaderModBridge;
@@ -67,6 +69,18 @@ public class CommonOptionPages {
                         .setImpact(OptionImpact.HIGH)
                         .setBinding((opts, value) -> opts.performance.alwaysDeferChunkUpdates = value, opts -> opts.performance.alwaysDeferChunkUpdates)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_UPDATE)
+                        .build())
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create("actinium", "trim_chunk_build_scratch", boolean.class))
+                        .setName(TextComponent.translatable("actinium.options.trim_chunk_build_scratch.name"))
+                        .setTooltip(TextComponent.translatable("actinium.options.trim_chunk_build_scratch.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setImpact(OptionImpact.LOW)
+                        .setBinding((opts, value) -> {
+                            opts.performance.trimChunkBuildScratch = value;
+                            ScratchRetentionWindow.setEnabled(value);
+                        },
+                            opts -> opts.performance.trimChunkBuildScratch)
                         .build())
                 .add(OptionImpl.createBuilder(AsyncOcclusionMode.class, sodiumOpts)
                         .setId(StandardOptions.Option.ASYNC_GRAPH_SEARCH.cast())

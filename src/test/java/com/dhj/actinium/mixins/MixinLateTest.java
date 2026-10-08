@@ -12,8 +12,9 @@ class MixinLateTest {
         assertEquals(Set.of(), Set.copyOf(MixinLate.configsFor(modId -> false, className -> false)));
 
         // The lumenized config is gated on the embedded bloom class, not on a mod id:
-        // it loads when the class is present even with no matching mod, and stays off
-        // when only the mod id matches but the class is absent.
+        // it loads when the class is present even with no matching mod (GTCEu provides the
+        // same class without a "lumenized" mod id), and stays off when only the mod id matches
+        // but the class is absent.
         assertEquals(
             Set.of("mixins.actinium.lumenized.json"),
             Set.copyOf(MixinLate.configsFor(modId -> false, "gregtech.client.utils.BloomEffectUtil"::equals))

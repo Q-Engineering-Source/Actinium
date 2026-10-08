@@ -179,6 +179,10 @@ repositories {
 dependencies {
     compileOnly project(':celeritas-common')
     compileOnly project(':shader')
+    // Declare test dependencies explicitly so IDEA sees the embedded source modules as well.
+    // Gradle's merged main output alone is not a test-module dependency in the IDE model.
+    testImplementation project(':celeritas-common')
+    testImplementation project(':shader')
 
     contain('org.taumc:glsl-transformation-lib:0.2.0-32.g7dd88a4-GTNH') {
         transitive = false
