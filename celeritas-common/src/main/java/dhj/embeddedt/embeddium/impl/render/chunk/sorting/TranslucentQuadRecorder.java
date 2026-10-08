@@ -10,6 +10,12 @@ import org.joml.Vector3f;
 public class TranslucentQuadRecorder {
     private static final int EXPECTED_QUADS = 1000;
 
+    // Bytes held by a freshly allocated recorder: the float lists (centers/bounds/normals/dots)
+    // at 4 bytes per element plus the facing byte list. Retention trimming never goes below
+    // this floor, mirroring the capacity formula in finishTask.
+    private static final long INITIAL_SCRATCH_BYTES =
+        4L * (EXPECTED_QUADS * 3 + EXPECTED_QUADS * 6 + EXPECTED_QUADS * 3 + EXPECTED_QUADS) + EXPECTED_QUADS;
+
     private final FloatArrayList quadCenters = new FloatArrayList(EXPECTED_QUADS * 3);
     private final FloatArrayList quadBounds = new FloatArrayList(EXPECTED_QUADS * 6);
     private final FloatArrayList quadNormals = new FloatArrayList(EXPECTED_QUADS * 3);
@@ -49,7 +55,7 @@ public class TranslucentQuadRecorder {
             + quadNormals.elements().length + quadDots.elements().length) + quadFacings.elements().length;
         final long usage = used ? 4L * (quadCenters.size() + quadBounds.size() + quadNormals.size()
             + quadDots.size()) + quadFacings.size() : 0;
-        if (scratchRetention.endTask(usage, capacity, 53_000)) {
+        if (scratchRetention.endTask(usage, capacity, INITIAL_SCRATCH_BYTES)) {
             clear();
             quadCenters.trim(EXPECTED_QUADS * 3);
             quadBounds.trim(EXPECTED_QUADS * 6);
