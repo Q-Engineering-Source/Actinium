@@ -57,6 +57,11 @@ class MixinLateTest {
         );
 
         assertEquals(
+            Set.of("mixins.actinium.gvclib.json"),
+            Set.copyOf(MixinLate.configsFor("gvclib"::equals, className -> false))
+        );
+
+        assertEquals(
             Set.of(
                 "mixins.actinium.gibbed.json",
                 "mixins.actinium.ichunutil.json",
@@ -71,6 +76,7 @@ class MixinLateTest {
                 "mixins.actinium.oldresearch.json",
                 "mixins.actinium.botania.json",
                 "mixins.actinium.hbm.json",
+                "mixins.actinium.gvclib.json",
                 "mixins.actinium.storagedrawers.json",
                 "mixins.actinium.scannable.json",
                 "mixins.actinium.littletiles.json",

@@ -1,6 +1,7 @@
 package com.gtnewhorizons.angelica.loading.fml.tweakers;
 
 import com.dhj.actinium.compat.MixinReEntranceLockFix;
+import com.dhj.actinium.compat.modernsplash.ModernSplashOverlayCompat;
 import com.gtnewhorizons.angelica.loading.fml.transformers.AngelicaRedirectorTransformer;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.launchwrapper.ITweaker;
@@ -33,6 +34,9 @@ public class AngelicaLateTweaker implements ITweaker {
     @Override
     public String[] getLaunchArguments() {
         try {
+            // Probe before registering: anything already defined at this point keeps
+            // raw GL calls forever (issue #200).
+            ModernSplashOverlayCompat.markIfLoadedBeforeRedirector();
             TransformerDelegate.unRegisterTransformer("com.gtnewhorizons.angelica.loading.fml.transformers.EarlyRedirectorTransformer");
             boolean alreadyRegistered = TransformerDelegate.getTransformers().stream()
                 .anyMatch(t -> t.getClass().getName().equals(FULL_REDIRECTOR_CLASS));
