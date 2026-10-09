@@ -1,6 +1,6 @@
 # Actinium 兼容性矩阵
 
-最后更新：2026-10-02。
+最后更新：2026-10-09。
 
 状态定义：`已验证` 表示在记录的版本和场景中通过；`部分` 表示能运行但存在已知缺口；
 `无法启用` 表示光影包不能成功开启；`未验证` 不代表不兼容。更新记录时必须填写 Actinium commit、
@@ -8,6 +8,16 @@
 
 本轮验证环境：Actinium `30c7ffb`、Java 25.0.3、Cleanroom 0.5.12-alpha、Distant Horizons 3.1.2-b、
 Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
+
+> 2026-10-09 追加：Derivative Main d24.4.14 开启景深（DoF）后创建光影管线失败（`composite3.vsh`
+> 编译报 `assignment to non-lvalue`）并回退原版渲染的修复——该包在 composite3
+> （`program/Post/Temporal.vert`）中自声明 `flat out/in float centerDepthSmooth` varying 并在
+> vertex 阶段自行计算（colortex5 跨帧反馈），而 `CompositeDepthTransformer` 把该名字的**所有**声明
+> 无差别重定向到引擎供值纹理，赋值目标被改写成 `texture2D(...).r = ...` 这一非左值赋值；DoF 关闭时
+> 相关代码被预处理移除，故表现为"首次加载正常、打开 DoF 后必现"。修复为仅当该 stage 声明的是
+> `uniform`（引擎供值的 OptiFine 约定路径）时才重定向，包自有 varying/局部变量保持原样，替换串同时
+> 对齐 GTNH 上游改用 `texture()`。离线回归测试修复前复现输出与生产日志逐字一致，`./gradlew check`
+> 通过，用户实机确认（commit `b40e8427`），详见 [docs/compat/derivative.md](compat/derivative.md)。
 
 > 2026-10-02 追加：ScalingGUIs 1.12.2-1.0.3.1 与 RSO 页 GUI Scale 滑块的冲突已做兼容——检测到该
 > mod 时，Actinium 将滑块替换为复用其 "GUI Scales" 文本的无背景按钮，并直接打开其配置 GUI；未加载时
@@ -223,6 +233,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 | iterationRP                        | 0.7.7 / 0.8.7 | 已验证  | 开启、世界渲染、Distant Horizons LOD、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载   | -         | `28d976d`   |
 | Photon                             | v1.3b         | 部分    | 开启、世界渲染、地形、水（2026-08-31 水面修复后）、GUI、LittleTiles/ArchitectureCraft 相邻方块光照（issue #193，2026-09-29） | IE Garden Cloche 玻璃发黑：1.12.2 配置禁用专用 `gbuffers_block_translucent` 程序并回退 solid block shader；阴影/实体/维度切换/重载等场景待补充验证；选项菜单部分元素缺失（GTAO 等 profile 项告警，与水面无关） | `fix/ie-cloche-transparency` (`c318ed54` 基线) |
 | Solas Shader                      | V3.7b         | 部分    | Immersive Engineering 0.12-98 Garden Cloche（泥土 + 种子）玻璃半透明，issue #197，用户确认（2026-09-30） | 其他渲染路径未验证 | `fix/ie-cloche-transparency` (`c318ed54` 基线) |
+| Derivative Main                  | d24.4.14      | 部分    | 开启、景深（DoF）开关与重复 Apply、维度切换、重载（2026-10-09 centerDepthSmooth 改写修复后用户实机确认） | 地形/实体/水/天空等完整场景清单与 Distant Horizons 组合未验证 | `fix/composite-center-depth-smooth`（`b40e8427`） |
 | SEUS PTGI HRR                      | Test 2.1      | 无法启用 | -                                                              | 光影包不能成功开启 | `f261611`   |
 
 ## 模组与环境
