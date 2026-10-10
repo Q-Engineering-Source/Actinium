@@ -92,3 +92,10 @@ DEBUG 页原先与高级/性能页重复的 5 项（模型渲染器批处理、�
 
 **维护提示**：`fovModifierHand` 的写入点一旦被上游或其它补丁挪出
 `updateFovModifierHand()`，该 Mixin 会静默失去作用（不会报错），需同步检查。
+
+## 圆形雾（`quality.circularFog`）
+
+默认关闭。开启后，无光影包时的原版雾使用相机到顶点的径向距离：固定管线着色器通过
+`FogDistanceModeBridge` 选择 GLSM 的 eye-radial fog variant，Celeritas 区块着色器通过
+`GLStateManagerFogService` 选择 spherical fog shape。应用设置时重载区块渲染器，以刷新受雾遮挡
+影响的区块搜索范围。光影包自带的雾逻辑不读取该选项。

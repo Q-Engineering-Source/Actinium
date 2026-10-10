@@ -2,6 +2,7 @@ package com.gtnewhorizons.angelica.glsm.ffp;
 
 import com.gtnewhorizons.angelica.glsm.DisplayListManager;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.compat.FogDistanceModeBridge;
 import com.gtnewhorizons.angelica.glsm.states.TexGenState;
 import com.gtnewhorizons.angelica.glsm.states.TextureUnitArray;
 import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
@@ -170,7 +171,8 @@ public final class VertexKey {
 
         if (GLStateManager.getFogMode().isEnabled()) {
             bits |= (1L << BIT_FOG);
-            final int fogDistMode = GLStateManager.getFogState().getFogDistanceMode();
+            final int fogDistMode = FogDistanceModeBridge.resolveFogDistanceMode(
+                    GLStateManager.getFogState().getFogDistanceMode());
             bits |= ((long) fogDistMode & 0x3) << BIT_FOG_DIST_MODE;
         }
 
