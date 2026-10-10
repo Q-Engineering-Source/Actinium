@@ -1,6 +1,6 @@
 # Actinium 兼容性矩阵
 
-最后更新：2026-10-09。
+最后更新：2026-10-10。
 
 状态定义：`已验证` 表示在记录的版本和场景中通过；`部分` 表示能运行但存在已知缺口；
 `无法启用` 表示光影包不能成功开启；`未验证` 不代表不兼容。更新记录时必须填写 Actinium commit、
@@ -8,6 +8,12 @@
 
 本轮验证环境：Actinium `30c7ffb`、Java 25.0.3、Cleanroom 0.5.12-alpha、Distant Horizons 3.1.2-b、
 Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
+
+> 2026-10-10 追加：第一人称手持染色玻璃被水面和云层遮挡的问题已修复。用户反馈该问题不限于 BSL；根因是
+> `HandRenderer` 依据光影包可选的 `layer.*` 覆盖表分类手持透明方块，未声明覆盖的包会让染色玻璃留在较早的
+> `HAND_SOLID` pass。现在改用 Minecraft 方块自身的 `getRenderLayer()`，因此不依赖光影包元数据。
+> Cleanroom 0.6.12-alpha + BSL 10.1.8，用户实机确认手持蓝色染色玻璃时水面和云层不再遮挡；此次记录未逐包列出
+> 其他光影包版本。`./gradlew compileJava --no-daemon` 通过，自动化 `check` 未运行。修复 commit `9a6d8c17`。
 
 > 2026-10-09 追加：Derivative Main d24.4.14 开启景深（DoF）后创建光影管线失败（`composite3.vsh`
 > 编译报 `assignment to non-lvalue`）并回退原版渲染的修复——该包在 composite3
