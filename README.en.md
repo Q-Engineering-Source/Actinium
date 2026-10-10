@@ -5,7 +5,7 @@
 Actinium is an experimental rendering and shader compatibility mod for Minecraft 1.12.2 on Cleanroom Loader. It aims to bring a more modern rendering pipeline to the legacy client while keeping shader packs, classic modded content, and performance-oriented rendering work in the same world.
 
 The project currently combines work around Celeritas, GLSM, GTNHLib, and an Iris-style shader pipeline. Its focus is practical compatibility: terrain rendering, entity rendering, shadow passes, post-processing stages, shader uniforms, framebuffer ownership, and the OpenGL state transitions that old and new renderers both depend on.
-
+![actinium.png](docs/image/actinium.png)
 ## What Actinium Does
 
 - Reworks parts of the Minecraft 1.12.2 client rendering path around a modernized pipeline.
