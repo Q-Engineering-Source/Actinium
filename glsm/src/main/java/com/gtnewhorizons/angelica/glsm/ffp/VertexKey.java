@@ -235,7 +235,7 @@ public final class VertexKey {
         // enables the matching UV attribute slot (locations 5/6). Tracked per attribute in
         // VertexAttribState rather than a format flag, since the legacy flags only cover units 0/1.
         for (int i = 2; i < MAX_UNITS; i++) {
-            if (VertexAttribState.isAttribEnabled(VertexFormatElement.Usage.uvAttributeLocation(i))) {
+            if (GLStateManager.ctx().vao.isAttribEnabled(VertexFormatElement.Usage.uvAttributeLocation(i))) {
                 bits |= (1L << (BIT_HAS_VERTEX_TEX2 + (i - 2)));
             }
         }
@@ -252,12 +252,12 @@ public final class VertexKey {
         }
 
         // Wide line GS emulation
-        if (GLStateManager.wideLineEmulationActive) {
+        if (GLStateManager.ctx().wideLineEmulationActive) {
             bits |= (1L << BIT_WIDE_LINE);
         }
 
         // Line stipple fragment simulation
-        if (GLStateManager.lineStippleActive) {
+        if (GLStateManager.ctx().lineStippleActive) {
             bits |= (1L << BIT_LINE_STIPPLE);
         }
 

@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.glsm;
 
+
 import com.gtnewhorizons.angelica.glsm.recording.ImmediateModeRecorder;
 import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
 import com.gtnewhorizons.angelica.glsm.states.ViewportState;
@@ -127,12 +128,12 @@ public class FeedbackManager {
     }
 
     private static int positionStride() {
-        final int s = VertexAttribState.get(0).effectiveStride();
+        final int s = GLStateManager.ctx().vao.get(0).effectiveStride();
         return (s != 0) ? s : 12;
     }
 
     private static long positionOffset() {
-        return VertexAttribState.get(0).offset;
+        return GLStateManager.ctx().vao.get(0).offset;
     }
 
     public static void processDrawArrays(int mode, int first, int count) {

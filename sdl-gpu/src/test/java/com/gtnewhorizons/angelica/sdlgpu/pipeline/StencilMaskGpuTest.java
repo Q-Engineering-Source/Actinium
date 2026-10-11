@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.sdlgpu.pipeline;
 
+
 import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
 import com.gtnewhorizons.angelica.sdlgpu.SdlTestRig;
 import com.gtnewhorizons.angelica.sdlgpu.frame.ContextState;
@@ -69,7 +70,6 @@ class StencilMaskGpuTest {
         rig = SdlTestRig.acquireRealDevice();
         rig.resourceManager.cachePreferredDepthFormats();
         sm = new ShaderManager(rig.device);
-        VertexAttribState.init(0);
         store = new PipelineStore(rig.device);
 
         colorTexture = rig.resourceManager.createTexture(9500, GL11.GL_TEXTURE_2D, GL11.GL_RGBA8, SIZE, SIZE, 1, 1);

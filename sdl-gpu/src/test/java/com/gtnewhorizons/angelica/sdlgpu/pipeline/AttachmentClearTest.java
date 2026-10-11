@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.sdlgpu.pipeline;
 
+
 import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
 import com.gtnewhorizons.angelica.sdlgpu.SdlTestRig;
 import com.gtnewhorizons.angelica.sdlgpu.resource.FboState;
@@ -35,7 +36,6 @@ class AttachmentClearTest {
         rig = SdlTestRig.acquireRealDevice();
         rig.resourceManager.cachePreferredDepthFormats();
         sm = new ShaderManager(rig.device);
-        VertexAttribState.init(0);
         store = new PipelineStore(rig.device);
         attachmentClear = new AttachmentClear(rig.frameManager, store, sm);
 

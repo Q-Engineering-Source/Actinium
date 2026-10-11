@@ -12,7 +12,8 @@
 > #2138 / #2142（`9dd60f6a` / `1babfd96` / `44c930f4` / `a8c29fa3`，Phase 3）已于
 > 2026-10-11 同步 sdl-gpu 侧**（详见「上游同步状态（2026-10-11，Phase 3）」；
 > 该阶段的 glsm 状态栈 COW 重构**已于 2026-10-11 完成**（见「glsm 状态栈 COW
-> 重构（2026-10-11，COW-A）」；per-drawable context 重构仍未同步，属 COW-B）。
+> 重构（2026-10-11，COW-A）」）；per-drawable context 重构**亦已于 2026-10-11
+> 完成**（见「glsm per-drawable context（2026-10-11，COW-B）」）。
 > **上游 #2153 / #2157（`e17b45c8` / `7bb5bfd4`，Phase 4）已于 2026-10-11 同步**
 > （详见「上游同步状态（2026-10-11，Phase 4）」）；**上游 #2167 / #2188 / #2191
 > （`c10d30b2` / `80e5b544` / `1587a12c`，Phase 5）已于 2026-10-11 同步**
@@ -559,15 +560,16 @@ per-drawable context 重构**未同步**（见本节末尾的冲突说明）。
   `ContextState.defaultFboId` 与 `mirroredContext`。
 - 为让 sdl-gpu 能读到 GLSM 的 context 对象，`glsm/GLContextState` 改为
   **public**、`GLStateManager.ctx()` 改为 **public**（上游同一提交的做法）。
-- **未同步**：per-drawable context 本体（`DrawableContexts`、`GLStateManager`
-  ~1022 行、`FeedbackManager`/`DisplayListManager`/`QuadConverter`/`VAOManager`/
-  `ShaderManager`/`CompatUniformManager`/`streaming/StreamingVaos` 等改动）。
-  Actinium 的 `GLContextState` 已是**每线程**（`ctx()`），每线程模型下
-  `st.mirroredContext != ctx` 仍能捕获线程级 context 切换；drawable 级切换
-  （同线程换 drawable）不会触发失效——属可接受的语义弱化，重接窗口路径时按上游
-  重做。
-- glsm 测试（`GLSM_SharedDrawableContext_GLTest`、`GLSM_SplashCompleteLatch_UnitTest`、
-  `DrawableContexts`、`TestThreads` 等）与 rig 测试未同步。
+- **per-drawable context 本体：2026-10-11 已由 COW-B 补齐**（见「glsm per-drawable
+  context（2026-10-11，COW-B）」一节）。Phase 3 当时只落了 SDL 侧的 `mirroredContext`
+  失效路径，而 glsm 侧仍是「每线程 only」，于是**同线程换 drawable 不会触发失效**
+  ——那是当时的语义弱化；COW-B 之后 `makeCurrent(Drawable)` 会把每个非 display
+  drawable 绑定到它自己的 `GLContextState`，同一线程换 drawable 时
+  `st.mirroredContext != ctx` 成立并失效镜像，与上游一致。
+- glsm 测试状态：`DrawableContexts` 与 `TestThreads` 已移植（`TestThreads` 进
+  glsm testFixtures、`DisplayListIdAllocatorTest` 进根 `src/test`）；
+  `GLSM_SharedDrawableContext_GLTest`、`GLSM_SplashCompleteLatch_UnitTest`、
+  `GLSM_PerThread_UnitTest` 等需要真 GL context / drawable，按约定跳过（见 COW-B 一节）。
 
 **COW 状态栈重构的冲突说明（Phase 3 未同步的主因，2026-10-11 已由 COW-A 解决）**
 
@@ -1400,6 +1402,124 @@ worker `ThreadLocal`）。核对上游 tip 后发现上游也有同样的每线�
   `GLSM_WorkerContextStacks_GLTest`、`GLSM_DisplayList_StateSet_GLTest`。
 - `GLSMRedirector` 无需改动：本阶段没有改名/删除 GLStateManager 的公开 GL 入口方法
   （公开面只多出 `getScissorState()`，不是重定向目标）。
+
+**验证**：`./gradlew :glsm:compileJava :sdl-gpu:compileJava :shader:compileJava
+compileJava compileTestJava`、`./gradlew :glsm:test :sdl-gpu:test`、`./gradlew :test`、
+`./gradlew check` 全绿。
+
+## glsm per-drawable context（2026-10-11，COW-B）
+
+把 GLSM 的上下文从「每线程 only」换成上游 `a8c29fa3`（#2142）的「每个 GL drawable 一个
+GLSM context」，目标是上游 tip（`21a054a4`）语义。COW-A 已经把栈的 id / `CowDepths.owner`
+按上下文划分好，本阶段补上上下文本身的注册与切换，并把仍然全局共享的每上下文状态搬进
+`GLContextState`。
+
+**drawableContexts 模型（实现形态）**
+
+- `GLStateManager`：`primaryContext`（display drawable 用）、`mainCtx`（主线程当前绑定的
+  上下文，`bindThreadContext` 维护）、`tlWorkerContext`（非主线程绑定）、
+  `drawableContexts`（`IdentityHashMap<Object, GLContextState>`）与
+  `drawableContextStates`（同一批上下文的数组，供跨 drawable 清理使用）。
+  Phase 3 的 `registeredContexts`（CopyOnWriteArrayList）删除。
+- `ctx()`：主线程 → `mainCtx`，为空则 `primaryContext()`；非主线程 → 绑定的上下文
+  （worker 或 drawable），否则 `primaryContext()`。与上游 tip 的该方法逐行同构。
+- `newContext()`：`StackIdAllocator.beginContext()` / `new GLContextState()` / `init()` /
+  `endContext()`，与 COW-A 的 id 分配约定一致（每个上下文的 id 数量必须相同，
+  `endContext()` 会校验）。
+- `bindThreadContext(target)`：设置/清除线程绑定，并维护 `workerContextsActive`；
+  在 `MainThread` 上同时更新 `mainCtx`。
+- `contextFor(Drawable)`：非 display drawable 首次 makeCurrent 时创建上下文，按
+  `Display.getWidth()/getHeight()` 初始化 viewport 与 scissor（`setDrawableSize`），
+  登记到 map + 数组。上游此处还会从 primary context 复制 stencil bit mask
+  （`applyStencilBitMask`）；Actinium 的 stencil mask 状态不在 `GLContextState` 上
+  （见“适配”），该步未移植。
+- `makeCurrent(Drawable)`：`bindThreadContext(isDisplayDrawable(d) ? null : contextFor(d))`
+  → 走 `RENDER_BACKEND.handleMakeCurrent(drawable)`（未处理则 `drawable.makeCurrent()`）
+  → 绑定变化且未 handled 时 `replayStateToBackend()` → 然后才做 Actinium 原有的
+  splash/`drawableGLHolder` 缓存判定。异常路径回滚线程绑定。
+- `releaseContext(Drawable)`：新增（Actinium 之前没有），走
+  `RENDER_BACKEND.handleReleaseContext(drawable)` + `bindThreadContext(null)` +
+  清 `drawableGLHolder`。
+- `isCachingEnabled()`：`splashComplete || t == drawableGLHolder || tlWorkerContext != null`
+  —— 持有 worker/drawable 绑定的线程也参与缓存（上游语义）。
+- 删除/新增：`onDeleteTexture` 现在遍历 `ctx()` 与 `drawableContextStates`，把被删纹理名
+  在**所有 drawable 上下文**的缓存绑定里清掉（纹理名会被驱动回收）。
+
+**搬进 `GLContextState` 的每上下文状态**（上游同提交把 GLStateManager 的静态搬到这里；
+Actinium 沿用上游字段名，除注明外）：
+
+`lockBindCallback`、`wideLineEmulationActive`、`lineStippleActive`、`defaultVAO`、
+`foreignDrawDepth`、`vaoEboMap`、`vao`（Actinium 的 `VertexAttribState` 实例，替代上游
+`ffp/VAOManager`）、`ffp`（`ShaderManager` 实例）、`multMatrix`、`conversionMatrix4d/4f`、
+`gluMatrix`/`gluMatrix2`/`gluVec4`/`gluBuffer`、`texGenTempPlane`、`shaderBuf`、
+`projectionMatrixBuffer`、`lastBrightnessX/Y`。
+
+- `ffp/ShaderManager` 由静态单例改为**可实例化 + 静态访问器**：`getInstance()` 返回
+  `ctx().ffp`，`currentNormal`/`currentTexCoords`/`normalStack`/`texCoordStack`/
+  `normalGeneration`/`texCoordGeneration` 变为实例字段，`getNormalGeneration()` 等静态
+  访问器改为读 `ctx().ffp`；`enabled` 保持全局静态（FFP 是进程级开关），构造函数
+  `active = enabled`。`VertexFormat.registerSetupBufferStateOverride` 从 `enable()` 移到
+  静态初始化块，并写入 `ctx().ffp`（不再捕获某个实例），避免多 drawable 下最后注册者
+  通吃。program cache 变静态共享（`ShaderManager.destroy()` 不再 `cache.destroy()`）。
+  **这解决了 COW-A 记录的遗留 1**：normal/texcoord 栈不再跨上下文共享 `CowDepths.owner`。
+- 亮度坐标从 `hooks/GLSMConfig.lastBrightnessX/Y` 静态字段搬进 `GLContextState`，
+  并按上游加上 `GLSMConfig.packBrightness/packedLastBrightness()`（后者读 `ctx()`）。
+- `states/VertexAttribState` 由全静态工具类改为**实例类**（每个上下文一个，
+  `GLContextState.vao`），全部调用点改为 `GLStateManager.ctx().vao.x(...)`
+
+**worker context 接线决策**：核对上游 tip —— `enterWorkerContext()/exitWorkerContext()`
+在 glsm 与 `src/` 里**只有测试调用**（`GLSM_PerThread_UnitTest`，需要真 GL context），
+生产路径靠 `makeCurrent` 的 drawable 绑定 + `primaryContext()` 兜底。因此本阶段**不加**
+Actinium 专有的 chunk-worker 钩子：`enterWorkerContext` 保留为 API，语义改为经
+`bindThreadContext`（含 `already bound` 守卫），celeritas 的并行区块构建线程继续走
+「未绑定 → `primaryContext()`」的既有兜底（与改动前一致，`isCachingEnabled()` 只对显式
+绑定的线程放开缓存）。若将来要让 worker 线程完全隔离，需要在 Actinium 的
+celeritas/渲染入口显式调用 `enterWorkerContext()`——那是 Actinium 侧调用方的改动，
+上游没有对应代码可抄。
+
+**SDL 侧**：核对 `a8c29fa3` 的 3 个主源文件 —— `ContextState.defaultFboId`/
+`mirroredContext`、`SDLGPURenderBackend.enterContext`/`beginSplashFrame`/`bindFramebuffer(0)`
+重映射/`deleteFramebuffers` 重绑/`drawableEnum` 系列、`OffscreenTarget.isFor` 用
+`defaultFboId`：Phase 3 已落地绝大部分，本阶段只补上 `OffscreenTarget.isFor` 的
+`boundFboId → defaultFboId` 一处。**因此 SDL 镜像语义现在与上游一致**：同线程换 drawable
+时 `st.mirroredContext != ctx` 成立 → `invalidateMirror()`，不再是 Phase 3 的“可接受弱化”。
+
+**适配与未移植（记录原因）**
+
+- 上游 `applyStencilBitMask`（新 drawable context 继承 primary 的 stencil bit mask）：
+  Actinium 的 stencil mask 记录在 `StencilStateStack` 上但没有 `GLContextState.stencilBitMask`
+  这一汇总字段，且没有上游 `glStencilMask` 的全局 mask 语义；
+  新上下文由 `glStencilMask*` 首次调用填默认值。未移植。
+- `hooks/TextureUtilHooks`、`ffp/VAOManager`、`ffp/FfpExtendedAttribs`、
+  `streaming/StreamingVaos`：Actinium 没有这些类（分别由
+  `GLStateManager`/`states/VertexAttribState`/`streaming/*` 承担），其 per-context 意图
+  已通过上表的搬移与 `VertexAttribState` 实例化覆盖。
+- **DisplayListManager / Uniforms / QuadConverter / CompatUniformManager /
+  RenderSystem / streaming/TessellatorStreamingDrawer**：上游同提交对它们做了 per-context
+  化（把静态状态改为经 `ctx()` 访问），但这些文件在 Actinium 已大幅分叉（与上游 parent
+  的差异 250–1500 行不等）。本阶段**只做了能安全落地的部分**：`DisplayListIDAllocator`
+  的 4 个方法加 `synchronized`（多 drawable/多线程共享 id 分配器）；`FeedbackManager`/
+  `AttribSnapshot`/`VertexKey`/`FragmentKey` 经 `ctx().vao`/`ctx().wideLineEmulationActive`
+  等取每上下文状态（由 `VertexAttribState` 实例化与属性搬移顺带完成）。其余 per-context
+  状态（DisplayList 的编译/记录缓冲、Uniforms 的常量缓存、QuadConverter 的临时数组、
+  TessellatorStreamingDrawer 的 buffer）在 Actinium 仍是静态/单例：多 drawable 场景下会
+  共享，单 drawable（当前接线路径）下与前行为一致。
+- `GLSMInitConfig.streamingDrawerDestroy`：上游改为每上下文 drawer 后删掉了这个钩子；
+  Actinium 的 `TessellatorStreamingDrawer`/`BufferBuilderStreamingDrawer` 仍是静态的
+  （其 per-context 化属上述未移植部分），因此**保留**该钩子以免破坏
+  `MixinOpenGlHelper` 的调用，并**不再**从每上下文的 `ShaderManager.destroy()` 调用它
+  （否则一个上下文销毁会连带销毁共享 drawer）。
+- `hooks/FrameHooks.bindSplashVao()` 上游删除；Actinium 没有该调用方，无操作。
+- 上游 `GLContextState` 里与 drawable 无关的其它新增（`internalGlDepth`/`internalDrawDepth`/
+  `savedFilterTextureId`/`fontVao`/`ffpInstancing` 等）Actinium 没有对应状态，未引入。
+
+**测试**：`TestThreads`（glsm testFixtures，纯 Java 线程夹具）与上游
+`DisplayListIdAllocatorTest`（含新增的 `concurrentAllocationsRemainUnique`，验证
+`synchronized` 那 4 个方法）已移植到根 `src/test`；
+`GLSM_SharedDrawableContext_GLTest`、`GLSM_SplashCompleteLatch_UnitTest`（`@GLCoreTest`）、
+`GLSM_ServerSideState_UnitTest`（`@GLCompatTest`）、`GLSM_PerThread_UnitTest`
+与 `DrawableContexts` 夹具（需要真 `SharedDrawable`）按约定跳过。drawable context 的
+注册/切换本身**没有单元测试覆盖**（必须真 drawable），需 rig 或实机验证。
 
 **验证**：`./gradlew :glsm:compileJava :sdl-gpu:compileJava :shader:compileJava
 compileJava compileTestJava`、`./gradlew :glsm:test :sdl-gpu:test`、`./gradlew :test`、

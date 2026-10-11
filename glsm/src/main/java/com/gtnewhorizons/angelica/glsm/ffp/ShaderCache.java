@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.IdentityHashMap;
 
 
@@ -261,24 +260,6 @@ public class ShaderCache {
         }
     }
 
-    /** Destroy all cached programs and clear caches. */
-    public void destroy() {
-        for (int i = 0; i < capacity; i++) {
-            if (programs[i] != null) {
-                programs[i].destroy();
-            }
-        }
-        Arrays.fill(keys, 0);
-        Arrays.fill(programs, null);
-        Arrays.fill(fragSources, null);
-        count = 0;
-        uniqueFragCount = 0;
-        vertexSourceCache.clear();
-        geometrySourceCache.clear();
-        lastProgram = null;
-        lastVK = Long.MIN_VALUE;
-        GLStateManager.LOGGER.debug("FFP shader cache cleared");
-    }
 
     public int getProgramCount() {
         return count;

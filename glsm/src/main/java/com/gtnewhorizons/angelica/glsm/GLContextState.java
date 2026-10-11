@@ -1,7 +1,6 @@
 package com.gtnewhorizons.angelica.glsm;
 
 import com.gtnewhorizon.gtnhlib.client.renderer.stacks.IStateStack;
-import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import com.gtnewhorizons.angelica.glsm.stacks.AlphaStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.BlendStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.BooleanStateStack;
@@ -32,7 +31,13 @@ import com.gtnewhorizons.angelica.glsm.states.ImageUnitArray;
 import com.gtnewhorizons.angelica.glsm.states.PixelStoreState;
 import com.gtnewhorizons.angelica.glsm.states.SamplerUnitArray;
 import com.gtnewhorizons.angelica.glsm.states.TextureUnitArray;
+import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
+import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
+import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
+import org.joml.Matrix4d;
+import org.joml.Matrix4f;
 import org.joml.Matrix4fStack;
+import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
@@ -42,6 +47,7 @@ import org.lwjgl.opengl.GL30;
 
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -240,6 +246,29 @@ public class GLContextState {
     public final MaterialStateStack backMaterial = member(new MaterialStateStack(GL11.GL_BACK, StackIdAllocator.nextId()));
     public final ViewPortStateStack viewportState = member(new ViewPortStateStack(StackIdAllocator.nextId()));
     public final ScissorStateStack scissorState = member(new ScissorStateStack(StackIdAllocator.nextId()));
+    // Per-drawable mirrors of state that used to live in GLStateManager statics: two drawables
+    // (the splash DrawableGL and the main one) must not share any of it.
+    public int defaultVAO;
+    public int fontVao;
+    public boolean lockBindCallback;
+    public int foreignDrawDepth;
+    public boolean wideLineEmulationActive;
+    public boolean lineStippleActive;
+    public float lastBrightnessX;
+    public float lastBrightnessY;
+    public final Int2IntOpenHashMap vaoEboMap = new Int2IntOpenHashMap();
+    public final VertexAttribState vao = new VertexAttribState();
+    public final ShaderManager ffp = new ShaderManager();
+    public final Matrix4f multMatrix = new Matrix4f();
+    public final Matrix4d conversionMatrix4d = new Matrix4d();
+    public final Matrix4f conversionMatrix4f = new Matrix4f();
+    public final Matrix4f gluMatrix = new Matrix4f();
+    public final Matrix4f gluMatrix2 = new Matrix4f();
+    public final Vector4f gluVec4 = new Vector4f();
+    public final FloatBuffer gluBuffer = BufferUtils.createFloatBuffer(16);
+    public final float[] texGenTempPlane = new float[4];
+    public final IntBuffer shaderBuf = BufferUtils.createIntBuffer(8);
+    public final FloatBuffer projectionMatrixBuffer = BufferUtils.createFloatBuffer(16);
     public int activeProgram = 0;
     public int listBase = 0;
     public int boundVBO;
@@ -275,12 +304,10 @@ public class GLContextState {
         for (int i = 0; i < lightDataStates.length; i++) {
             lightDataStates[i] = member(new LightStateStack(GL11.GL_LIGHT0 + i, StackIdAllocator.nextId()));
         }
-        // ShaderManager keeps its current normal/texcoord stacks as static singletons (Actinium has no
-        // per-context FFP manager), so their ids are re-handed out here and registered per context.
-        ShaderManager.getNormalStack().setStackId(StackIdAllocator.nextId());
-        allStacksBuilder.add(ShaderManager.getNormalStack());
-        ShaderManager.getTexCoordStack().setStackId(StackIdAllocator.nextId());
-        allStacksBuilder.add(ShaderManager.getTexCoordStack());
+        // The FFP manager is per drawable, so its current normal/texcoord stacks are built with
+        // this context and take their ids from the allocator like every other stack.
+        allStacksBuilder.add(ffp.normalStack);
+        allStacksBuilder.add(ffp.texCoordStack);
 
         allStacks = allStacksBuilder.toArray(new IStateStack<?>[0]);
 

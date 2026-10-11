@@ -1,5 +1,7 @@
 package com.gtnewhorizons.angelica.glsm.states;
 
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
+
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFlags;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormatElement.Usage;
 import org.lwjgl.opengl.GL11;
@@ -28,12 +30,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class VertexAttribStateDeriveVertexFlagsTest {
     @BeforeEach
     void setUp() {
-        VertexAttribState.init(0);
+        GLStateManager.ctx().vao.init(0);
     }
 
     @AfterEach
     void tearDown() {
-        VertexAttribState.reset();
+        GLStateManager.ctx().vao.reset();
     }
 
     /**
@@ -43,8 +45,8 @@ class VertexAttribStateDeriveVertexFlagsTest {
      */
     @Test
     void freshVAOderivesNoFlags() {
-        VertexAttribState.onBindVertexArray(1);
-        assertEquals(0, VertexAttribState.currentClientArrayVertexFlags());
+        GLStateManager.ctx().vao.onBindVertexArray(1);
+        assertEquals(0, GLStateManager.ctx().vao.currentClientArrayVertexFlags());
     }
 
     /**
@@ -54,12 +56,12 @@ class VertexAttribStateDeriveVertexFlagsTest {
      */
     @Test
     void noColorAttribDerivesNoColorBit() {
-        VertexAttribState.onBindVertexArray(1);
+        GLStateManager.ctx().vao.onBindVertexArray(1);
         setEnabled(Usage.POSITION.getAttributeLocation(), true);
         setEnabled(Usage.PRIMARY_UV.getAttributeLocation(), true);
         setEnabled(Usage.NORMAL.getAttributeLocation(), true);
 
-        int flags = VertexAttribState.currentClientArrayVertexFlags();
+        int flags = GLStateManager.ctx().vao.currentClientArrayVertexFlags();
         assertEquals(VertexFlags.TEXTURE_BIT | VertexFlags.NORMAL_BIT, flags,
             "mask must not include COLOR_BIT when the VAO has no color attribute");
     }
@@ -70,12 +72,12 @@ class VertexAttribStateDeriveVertexFlagsTest {
      */
     @Test
     void colorAttribDerivesColorBit() {
-        VertexAttribState.onBindVertexArray(1);
+        GLStateManager.ctx().vao.onBindVertexArray(1);
         setEnabled(Usage.POSITION.getAttributeLocation(), true);
         setEnabled(Usage.PRIMARY_UV.getAttributeLocation(), true);
         setEnabled(Usage.COLOR.getAttributeLocation(), true);
 
-        int flags = VertexAttribState.currentClientArrayVertexFlags();
+        int flags = GLStateManager.ctx().vao.currentClientArrayVertexFlags();
         assertEquals(VertexFlags.TEXTURE_BIT | VertexFlags.COLOR_BIT, flags,
             "mask must include COLOR_BIT when the VAO has a color attribute");
     }
@@ -87,13 +89,13 @@ class VertexAttribStateDeriveVertexFlagsTest {
      */
     @Test
     void derivedMaskIsPerVao() {
-        VertexAttribState.onBindVertexArray(1);
+        GLStateManager.ctx().vao.onBindVertexArray(1);
         setEnabled(Usage.POSITION.getAttributeLocation(), true);
         setEnabled(Usage.SECONDARY_UV.getAttributeLocation(), true);
-        assertEquals(VertexFlags.BRIGHTNESS_BIT, VertexAttribState.currentClientArrayVertexFlags());
+        assertEquals(VertexFlags.BRIGHTNESS_BIT, GLStateManager.ctx().vao.currentClientArrayVertexFlags());
 
-        VertexAttribState.onBindVertexArray(2);
-        assertEquals(0, VertexAttribState.currentClientArrayVertexFlags(),
+        GLStateManager.ctx().vao.onBindVertexArray(2);
+        assertEquals(0, GLStateManager.ctx().vao.currentClientArrayVertexFlags(),
             "binding a different VAO must not keep the previous VAO's brightness bit");
     }
 
@@ -104,12 +106,12 @@ class VertexAttribStateDeriveVertexFlagsTest {
      */
     @Test
     void disablingAttribDropsItsBit() {
-        VertexAttribState.onBindVertexArray(1);
+        GLStateManager.ctx().vao.onBindVertexArray(1);
         setEnabled(Usage.COLOR.getAttributeLocation(), true);
-        assertEquals(VertexFlags.COLOR_BIT, VertexAttribState.currentClientArrayVertexFlags());
+        assertEquals(VertexFlags.COLOR_BIT, GLStateManager.ctx().vao.currentClientArrayVertexFlags());
 
         setEnabled(Usage.COLOR.getAttributeLocation(), false);
-        assertEquals(0, VertexAttribState.currentClientArrayVertexFlags());
+        assertEquals(0, GLStateManager.ctx().vao.currentClientArrayVertexFlags());
     }
 
     /**
@@ -132,8 +134,8 @@ class VertexAttribStateDeriveVertexFlagsTest {
         source.position(position);
 
         final int location = Usage.POSITION.getAttributeLocation();
-        VertexAttribState.set(location, 3, GL11.GL_FLOAT, false, stride, source, 0);
-        final VertexAttribState.Attrib attrib = VertexAttribState.get(location);
+        GLStateManager.ctx().vao.set(location, 3, GL11.GL_FLOAT, false, stride, source, 0);
+        final VertexAttribState.Attrib attrib = GLStateManager.ctx().vao.get(location);
 
         assertEquals(position, source.position());
         assertEquals(0, attrib.clientPointer.position());
@@ -146,6 +148,6 @@ class VertexAttribStateDeriveVertexFlagsTest {
     }
 
     private static void setEnabled(int index, boolean enabled) {
-        VertexAttribState.setEnabled(index, enabled);
+        GLStateManager.ctx().vao.setEnabled(index, enabled);
     }
 }

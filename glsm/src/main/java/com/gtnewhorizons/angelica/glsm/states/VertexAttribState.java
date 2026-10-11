@@ -13,15 +13,19 @@ import java.util.ArrayDeque;
 /**
  * Per-VAO vertex attribute pointer state tracking (Mesa-style).
  */
+/**
+ * Vertex attribute state of one GL context: which attributes of which VAO are enabled and how they
+ * are fed. Each drawable context owns its own instance (see {@code GLContextState.vao}).
+ */
 public class VertexAttribState {
     public static final int MAX_ATTRIBS = 16;
 
-    private static final Int2ObjectOpenHashMap<Attrib[]> vaoAttribs = new Int2ObjectOpenHashMap<>();
-    private static Attrib[] current;
-    private static final ArrayDeque<Attrib[]> pool = new ArrayDeque<>();
-    private static int clientSideEnabledCount;
+    private final Int2ObjectOpenHashMap<Attrib[]> vaoAttribs = new Int2ObjectOpenHashMap<>();
+    private Attrib[] current;
+    private final ArrayDeque<Attrib[]> pool = new ArrayDeque<>();
+    private int clientSideEnabledCount;
 
-    public static void init(int defaultVAO) {
+    public void init(int defaultVAO) {
         vaoAttribs.clear();
         pool.clear();
         current = allocAttribArray();
@@ -29,26 +33,26 @@ public class VertexAttribState {
         clientSideEnabledCount = 0;
     }
 
-    public static void onBindVertexArray(int newVAO) {
+    public void onBindVertexArray(int newVAO) {
         current = vaoAttribs.computeIfAbsent(newVAO, k -> allocAttribArray());
         recomputeClientSideCount();
     }
 
-    public static void onDeleteVertexArray(int vaoId) {
+    public void onDeleteVertexArray(int vaoId) {
         final Attrib[] arr = vaoAttribs.remove(vaoId);
         if (arr != null) {
             pool.addLast(arr);
         }
     }
 
-    public static void reset() {
+    public void reset() {
         vaoAttribs.clear();
         pool.clear();
         current = null;
         clientSideEnabledCount = 0;
     }
 
-    private static Attrib[] allocAttribArray() {
+    private Attrib[] allocAttribArray() {
         Attrib[] arr = pool.pollFirst();
         if (arr != null) {
             for (Attrib a : arr) a.reset();
@@ -59,7 +63,7 @@ public class VertexAttribState {
         return arr;
     }
 
-    public static void set(int index, int size, int type, boolean normalized, int stride, long offset, int vboId) {
+    public void set(int index, int size, int type, boolean normalized, int stride, long offset, int vboId) {
         if (index < 0 || index >= MAX_ATTRIBS) return;
         final Attrib a = current[index];
         final boolean was = a.isClientSide();
@@ -73,7 +77,7 @@ public class VertexAttribState {
         if (was) clientSideEnabledCount--;
     }
 
-    public static void set(int index, int size, int type, boolean normalized, int stride, ByteBuffer pointer, int vboId) {
+    public void set(int index, int size, int type, boolean normalized, int stride, ByteBuffer pointer, int vboId) {
         if (index < 0 || index >= MAX_ATTRIBS) return;
         final Attrib a = current[index];
         final boolean was = a.isClientSide();
@@ -88,7 +92,7 @@ public class VertexAttribState {
         if (was != now) clientSideEnabledCount += now ? 1 : -1;
     }
 
-    public static void setEnabled(int index, boolean enabled) {
+    public void setEnabled(int index, boolean enabled) {
         if (index < 0 || index >= MAX_ATTRIBS) return;
         final Attrib a = current[index];
         if (a.clientPointer != null && a.enabled != enabled) {
@@ -97,7 +101,7 @@ public class VertexAttribState {
         a.enabled = enabled;
     }
 
-    public static Attrib get(int index) {
+    public Attrib get(int index) {
         return current[index];
     }
 
@@ -108,7 +112,7 @@ public class VertexAttribState {
      * multi-texture UV slots 2/3 (issue #175) — so the FFP vertex shader can source its varying
      * from the attribute instead of a per-draw constant.
      */
-    public static boolean isAttribEnabled(int location) {
+    public boolean isAttribEnabled(int location) {
         if (current == null || location < 0 || location >= MAX_ATTRIBS) {
             return false;
         }
@@ -125,7 +129,7 @@ public class VertexAttribState {
      * Negative strides read backwards from the pointer, so they fall back to the full
      * captured range. The result is always clamped to the captured allocation.
      */
-    public static int computeUploadLength(Attrib a, int first, int count) {
+    public int computeUploadLength(Attrib a, int first, int count) {
         final int remaining = a.clientPointer.remaining();
         if (count <= 0) return 0;
         if (a.stride < 0) return remaining;
@@ -139,7 +143,7 @@ public class VertexAttribState {
      * allocation boundary. HBM reuses a BufferBuilder allocation and changes its limit between
      * uploads; OpenGL client pointers remain valid for the allocation range.
      */
-    private static ByteBuffer captureClientPointer(ByteBuffer pointer) {
+    private ByteBuffer captureClientPointer(ByteBuffer pointer) {
         final int position = pointer.position();
         final int capacity = pointer.capacity() - position;
         return MemoryUtilities.memByteBuffer(MemoryUtilities.memAddress(pointer), capacity);
@@ -147,7 +151,7 @@ public class VertexAttribState {
 
 
 
-    private static void recomputeClientSideCount() {
+    private void recomputeClientSideCount() {
         int count = 0;
         for (int i = 0; i < MAX_ATTRIBS; i++) {
             if (current[i].isClientSide()) count++;
@@ -155,7 +159,7 @@ public class VertexAttribState {
         clientSideEnabledCount = count;
     }
 
-    public static boolean hasVBOBoundAttrib() {
+    public boolean hasVBOBoundAttrib() {
         for (int i = 0; i < MAX_ATTRIBS; i++) {
             if (current[i].enabled && current[i].vboId != 0) return true;
         }
@@ -167,7 +171,7 @@ public class VertexAttribState {
      * (i.e. as a client-side pointer). In core profile, such attribs are treated as null
      * offsets into a non-existent buffer, causing a native crash at draw time.
      */
-    public static boolean hasAnyClientSideEnabledAttrib() {
+    public boolean hasAnyClientSideEnabledAttrib() {
         return clientSideEnabledCount > 0;
     }
 
@@ -183,7 +187,7 @@ public class VertexAttribState {
      * POSITION-only draw such as the legacy end portal TESR renders black. Deriving from
      * the per-VAO attribute enablement is always consistent with the real GL state.
      */
-    public static int currentClientArrayVertexFlags() {
+    public int currentClientArrayVertexFlags() {
         if (current == null) {
             return 0;
         }

@@ -266,7 +266,7 @@ public final class ImmediateModeRecorder {
         for (int i = 0; i < NUM_ATTRIBS; i++) {
             scratchAttribBuffers[i] = null;
             scratchAttribBaseOffsets[i] = 0;
-            final VertexAttribState.Attrib a = VertexAttribState.get(i);
+            final VertexAttribState.Attrib a = GLStateManager.ctx().vao.get(i);
             if (!a.enabled) continue;
 
             if (a.vboId != 0) {
@@ -301,7 +301,7 @@ public final class ImmediateModeRecorder {
 
                         for (int k = 0; k < NUM_ATTRIBS; k++) {
                             if (k == i) continue;
-                            final VertexAttribState.Attrib ak = VertexAttribState.get(k);
+                            final VertexAttribState.Attrib ak = GLStateManager.ctx().vao.get(k);
                             if (!ak.enabled || ak.vboId != a.vboId) continue;
                             final int ks = ak.effectiveStride();
                             rangeStart = Math.min(rangeStart, ak.offset + (long) firstVertex * ks);
@@ -353,7 +353,7 @@ public final class ImmediateModeRecorder {
         for (int i = 0; i < NUM_ATTRIBS; i++) {
             final ByteBuffer buf = scratchAttribBuffers[i];
             if (buf == null) continue;
-            final VertexAttribState.Attrib a = VertexAttribState.get(i);
+            final VertexAttribState.Attrib a = GLStateManager.ctx().vao.get(i);
 
             final AttribReader r = readers[i];
             r.data = buf;

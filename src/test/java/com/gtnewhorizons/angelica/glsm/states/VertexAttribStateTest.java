@@ -1,5 +1,7 @@
 package com.gtnewhorizons.angelica.glsm.states;
 
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
+
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFlags;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormatElement.Usage;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,21 +29,21 @@ class VertexAttribStateTest {
 
     @BeforeEach
     void resetState() {
-        VertexAttribState.init(0);
+        GLStateManager.ctx().vao.init(0);
     }
 
     private static void enableClientArray(Usage usage) {
         final int location = usage.getAttributeLocation();
-        VertexAttribState.set(location, 3, GL11.GL_FLOAT, false, 12, VERTEX_DATA, 0);
-        VertexAttribState.setEnabled(location, true);
+        GLStateManager.ctx().vao.set(location, 3, GL11.GL_FLOAT, false, 12, VERTEX_DATA, 0);
+        GLStateManager.ctx().vao.setEnabled(location, true);
     }
 
     @Test
     void positionOnlyDrawYieldsNoFormatFlags() {
         enableClientArray(Usage.POSITION);
 
-        assertTrue(VertexAttribState.hasAnyClientSideEnabledAttrib());
-        assertEquals(0, VertexAttribState.currentClientArrayVertexFlags());
+        assertTrue(GLStateManager.ctx().vao.hasAnyClientSideEnabledAttrib());
+        assertEquals(0, GLStateManager.ctx().vao.currentClientArrayVertexFlags());
     }
 
     @Test
@@ -54,38 +56,38 @@ class VertexAttribStateTest {
 
         assertEquals(
             VertexFlags.COLOR_BIT | VertexFlags.NORMAL_BIT | VertexFlags.TEXTURE_BIT | VertexFlags.BRIGHTNESS_BIT,
-            VertexAttribState.currentClientArrayVertexFlags());
+            GLStateManager.ctx().vao.currentClientArrayVertexFlags());
     }
 
     @Test
     void disabledAttributeContributesNothing() {
         enableClientArray(Usage.POSITION);
         enableClientArray(Usage.COLOR);
-        VertexAttribState.setEnabled(Usage.COLOR.getAttributeLocation(), false);
+        GLStateManager.ctx().vao.setEnabled(Usage.COLOR.getAttributeLocation(), false);
 
-        assertEquals(0, VertexAttribState.currentClientArrayVertexFlags());
+        assertEquals(0, GLStateManager.ctx().vao.currentClientArrayVertexFlags());
     }
 
     @Test
     void vboBackedAttributeStillCountsAsProvidedData() {
         enableClientArray(Usage.POSITION);
         final int colorLocation = Usage.COLOR.getAttributeLocation();
-        VertexAttribState.set(colorLocation, 4, GL11.GL_UNSIGNED_BYTE, true, 16, 0L, 7);
-        VertexAttribState.setEnabled(colorLocation, true);
+        GLStateManager.ctx().vao.set(colorLocation, 4, GL11.GL_UNSIGNED_BYTE, true, 16, 0L, 7);
+        GLStateManager.ctx().vao.setEnabled(colorLocation, true);
 
-        assertEquals(VertexFlags.COLOR_BIT, VertexAttribState.currentClientArrayVertexFlags());
+        assertEquals(VertexFlags.COLOR_BIT, GLStateManager.ctx().vao.currentClientArrayVertexFlags());
     }
 
     @Test
     void clientSideDetectionRequiresAClientPointer() {
         enableClientArray(Usage.POSITION);
-        assertTrue(VertexAttribState.hasAnyClientSideEnabledAttrib());
+        assertTrue(GLStateManager.ctx().vao.hasAnyClientSideEnabledAttrib());
 
-        VertexAttribState.setEnabled(Usage.POSITION.getAttributeLocation(), false);
-        assertFalse(VertexAttribState.hasAnyClientSideEnabledAttrib());
+        GLStateManager.ctx().vao.setEnabled(Usage.POSITION.getAttributeLocation(), false);
+        assertFalse(GLStateManager.ctx().vao.hasAnyClientSideEnabledAttrib());
 
         enableClientArray(Usage.POSITION);
-        VertexAttribState.set(Usage.POSITION.getAttributeLocation(), 3, GL11.GL_FLOAT, false, 12, 0L, 3);
-        assertFalse(VertexAttribState.hasAnyClientSideEnabledAttrib());
+        GLStateManager.ctx().vao.set(Usage.POSITION.getAttributeLocation(), 3, GL11.GL_FLOAT, false, 12, 0L, 3);
+        assertFalse(GLStateManager.ctx().vao.hasAnyClientSideEnabledAttrib());
     }
 }

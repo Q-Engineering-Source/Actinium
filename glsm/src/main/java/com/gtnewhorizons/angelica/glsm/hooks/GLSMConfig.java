@@ -1,10 +1,19 @@
 package com.gtnewhorizons.angelica.glsm.hooks;
 
+import com.gtnewhorizons.angelica.glsm.GLContextState;
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
+
 public final class GLSMConfig {
 
-    // Lightmap (replaces OpenGlHelper.lastBrightnessX/Y)
-    public static float lastBrightnessX;
-    public static float lastBrightnessY;
+    /** Lightmap coords (replaces OpenGlHelper.lastBrightnessX/Y) live per drawable context. */
+    public static int packBrightness(float x, float y) {
+        return ((int) y << 16) | ((int) x & 0xFFFF);
+    }
+
+    public static int packedLastBrightness() {
+        final GLContextState glCtx = GLStateManager.ctx();
+        return packBrightness(glCtx.lastBrightnessX, glCtx.lastBrightnessY);
+    }
 
     // True while StellarCore renders HUD content into its cached framebuffer
     // (HUDCaching.renderingCacheOverride). Mirrors the alpha-factor override

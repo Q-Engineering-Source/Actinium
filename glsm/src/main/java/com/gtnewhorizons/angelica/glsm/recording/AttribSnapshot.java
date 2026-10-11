@@ -83,7 +83,7 @@ public final class AttribSnapshot {
 
         final long lastVtx = (long) firstVertex + vertexCount - 1;
         for (int i = 0; i < VertexAttribState.MAX_ATTRIBS; i++) {
-            final VertexAttribState.Attrib a = VertexAttribState.get(i);
+            final VertexAttribState.Attrib a = GLStateManager.ctx().vao.get(i);
             if (a == null || !a.enabled || a.vboId == 0) continue;
             final int stride = a.effectiveStride();
             final long typeBytes = (long) a.size * GLTypes.sizeBytes(a.type);
@@ -119,7 +119,7 @@ public final class AttribSnapshot {
 
         try {
             for (int i = 0; i < VertexAttribState.MAX_ATTRIBS; i++) {
-                final VertexAttribState.Attrib a = VertexAttribState.get(i);
+                final VertexAttribState.Attrib a = GLStateManager.ctx().vao.get(i);
                 if (a == null || !a.enabled) continue;
 
                 if (a.vboId != 0) {

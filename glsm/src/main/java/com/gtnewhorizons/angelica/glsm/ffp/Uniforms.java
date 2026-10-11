@@ -107,8 +107,8 @@ public class Uniforms {
         }
 
         if (program.getVertexKey().lightmapEnabled() && !program.getVertexKey().hasVertexLightmap()) {
-            final float lightmapX = GLSMConfig.lastBrightnessX;
-            final float lightmapY = GLSMConfig.lastBrightnessY;
+            final float lightmapX = GLStateManager.ctx().lastBrightnessX;
+            final float lightmapY = GLStateManager.ctx().lastBrightnessY;
             if (uploaded.needsLightmapUpload(lightmapX, lightmapY)) {
                 uploadCurrentLightmapCoord(program);
                 uploaded.markLightmapUploaded(lightmapX, lightmapY);
@@ -356,7 +356,7 @@ public class Uniforms {
     private void uploadCurrentLightmapCoord(Program program) {
         if (program.locCurrentLightmapCoord == -1) return;
         RENDER_BACKEND.uniform2f(program.locCurrentLightmapCoord,
-            GLSMConfig.lastBrightnessX, GLSMConfig.lastBrightnessY);
+            GLStateManager.ctx().lastBrightnessX, GLStateManager.ctx().lastBrightnessY);
     }
 
     private void uploadCurrentNormal(Program program) {

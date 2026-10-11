@@ -175,7 +175,7 @@ public final class GLSMDebug {
         final StringBuilder sb = new StringBuilder();
         for (int i = 0; i < VertexAttribState.MAX_ATTRIBS; i++) {
             if (offsets[i] < 0) continue;
-            final VertexAttribState.Attrib attrib = VertexAttribState.get(i);
+            final VertexAttribState.Attrib attrib = GLStateManager.ctx().vao.get(i);
             if (sb.length() > 0) sb.append(' ');
             sb.append(i)
                 .append(":dst=").append(offsets[i])
@@ -331,7 +331,7 @@ public final class GLSMDebug {
     private static String attributeSummary() {
         final StringBuilder sb = new StringBuilder();
         for (int i : new int[] {0, 1, 2, 3, 4}) {
-            final VertexAttribState.Attrib attrib = VertexAttribState.get(i);
+            final VertexAttribState.Attrib attrib = GLStateManager.ctx().vao.get(i);
             if (sb.length() > 0) sb.append(' ');
             sb.append(i)
                 .append(":en=").append(attrib.enabled)

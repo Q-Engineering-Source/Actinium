@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.sdlgpu.pipeline;
 
+
 import com.gtnewhorizons.angelica.sdlgpu.frame.ContextState;
 import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
 import com.gtnewhorizons.angelica.glsm.testutil.Reflect;
@@ -31,7 +32,6 @@ class PipelineCacheVertexInputTest {
 
     @BeforeEach
     void setUp() {
-        VertexAttribState.init(0);
         PipelineCache.setSwapchainFormats(new int[]{SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM});
         store = new PipelineStore(null);
     }

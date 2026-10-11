@@ -9,6 +9,7 @@ import com.gtnewhorizons.angelica.glsm.debug.GLSMDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredBlendHandler;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
+import com.gtnewhorizons.angelica.glsm.stacks.StackIdAllocator;
 import com.gtnewhorizons.angelica.glsm.stacks.Vec3fStack;
 import com.gtnewhorizons.angelica.glsm.stacks.Vec4fStack;
 import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
@@ -29,14 +30,9 @@ import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACK
  */
 public class ShaderManager {
 
-    private static final class Holder {
-
-        static final ShaderManager INSTANCE = new ShaderManager();
-    }
-
     private static final boolean DEBUG_DRAW_LOGS = Boolean.getBoolean("actinium.glsm.verboseDrawLogs");
 
-    private final ShaderCache cache = new ShaderCache();
+    private static final ShaderCache cache = new ShaderCache();
     private final Uniforms uniforms = new Uniforms();
     private final Int2IntOpenHashMap vaoVertexFlags = new Int2IntOpenHashMap();
 
@@ -48,44 +44,56 @@ public class ShaderManager {
     private final long[] currentFKPacked = new long[FragmentKey.MAX_UNITS];
     private int currentFKLen = 0;
 
-    @Getter private static final Vector3f currentNormal = new Vector3f(0.0f, 0.0f, 1.0f);
-    private static final Vector4f[] currentTexCoords = {
+    // FFP emulation is a process-wide switch; the per-drawable instances inherit it.
+    @Getter private static boolean enabled = false;
+
+    // Per-drawable state: each GLSM context owns one ShaderManager (GLContextState.ffp).
+    public final Vector3f currentNormal = new Vector3f(0.0f, 0.0f, 1.0f);
+    public final Vector4f[] currentTexCoords = {
         new Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
         new Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
         new Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
         new Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
     };
-    // The stack ids are handed out per context in GLContextState.init(): these stacks are static
-    // singletons here (Actinium has no per-context FFP manager), so they cannot take an id at
-    // class-init time.
-    @Getter private static final Vec3fStack normalStack = new Vec3fStack(currentNormal, -1);
-    @Getter private static final Vec4fStack texCoordStack = new Vec4fStack(currentTexCoords[0], -1);
-    @Getter private static int normalGeneration;
-    @Getter private static int texCoordGeneration;
-    @Getter private boolean enabled = false;
+    public final Vec3fStack normalStack = new Vec3fStack(currentNormal, StackIdAllocator.nextId());
+    public final Vec4fStack texCoordStack = new Vec4fStack(currentTexCoords[0], StackIdAllocator.nextId());
+    public int normalGeneration;
+    public int texCoordGeneration;
     private int currentVertexFlags = VertexFlags.TEXTURE_BIT | VertexFlags.COLOR_BIT | VertexFlags.NORMAL_BIT;
 
-    private ShaderManager() {
-        vaoVertexFlags.defaultReturnValue(-1);
+    static {
         if (Boolean.parseBoolean(System.getProperty("angelica.dumpShaders", "false"))) {
             cache.setDumpDir(Paths.get("ffp_shaders"));
         }
+        // The override runs for whichever drawable is current, so it writes through ctx().ffp
+        // rather than capturing a ShaderManager instance.
+        VertexFormat.registerSetupBufferStateOverride((format, offset) -> {
+            final ShaderManager sm = GLStateManager.ctx().ffp;
+            sm.currentVertexFlags = format.getVertexFlags();
+            sm.vaoVertexFlags.put(GLStateManager.getBoundVAO(), sm.currentVertexFlags);
+            return false;
+        });
+    }
+
+    public ShaderManager() {
+        vaoVertexFlags.defaultReturnValue(-1);
+        active = enabled;
     }
 
     public static ShaderManager getInstance() {
-        return Holder.INSTANCE;
+        return GLStateManager.ctx().ffp;
     }
+
+    public static Vector3f getCurrentNormal() { return GLStateManager.ctx().ffp.currentNormal; }
+    public static Vec3fStack getNormalStack() { return GLStateManager.ctx().ffp.normalStack; }
+    public static Vec4fStack getTexCoordStack() { return GLStateManager.ctx().ffp.texCoordStack; }
+    public static int getNormalGeneration() { return GLStateManager.ctx().ffp.normalGeneration; }
+    public static int getTexCoordGeneration() { return GLStateManager.ctx().ffp.texCoordGeneration; }
 
     public void enable() {
         warmUp();
         enabled = true;
-
-        VertexFormat.registerSetupBufferStateOverride((format, offset) -> {
-            currentVertexFlags = format.getVertexFlags();
-            vaoVertexFlags.put(GLStateManager.getBoundVAO(), currentVertexFlags);
-            return false;
-        });
-
+        active = true;
         GLStateManager.LOGGER.info("FFP shader emulation enabled");
     }
 
@@ -212,7 +220,7 @@ public class ShaderManager {
         // COLOR_BIT) into it without a matching VAO attribute, which makes the shader read
         // default (0,0,0,1) for the missing attribute and render black. Derive from the
         // currently bound VAO's actual attribute enablement instead.
-        preDraw(VertexAttribState.currentClientArrayVertexFlags());
+        preDraw(GLStateManager.ctx().vao.currentClientArrayVertexFlags());
     }
 
     private void updateVariant(boolean hasColor, boolean hasNormal, boolean hasTexCoord, boolean hasLightmap) {
@@ -266,26 +274,29 @@ public class ShaderManager {
         }
     }
 
-    public static Vector4f getCurrentTexCoord() { return currentTexCoords[0]; }
-    public static Vector4f getCurrentTexCoord(int unit) { return currentTexCoords[unit]; }
+    public static Vector4f getCurrentTexCoord() { return GLStateManager.ctx().ffp.currentTexCoords[0]; }
+    public static Vector4f getCurrentTexCoord(int unit) { return GLStateManager.ctx().ffp.currentTexCoords[unit]; }
 
     public static void setCurrentNormal(float x, float y, float z) {
-        currentNormal.set(x, y, z);
-        normalGeneration++;
+        final ShaderManager sm = GLStateManager.ctx().ffp;
+        sm.currentNormal.set(x, y, z);
+        sm.normalGeneration++;
     }
 
     public static void setCurrentTexCoord(float s, float t, float r, float q) {
-        currentTexCoords[0].set(s, t, r, q);
-        texCoordGeneration++;
+        final ShaderManager sm = GLStateManager.ctx().ffp;
+        sm.currentTexCoords[0].set(s, t, r, q);
+        sm.texCoordGeneration++;
     }
 
     public static void setCurrentTexCoord(int unit, float s, float t, float r, float q) {
-        currentTexCoords[unit].set(s, t, r, q);
-        texCoordGeneration++;
+        final ShaderManager sm = GLStateManager.ctx().ffp;
+        sm.currentTexCoords[unit].set(s, t, r, q);
+        sm.texCoordGeneration++;
     }
 
-    public static void bumpNormalGeneration() { normalGeneration++; }
-    public static void bumpTexCoordGeneration() { texCoordGeneration++; }
+    public static void bumpNormalGeneration() { GLStateManager.ctx().ffp.normalGeneration++; }
+    public static void bumpTexCoordGeneration() { GLStateManager.ctx().ffp.texCoordGeneration++; }
 
     public void enableClientVertexFlag(int flag) {currentVertexFlags |= flag;}
     public void disableClientVertexFlag(int flag) {currentVertexFlags &= ~flag;}
@@ -302,7 +313,7 @@ public class ShaderManager {
             // VAO like HBM-CE's OBJ models): do not keep whatever flags a previous draw left
             // behind, derive them from the VAO's actual attributes so a later raw draw cannot
             // pick up leaked COLOR_BIT/NORMAL_BIT and render black.
-            currentVertexFlags = VertexAttribState.currentClientArrayVertexFlags();
+            currentVertexFlags = GLStateManager.ctx().vao.currentClientArrayVertexFlags();
         }
     }
 
@@ -311,10 +322,8 @@ public class ShaderManager {
     }
 
     public void destroy() {
-        cache.destroy();
+        // The program cache is shared between drawable contexts, so it survives a context going away.
         uniforms.destroy();
-        final GLSMInitConfig config = GLStateManager.getInitConfig();
-        if (config != null && config.getStreamingDrawerDestroy() != null) config.getStreamingDrawerDestroy().run();
         QuadConverter.destroy();
         active = false;
         currentProgram = null;

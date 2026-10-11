@@ -131,7 +131,7 @@ public final class FragmentKey {
             global |= (1L << BIT_OVERLAY_ENABLED);
         }
 
-        if (GLStateManager.lineStippleActive) {
+        if (GLStateManager.ctx().lineStippleActive) {
             global |= (1L << BIT_LINE_STIPPLE);
         }
 

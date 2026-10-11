@@ -98,6 +98,7 @@ public final class GLSMInitConfig {
             return this;
         }
 
+
         public Builder displaySize(int width, int height) {
             this.displayWidth = width;
             this.displayHeight = height;
