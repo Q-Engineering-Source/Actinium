@@ -1,6 +1,7 @@
 package net.coderbot.iris.pipeline.transform;
 
 import com.gtnewhorizons.angelica.glsm.GlslTransformUtils;
+import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import net.coderbot.iris.gl.shader.ShaderType;
 import net.coderbot.iris.pipeline.transform.parameter.Parameters;
 import org.taumc.glsl.Transformer;
@@ -84,7 +85,11 @@ public class CommonTransformer {
 		root.renameAndWrapShadow("shadow2DLod", "textureLod");
 		AdaptiveShadowBoundsTransformer.transform(root, parameters.type);
 
-		if (parameters.patch == Patch.ATTRIBUTES && parameters.type == ShaderType.VERTEX) {
+		// FFP clip planes are realized through gl_ClipDistance writes. Only inject when the driver
+		// can compile them: ES and desktop-masquerading translation layers (MobileGlues) need
+		// GL_EXT_clip_cull_distance, otherwise every gbuffers/shadow vertex shader fails (issue #214).
+		if (parameters.patch == Patch.ATTRIBUTES && parameters.type == ShaderType.VERTEX
+				&& RenderSystem.hasClipCullDistance()) {
 			root.injectVariable("uniform bool actinium_ClipPlanesEnabled;");
 			root.injectVariable("uniform vec4 actinium_ClipPlane[8];");
 			root.appendMain(
