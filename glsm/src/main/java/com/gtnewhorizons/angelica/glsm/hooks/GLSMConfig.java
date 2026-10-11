@@ -21,6 +21,8 @@ public final class GLSMConfig {
     // SDL GPU backend: expands vertex formats to the width the backend's attribute
     // pipeline expects; set during backend init.
     public static volatile boolean expandVertexFormats;
+    /** Configured worker thread count; 0 selects the automatic 2..12 default. */
+    public static int workerThreadCount;
 
     private GLSMConfig() {}
 }

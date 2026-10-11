@@ -67,6 +67,7 @@ import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.ints.IntStack;
 import lombok.Getter;
 import lombok.Setter;
+import com.gtnewhorizons.angelica.glsm.texture.TextureStaging;
 import lombok.SneakyThrows;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -5792,6 +5793,42 @@ public class GLStateManager {
         TextureInfoCache.INSTANCE.onTexSubImage2D(target, level);
         maybeGenerateMipmap(target, level);
 
+    }
+
+    public static TextureStaging beginTextureStaging(int level, int x, int y, int width, int height) {
+        if (DisplayListManager.isRecording()) {
+            throw new UnsupportedOperationException("beginTextureStaging in display lists not yet implemented - if you see this, please report!");
+        }
+        if (!ctx().pixelUnpackState.isDefault()) {
+            return null;
+        }
+        return RENDER_BACKEND.beginTextureStaging(level, x, y, width, height);
+    }
+
+    public static boolean commitTextureStaging(TextureStaging staging) {
+        if (DisplayListManager.isRecording()) {
+            throw new UnsupportedOperationException("commitTextureStaging in display lists not yet implemented - if you see this, please report!");
+        }
+        suspendPixelUnpackBuffer();
+        final boolean committed;
+        try {
+            committed = RENDER_BACKEND.commitTextureStaging(staging);
+        } finally {
+            restorePixelUnpackBuffer();
+        }
+        if (committed) {
+            TextureInfoCache.INSTANCE.onTexSubImage2D(GL11.GL_TEXTURE_2D, staging.level());
+            maybeGenerateMipmap(GL11.GL_TEXTURE_2D, staging.level());
+        }
+        return committed;
+    }
+
+    public static void abandonTextureStaging(TextureStaging staging) {
+        RENDER_BACKEND.abandonTextureStaging(staging);
+    }
+
+    public static void trimTextureStaging() {
+        RENDER_BACKEND.trimTextureStaging();
     }
 
     public static void glTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, int type, ByteBuffer pixels) {

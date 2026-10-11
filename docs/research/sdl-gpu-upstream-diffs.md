@@ -13,7 +13,9 @@
 > 2026-10-11 同步 sdl-gpu 侧**（详见「上游同步状态（2026-10-11，Phase 3）」；
 > 该阶段的 glsm 状态栈 COW / per-drawable context 重构**未同步**，原因见同一节）。
 > **上游 #2153 / #2157（`e17b45c8` / `7bb5bfd4`，Phase 4）已于 2026-10-11 同步**
-> （详见「上游同步状态（2026-10-11，Phase 4）」）。
+> （详见「上游同步状态（2026-10-11，Phase 4）」）；**上游 #2167 / #2188 / #2191
+> （`c10d30b2` / `80e5b544` / `1587a12c`，Phase 5）已于 2026-10-11 同步**
+> （详见「上游同步状态（2026-10-11，Phase 5）」）。
 > 本文档
 > 逐条记录 Actinium 的 `sdl-gpu` 模块相对 Angelica 上游（`D:\Code\Angelica`，
 > 运行于 lwjgl3ify/GTNH 环境）的**代码差异及其理由**。多数差异源于运行环境不同
@@ -669,3 +671,104 @@ sdl-gpu 基础上叠加，未触及 Phase 3 记录为未同步的 glsm COW / per
   overload 重定向目标）——Actinium 的 redirector 早已包含这些条目，且其
   redirector 测试是自写 harness；`src/` 侧的 `MixinGuiTextField`/
   `TextHighlightHooks`/reeses sodium options 改动属核心 GUI 范畴。
+
+## 上游同步状态（2026-10-11，Phase 5）
+
+已同步上游三个提交：`c10d30b2`（#2167，atlas 并行加载 + SDL-GPU mip-level
+target）、`80e5b544`（#2188，voxelization 性能）、`1587a12c`（#2191，Metal fence
+workaround + present 期间 pump）。三者的 sdl-gpu / glsm 侧均已落地，`src/` 侧的
+功能主体按范围跳过。
+
+**#2167（`c10d30b2`）**
+
+- glsm 新增：
+  - `texture/TextureStaging` 接口（`buffer()` / `bgra()` / `level()`）。
+  - `RenderBackend.beginTextureStaging/commitTextureStaging/abandonTextureStaging/
+    trimTextureStaging`：通用客户端 staging 实现（`clientStagingCache` 复用 +
+    `recycleClientStaging` 按容量择劣替换 + `trimTextureStaging` 全部释放；
+    `commitTextureStaging` 走 `texSubImage2D(GL_TEXTURE_2D, …, GL_BGRA,
+    GL_UNSIGNED_INT_8_8_8_8_REV|GLES remap, …)`）。
+  - `GLStateManager` 的四个包装：display list 录制中抛
+    `UnsupportedOperationException`（Actinium 无 `DisplayListManager.unsupportedInList`，
+    按 Actinium 既有 idiom 写），`ctx().pixelUnpackState` 非默认时
+    `beginTextureStaging` 返回 null；`commitTextureStaging` 前后
+    `suspendPixelUnpackBuffer()/restorePixelUnpackBuffer()`，成功后
+    `TextureInfoCache.INSTANCE.onTexSubImage2D(...)` + `maybeGenerateMipmap(...)`。
+- **删除 `glsm/hooks/ShaderWorkSubmitter`**（连同 `GLSMHooks.shaderWorkSubmitter`
+  字段）：按约定核查过 Actinium 的 `src/`、`celeritas-common/`、`shader/`
+  —— 无任何引用，唯一使用者是 sdl-gpu 自己的 `ShaderManager`，本提交内改为
+  `AngelicaWorkers.submit(...)`，故与上游一致删除。
+- 新增 `glsm/threading/AngelicaWorkers`（自包含的 2..12 线程池、prestarted、
+  120s 空闲回收 + `onIdleShutdown` 钩子、`isWorkerThread()`）；其配置项
+  `GLSMConfig.workerThreadCount` 一并引入（0 = 自动按 CPU 核数取
+  2..12；Actinium 未同步提供该选项 UI 的 `src/` 侧代码，保持自动默认）。
+- sdl-gpu 10 个文件：SDL 后端的 `beginTextureStaging/commitTextureStaging/
+  abandonTextureStaging` 覆盖（`ResourceManager.TextureStagingRegion`、
+  `shouldDeferTextureUpload`/`commitTextureStagingDeferred`/
+  `commitTextureStagingInline`、`textureOps.trackMipUploadForTexture`）；
+  `FboState.colorLevels[]`/`depthLevel` 与 mip 级 FBO 尺寸/查询
+  （`GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL`、`fbo.width/height` 用
+  `PixelOps.mipLevelSize`）；readback 按 mip 级取源尺寸，depth/stencil 附件非 0
+  级读回显式抛 `UnsupportedOperationException`；`FBOClearTracker.clearColorLevel`/
+  `clearDepthStencilLevel`；`LogicOpEmulator`/`PipelineApplier`/`TextureOps`/
+  `ShaderManager`/`FrameManager`/`ContextState` 同步。
+- **Lwjgl3GLRenderBackend 无需改动**：核对上游 `lwjgl3-backend`，它没有覆写这四个
+  staging 方法——通用客户端实现就是 GL 后端的实现（与上游一致），因此没有“镜像
+  上游 lwjgl3 实现”这一步可做。
+- 测试：`SDLGPUFboTargetCacheTest` 已同步；6 个 rig 测试
+  （`GlsmSdlCopyBlitTest`、`GlsmSdlHeadlessRig`、`GlsmSdlMipAttachmentTest`、
+  `GlsmSdlOutOfFrameExtension`、`GlsmSdlOutOfFrameReadbackTest`、
+  `GlsmSdlTextureStagingTest`）未同步。
+- **未同步**：`glsm/loading/ModRedirector`、`RfbModRedirector` 与
+  `glsm/redirect/GLSMRedirector.getConstantPoolSearchStrings()` 的常量池匹配优化
+  （Actinium 的 `glsm/loading` 只有 `DependencyVerifier`/`EcosystemNarrowRules`/
+  `TransformerNarrower`，没有这两个 redirector，且没有 retrofuturabootstrap
+  依赖），以及 atlas 并行加载主体（`src/` +4166：`AtlasAssembler`、
+  `AtlasLoadSession`、`AtlasPackPolicy`、`AtlasPackScreen`、`AngelicaConfig`、
+  RFB transformer、`Mixins`、`SpriteExtension`、`IrisGLSMBridge` 等）。
+
+**#2188（`80e5b544`）**
+
+- `RenderBackend`：删除 `bindVoxelizationRegion(...)`（Phase 2 曾按 `a07cecb8`
+  把它改成去掉 `vertexBufferGlId` 的版本），`voxelizeRange(pass, vertexOffset,
+  vertexCount)` 替换为 `voxelizeRegion(pass, rebindVertexBuffer, x, y, z,
+  rangeBase, rangeCount, vertexTotal)`；`SDLGPURenderBackend` 与
+  `compute/VoxelizationDispatcher` 同步实现（区域偏移 uniform + 可选顶点缓冲重绑 +
+  范围表遍历）。Actinium 目前没有 voxelization 调用方，API 与后端实现仍按上游
+  落地，保持后端表面一致。
+- 测试：`VoxelizationDispatcherTest`、`MslCrossCompileTest` 已同步；rig 测试
+  `GlsmSdlVoxelRegionBindTest` 上游该提交已删除（Actinium 从未有过）。
+- **未同步**：`src/` 的 voxelization 主体（`SdlShadowVoxelizationSink`、
+  `ShadowVoxelizer`、`VoxelRangeTable`、`TracyFramePlots`、
+  `AngelicaChunkRenderer`、`RwImageStoreExtractor` 及其测试）。
+
+**#2191（`1587a12c`）**
+
+- glsm：`MainThreadPump` 重写——present 期间也驱动 pump
+  （`runPresentPump()`、`presentPumpPending`、`presentFailure` 抛回调用线程、
+  中断标志保持、stall 告警保留）；新增 `profiling/DebugCounters`
+  （LongAdder：`FENCE_WAIT_NANOS`、`TRANSFER_WAIT_NANOS`、`PRESENTS`、
+  `EMPTY_ACQUIRES`）。`MainThreadPumpTest` 按上游更新（仍位于 Actinium 根工程
+  `src/test/java/com/gtnewhorizons/angelica/glsm/backend/`）。
+- sdl-gpu：新增 `device/{FenceProbe,FenceReleaser,FenceWait,Submits}`；`Device`、
+  `frame/FenceTracker`、`frame/FrameManager`、`frame/Presenter`、
+  `resource/PersistentBufferSync`、`resource/ResourceManager`、
+  `resource/TextureOps`、`resource/TextureSamplerState`、`resource/TransferThread`、
+  `sampler/SamplerBinder`、`SDLGPURenderBackend` 同步（fence 能力探测与等待/释放
+  抽象、present 提交计数、transfer 线程唤醒策略、采样器状态生成号）。Metal 特例
+  保持上游形态——按 device properties 探测，不按平台判断。
+- **Actinium 适配（既有偏差全部保留）**：
+  - `Presenter` 构造器新增 `MainThreadPump` 参数 → Actinium 传
+    `new Presenter(frameManager, Runnable::run, Pump.INSTANCE)`，即保留
+    Phase 1 的执行器偏差（无 `MainStartOnFirstThread`，present 内联执行）。
+  - `FrameManager.presentBlit` 的提交改走 `Submits.submit(cb)`，但保留 Actinium
+    的失败日志（`presentBlit: SDL_SubmitGPUCommandBuffer failed: {}`），并按上游
+    接上 `DebugCounters.PRESENTS.increment()`。
+  - Phase 1–4 的其它偏差经 sweep 确认仍在（`isPresentSuppressed`、dropped 细分
+    计数、persistent `unmapBuffer` 生命周期、`Lwjgl3GLCapabilitiesShim`、
+    `SDL_DISABLE_IN_PASS_CLEAR`、`invalidateStateMirror`、
+    `replayStateToBackend` 的 program/VAO/FBO 重绑、`SamplerUnitArray`）。
+- 测试：`SdlTestRig`、`FenceProbeRealDeviceTest`、`FenceReleaserTest`、
+  `FenceWaitTest`、`PresenterTest`、`TextureSamplerStateTest`、
+  `TransferThreadWakePolicyTest`、`SamplerBindGenerationTest` 已同步；
+  `src/` 的 `FlybyRunner` 未同步。

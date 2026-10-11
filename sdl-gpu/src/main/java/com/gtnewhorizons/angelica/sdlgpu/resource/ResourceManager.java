@@ -4,7 +4,7 @@ import java.util.function.LongConsumer;
 import com.gtnewhorizons.angelica.sdlgpu.pipeline.Hashing;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.lwjgl.PointerBuffer;
+import com.gtnewhorizons.angelica.sdlgpu.device.FenceWait;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
@@ -45,7 +45,9 @@ import static org.lwjgl.system.MemoryUtil.memAlloc;
 import static org.lwjgl.system.MemoryUtil.memFree;
 
 import com.gtnewhorizons.angelica.glsm.profiling.Tracy;
+import com.gtnewhorizons.angelica.glsm.texture.TextureStaging;
 import com.gtnewhorizons.angelica.sdlgpu.device.Device;
+import com.gtnewhorizons.angelica.sdlgpu.device.Submits;
 import com.gtnewhorizons.angelica.sdlgpu.frame.ContextState;
 import com.gtnewhorizons.angelica.sdlgpu.frame.FrameManager;
 import com.gtnewhorizons.angelica.sdlgpu.pipeline.EBOSplitScanner;
@@ -124,6 +126,8 @@ public final class ResourceManager {
 
     public void markFboAttachment(int glId) { fboAttachedGlIds.add(glId); }
     public boolean isFboAttachment(int glId) { return fboAttachedGlIds.contains(glId); }
+
+    public boolean shouldDeferTextureUpload(ContextState st, int glId) { return st.deferUploads && !isFboAttachment(glId); }
 
     private int preferredD24 = SDL_GPU_TEXTUREFORMAT_D24_UNORM;
     private int preferredD24S8 = SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT;
@@ -586,6 +590,7 @@ public final class ResourceManager {
     private boolean copyAllMips(long srcTex, long dstTex, int glTarget, int width, int height, int depth, int levels) {
         final long cp = frameManager.ensureCopyPass();
         if (cp == 0) return false;
+        flushBatchedUploads(cp);
         final boolean volume = glTarget == GL12.GL_TEXTURE_3D;
         final int layers = volume ? 1 : Math.max(1, depth);
         try (var stack = stackPush()) {
@@ -1557,7 +1562,7 @@ public final class ResourceManager {
         f.arenaCopyPass = SDL_BeginGPUCopyPass(f.arenaCommandBuffer);
         if (f.arenaCopyPass == 0) {
             LOG.error("Failed to begin arena copy pass: {}", SDLError.SDL_GetError());
-            SDL_SubmitGPUCommandBuffer(f.arenaCommandBuffer);
+            Submits.submit(f.arenaCommandBuffer);
             f.arenaCommandBuffer = 0;
             unmapArena(f);
             return false;
@@ -1585,7 +1590,7 @@ public final class ResourceManager {
             f.arenaCopyPass = 0;
         }
         if (f.arenaCommandBuffer != 0) {
-            if (!SDL_SubmitGPUCommandBuffer(f.arenaCommandBuffer)) {
+            if (!Submits.submit(f.arenaCommandBuffer)) {
                 device.reportGpuFailure("submit arena upload command buffer");
             }
             f.arenaCommandBuffer = 0;
@@ -1740,22 +1745,7 @@ public final class ResourceManager {
         }
         copyMappedFromData(mapped, data, (int) size, COPY_CALLSITE_UPLOAD_TEX_DIRECT);
         SDL_UnmapGPUTransferBuffer(device.getDevice(), xfer);
-
-        try (var stack = stackPush()) {
-            final SDL_GPUTextureTransferInfo src = SDL_GPUTextureTransferInfo.calloc(stack)
-                .transfer_buffer(xfer)
-                .offset(0);
-            final SDL_GPUTextureRegion dst = SDL_GPUTextureRegion.calloc(stack)
-                .texture(gpuTexture)
-                .mip_level(level)
-                .x(x).y(y).z(z)
-                .w(w).h(h).d(d);
-            SDL_UploadToGPUTexture(copyPass, src, dst, false);
-        }
-        markTextureContentDefined(gpuTexture);
-
-        frameManager.recordUploadCommands(size, 1);
-        returnTransferBuffer(xfer, size);
+        uploadRegionFromTransfer(copyPass, xfer, size, gpuTexture, level, x, y, z, w, h, d);
     }
 
     private void directUploadToTexture(long copyPass, ByteBuffer data, long gpuTexture, int x, int y, int w, int h, int level) {
@@ -1772,24 +1762,28 @@ public final class ResourceManager {
         }
         copyMappedFromData(mapped, data, (int) size, COPY_CALLSITE_UPLOAD_TEX_DIRECT);
         SDL_UnmapGPUTransferBuffer(device.getDevice(), xfer);
+        uploadRegionFromTransfer(copyPass, xfer, size, gpuTexture, level, x, y, 0, w, h, 1);
+    }
 
-        try (var stack = stackPush()) {
-            final SDL_GPUTextureTransferInfo src = SDL_GPUTextureTransferInfo.calloc(stack)
-                .transfer_buffer(xfer)
-                .offset(0);
-
-            final SDL_GPUTextureRegion dst = SDL_GPUTextureRegion.calloc(stack)
-                .texture(gpuTexture)
-                .mip_level(level)
-                .x(x).y(y).z(0)
-                .w(w).h(h).d(1);
-
-            SDL_UploadToGPUTexture(copyPass, src, dst, false);
+    private void uploadRegionFromTransfer(long copyPass, long xfer, long size, long tex, int level, int x, int y, int z, int w, int h, int d) {
+        try {
+            flushBatchedUploads(copyPass);
+            try (var stack = stackPush()) {
+                final SDL_GPUTextureTransferInfo src = SDL_GPUTextureTransferInfo.calloc(stack)
+                    .transfer_buffer(xfer)
+                    .offset(0);
+                final SDL_GPUTextureRegion dst = SDL_GPUTextureRegion.calloc(stack)
+                    .texture(tex)
+                    .mip_level(level)
+                    .x(x).y(y).z(z)
+                    .w(w).h(h).d(d);
+                SDL_UploadToGPUTexture(copyPass, src, dst, false);
+            }
+            markTextureContentDefined(tex);
+            frameManager.recordUploadCommands(size, 1);
+        } finally {
+            returnTransferBufferThreadSafe(xfer, size);
         }
-        markTextureContentDefined(gpuTexture);
-
-        frameManager.recordUploadCommands(size, 1);
-        returnTransferBuffer(xfer, size);
     }
 
     public boolean enqueueDeferredTextureUpload(ContextState st, ByteBuffer prepped, long texHandle, int x, int y, int w, int h, int level) {
@@ -1806,14 +1800,53 @@ public final class ResourceManager {
             prepped.position(prevPos);
         }
         SDL_UnmapGPUTransferBuffer(device.getDevice(), xfer);
+        enqueueMappedRegion(tt, st, xfer, size, texHandle, level, x, y, w, h);
+        return true;
+    }
+
+    private void enqueueMappedRegion(TransferThread tt, ContextState st, long xfer, long size, long tex, int level, int x, int y, int w, int h) {
         final long seq = TransferThread.nextSeq();
         st.frameHighestEnqueuedSeq = seq;
         lastTextureUploadSeq = seq;
-        markTextureContentDefined(texHandle);
-        tt.enqueue(TransferThread.TextureRegionUpload.acquire(xfer, texHandle, x, y, w, h, level, size, seq));
+        markTextureContentDefined(tex);
+        tt.enqueue(TransferThread.TextureRegionUpload.acquire(xfer, tex, x, y, w, h, level, size, seq));
         tt.wake();
+    }
+
+    public TextureStagingRegion beginTextureStaging(int glId, long texHandle, boolean bgra, int level, int x, int y, int w, int h) {
+        final long size = (long) w * h * 4;
+        if (size <= 0 || size > Integer.MAX_VALUE) return null;
+        final long xfer = acquireTransferBufferThreadSafe(size);
+        if (xfer == 0) return null;
+        final ByteBuffer mapped = SDL_MapGPUTransferBuffer(device.getDevice(), xfer, true, getTransferBufferMapSize(size));
+        if (mapped == null || mapped.capacity() < size) {
+            SDL_UnmapGPUTransferBuffer(device.getDevice(), xfer);
+            returnTransferBufferThreadSafe(xfer, size);
+            return null;
+        }
+        mapped.clear().limit((int) size);
+        return new TextureStagingRegion(mapped.slice(), bgra, level, x, y, w, h, glId, texHandle, xfer, size);
+    }
+
+    public boolean commitTextureStagingDeferred(ContextState st, TextureStagingRegion s) {
+        final TransferThread tt = transferThread;
+        if (tt == null) return false;
+        SDL_UnmapGPUTransferBuffer(device.getDevice(), s.transferBuffer());
+        enqueueMappedRegion(tt, st, s.transferBuffer(), s.size(), s.texHandle(), s.level(), s.x(), s.y(), s.width(), s.height());
         return true;
     }
+
+    public void commitTextureStagingInline(long copyPass, TextureStagingRegion s) {
+        SDL_UnmapGPUTransferBuffer(device.getDevice(), s.transferBuffer());
+        uploadRegionFromTransfer(copyPass, s.transferBuffer(), s.size(), s.texHandle(), s.level(), s.x(), s.y(), 0, s.width(), s.height(), 1);
+    }
+
+    public void abandonTextureStaging(TextureStagingRegion s) {
+        SDL_UnmapGPUTransferBuffer(device.getDevice(), s.transferBuffer());
+        returnTransferBufferThreadSafe(s.transferBuffer(), s.size());
+    }
+
+    public record TextureStagingRegion(ByteBuffer buffer, boolean bgra, int level, int x, int y, int width, int height, int glId, long texHandle, long transferBuffer, long size) implements TextureStaging {}
 
     public void downloadFromTexture(long commandBuffer, long gpuTexture, int x, int y, int w, int h, int level, ByteBuffer output) {
         downloadFromTexture(commandBuffer, gpuTexture, x, y, 0, w, h, 1, level, output);
@@ -1852,17 +1885,16 @@ public final class ResourceManager {
             SDL_DownloadFromGPUTexture(copyPass, src, dst);
             SDL_EndGPUCopyPass(copyPass);
 
-            final long fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commandBuffer);
+            final long fence = Submits.submitAndAcquireFence(commandBuffer);
             if (fence == 0) {
                 LOG.error("Failed to submit download command buffer: {}", SDLError.SDL_GetError());
                 SDL_ReleaseGPUTransferBuffer(device.getDevice(), xfer);
                 return;
             }
             try {
-                final PointerBuffer fences = stack.pointers(fence);
-                SDL_WaitForGPUFences(device.getDevice(), true, fences);
+                FenceWait.await(device, fence, FenceWait.FOREVER);
             } finally {
-                SDL_ReleaseGPUFence(device.getDevice(), fence);
+                device.fenceReleaser().release(fence);
             }
 
             final long mappedPtr = nSDL_MapGPUTransferBuffer(device.getDevice(), xfer, false);
@@ -1905,17 +1937,16 @@ public final class ResourceManager {
             SDL_DownloadFromGPUBuffer(copyPass, src, dst);
             SDL_EndGPUCopyPass(copyPass);
 
-            final long fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commandBuffer);
+            final long fence = Submits.submitAndAcquireFence(commandBuffer);
             if (fence == 0) {
                 LOG.error("Failed to submit buffer download command buffer: {}", SDLError.SDL_GetError());
                 SDL_ReleaseGPUTransferBuffer(device.getDevice(), xfer);
                 return;
             }
             try {
-                final PointerBuffer fences = stack.pointers(fence);
-                SDL_WaitForGPUFences(device.getDevice(), true, fences);
+                FenceWait.await(device, fence, FenceWait.FOREVER);
             } finally {
-                SDL_ReleaseGPUFence(device.getDevice(), fence);
+                device.fenceReleaser().release(fence);
             }
 
             final long mappedPtr = nSDL_MapGPUTransferBuffer(device.getDevice(), xfer, false);
@@ -2092,7 +2123,7 @@ public final class ResourceManager {
                 SDL_UploadToGPUTexture(copyPass, src, dst, false);
                 SDL_EndGPUCopyPass(copyPass);
             }
-            SDL_SubmitGPUCommandBuffer(cb);
+            Submits.submit(cb);
         }
         releaseTransferBuffer(xfer);
     }
@@ -2119,7 +2150,7 @@ public final class ResourceManager {
                 SDL_UploadToGPUBuffer(copyPass, src, dst, false);
                 SDL_EndGPUCopyPass(copyPass);
             }
-            SDL_SubmitGPUCommandBuffer(cb);
+            Submits.submit(cb);
         }
         releaseTransferBuffer(xfer);
     }
@@ -2232,7 +2263,7 @@ public final class ResourceManager {
                     final var dst = SDL_GPUBufferRegion.calloc(stack).buffer(dummyVertexBuffer).offset(0).size(DUMMY_VBO_SIZE);
                     SDL_UploadToGPUBuffer(copyPass, src, dst, false);
                     SDL_EndGPUCopyPass(copyPass);
-                    SDL_SubmitGPUCommandBuffer(cb);
+                    Submits.submit(cb);
                 }
                 releaseTransferBufferHandle(xfer);
             }
