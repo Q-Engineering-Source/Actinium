@@ -55,8 +55,11 @@ public class ShaderManager {
         new Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
         new Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
     };
-    @Getter private static final Vec3fStack normalStack = new Vec3fStack(currentNormal);
-    @Getter private static final Vec4fStack texCoordStack = new Vec4fStack(currentTexCoords[0]);
+    // The stack ids are handed out per context in GLContextState.init(): these stacks are static
+    // singletons here (Actinium has no per-context FFP manager), so they cannot take an id at
+    // class-init time.
+    @Getter private static final Vec3fStack normalStack = new Vec3fStack(currentNormal, -1);
+    @Getter private static final Vec4fStack texCoordStack = new Vec4fStack(currentTexCoords[0], -1);
     @Getter private static int normalGeneration;
     @Getter private static int texCoordGeneration;
     @Getter private boolean enabled = false;

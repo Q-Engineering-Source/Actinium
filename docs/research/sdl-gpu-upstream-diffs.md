@@ -11,7 +11,8 @@
 > 同步**（详见「上游同步状态（2026-10-11，Phase 2）」）；**上游 #2124 / #2133 /
 > #2138 / #2142（`9dd60f6a` / `1babfd96` / `44c930f4` / `a8c29fa3`，Phase 3）已于
 > 2026-10-11 同步 sdl-gpu 侧**（详见「上游同步状态（2026-10-11，Phase 3）」；
-> 该阶段的 glsm 状态栈 COW / per-drawable context 重构**未同步**，原因见同一节）。
+> 该阶段的 glsm 状态栈 COW 重构**已于 2026-10-11 完成**（见「glsm 状态栈 COW
+> 重构（2026-10-11，COW-A）」；per-drawable context 重构仍未同步，属 COW-B）。
 > **上游 #2153 / #2157（`e17b45c8` / `7bb5bfd4`，Phase 4）已于 2026-10-11 同步**
 > （详见「上游同步状态（2026-10-11，Phase 4）」）；**上游 #2167 / #2188 / #2191
 > （`c10d30b2` / `80e5b544` / `1587a12c`，Phase 5）已于 2026-10-11 同步**
@@ -496,12 +497,14 @@ per-drawable context 重构**未同步**（见本节末尾的冲突说明）。
 - glsm 侧必需项（已同步）：`SystemProperties.SDL_DISABLE_IN_PASS_CLEAR`、
   `DependencyVerifier.firstMissing()`。同提交的 `SystemProperties.PROFILE_*` 与
   `FLYBY_JFR` 未同步（其消费者是未同步的 `src/` profiling/flyby 代码）。
-- **未同步（冲突，见下）**：glsm 状态栈 COW 重构（`stacks/CowStateStack`、
-  `CowDepths`、`CowDispatch`、`StackIdAllocator`、`glsm/StateSet`、
-  `ClipPlaneBooleanState`、22 个 stack 的 `captureSlot`/`restoreSlot` 改写、
-  `GLStateManager`/`Feature`/`GLContextState`/`states/*`/`ffp/*` 的配套改动），
-  以及上游 `src/`（Angelica 核心：TESR、particles、BOB fog、profiling、flyby、
-  celeritas、sodium/iris GUI 等）的全部改动。
+- **未同步（冲突，见下）→ 2026-10-11 已由 COW-A 补齐**：glsm 状态栈 COW 重构
+  （`stacks/CowStateStack`、`CowDepths`、`CowDispatch`、`StackIdAllocator`、
+  `glsm/StateSet`、`ClipPlaneBooleanState`、22 个 stack 的
+  `captureSlot`/`restoreSlot` 改写、`GLStateManager`/`Feature`/`GLContextState`/
+  `states/*` 的配套改动）见「glsm 状态栈 COW 重构（2026-10-11，COW-A）」一节；
+  上游 `src/`（Angelica 核心：TESR、particles、BOB fog、profiling、flyby、
+  celeritas、sodium/iris GUI 等）的全部改动仍未同步，per-drawable context
+  （`a8c29fa3`）留给 COW-B。
 - 测试：`UboShadowSubDataTest`、`AttachmentClearTest`、`BlendConstantsGuardTest`、
   `PerFrameBlockDedupTest`、`PipelineCacheVertexInputTest`、
   `AbsoluteCopyRegionTest`、`UniformLocationKindTest` 已同步；
@@ -537,9 +540,10 @@ per-drawable context 重构**未同步**（见本节末尾的冲突说明）。
   texel 辅助、`SDLGPURenderBackend.clear` 的 `rasterizerDiscard` 早退、
   `ContextState.rasterizerDiscard`、`AttachmentClearTest` 更新。
 - glsm 侧新增的 `states/ScissorState`、`stacks/ScissorStateStack`（以及
-  `Feature`/`StateSet`/`CowDispatch`/`GLContextState`/`FeedbackManager`/
-  `GLStateManager` 的配套改动）**未同步**：它们是 COW 状态栈体系的一部分。
-  实际修屏逻辑（in-pass clear 的 scissor 判定）在 sdl-gpu 侧，已同步。
+  `Feature`/`StateSet`/`CowDispatch`/`GLContextState`/`GLStateManager` 的配套改动）
+  **2026-10-11 已由 COW-A 补齐**（见「glsm 状态栈 COW 重构」一节；`FeedbackManager.
+  getRenderMode()` 未移植——其消费者是后续提交的 `glClear` 反馈模式早退，本阶段不需要）。
+  实际修屏逻辑（in-pass clear 的 scissor 判定）在 sdl-gpu 侧，早已同步。
 - rig 测试 `GlsmSdlAttachmentClearTest`（+212）与 `GlsmSdlFbo0ViewportTest`
   的补充未同步。
 
@@ -565,7 +569,7 @@ per-drawable context 重构**未同步**（见本节末尾的冲突说明）。
 - glsm 测试（`GLSM_SharedDrawableContext_GLTest`、`GLSM_SplashCompleteLatch_UnitTest`、
   `DrawableContexts`、`TestThreads` 等）与 rig 测试未同步。
 
-**COW 状态栈重构的冲突说明（Phase 3 未同步的主因）**
+**COW 状态栈重构的冲突说明（Phase 3 未同步的主因，2026-10-11 已由 COW-A 解决）**
 
 上游 `9dd60f6a` 把状态栈从「push 时整份拷贝」改成「按槽位 copy-on-write」
 （`CowStateStack` 接口 + `CowDepths` 槽位深度 + `CowDispatch` 类型分发 +
@@ -586,10 +590,9 @@ Actinium 自己的扩展（worker context、glColor clamp #181、纹理镜像同
 | `glsm/GLContextState.java` | 12 | 10 |
 
 即 GLStateManager 的 save/restore/pushAttrib/popAttrib 区域几乎全被改写过。
-按用户约定「COW 重构与 Actinium 特有成员冲突且无法确信解决时停止并上报」，
-本阶段**不做**该重构：逐 hunk 手改等价于重写 Actinium 的状态机，且本环境没有
-GL context 测试台（glsm-sdl rig 暂缓）可验证语义。后续接入 glsm-sdl rig 后，
-应以「上游 COW 模型 + Actinium 扩展点」重做，而不是把两边拼贴。
+Phase 3 因此先把该重构放下（判据是「无法确信解决冲突时停止」）。2026-10-11 用户
+明确 COW-A 可以按「上游模型重写、Actinium 扩展点重挂」的方式重做（`ctx()` 的每线程
+模型是 bolt-on 适配，不必原样保留），遂完成移植，过程与结论见下一节。
 
 **Phase 3 的其它 Actinium 适配**
 
@@ -1253,3 +1256,151 @@ CloudRenderer 的 `src/` 修复，见本节末尾的跳过清单）。本节是 
   per-drawable GLSM context 重构、上游 `lwjgl3-backend` 模块本体、`src/` 的
   Iris 接线/GUI/字体/flyby/profiling 主体、构建配置（`dependencies.gradle.kts`、
   `libs.versions.toml`、`settings.gradle.kts`、workflows）。
+
+## glsm 状态栈 COW 重构（2026-10-11，COW-A）
+
+把 glsm 的状态栈从 Actinium 的「push 时 eagerly 记账 + 全局 depth 数组」换成上游
+tip（`21a054a4`）的「按槽位 copy-on-write」模型。上游来源是 `9dd60f6a`（#2124）
+以及它之后的 `44c930f4`（#2138）里依赖 COW 的 glsm 部分。Phase 3 曾实测：把
+#2124 的补丁对 Actinium 当时的文件做 `--fuzz=0` dry-run，GLStateManager 82 个 hunk
+有 66 个冲突，因此当时搁置。本次按用户裁决「以 `21a054a4` 的语义为目标重写模型、
+再把 Actinium 扩展重新挂上」执行，不做逐 hunk 拼贴。
+
+**文件**
+
+- 新增：`stacks/CowStateStack`、`CowDepths`、`CowDispatch`、`StackIdAllocator`、
+  `glsm/StateSet`、`glsm/ClipPlaneBooleanState`、`states/ScissorState`、
+  `stacks/ScissorStateStack`。
+- 改写为上游形态：22 个 `stacks/*Stack`（`Alpha/Blend/Boolean/Color4/ColorMask/
+  Depth/Fog/Integer/LightModel/Light/Line/Material/MatrixMode/Point/Polygon/Stencil/
+  TextureBinding/TextureUnitBoolean/Vec3f/Vec4f/ViewPort/Scissor`）、
+  `states/TexEnvState`（变成 `CowStateStack`）、`states/TextureUnitArray`
+  （每个单元栈分配 id，暴露 `idStacks()`）、`Feature`（改为 `maskToMembers(long[])`
+  的位图映射）、`GLContextState`、`GLStateManager`。
+- 删除：`stacks/IStateStack`（Actinium 的 4 行别名；改用 GTNHLib 的
+  `com.gtnewhorizon.gtnhlib.client.renderer.stacks.IStateStack`，与上游一致）。
+- 未新增：`stacks/RetainedState`（见下「未移植」）。
+
+**模型**
+
+- `StateSet.forMask(mask)` 把 `glPushAttrib` 的掩码展开成：`members`（该组保存的
+  栈 id 位图）、`restore`（恢复时要驱动后端的组位 `R_*`）、`bump`（该组可能要让
+  哪些 generation 计数器前进 `B_*`）、`blendSnapshot`（是否需要为 vanilla blend
+  钩子做快照）。
+- 每个栈自带 `CowDepths`（id + owner 上下文 + 槽位深度栈）：
+  `beforeModify()` 在「当前 attribDepth 内、该组保存此栈、且尚未为这层 claim 过」
+  时 `captureSlot(claim(depth))` 并 `registerModifiedState(owner, id)`——写入点于是
+  只在真正发生修改的栈上付费。
+- `popState()` 只看 `modifiedIds[depth]`：组成员按 `CowDepths.pop()` + `CowDispatch`
+  取槽恢复，并在 `topSlotChanged()` 时点亮 `changed` 位；非组成员用
+  `CowDepths.discard(poppedDepth)` 把槽位「提升」给父层并重新登记（父层 pop 时再恢复）。
+- 恢复阶段 `issueRestoredBackendState` 只在 `(restore & R_x) != 0 && (changed & R_x) != 0`
+  时下发布局调用；`applyRestoredState` 按 `bump` 比较 push 时快照，决定 generation 是否前进。
+- 栈 id 由 `StackIdAllocator` 在上下文构建窗口内顺序分配（`beginContext/endContext`
+  校验跨上下文的数量一致性），`GLContextState.init()` 建 `stackById/depthsById/
+  restoreBitById/restoreUnitById/kindById` 与 `modifiedIds/modifiedCount`。
+
+**`ctx()` 的处理决策**：保留 Actinium 的每线程 `ctx()`（`primaryContext` +
+worker `ThreadLocal`）。核对上游 tip 后发现上游也有同样的每线程结构
+（`mainCtx`/`tlWorkerContext`/`workerContextsActive`），只是额外带了
+`drawableContexts`（#2142 的 per-drawable 上下文 = COW-B）。因此 COW-A 不动 `ctx()`
+的解析逻辑，只把上下文创建的两个入口（`primaryContext()`、`enterWorkerContext()`）
+包进 `StackIdAllocator.beginContext()/endContext()`。
+
+**关键适配**
+
+1. 上游靠**调用点**的 `mod(...)`（= `beforeModify()`）触发惰性 claim，而 Actinium
+   原来是 push 时用 `Feature.maskToNonBooleanStacks(mask)` 对非布尔栈逐个
+   `pushDepth()`。为保持上游语义，在 `GLStateManager` 的**158 处**状态写入点加上
+   `mod(...)` 包装；写入点由脚本按「跟踪栈字段 + setter 名白名单」生成，并用
+   「把 `mod(...)` 解开后必须与旧文件逐行完全一致」的校验脚本确认无一处被改坏。
+   注意 `restoreSlot`/`captureSlot` 自身不经过 `mod(...)`，因此恢复过程不会再 claim。
+2. `MAX_ATTRIB_STACK_DEPTH` 18 → 32（上游值），新增 `STATE_SLOTS`。上游的
+   `STATE_SLOTS = MAX+1` 额外那一个槽是 `RETAINED_SLOT`，属未移植的 RetainedState，
+   这里取 `STATE_SLOTS = MAX_ATTRIB_STACK_DEPTH`。
+3. `ShaderManager` 在 Actinium 是静态单例（上游是每上下文实例），它的
+   `normalStack`/`texCoordStack` 拿不到构建期 id，改为在 `GLContextState.init()`
+   里 `setStackId(StackIdAllocator.nextId())` 并登记。**已知语义弱化**：这两个栈
+   在多个上下文间共享同一个 `CowDepths.owner`，owner 指向最后初始化的上下文；
+   主线程状态路径不受影响，worker 上下文下不如上游精确，属 COW-B（每 drawable
+   上下文）要解决的范围。
+4. `#2138` 依赖 COW 的部分补齐：`glScissor` 现在记账到 `ctx().scissorState`
+   （`mod(...)`）并保留后端调用、`glGetIntegerv(GL_SCISSOR_BOX)` 从该栈返回、
+   `replayStateToBackend` 重放 scissor、`Feature` 的 `GL_SCISSOR_BIT` 含
+   `getScissorState()`、新增 `rasterizerDiscard` 状态与 4 处 capability 分支
+   （`glEnable/glDisable/isEnabled`×2）。
+5. **未移植（记录原因）**：
+   - `RetainedState`/`retainModifiedState`/`applyRetainedState`/`RETAINED_SLOT`：
+     唯一消费者是未同步的 `src/` HUDCaching，移植会留下无人调用的 API。
+   - `BatchStateGuard`/`beforeUncapturedStateChange`/`batchStateGeneration`
+     （上游批量绘制特性；Actinium 无 BatchStateGuard）。
+   - `DisplayListManager.virtualStateDepth/recordPushState/recordPopStateIfPending`
+     （上游显示列表状态记录；Actinium 用 `recordPushAttrib(mask)`）。
+   - `programStack`/`R_PROGRAM` 与 `StateSet` 的固定分组
+     （`BATCH/FONT/FONT_PIPELINE/HAND/BLEND/ALPHA/CUTOUT/MASKS/CULL`，以及
+     `pushCommand`）：消费者是上游未同步的字体/HUD 批量状态推送。
+   - `FeedbackManager.getRenderMode()`：消费者是后续提交里 `glClear` 的反馈模式早退。
+   - `glClearDepth` 的 `[0,1]` clamp（`44c930f4` 里的非 COW 修复，属另一主题）。
+   - `attribPushes/attribSlotsSaved/attribValueRestores/attribBackendCalls` 计数：
+     上游仅供 `GLSM_StateSet_GLTest` 等 GL 测试与性能诊断使用，本阶段不引入死计数。
+   - 同一提交给 `Feature` 加的不是列表而是位图；Actinium 的 `states/GenerationTrackedState`、
+     `states/VertexAttribState`、`ImageUnitArray`/`SamplerUnitArray` 不是 COW 栈，原样保留。
+   - 上游状态类里与 COW 无关的改动（`LightState`/`MaterialState`/`LightModelState`
+     的 raw-position 缓存、`shouldBypassCache → isCachingEnabled` 改名、
+     `BooleanState.onEnabledChanged` 之外的批量钩子）未随本阶段移植；只为
+     `ClipPlaneBooleanState` 补了 `BooleanState.onEnabledChanged()` 钩子。
+
+**Actinium 扩展重挂清单（逐项核对）**
+
+| 扩展 | 现状 |
+|---|---|
+| glColor clamp（#181） | 保留（`changeColor` 内 `Color4.clamp01`，未改） |
+| vanilla 纹理镜像同步（#186） | 保留（`VanillaStateLayer`/`vanillaLayer` 进入上游 stack 形态） |
+| `GLESCaps` + `isGLES/hasClipCullDistance/glesVersion` | 保留（未触及） |
+| `pixelStoref`、`remapPixelTypeForGLES` | 保留（未触及） |
+| `replayStateToBackend`/`takeStateSeedPending`/`warnOnce` | 保留，并补 scissor 重放 |
+| `BooleanState.applyToBackend` | 保留 |
+| `SamplerUnitArray`（Phase 2） | 保留 |
+| `BlendStateStack.clearFuncUnknownState` | 保留，恢复路径按上游语义收窄 |
+| `MainThreadPump`/gate/refresh、`BackendOptions`/`BackendStartGuard`（无调用方） | 保留 |
+| `hasContextOnThread` + 18 处 `requireContext` | 保留 |
+| `TextureStaging`/`AngelicaWorkers`（Phase 5） | 保留（`ctx().pixelUnpackState` 等访问点未变） |
+| `reset()`/`invalidateStateMirror`（Phase 3） | `reset()` 改按 COW 的 `allStacks.drain()` + `attribSets/modifiedCount` 清零；`invalidateStateMirror` 未变 |
+| streaming 缓冲的 `onPersistentBufferWrite` 偏差 | 保留 |
+| `BlendStateStack.isEnabled()`（调试日志用） | 保留（上游 stack 无此方法，重挂） |
+| `assertMainThread`/`GpuCommandDiagnostics` 等 Actinium 自有工具 | 保留（未触及） |
+
+**语义变化**
+
+1. 引入惰性 COW：push 不再为整组栈付拷贝开销；pop 只对 `modifiedIds` 里的栈取槽恢复。
+2. 空 scope（push 后什么都没改）在 pop 时**不再下发**任何后端调用（旧实现按 mask 无条件
+   重发 depth/blend/colorMask/… 调用）。这是本阶段最直接的性能收益。
+3. blend 恢复按上游收窄：只有 `R_BLEND` 且（`changed` 命中或 `isFuncUnknown()`）才
+   `issueBlendFunc`，且只有 `changed` 命中才补发 equation/blendColor；同时该路径改用
+   `issueBlendFunc`，因此 `GLSMConfig.hudCacheOverride` 在恢复路径上也生效（上游语义）。
+4. `glPopAttrib` 的空栈守卫、`GLDebug` 分组、显示列表记录路径保持 Actinium 原样。
+5. 新增 scissor 矩形记账与 `GL_SCISSOR_BOX` 查询（`GL_SCISSOR_BIT` 组可保存/恢复）。
+6. `MAX_ATTRIB_STACK_DEPTH`（以及 `glGetIntegerv(GL_MAX_ATTRIB_STACK_DEPTH)` 的答复）
+   从 18 变为 32。
+7. 因为每栈槽位只在被修改时 claim，`GLStateManager.registerModifiedState` 的签名
+   从 `(IStateStack)` 变为 `(GLContextState, int id)`（glsm 内部 API）。
+
+**测试**
+
+- 新增纯 Java 用例 `src/test/java/com/gtnewhorizons/angelica/glsm/CowStateStackTest.java`
+  （9 例）：分组成员/`restore`/`bump`/`blendSnapshot` 断言、pop 只恢复被改过的栈并到达
+  后端、**空 scope 零后端调用**、`GL_SCISSOR_BIT` 组的 scissor 恢复、嵌套作用域顺序、
+  「被 pop 的组未保存的栈由父层恢复」的槽位提升、`CowDepths` 单元语义（claim/pop/discard）、
+  `IntegerStateStack` 的 push/pop 往返。用安装到 `BackendManager.RENDER_BACKEND` 的
+  记录式替身（继承 `StubRenderBackend`）让 `pushState/popState` 能在无 GL 上下文下跑通。
+- **跳过**（按约定，需要真 GL core context / glsm 测试台）：上游
+  `GLSM_PushPop_UnitTest`（`@GLCompatTest`）、`GLSM_StateSet_GLTest`、
+  `GLSM_ValueStackCow_GLTest`、`GLSM_PerThread_UnitTest`、`GLSM_DirtyTracking_UnitTest`、
+  `GLSM_RetainedState_GLTest`、`GLSM_PopAttribMaskFidelity_GLTest`、
+  `GLSM_WorkerContextStacks_GLTest`、`GLSM_DisplayList_StateSet_GLTest`。
+- `GLSMRedirector` 无需改动：本阶段没有改名/删除 GLStateManager 的公开 GL 入口方法
+  （公开面只多出 `getScissorState()`，不是重定向目标）。
+
+**验证**：`./gradlew :glsm:compileJava :sdl-gpu:compileJava :shader:compileJava
+compileJava compileTestJava`、`./gradlew :glsm:test :sdl-gpu:test`、`./gradlew :test`、
+`./gradlew check` 全绿。

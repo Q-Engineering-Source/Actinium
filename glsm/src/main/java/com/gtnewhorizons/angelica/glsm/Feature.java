@@ -3,18 +3,13 @@ package com.gtnewhorizons.angelica.glsm;
 import com.google.common.collect.ImmutableSet;
 import com.gtnewhorizon.gtnhlib.client.renderer.stacks.IStateStack;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
-import com.gtnewhorizons.angelica.glsm.stacks.BooleanStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.CowStateStack;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 public class Feature {
@@ -23,52 +18,49 @@ public class Feature {
         GL13.GL_MULTISAMPLE_BIT, GL11.GL_PIXEL_MODE_BIT, GL11.GL_POINT_BIT, GL11.GL_POLYGON_BIT, GL11.GL_POLYGON_STIPPLE_BIT, GL11.GL_SCISSOR_BIT,
         GL11.GL_STENCIL_BUFFER_BIT, GL11.GL_TEXTURE_BIT, GL11.GL_TRANSFORM_BIT, GL11.GL_VIEWPORT_BIT };
 
-    static final Int2ObjectMap<List<IStateStack<?>>> maskToFeaturesMap = new Int2ObjectOpenHashMap<>();
-    static final Int2ObjectMap<IStateStack<?>[]> maskToNonBooleanStacksMap = new Int2ObjectOpenHashMap<>();
+    private static final long[] NO_MEMBERS = new long[0];
 
-    static List<IStateStack<?>> maskToFeatures(int mask) {
-        if(maskToFeaturesMap.containsKey(mask)) {
-            return maskToFeaturesMap.get(mask);
-        }
+    private static final Int2ObjectMap<long[]> maskToMembersMap = new Int2ObjectOpenHashMap<>();
 
-        final Set<IStateStack<?>> features = new HashSet<>();
-
-        for(int attrib : Feature.supportedAttribs) {
-            if((mask & attrib) == attrib) {
-                features.addAll(getFeatures(attrib));
-            }
-        }
-
-        final List<IStateStack<?>> asList = new ArrayList<>(features);
-
-        maskToFeaturesMap.put(mask, asList);
-        return asList;
-    }
-
-    /**
-     * Returns only non-BooleanStateStack instances for the given mask.
-     * These use traditional push/pop without global depth tracking.
-     */
-    static IStateStack<?>[] maskToNonBooleanStacks(int mask) {
-        IStateStack<?>[] cached = maskToNonBooleanStacksMap.get(mask);
+    static long[] maskToMembers(int mask) {
+        final long[] cached = maskToMembersMap.get(mask);
         if (cached != null) {
             return cached;
         }
 
-        final List<IStateStack<?>> all = maskToFeatures(mask);
-        final List<IStateStack<?>> nonBooleans = new ArrayList<>();
-        for (int i = 0; i < all.size(); i++) {
-            final IStateStack<?> stack = all.get(i);
-            if (!(stack instanceof BooleanStateStack)) {
-                nonBooleans.add(stack);
+        long[] result = NO_MEMBERS;
+        for (int attrib : Feature.supportedAttribs) {
+            if ((mask & attrib) == attrib) {
+                result = union(result, attribToMembers.get(attrib));
             }
         }
-        cached = nonBooleans.toArray(new IStateStack<?>[0]);
-        maskToNonBooleanStacksMap.put(mask, cached);
-        return cached;
+
+        maskToMembersMap.put(mask, result);
+        return result;
     }
 
-    private static final Map<Integer, Set<IStateStack<?>>> attribToFeatures = new HashMap<>();
+    private static long[] union(long[] a, long[] b) {
+        if (b == null || b.length == 0) return a;
+        if (a.length == 0) return b.clone();
+        final long[] result = new long[Math.max(a.length, b.length)];
+        System.arraycopy(a, 0, result, 0, a.length);
+        for (int i = 0; i < b.length; i++) result[i] |= b[i];
+        return result;
+    }
+
+    private static long[] toMembers(Set<IStateStack<?>> stacks) {
+        if (stacks.isEmpty()) return NO_MEMBERS;
+        int max = 0;
+        for (IStateStack<?> s : stacks) max = Math.max(max, ((CowStateStack<?>) s).stackId());
+        final long[] bits = new long[(max >> 6) + 1];
+        for (IStateStack<?> s : stacks) {
+            final int id = ((CowStateStack<?>) s).stackId();
+            bits[id >> 6] |= 1L << id;
+        }
+        return bits;
+    }
+
+    private static final Int2ObjectMap<long[]> attribToMembers = new Int2ObjectOpenHashMap<>();
 
     /**
      * Helper method to add all texture gen states (S, T, R, Q) for all texture units to a collection.
@@ -84,21 +76,23 @@ public class Feature {
     }
 
     static {
+        final Int2ObjectMap<Set<IStateStack<?>>> attribToFeatures = new Int2ObjectOpenHashMap<>();
+
         attribToFeatures.put(GL11.GL_COLOR_BUFFER_BIT, ImmutableSet.of(
-              GLStateManager.getAlphaTest()  // GL_ALPHA_TEST enable bit
-            , GLStateManager.getAlphaState() // Alpha test function and reference value
-            , GLStateManager.getBlendMode()  // GL_BLEND enable bit
-            , GLStateManager.getBlendState() // Blending source/destination functions, equation, blend color
-            , GLStateManager.getColorLogicOpState() // GL_COLOR_LOGIC_OP enable bit
-            , GLStateManager.getDitherState() // GL_DITHER enable bit
-            , GLStateManager.getDrawBuffer() // GL_DRAW_BUFFER setting
-            , GLStateManager.getIndexLogicOpState() // GL_INDEX_LOGIC_OP enable bit
-            , GLStateManager.getLogicOpMode() // Logic op function
-            , GLStateManager.getColorMask()   // Color-mode and index-mode writemasks
-            , GLStateManager.getClearColor()  // Color-mode and index-mode clear values
+              GLStateManager.getAlphaTest()
+            , GLStateManager.getAlphaState()
+            , GLStateManager.getBlendMode()
+            , GLStateManager.getBlendState()
+            , GLStateManager.getColorLogicOpState()
+            , GLStateManager.getDitherState()
+            , GLStateManager.getDrawBuffer()
+            , GLStateManager.getIndexLogicOpState()
+            , GLStateManager.getLogicOpMode()
+            , GLStateManager.getColorMask()
+            , GLStateManager.getClearColor()
         ));
         attribToFeatures.put(GL11.GL_CURRENT_BIT, ImmutableSet.of(
-              GLStateManager.getColor()  // Current RGBA color
+              GLStateManager.getColor()
             , GLStateManager.getSecondaryColor() // Current secondary color
             , ShaderManager.getNormalStack()    // Current normal vector
             , ShaderManager.getTexCoordStack()  // Current texture coordinates
@@ -111,24 +105,24 @@ public class Feature {
             // GL_EDGE_FLAG flag
         ));
         attribToFeatures.put(GL11.GL_DEPTH_BUFFER_BIT, ImmutableSet.of(
-              GLStateManager.getDepthTest()     // GL_DEPTH_TEST enable bit
-            , GLStateManager.getDepthState()    // Depth buffer test function
+              GLStateManager.getDepthTest()
+            , GLStateManager.getDepthState()
             // Depth buffer clear value
             // GL_DEPTH_WRITEMASK enable bit
         ));
 
         final HashSet<IStateStack<?>> enableBits = new HashSet<>(ImmutableSet.of(
-              GLStateManager.getAlphaTest() // GL_ALPHA_TEST flag
-            , GLStateManager.getAutoNormalState() // GL_AUTO_NORMAL flag
-            , GLStateManager.getBlendMode() // GL_BLEND flag
-            , GLStateManager.getColorLogicOpState() // GL_COLOR_LOGIC_OP flag
-            , GLStateManager.getColorSumState() // GL_COLOR_SUM flag
-            , GLStateManager.getColorMaterial() // GL_COLOR_MATERIAL
-            , GLStateManager.getCullState() // GL_CULL_FACE flag
-            , GLStateManager.getDepthTest() // GL_DEPTH_TEST flag
-            , GLStateManager.getDitherState() // GL_DITHER flag
-            , GLStateManager.getFogMode() // GL_FOG flag
-            , GLStateManager.getIndexLogicOpState() // GL_INDEX_LOGIC_OP flag
+              GLStateManager.getAlphaTest()
+            , GLStateManager.getAutoNormalState()
+            , GLStateManager.getBlendMode()
+            , GLStateManager.getColorLogicOpState()
+            , GLStateManager.getColorMaterial()
+            , GLStateManager.getColorSumState()
+            , GLStateManager.getCullState()
+            , GLStateManager.getDepthTest()
+            , GLStateManager.getDitherState()
+            , GLStateManager.getFogMode()
+            , GLStateManager.getIndexLogicOpState()
             , GLStateManager.getLightStates()[0] // GL_LIGHT0
             , GLStateManager.getLightStates()[1] // GL_LIGHT1
             , GLStateManager.getLightStates()[2] // GL_LIGHT2
@@ -137,41 +131,41 @@ public class Feature {
             , GLStateManager.getLightStates()[5] // GL_LIGHT5
             , GLStateManager.getLightStates()[6] // GL_LIGHT6
             , GLStateManager.getLightStates()[7] // GL_LIGHT7
-            , GLStateManager.getLightingState() // GL_LIGHTING flag
-            , GLStateManager.getLineSmoothState() // GL_LINE_SMOOTH flag
-            , GLStateManager.getLineStippleState() // GL_LINE_STIPPLE flag
-            , GLStateManager.getMap1Color4State() // GL_MAP1_COLOR_4
-            , GLStateManager.getMap1IndexState() // GL_MAP1_INDEX
-            , GLStateManager.getMap1NormalState() // GL_MAP1_NORMAL
-            , GLStateManager.getMap1TextureCoord1State() // GL_MAP1_TEXTURE_COORD_1
-            , GLStateManager.getMap1TextureCoord2State() // GL_MAP1_TEXTURE_COORD_2
-            , GLStateManager.getMap1TextureCoord3State() // GL_MAP1_TEXTURE_COORD_3
-            , GLStateManager.getMap1TextureCoord4State() // GL_MAP1_TEXTURE_COORD_4
-            , GLStateManager.getMap1Vertex3State() // GL_MAP1_VERTEX_3
-            , GLStateManager.getMap1Vertex4State() // GL_MAP1_VERTEX_4
-            , GLStateManager.getMap2Color4State() // GL_MAP2_COLOR_4
-            , GLStateManager.getMap2IndexState() // GL_MAP2_INDEX
-            , GLStateManager.getMap2NormalState() // GL_MAP2_NORMAL
-            , GLStateManager.getMap2TextureCoord1State() // GL_MAP2_TEXTURE_COORD_1
-            , GLStateManager.getMap2TextureCoord2State() // GL_MAP2_TEXTURE_COORD_2
-            , GLStateManager.getMap2TextureCoord3State() // GL_MAP2_TEXTURE_COORD_3
-            , GLStateManager.getMap2TextureCoord4State() // GL_MAP2_TEXTURE_COORD_4
-            , GLStateManager.getMap2Vertex3State() // GL_MAP2_VERTEX_3
-            , GLStateManager.getMap2Vertex4State() // GL_MAP2_VERTEX_4
-            , GLStateManager.getMultisampleState() // GL_MULTISAMPLE flag
-            , GLStateManager.getNormalizeState() // GL_NORMALIZE flag
-            , GLStateManager.getPointSmoothState() // GL_POINT_SMOOTH flag
-            , GLStateManager.getPolygonOffsetPointState() // GL_POLYGON_OFFSET_POINT flag
-            , GLStateManager.getPolygonOffsetLineState() // GL_POLYGON_OFFSET_LINE flag
-            , GLStateManager.getPolygonOffsetFillState() // GL_POLYGON_OFFSET_FILL flag
-            , GLStateManager.getPolygonSmoothState() // GL_POLYGON_SMOOTH flag
-            , GLStateManager.getPolygonStippleState() // GL_POLYGON_STIPPLE flag
-            , GLStateManager.getRescaleNormalState() // GL_RESCALE_NORMAL flag
-            , GLStateManager.getSampleAlphaToCoverageState() // GL_SAMPLE_ALPHA_TO_COVERAGE flag
-            , GLStateManager.getSampleAlphaToOneState() // GL_SAMPLE_ALPHA_TO_ONE flag
-            , GLStateManager.getSampleCoverageState() // GL_SAMPLE_COVERAGE flag
-            , GLStateManager.getScissorTest()  // GL_SCISSOR_TEST flag
-            , GLStateManager.getStencilTest() // GL_STENCIL_TEST flag
+            , GLStateManager.getLightingState()
+            , GLStateManager.getLineSmoothState()
+            , GLStateManager.getLineStippleState()
+            , GLStateManager.getMap1Color4State()
+            , GLStateManager.getMap1IndexState()
+            , GLStateManager.getMap1NormalState()
+            , GLStateManager.getMap1TextureCoord1State()
+            , GLStateManager.getMap1TextureCoord2State()
+            , GLStateManager.getMap1TextureCoord3State()
+            , GLStateManager.getMap1TextureCoord4State()
+            , GLStateManager.getMap1Vertex3State()
+            , GLStateManager.getMap1Vertex4State()
+            , GLStateManager.getMap2Color4State()
+            , GLStateManager.getMap2IndexState()
+            , GLStateManager.getMap2NormalState()
+            , GLStateManager.getMap2TextureCoord1State()
+            , GLStateManager.getMap2TextureCoord2State()
+            , GLStateManager.getMap2TextureCoord3State()
+            , GLStateManager.getMap2TextureCoord4State()
+            , GLStateManager.getMap2Vertex3State()
+            , GLStateManager.getMap2Vertex4State()
+            , GLStateManager.getMultisampleState()
+            , GLStateManager.getNormalizeState()
+            , GLStateManager.getPointSmoothState()
+            , GLStateManager.getPolygonOffsetPointState()
+            , GLStateManager.getPolygonOffsetLineState()
+            , GLStateManager.getPolygonOffsetFillState()
+            , GLStateManager.getPolygonSmoothState()
+            , GLStateManager.getPolygonStippleState()
+            , GLStateManager.getRescaleNormalState()
+            , GLStateManager.getSampleAlphaToCoverageState()
+            , GLStateManager.getSampleAlphaToOneState()
+            , GLStateManager.getSampleCoverageState()
+            , GLStateManager.getScissorTest()
+            , GLStateManager.getStencilTest()
         ));
 
         // Enable bits for the user-definable clipping planes
@@ -191,16 +185,30 @@ public class Feature {
 
         attribToFeatures.put(GL11.GL_ENABLE_BIT, enableBits);
         attribToFeatures.put(GL11.GL_EVAL_BIT, ImmutableSet.of(
-            // GL_MAP1_x enable bits, where x is a map type
-            // GL_MAP2_x enable bits, where x is a map type
-            // 1D grid endpoints and divisions
-            // 2D grid endpoints and divisions
-            // GL_AUTO_NORMAL enable bit
+              GLStateManager.getAutoNormalState()
+            , GLStateManager.getMap1Color4State()
+            , GLStateManager.getMap1IndexState()
+            , GLStateManager.getMap1NormalState()
+            , GLStateManager.getMap1TextureCoord1State()
+            , GLStateManager.getMap1TextureCoord2State()
+            , GLStateManager.getMap1TextureCoord3State()
+            , GLStateManager.getMap1TextureCoord4State()
+            , GLStateManager.getMap1Vertex3State()
+            , GLStateManager.getMap1Vertex4State()
+            , GLStateManager.getMap2Color4State()
+            , GLStateManager.getMap2IndexState()
+            , GLStateManager.getMap2NormalState()
+            , GLStateManager.getMap2TextureCoord1State()
+            , GLStateManager.getMap2TextureCoord2State()
+            , GLStateManager.getMap2TextureCoord3State()
+            , GLStateManager.getMap2TextureCoord4State()
+            , GLStateManager.getMap2Vertex3State()
+            , GLStateManager.getMap2Vertex4State()
         ));
         attribToFeatures.put(GL11.GL_FOG_BIT, ImmutableSet.of(
-              GLStateManager.getFogMode()    // GL_FOG enable bit
-            , GLStateManager.getColorSumState() // GL_COLOR_SUM enable bit
-            , GLStateManager.getFogState()   // Fog color
+              GLStateManager.getFogMode()
+            , GLStateManager.getColorSumState()
+            , GLStateManager.getFogState()
                                        // ^^ Fog density
                                        // ^^ Linear fog start
                                        // ^^ Linear fog end
@@ -217,11 +225,11 @@ public class Feature {
             // GL_TEXTURE_COMPRESSION_HINT setting
         ));
         attribToFeatures.put(GL11.GL_LIGHTING_BIT, ImmutableSet.of(
-            GLStateManager.getColorMaterial() // GL_COLOR_MATERIAL enable bit
-            , GLStateManager.getColorMaterialFace() // GL_COLOR_MATERIAL_FACE value
-            , GLStateManager.getColorMaterialParameter() // Color material parameters that are tracking the current color
-            , GLStateManager.getLightModel() // Ambient scene color, GL_LIGHT_MODEL_LOCAL_VIEWER, GL_LIGHT_MODEL_TWO_SIDE
-            , GLStateManager.getLightingState()  // GL_LIGHTING enable bit
+            GLStateManager.getColorMaterial()
+            , GLStateManager.getColorMaterialFace()
+            , GLStateManager.getColorMaterialParameter()
+            , GLStateManager.getLightModel()
+            , GLStateManager.getLightingState()
             // Enable bit for each light
             , GLStateManager.getLightStates()[0] // GL_LIGHT0
             , GLStateManager.getLightStates()[1] // GL_LIGHT1
@@ -247,21 +255,21 @@ public class Feature {
             // Specular exponent for each material
             , GLStateManager.getFrontMaterial()
             , GLStateManager.getBackMaterial()
-            , GLStateManager.getShadeModelState() // GL_SHADE_MODEL setting
+            , GLStateManager.getShadeModelState()
         ));
         attribToFeatures.put(GL11.GL_LINE_BIT, ImmutableSet.of(
-              GLStateManager.getLineSmoothState() // GL_LINE_SMOOTH flag
-            , GLStateManager.getLineStippleState() // GL_LINE_STIPPLE enable bit
-            , GLStateManager.getLineState() // Line stipple pattern, repeat counter, and width
+              GLStateManager.getLineSmoothState()
+            , GLStateManager.getLineStippleState()
+            , GLStateManager.getLineState()
         ));
         attribToFeatures.put(GL11.GL_LIST_BIT, ImmutableSet.of(
             // GL_LIST_BASE setting
         ));
         attribToFeatures.put(GL13.GL_MULTISAMPLE_BIT, ImmutableSet.of(
-            // GL_MULTISAMPLE enable bit
-            // GL_SAMPLE_ALPHA_TO_COVERAGE flag
-            // GL_SAMPLE_ALPHA_TO_ONE flag
-            // GL_SAMPLE_COVERAGE flag
+              GLStateManager.getMultisampleState()
+            , GLStateManager.getSampleAlphaToCoverageState()
+            , GLStateManager.getSampleAlphaToOneState()
+            , GLStateManager.getSampleCoverageState()
             // GL_SAMPLE_COVERAGE_VALUE value
             // GL_SAMPLE_COVERAGE_INVERT value
         ));
@@ -277,31 +285,31 @@ public class Feature {
             // GL_READ_BUFFER setting
         ));
         attribToFeatures.put(GL11.GL_POINT_BIT, ImmutableSet.of(
-              GLStateManager.getPointSmoothState() // GL_POINT_SMOOTH flag
-            , GLStateManager.getPointState() // Point size
+              GLStateManager.getPointSmoothState()
+            , GLStateManager.getPointState()
         ));
         attribToFeatures.put(GL11.GL_POLYGON_BIT, ImmutableSet.of(
-              GLStateManager.getCullState() // GL_CULL_FACE enable bit
-            , GLStateManager.getPolygonSmoothState() // GL_POLYGON_SMOOTH flag
-            , GLStateManager.getPolygonStippleState() // GL_POLYGON_STIPPLE enable bit
-            , GLStateManager.getPolygonOffsetFillState() // GL_POLYGON_OFFSET_FILL flag
-            , GLStateManager.getPolygonOffsetLineState() // GL_POLYGON_OFFSET_LINE flag
-            , GLStateManager.getPolygonOffsetPointState() // GL_POLYGON_OFFSET_POINT flag
-            , GLStateManager.getPolygonState() // GL_CULL_FACE_MODE, GL_FRONT_FACE, GL_POLYGON_MODE, GL_POLYGON_OFFSET_FACTOR/UNITS
+              GLStateManager.getCullState()
+            , GLStateManager.getPolygonSmoothState()
+            , GLStateManager.getPolygonStippleState()
+            , GLStateManager.getPolygonOffsetFillState()
+            , GLStateManager.getPolygonOffsetLineState()
+            , GLStateManager.getPolygonOffsetPointState()
+            , GLStateManager.getPolygonState()
         ));
         attribToFeatures.put(GL11.GL_POLYGON_STIPPLE_BIT, ImmutableSet.of(
             // Polygon stipple pattern
         ));
         attribToFeatures.put(GL11.GL_SCISSOR_BIT, ImmutableSet.of(
-              GLStateManager.getScissorTest() // GL_SCISSOR_TEST enable bit
-            // Scissor box
+              GLStateManager.getScissorTest()
+            , GLStateManager.getScissorState()
         ));
         attribToFeatures.put(GL11.GL_STENCIL_BUFFER_BIT, ImmutableSet.of(
-              GLStateManager.getStencilTest() // GL_STENCIL_TEST enable bit
-            , GLStateManager.getStencilState() // Stencil function, ref, mask, ops, writemask, clear value
+              GLStateManager.getStencilTest()
+            , GLStateManager.getStencilState()
         ));
         final Set<IStateStack<?>> textureAttribs = new HashSet<>(ImmutableSet.of(
-            GLStateManager.getActiveTextureUnitStack() // Active texture unit
+            GLStateManager.getActiveTextureUnitStack()
                 // GL_TEXTURE_ENV_MODE + GL_TEXTURE_ENV_COLOR — now per-unit in TexEnvState (added below)
                 // Enable bits for the four texture coordinates
 
@@ -327,22 +335,24 @@ public class Feature {
 
         attribToFeatures.put(GL11.GL_TEXTURE_BIT, textureAttribs);
 
-        attribToFeatures.put(GL11.GL_TRANSFORM_BIT, ImmutableSet.of(
+        final Set<IStateStack<?>> transformAttribs = new HashSet<>(ImmutableSet.of(
             // Coefficients of the six clipping planes
-            // Enable bits for the user-definable clipping planes
+
               GLStateManager.getMatrixMode()
-            , GLStateManager.getNormalizeState() // GL_NORMALIZE flag
-            , GLStateManager.getRescaleNormalState() // GL_RESCALE_NORMAL flag
+            , GLStateManager.getNormalizeState()
+            , GLStateManager.getRescaleNormalState()
         ));
+        for(int i = 0; i < GLStateManager.getClipPlaneStates().length; i++) {
+            transformAttribs.add(GLStateManager.getClipPlaneStates()[i]);
+        }
+        attribToFeatures.put(GL11.GL_TRANSFORM_BIT, transformAttribs);
         attribToFeatures.put(GL11.GL_VIEWPORT_BIT, ImmutableSet.of(
-            // Depth range (near and far)
+
             GLStateManager.getViewportState()
         ));
+
+        for (Int2ObjectMap.Entry<Set<IStateStack<?>>> entry : attribToFeatures.int2ObjectEntrySet()) {
+            attribToMembers.put(entry.getIntKey(), toMembers(entry.getValue()));
+        }
     }
-
-    public static Set<IStateStack<?>> getFeatures(int attrib) {
-        return attribToFeatures.getOrDefault(attrib, Collections.emptySet());
-    }
-
-
 }

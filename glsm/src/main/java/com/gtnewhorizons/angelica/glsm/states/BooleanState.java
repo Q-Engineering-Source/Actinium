@@ -53,6 +53,7 @@ public class BooleanState implements ISettableState<BooleanState> {
             stateUnknown = false;
             if (!bypass) {
                 this.enabled = enabled;
+                onEnabledChanged();
             }
             if (!ffpStateOnly) {
                 if (enabled) {
@@ -63,6 +64,9 @@ public class BooleanState implements ISettableState<BooleanState> {
             }
         }
     }
+
+    /** Called when the cached enable state moved, for subclasses that mirror it elsewhere. */
+    protected void onEnabledChanged() {}
 
     @Override
     public BooleanState set(BooleanState state) {
