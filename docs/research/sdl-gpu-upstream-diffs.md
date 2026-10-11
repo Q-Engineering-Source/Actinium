@@ -1625,3 +1625,29 @@ display-list `virtualStateDepth`），就用 Actinium 的惯用法做最小等�
 **验证**：`./gradlew :glsm:compileJava :sdl-gpu:compileJava :shader:compileJava
 compileJava compileTestJava`、`./gradlew :glsm:test :sdl-gpu:test`、`./gradlew :test`、
 `./gradlew check` 全绿。
+
+## 上游同步状态（2026-10-12，光影包加载提速：`38b1d9a0` + `38af64f1`）
+
+- **`38b1d9a0`「Speed up boot (#2190)」**：落地 GLSL 保留字重命名的字面量优先正则
+  （+`ReservedWordRenameTest`）、`GLSMHooks.uniformBlockBarrier` 与 SDL `ShaderManager`
+  的消费点、新增 `iris/texture/pbr/PBRResourceIndex`（含 #2213 的 memo 增量）+
+  两个 PBR 加载器的 `mayExist` 短路 + 资源重载时重建索引（Actinium 用 reload listener，
+  上游用 mcpatcher 的 `TexturePackChangeHandler`，本仓库无该包）。
+  **未落地**：`Iris` 的预热重构与 `IrisProgramSetWarmupTest`——它们依赖 Actinium 从未移植的
+  早期变换预热链路（`warmupShaderTransforms`/`PerFrameUniformBlockHarvester`/
+  `DeferredWorldRenderingPipeline.warmupTransforms`，来自上游 #1993/#2009），
+  因此 barrier 目前只有消费侧、无人设置（已在文档中标注）。
+- **`38af64f1`「Initial commit for shader-loading-optimizations (#2213)」**：对账后确认
+  glsm 侧（`containsWholeWord`、`AngelicaWorkers.invokeAll`、`ShaderDiskCache` 幂等与 layer API）
+  与 sdlgpu 侧（`QueuedCompile`、`registerSamplerLocations`、顶点变体落盘、`ShaderStageSerializer`
+  的 `unusedSamplerNames`、`ResourceManager.fillBuffer`/`zeroTexture3D`、clear/3D 零填充路径）
+  **早前 Phase 已同步**；本次补三处缺口：`ConstDirectiveParser` 行扫描、`ShaderPack` 改用
+  内容哈希重载的 `JcppProcessor.glslPreprocessSource`（**接上此前无人查询的预处理磁盘缓存**）、
+  以及 `AngelicaJar` + 在 `Actinium.onInit` 启用 `<gameDir>/angelica/shadercache`（使既有的
+  GLSL/SPIR-V/预处理缓存从"从不启用"变为生产可用）。
+  **未落地（受阻）**：`ProgramBinaryCache`/`RetainedPrograms`/`ShaderWarmup`/`Iris` 的
+  `prepareSelectedShaderPack` 与 `activate()`/`ProgramBuilder`/`Program`/`ComputeProgram`/
+  `DeferredWorldRenderingPipeline` 程序持久化——它们全部建立在上游前置提交 `0a4d4896`
+  「Cache Iris Shaders (#2206)」之上，而该提交（+1324/-524，含 942 行
+  `DeferredWorldRenderingPipeline` 重写）从未同步进 Actinium。详见
+  `sdl-gpu-shader-loading.md` §2.3。

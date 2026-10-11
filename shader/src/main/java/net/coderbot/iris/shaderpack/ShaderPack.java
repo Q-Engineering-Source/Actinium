@@ -300,17 +300,10 @@ public class ShaderPack {
 				return null;
 			}
 
-			ImmutableList<String> lines = includeProcessor.getIncludedFile(path);
+			final byte[] contentHash = includeProcessor.getIncludedFileHash(path);
 
-			if (lines == null) {
+			if (contentHash == null) {
 				return null;
-			}
-
-			StringBuilder builder = new StringBuilder();
-
-			for (String line : lines) {
-				builder.append(line);
-				builder.append('\n');
 			}
 
 			// Apply GLSL preprocessor to source, while making environment defines available.
@@ -319,14 +312,26 @@ public class ShaderPack {
 			// #define statements in the actual source - instead, we tell the preprocessor about them
 			// directly. This removes one obstacle to accurate reporting of line numbers for errors,
 			// though there exist many more (such as relocating all #extension directives and similar things)
-			String source = builder.toString();
+			//
+			// Keyed by the file's content hash, so a reload of an unchanged pack reuses the preprocessed
+			// result instead of re-running the preprocessor (and the include expansion it depends on).
+			return JcppProcessor.glslPreprocessSource(contentHash, () -> {
+				final ImmutableList<String> lines = includeProcessor.getIncludedFile(path);
+				int length = 0;
+				for (String line : lines) {
+					length += line.length() + 1;
+				}
 
-			// Apply shader pack workarounds for version compatibility (before preprocessing)
-			source = ShaderPackWorkarounds.apply(source);
+				final StringBuilder builder = new StringBuilder(length);
 
-			source = JcppProcessor.glslPreprocessSource(source, finalEnvironmentDefines1);
+				for (String line : lines) {
+					builder.append(line);
+					builder.append('\n');
+				}
 
-			return source;
+				// Apply shader pack workarounds for version compatibility (before preprocessing)
+				return ShaderPackWorkarounds.apply(builder.toString());
+			}, finalEnvironmentDefines1);
 		};
 
 		this.base = new ProgramSet(AbsolutePackPath.fromAbsolutePath("/"), sourceProvider, shaderProperties, this);

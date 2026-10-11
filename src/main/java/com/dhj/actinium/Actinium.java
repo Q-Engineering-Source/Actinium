@@ -24,6 +24,7 @@ import com.gtnewhorizon.gtnhlib.client.renderer.postprocessing.PostProcessingBri
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
 import com.gtnewhorizons.angelica.glsm.compat.FogDistanceModeBridge;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
+import com.gtnewhorizons.angelica.utils.AngelicaJar;
 import com.gtnewhorizons.angelica.iris.IrisGLSMBridge;
 import com.mojang.realmsclient.gui.ChatFormatting;
 import net.coderbot.iris.Iris;
@@ -50,6 +51,7 @@ import dhj.embeddedt.embeddium.impl.gl.device.GLRenderDevice;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
 import dhj.embeddedt.embeddium.impl.runtime.EmbeddiumRuntimeOptions;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.lang.management.ManagementFactory;
 
 @Mod(modid =
@@ -192,6 +194,10 @@ public class Actinium {
         }
 
         if (Iris.enabled) {
+            // Shader stages and preprocessed sources are cached on disk; point the cache at this instance
+            // before anything loads a pack so the first load already benefits from it.
+            final Path actiniumJar = AngelicaJar.location();
+            AngelicaJar.configureShaderDiskCache(actiniumJar != null ? actiniumJar.toFile() : null);
             IrisGLSMBridge.register();
             Iris.INSTANCE.fmlInitEvent();
             MinecraftForge.EVENT_BUS.register(Iris.INSTANCE);
