@@ -1,6 +1,8 @@
 # 光影包加载 / 启动提速（上游 #2190 + #2213 移植对账）
 
-> 状态：**部分落地**（2026-10-12）。本文档记录上游 `38b1d9a0`「Speed up boot (#2190)」与
+> 状态：**主体已落地**（2026-10-12）；`#2213` 依赖 `0a4d4896` 的「已编译程序落盘缓存」半块
+> 已于 2026-10-12 补齐（见 §2.3 与 `sdl-gpu-program-binary-cache.md`）。本文档记录上游
+> `38b1d9a0`「Speed up boot (#2190)」与
 > `38af64f1`「Initial commit for shader-loading-optimizations (#2213)」在 Actinium 的
 > **逐文件对账结果**：哪些早前 Phase 已同步、本次补了什么、哪些因缺少上游前置提交而**受阻**
 > 未移植。对账以当前工作树（`research/sdl-gpu-port`）为准。
@@ -12,7 +14,7 @@
 | #2190 的性能与 PBR 部分（GLSL 重命名快路径、PBR 资源索引） | **本次落地** |
 | #2190 的 Iris 预热重构 | **受阻**：依赖未移植的「早期 shader 变换预热」链路（上游 #1993/#2009） |
 | #2213 的 glsm / SDL 阶段缓存 / 预处理链 | **早前 Phase 已同步**（本次仅补两处未接线点） |
-| #2213 的「已编译程序落盘缓存」主体 | **受阻**：依赖未移植的上游前置提交 `0a4d4896`「Cache Iris Shaders (#2206)」 |
+| #2213 的「已编译程序落盘缓存」主体 | **2026-10-12 已接上**（连同其前置提交 `0a4d4896`，见 §2.3 与 `sdl-gpu-program-binary-cache.md`） |
 | mcpatcher / RFB / Tracy 相关 | **跳过**（本仓库无对应物） |
 
 ## 1. #2190（`38b1d9a0`）
@@ -66,12 +68,15 @@
 ### 2.1 逐文件对账：早前 Phase 已同步（本次核对确认，无需改动）
 
 - glsm：`GlslTransformUtils.containsWholeWord` 早退、`threading/AngelicaWorkers.invokeAll`、
-  `shader/ShaderDiskCache.configure` 幂等 + layer API（`touchLayer`/`keepNewestSubLayers`/
-  `retainLayer`/`deleteLayer`/`remove`）。
+  `shader/ShaderDiskCache.configure` 幂等。
+  ⚠️ **勘误（2026-10-12）**：本节原先把 `ShaderDiskCache` 的 layer API
+  （`touchLayer`/`keepNewestSubLayers`/`retainLayer`/`deleteLayer`/`remove`）与
+  `gl/GlResource` 的 `isValid` 守卫一并记为已同步，核对后确认**当时并不存在**（只有 `configure`
+  幂等）。两者已随程序落盘缓存一起补齐（见 `sdl-gpu-program-binary-cache.md` §2.1、§6）。
 - shader 预处理链：`IncludeGraph`（AngelicaWorkers 并行读）、`IncludeProcessor`（并发 + hash）、
   `PreprocessedSourceCache`、`PropertiesPreprocessor`（Actinium 保留 LexerException 容错偏差）、
   `JcppProcessor`（内容哈希 + NUL 剥离）、`pipeline/transform/ShaderTransformer`（image-store
-  提取收敛）、`gl/GlResource` 的 `isValid` 守卫、`IdMap.hasLegacySection`（Actinium 是重写实现，
+  提取收敛）、`IdMap.hasLegacySection`（Actinium 是重写实现，
   上游 `detectLegacySection` 本次改动 **N/A**）。
 - sdlgpu：`shader/ShaderManager`（`QueuedCompile` 可取消/可强制执行的编译排队、
   `registerSamplerLocations` 未用 sampler 处理、`variantKey` 顶点变体落盘缓存）、
@@ -95,27 +100,27 @@
   变成生产可用**（上游在 postInit 做同一件事，Actinium 没有 ClientProxy.postInit 这一层）。
 - **`PBRResourceIndex` 的 memo 增量**（上游 #2213 对该文件的 +13）。
 
-### 2.3 受阻未移植（需要上游前置提交）
+### 2.3 受阻未移植（需要上游前置提交）→ **已于 2026-10-12 接上**
 
 **`0a4d4896`「Cache Iris Shaders (#2206)」（+1324/-524，21 文件）从未同步进 Actinium**，而
-#2213 是它的演进。缺失的整块能力：
+#2213 是它的演进。当时缺失的整块能力：
 
-| 缺失 | 说明 |
-|---|---|
-| `glsm/shader/ProgramBinaryCache`（255 行） | `glGetProgramBinary` 落盘/回读，含 layer 保留策略 |
-| glsm GL 表面 | `GLStateManager.glProgramParameteri/glProgramBinary/glGetProgramBinary`、`RenderSystem.supportsProgramBinary()`、`RenderBackend` + Lwjgl3/Lwjgl2 后端实现（Actinium 全无引用） |
-| `iris/gl/program/RetainedPrograms`（+60） | 跨包重载保留已链接程序的 `take/retain` 生命周期 |
-| `ProgramBuilder`/`Program`/`ComputeProgram`（+37/+12/+12） | `retainAs(sources)` + `saveRetained`/`isFullCompileRunning` 接线 |
-| `Iris.java`（+178/-16） | `prepareSelectedShaderPack()`（主菜单后台预读选中包）、`currentPackState` 指纹、`takePreparedPack`、`RetainedPrograms.useConfiguration`、`currentPack.activate()` |
-| `iris/ShaderWarmup`（+96）、`ClientProxy` 接线 | 主菜单时后台预载 shader 类 + 预读包 |
-| `DeferredWorldRenderingPipeline`（+70/-31，且 #2206 自身重写了 942 行） | 程序持久化/全量编译模式 |
-| `ShaderPack`（+89/-29 中与 `activate()`/`profiles` 懒加载相关的部分）、`CustomUniforms.mapPassLike` | 配合上面 |
-| 测试 `PackSettingsFingerprintTest`、`ProgramBindingRegressionTest` | 测上面这些 |
+| 缺失 | 说明 | 现状（2026-10-12） |
+|---|---|---|
+| `glsm/shader/ProgramBinaryCache`（255 行） | `glGetProgramBinary` 落盘/回读，含 layer 保留策略 | **已移植** |
+| glsm GL 表面 | `GLStateManager.glProgramParameteri/glProgramBinary/glGetProgramBinary`、`RenderSystem.supportsProgramBinary()`、`RenderBackend` + Lwjgl3/Lwjgl2 后端实现（Actinium 全无引用） | **已移植**（Lwjgl2 无对应物，SDL 后端按默认 false 回退） |
+| `iris/gl/program/RetainedPrograms`（+60） | 跨包重载保留已链接程序的 `take/retain` 生命周期 | **已移植** |
+| `ProgramBuilder`/`Program`/`ComputeProgram`（+37/+12/+12） | `retainAs(sources)` + `saveRetained`/`isFullCompileRunning` 接线 | **已移植** |
+| `Iris.java`（+178/-16） | `prepareSelectedShaderPack()`（主菜单后台预读选中包）、`currentPackState` 指纹、`takePreparedPack`、`RetainedPrograms.useConfiguration`、`currentPack.activate()` | **已移植**（`prepareSelectedShaderPack` 的前置条件按 Actinium 的延迟加载改造） |
+| `iris/ShaderWarmup`（+96）、`ClientProxy` 接线 | 主菜单时后台预载 shader 类 + 预读包 | **已移植**（触发点改为 `MixinGuiMainMenu.initGui`） |
+| `DeferredWorldRenderingPipeline`（+70/-31，且 #2206 自身重写了 942 行） | 程序持久化/全量编译模式 | **已 reconcile**（构造失败回收 + 同源程序共享；instancing 相关 hunk 因本仓库无 instancing 跳过） |
+| `ShaderPack`（+89/-29 中与 `activate()`/`profiles` 懒加载相关的部分）、`CustomUniforms.mapPassLike` | 配合上面 | **已移植** |
+| 测试 `PackSettingsFingerprintTest`、`ProgramBindingRegressionTest` | 测上面这些 | `PackSettingsFingerprintTest` **已按 Actinium 重写**（去反射）；`ProgramBindingRegressionTest` 无对应文件，**跳过** |
 
-**未移植的原因**：#2206 含一次 942 行的 `DeferredWorldRenderingPipeline` 重写，而 Actinium 的
+**当时未移植的原因**：#2206 含一次 942 行的 `DeferredWorldRenderingPipeline` 重写，而 Actinium 的
 同一文件已有大量自有改动（SDL 后端接线、voxelization compute、Actinium 专属 pass 表等），
-本分支又无法做运行时验证；盲目跟改的风险远大于收益。建议单独排一个「#2206 移植」任务，
-届时再把 #2213 的这半块接上（`saveRetained`/`isFullCompileRunning` 就在本次记录的上游 hunk 里）。
+盲改风险大于收益。2026-10-12 的移植把这次重写拆成「构造失败回收（缩进位移）+ 同源程序共享」
+两处语义增量逐项裁决，明细、偏差与验证方式见 `docs/research/sdl-gpu-program-binary-cache.md`。
 
 ## 3. 跳过项汇总
 
@@ -126,7 +131,10 @@
 | `TracyFramePlots`、RFB 相关 | 无对应物 |
 | `IdMap.detectLegacySection` 快扫 | Actinium 的 `IdMap.hasLegacySection` 是重写实现，方法不存在 |
 | `#2190` 的 Iris 预热重构、`IrisProgramSetWarmupTest` | 依赖未移植的预热链路（#1993/#2009） |
-| `#2213` 的程序落盘缓存与预热接线（见 §2.3） | 依赖未移植的 #2206 |
+| `#2213` 的程序落盘缓存与预热接线（见 §2.3） | ~~依赖未移植的 #2206~~ → 2026-10-12 已随 #2206 一起接上 |
+| `0a4d4896` 的 `Lwjgl2GLRenderBackend`（+24） | 本仓库无 LWJGL2 后端实现 |
+| `0a4d4896` 的 mcpatcher/RFB/Tracy 相关与 `Mixins.java` | 无对应物 |
+| `#2213` 的 `ProgramBindingRegressionTest`（2 行） | 该测试文件在 Actinium 不存在 |
 
 ## 4. 实机验证建议（启动 / 包加载耗时是验收指标）
 
@@ -141,6 +149,9 @@
    在换包后立即生效（不再需要重启），且日志无 `PBR resource index disabled` 警告。
    若出现该警告，说明索引已降级为直接查找（功能正确、只是变慢），把堆栈报上来。
 5. **回归**：换资源包（F3+T / 选项里切换）后贴图、PBR、光影包都正常；本地 zip 包与文件夹包都要试。
+6. **程序落盘缓存（核心验收）**：见 `sdl-gpu-program-binary-cache.md` §7.2——打开 Shader Pack 界面里新增的
+   `Save Compiled Shaders` 开关后，**重启游戏**再进同一世界，`[Load #N] Total shaderpack load time`
+   应显著低于首次。
 
 ## 5. 遗留风险
 
@@ -151,3 +162,6 @@
 - #2213 的 SDL 阶段缓存（`variantKey` 等）此前已在，但**在磁盘缓存启用之前一直是惰性的**——
   本次启用后它们才真正生效，属于行为变化，需在实机确认无陈旧缓存问题（salt 含 jar mtime，
   换 jar 会整体失效）。
+- 程序落盘缓存（2026-10-12 新增）引入的风险集中在 `DeferredWorldRenderingPipeline` 构造失败回收、
+  同源程序共享的生命周期，以及「改设置时一次性编译所有维度」的耗时变化，详见
+  `sdl-gpu-program-binary-cache.md` §8。

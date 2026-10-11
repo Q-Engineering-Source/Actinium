@@ -528,6 +528,17 @@ public abstract class RenderBackend {
     public abstract int getUniformLocation(int program, ByteBuffer name);
     public boolean isShader(int obj) { return false; }
     public boolean isProgram(int obj) { return false; }
+
+    /**
+     * Whether linked programs may be read back with {@code glGetProgramBinary} and restored with
+     * {@code glProgramBinary}. Backends that cannot represent saved programs (SDL GPU) keep the default.
+     */
+    public boolean supportsProgramBinary() { return false; }
+
+    public void programParameteri(int program, int pname, int value) {}
+    public void getProgramBinary(int program, IntBuffer length, IntBuffer binaryFormat, ByteBuffer binary) {}
+    public void programBinary(int program, int binaryFormat, ByteBuffer binary) {}
+
     public void validateProgram(int program) {}
     public void getAttachedShaders(int program, IntBuffer count, IntBuffer shaders) {
         if (count != null) count.put(0, 0);

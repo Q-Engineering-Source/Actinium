@@ -46,6 +46,8 @@ public class RenderSystem {
     private static boolean supportsClearTexture;
     private static boolean supportsTesselation;
     private static boolean supportsSamplerObjects;
+    /** Whether the driver can read linked programs back with {@code glGetProgramBinary}. */
+    private static boolean supportsProgramBinary;
     private static int maxImageUnits;
     @Getter private static int maxCombinedTextureImageUnits;
     private static int maxSSBOBindings;
@@ -144,6 +146,8 @@ public class RenderSystem {
 
         maxGlslVersion = Integer.parseInt(parseGlVersionString(RENDER_BACKEND.getString(GL20.GL_SHADING_LANGUAGE_VERSION)));
         supportsGpuShader4 = GLStateManager.capabilities.GL_EXT_gpu_shader4;
+
+        supportsProgramBinary = RENDER_BACKEND.supportsProgramBinary();
 
         GLStateManager.LOGGER.info("Max GLSL version: {}, GPU Shader4: {}", maxGlslVersion, supportsGpuShader4);
         GLStateManager.LOGGER.info("Image Load/Store: {}, Max Image Units: {}", supportsImageLoadStore, maxImageUnits);
@@ -590,6 +594,10 @@ public class RenderSystem {
 
     public static boolean supportsSamplerObjects() {
         return supportsSamplerObjects;
+    }
+
+    public static boolean supportsProgramBinary() {
+        return supportsProgramBinary;
     }
 
     public static int genSampler() {

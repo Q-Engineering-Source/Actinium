@@ -10,6 +10,8 @@ public abstract class GlResource {
 	}
 
 	public final void destroy() {
+		// A program shared by several passes is reachable from each of them
+		if (!isValid) return;
 		destroyInternal();
 		isValid = false;
 	}

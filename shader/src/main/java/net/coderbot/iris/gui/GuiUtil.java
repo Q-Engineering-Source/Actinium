@@ -8,6 +8,8 @@ import net.minecraft.client.gui.Gui;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.util.ResourceLocation;
 
+import java.util.List;
+
 /**
  * Class serving as abstraction and
  * centralization for common GUI
@@ -108,6 +110,24 @@ public final class GuiUtil {
 	public static void drawTextPanel(FontRenderer font, String text, int x, int y) {
 		drawPanel(x, y, font.getStringWidth(text) + 8, 16);
 		font.drawStringWithShadow(text, x + 4, y + 4, 0xFFFFFF);
+	}
+
+	/**
+	 * Draws several lines of text with a panel behind them, the panel growing to fit the longest line.
+	 *
+	 * @param lines The lines to draw
+	 * @param x The x position of the panel
+	 * @param y The y position of the panel
+	 */
+	public static void drawTextPanel(FontRenderer font, List<String> lines, int x, int y) {
+		int width = 0;
+		for (String line : lines) {
+			width = Math.max(width, font.getStringWidth(line));
+		}
+		drawPanel(x, y, width + 8, lines.size() * 10 + 6);
+		for (int i = 0; i < lines.size(); i++) {
+			font.drawStringWithShadow(lines.get(i), x + 4, y + 4 + i * 10, 0xFFFFFF);
+		}
 	}
 
 	/**

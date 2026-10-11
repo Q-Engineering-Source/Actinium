@@ -1638,16 +1638,53 @@ compileJava compileTestJava`、`./gradlew :glsm:test :sdl-gpu:test`、`./gradlew
   `DeferredWorldRenderingPipeline.warmupTransforms`，来自上游 #1993/#2009），
   因此 barrier 目前只有消费侧、无人设置（已在文档中标注）。
 - **`38af64f1`「Initial commit for shader-loading-optimizations (#2213)」**：对账后确认
-  glsm 侧（`containsWholeWord`、`AngelicaWorkers.invokeAll`、`ShaderDiskCache` 幂等与 layer API）
+  glsm 侧（`containsWholeWord`、`AngelicaWorkers.invokeAll`、`ShaderDiskCache.configure` 幂等）
   与 sdlgpu 侧（`QueuedCompile`、`registerSamplerLocations`、顶点变体落盘、`ShaderStageSerializer`
   的 `unusedSamplerNames`、`ResourceManager.fillBuffer`/`zeroTexture3D`、clear/3D 零填充路径）
   **早前 Phase 已同步**；本次补三处缺口：`ConstDirectiveParser` 行扫描、`ShaderPack` 改用
   内容哈希重载的 `JcppProcessor.glslPreprocessSource`（**接上此前无人查询的预处理磁盘缓存**）、
   以及 `AngelicaJar` + 在 `Actinium.onInit` 启用 `<gameDir>/angelica/shadercache`（使既有的
-  GLSL/SPIR-V/预处理缓存从"从不启用"变为生产可用）。
+  GLSL/SPIR-V/预处理磁盘缓存从"从不启用"变为生产可用）。
   **未落地（受阻）**：`ProgramBinaryCache`/`RetainedPrograms`/`ShaderWarmup`/`Iris` 的
   `prepareSelectedShaderPack` 与 `activate()`/`ProgramBuilder`/`Program`/`ComputeProgram`/
   `DeferredWorldRenderingPipeline` 程序持久化——它们全部建立在上游前置提交 `0a4d4896`
   「Cache Iris Shaders (#2206)」之上，而该提交（+1324/-524，含 942 行
   `DeferredWorldRenderingPipeline` 重写）从未同步进 Actinium。详见
   `sdl-gpu-shader-loading.md` §2.3。
+  ⚠️ **勘误（2026-10-12，Phase 9）**：本节原先把 `ShaderDiskCache` 的 layer API
+  （`touchLayer`/`keepNewestSubLayers`/`retainLayer`/`deleteLayer`/`remove`）记为「早前 Phase
+  已同步」，实际**并不存在**（当时只落了 `configure` 幂等）。该缺口随 Phase 9 补齐，见下节。
+
+## 上游同步状态（2026-10-12，Phase 9：程序落盘缓存 `0a4d4896` + `38af64f1` 剩余半块）
+
+本轮把上一环受阻的两块一起接上：上游 `0a4d4896`「Cache Iris Shaders (#2206)」（+1324/-524，
+21 文件）与 `38af64f1`「shader-loading-optimizations (#2213)」中**依赖 #2206 的那半块**
+（`saveRetained`/`isFullCompileRunning`/`RetainedPrograms` 等）。逐文件对账、偏差与验证方式见
+`docs/research/sdl-gpu-program-binary-cache.md`，此处只记结论：
+
+- **glsm**：新增 `shader/ProgramBinaryCache`（落盘/回读 `glProgramBinary`，按 pack / 设置指纹 /
+  驱动 / 顶点属性为键）；`RenderBackend` 增加 `supportsProgramBinary`/`programParameteri`/
+  `getProgramBinary`/`programBinary` 四个默认方法面，LWJGL3 后端实现（`!isGLES && (OpenGL41 ||
+  ARB_get_program_binary) && GL_NUM_PROGRAM_BINARY_FORMATS > 0`）；`GLStateManager` 增加
+  `glProgramParameteri`/`glGetProgramBinary`/`glProgramBinary`，并在 `glLinkProgram` 里对
+  可缓存程序打 `GL_PROGRAM_BINARY_RETRIEVABLE_HINT`；`RenderSystem.supportsProgramBinary`。
+  `ShaderDiskCache` 补 layer API（`touchLayer`/`keepNewestSubLayers`/`retainLayer`/`deleteLayer`/
+  `remove`）并把 `put`/`putBlob` 改为返回 `boolean`。
+- **shader**：新增 `gl/program/RetainedPrograms`；`ProgramBuilder`/`Program`/`ComputeProgram`/
+  `ProgramCreator` 接上缓存键、`retainAs` 与保留池；`GlResource.destroy` 加 `isValid` 守卫
+  （共享程序会被两个 Pass 各 destroy 一次）；`Iris` 接上 `prepareSelectedShaderPack`/
+  设置指纹/`compileEveryShaderFolder`/`ProgramBinaryCache.usePack`；`IrisConfig` 增加
+  `saveCompiledShaders`；`ShaderPack.getEveryProgramSet`；`PipelineManager.discardPipeline`；
+  `CustomUniforms.mapPassLike`；`ShaderStorageBufferHolder` 构造失败时回收已建 SSBO；
+  `DeferredWorldRenderingPipeline` 构造失败时 `destroy()` + 同源程序共享 + `destroy()` 空值守卫。
+- **src/main**：新增 `com.gtnewhorizons.angelica.iris.ShaderWarmup`，由 `MixinGuiMainMenu`
+  的 `initGui` HEAD 触发（上游在 `ClientProxy` 的 `GuiOpenEvent` 里触发，Actinium 没有该路径）。
+- **跳过**：`Lwjgl2GLRenderBackend`（本仓库无 LWJGL2 后端实现）、上游 `Mixins.java`（json 配置）、
+  `IdMap.modernFallbackMcVersion` 相关 hunk（Actinium 的 fallback 版本是 `IdMap` 内的常量）、
+  instancing（`compileInstancedVariants`/`InstancedVariantKey`/`MV_BUILTINS`，Actinium 的 pipeline
+  没有 instancing 变体）、mcpatcher/RFB/Tracy 相关，以及 `ProgramBindingRegressionTest`
+  （该文件在 Actinium 不存在）。
+- **偏差**：`Iris.compileEveryShaderFolder` 不驱动 `LoadingScreenRenderer` 进度条（1.12.2 没有
+  上游用的 `resetProgresAndWorkingMessage`，且该路径在首个世界帧里执行，画加载屏会中途换帧），
+  改为按目录打 INFO 日志；`prepareSelectedShaderPack` 去掉了上游的 `areShadersEnabled()` 前置条件
+  （Actinium 在进世界前不加载包，保留该条件会让预热永远不生效）。

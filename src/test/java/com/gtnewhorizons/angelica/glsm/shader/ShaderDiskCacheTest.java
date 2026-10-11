@@ -8,8 +8,10 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -121,5 +123,55 @@ class ShaderDiskCacheTest {
         assertTrue(Files.isRegularFile(dir.resolve("salt")));
         ShaderDiskCache.put(ShaderDiskCache.key("t").i(9), new byte[] {5});
         assertArrayEquals(new byte[] {5}, ShaderDiskCache.get(ShaderDiskCache.key("t").i(9)));
+    }
+
+    @Test
+    void retainLayerKeepsListedEntriesOtherLayersAndInFlightWrites() throws IOException {
+        ShaderDiskCache.configure(dir, "a");
+        final ShaderDiskCache.Key kept = ShaderDiskCache.key("p").str("kept");
+        final ShaderDiskCache.Key dropped = ShaderDiskCache.key("p").str("dropped");
+        final ShaderDiskCache.Key otherLayer = ShaderDiskCache.key("q").str("dropped");
+        ShaderDiskCache.put(kept, new byte[] {1});
+        ShaderDiskCache.put(dropped, new byte[] {2});
+        ShaderDiskCache.put(otherLayer, new byte[] {3});
+        final Path inFlight = dir.resolve("p").resolve(dropped.hex() + ".7.tmp");
+        Files.write(inFlight, new byte[] {4});
+
+        ShaderDiskCache.retainLayer("p", Set.of(kept.hex()));
+        assertArrayEquals(new byte[] {1}, ShaderDiskCache.get(kept));
+        assertNull(ShaderDiskCache.get(dropped));
+        assertArrayEquals(new byte[] {3}, ShaderDiskCache.get(otherLayer));
+        assertTrue(Files.exists(inFlight));
+
+        ShaderDiskCache.retainLayer("p", null);
+        assertNull(ShaderDiskCache.get(kept));
+        assertArrayEquals(new byte[] {3}, ShaderDiskCache.get(otherLayer));
+    }
+
+    @Test
+    void layerBookkeepingTouchesKeepsAndDeletes() throws IOException {
+        ShaderDiskCache.configure(dir, "a");
+        final Path layer = dir.resolve("packs");
+        Files.createDirectories(layer.resolve("oldest"));
+        Files.write(layer.resolve("oldest").resolve("stale.bin"), new byte[] {1});
+        Files.setLastModifiedTime(layer.resolve("oldest"), FileTime.fromMillis(1000L));
+        Files.createDirectories(layer.resolve("newest"));
+        Files.setLastModifiedTime(layer.resolve("newest"), FileTime.fromMillis(2000L));
+
+        ShaderDiskCache.keepNewestSubLayers("packs", 1);
+        assertFalse(Files.exists(layer.resolve("oldest")), "the least recently used sub layer goes first");
+        assertTrue(Files.isDirectory(layer.resolve("newest")));
+
+        ShaderDiskCache.touchLayer("packs/touched");
+        assertTrue(Files.isDirectory(layer.resolve("touched")));
+
+        final ShaderDiskCache.Key key = ShaderDiskCache.key("packs").str("gone");
+        ShaderDiskCache.put(key, new byte[] {1});
+        assertNotNull(ShaderDiskCache.get(key));
+        ShaderDiskCache.remove(key);
+        assertNull(ShaderDiskCache.get(key));
+
+        ShaderDiskCache.deleteLayer("packs");
+        assertFalse(Files.exists(layer));
     }
 }

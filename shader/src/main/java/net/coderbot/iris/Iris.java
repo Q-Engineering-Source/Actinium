@@ -4,6 +4,8 @@ import net.coderbot.iris.debug.IrisDebugOptions;
 import com.google.common.base.Throwables;
 import dhj.embeddedt.embeddium.api.shader.ShaderProviderHolder;
 import com.gtnewhorizons.angelica.Tags;
+import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
+import com.gtnewhorizons.angelica.glsm.threading.AngelicaWorkers;
 import it.unimi.dsi.fastutil.ints.Int2IntMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
 import lombok.Getter;
@@ -15,6 +17,7 @@ import net.coderbot.iris.config.IrisConfig;
 import net.coderbot.iris.celeritas.IrisCeleritasShaderProvider;
 import net.coderbot.iris.client.IrisDebugScreenHandler;
 import net.coderbot.iris.gbuffer_overrides.matching.InputAvailability;
+import net.coderbot.iris.gl.program.RetainedPrograms;
 import net.coderbot.iris.gl.shader.StandardMacros;
 import net.coderbot.iris.gui.screen.ShaderPackScreen;
 import net.coderbot.iris.pipeline.DeferredWorldRenderingPipeline;
@@ -27,6 +30,7 @@ import net.coderbot.iris.shaderpack.DimensionId;
 import net.coderbot.iris.shaderpack.OptionalBoolean;
 import net.coderbot.iris.shaderpack.ProgramSet;
 import net.coderbot.iris.shaderpack.ShaderPack;
+import net.coderbot.iris.shaderpack.StringPair;
 import net.coderbot.iris.shaderpack.discovery.ShaderpackDirectoryManager;
 import net.coderbot.iris.shaderpack.option.OptionSet;
 import net.coderbot.iris.shaderpack.option.Profile;
@@ -47,25 +51,39 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.InputEvent;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.input.Keyboard;
 import dhj.embeddedt.embeddium.api.debug.RenderDebugHooksHolder;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
+import java.lang.ref.SoftReference;
+import java.nio.file.DirectoryStream;
 import java.nio.file.FileSystem;
+import java.nio.file.FileSystemLoopException;
 import java.nio.file.FileSystemNotFoundException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
@@ -98,6 +116,13 @@ public class Iris {
     private static ShaderPack currentPack;
     @Getter
     private static String currentPackName;
+    /**
+     * The pack fingerprint that was compiled in full for the saved-program cache, or null when saving
+     * is off. Described by content, since only content changes invalidate a compiled program.
+     */
+    private static String currentPackSettings;
+    /** The pack fingerprint a prepared pack was read with, used to validate reusing it. */
+    private static String currentPackState;
     @Getter
     private static boolean initialized;
     @Getter
@@ -569,9 +594,7 @@ public class Iris {
             return false;
         }
 
-        @SuppressWarnings("unchecked")
-        final Map<String, String> changedConfigs = tryReadConfigProperties(shaderPackConfigTxt).map(properties -> (Map<String, String>) (Map<?, ?>) properties)
-            .orElse(new HashMap<>());
+        final Map<String, String> changedConfigs = readChangedConfigs(shaderPackConfigTxt);
 
         changedConfigs.putAll(shaderPackOptionQueue);
         clearShaderPackOptionQueue();
@@ -582,7 +605,12 @@ public class Iris {
         resetShaderPackOptions = false;
 
         try {
-            currentPack = new ShaderPack(shaderPackPath, changedConfigs, StandardMacros.createStandardEnvironmentDefines());
+            final Iterable<StringPair> environmentDefines = StandardMacros.createStandardEnvironmentDefines();
+            final String packState = describeSettings(name, shaderPackRoot, toProperties(changedConfigs), environmentDefines, false);
+            final ShaderPack prepared = takePreparedPack(name, packState);
+            currentPack = prepared != null ? prepared : new ShaderPack(shaderPackPath, changedConfigs, environmentDefines);
+            currentPackState = packState;
+            RetainedPrograms.useConfiguration(packState);
             currentPack.activate();
 
             final MutableOptionValues changedConfigsValues = currentPack.getShaderPackOptions().getOptionValues().mutableCopy();
@@ -593,6 +621,8 @@ public class Iris {
             changedConfigsValues.getStringValues().forEach(configsToSave::setProperty);
 
             tryUpdateConfigPropertiesFile(shaderPackConfigTxt, configsToSave);
+            currentPackSettings = irisConfig.shouldSaveCompiledShaders()
+                ? describeSettings(name, shaderPackRoot, configsToSave, environmentDefines, true) : null;
         } catch (Exception e) {
             logger.error("Failed to load the shaderpack \"{}\"!", name);
             logger.error("", e);
@@ -602,16 +632,104 @@ public class Iris {
 
         fallback = false;
         currentPackName = name;
+        ProgramBinaryCache.usePack(name);
 
         logger.info("Using shaderpack: " + name);
 
+        compileEveryShaderFolder();
+
         return true;
+    }
+
+    /** A pack read ahead of time, kept alongside the fingerprint it was read with. */
+    private record PreparedPack(String settings, ShaderPack pack) {}
+
+    private static volatile SoftReference<PreparedPack> preparedPack;
+
+    /**
+     * {@return a task that reads the selected pack into {@link #preparedPack}, or null when there is
+     * nothing useful to read}
+     *
+     * <p>Runs on a background thread while the game sits at the main menu: the sources and program
+     * sets are then ready, and only the transformation work is left when the pack is really loaded.</p>
+     */
+    @Nullable
+    public static Runnable prepareSelectedShaderPack() {
+        if (irisConfig == null || currentPack != null) return null;
+        final Optional<String> name = irisConfig.getShaderPackName();
+        if (name.isEmpty()) return null;
+        final List<StringPair> environmentDefines = new ArrayList<>();
+        StandardMacros.createStandardEnvironmentDefines().forEach(environmentDefines::add);
+        return () -> {
+            try {
+                final PreparedPack prepared = readPreparedPack(name.get(), environmentDefines);
+                if (prepared != null) preparedPack = new SoftReference<>(prepared);
+            } catch (Exception e) {
+                logger.debug("Could not read shaderpack \"{}\" ahead of time", name.get(), e);
+            }
+        };
+    }
+
+    @Nullable
+    private static PreparedPack readPreparedPack(String name, List<StringPair> environmentDefines) throws IOException {
+        final Path shaderPackRoot = getShaderpacksDirectory().resolve(name);
+        final Map<String, String> changedConfigs = readChangedConfigs(getShaderpacksDirectory().resolve(name + ".txt"));
+        final String settings = describeSettings(name, shaderPackRoot, toProperties(changedConfigs), environmentDefines, false);
+        if (settings == null) return null;
+
+        if (Files.isDirectory(shaderPackRoot)) {
+            return new PreparedPack(settings, parsePack(shaderPackRoot.resolve("shaders"), changedConfigs, environmentDefines));
+        }
+        try (FileSystem zipSystem = FileSystems.newFileSystem(shaderPackRoot, Iris.class.getClassLoader())) {
+            final Optional<Path> shadersDirectory = findShadersDirectory(zipSystem);
+            if (shadersDirectory.isEmpty()) return null;
+            return new PreparedPack(settings, parsePack(shadersDirectory.get(), changedConfigs, environmentDefines));
+        }
+    }
+
+    private static ShaderPack parsePack(Path shadersDirectory, Map<String, String> changedConfigs, List<StringPair> environmentDefines) throws IOException {
+        final ShaderPack pack = new ShaderPack(shadersDirectory, changedConfigs, environmentDefines);
+        // Most worlds open in the overworld; other dimensions build their program sets on demand as usual.
+        pack.getProgramSet("Overworld");
+        return pack;
+    }
+
+    /**
+     * {@return the pack read ahead of time, or null when it cannot be reused}
+     *
+     * <p>Only the fingerprint decides: a changed pack file, option, or environment define makes the
+     * prepared pack stale, and the caller reads the pack normally.</p>
+     */
+    @Nullable
+    private static ShaderPack takePreparedPack(String name, @Nullable String packState) {
+        final SoftReference<PreparedPack> reference = preparedPack;
+        preparedPack = null;
+        final PreparedPack prepared = reference != null ? reference.get() : null;
+        if (prepared == null || !prepared.settings().equals(packState)) return null;
+        logger.info("Reusing shaderpack \"{}\" read earlier, nothing it was read from has changed", name);
+        return prepared.pack();
+    }
+
+    private static Map<String, String> readChangedConfigs(Path shaderPackConfigTxt) {
+        @SuppressWarnings("unchecked")
+        final Map<String, String> changedConfigs = tryReadConfigProperties(shaderPackConfigTxt).map(properties -> (Map<String, String>) (Map<?, ?>) properties)
+            .orElse(new HashMap<>());
+        return new HashMap<>(changedConfigs);
+    }
+
+    private static Properties toProperties(Map<String, String> values) {
+        final Properties properties = new Properties();
+        properties.putAll(values);
+        return properties;
     }
 
     private static Optional<Path> loadExternalZipShaderpack(Path shaderpackPath) throws IOException {
         final FileSystem zipSystem = FileSystems.newFileSystem(shaderpackPath, Iris.class.getClassLoader());
         zipFileSystem = zipSystem;
+        return findShadersDirectory(zipSystem);
+    }
 
+    private static Optional<Path> findShadersDirectory(FileSystem zipSystem) throws IOException {
         // Should only be one root directory for a zip shaderpack
         final Path root = zipSystem.getRootDirectories().iterator().next();
 
@@ -634,6 +752,9 @@ public class Iris {
 
     private static void setShadersDisabled() {
         currentPack = null;
+        currentPackState = null;
+        currentPackSettings = null;
+        ProgramBinaryCache.usePack(null);
         fallback = false;
         currentPackName = "(off)";
 
@@ -807,7 +928,14 @@ public class Iris {
      * Destroys and deallocates all created OpenGL resources. Useful as part of a reload.
      */
     private static void destroyEverything() {
+        if (currentPack != null && currentPackState != null) {
+            // The pack itself is still valid: only its programs are being rebuilt
+            preparedPack = new SoftReference<>(new PreparedPack(currentPackState, currentPack));
+        }
         currentPack = null;
+        currentPackState = null;
+        currentPackSettings = null;
+        ProgramBinaryCache.usePack(null);
 
         getPipelineManager().destroyPipeline();
 
@@ -868,6 +996,148 @@ public class Iris {
         return minecraft != null && minecraft.world != null && minecraft.world.provider != null;
     }
 
+    /**
+     * Compiles the shaders of every dimension folder of the current pack, so the saved-program cache
+     * covers all of them. Skipped when the pack fingerprint was already compiled in full.
+     *
+     * <p>Programs are built through a throwaway pipeline per folder: nothing here is rendered with, and
+     * a folder that fails to compile only costs that folder's programs. Progress is logged rather than
+     * shown: the pack loads on the first world frame, where drawing the vanilla loading screen would
+     * swap buffers in the middle of the frame.</p>
+     */
+    private static void compileEveryShaderFolder() {
+        if (currentPack == null || !irisConfig.shouldSaveCompiledShaders()) return;
+        if (currentPackSettings != null && ProgramBinaryCache.wasCompiledFor(currentPackSettings)) return;
+
+        final Map<String, ProgramSet> programSets = currentPack.getEveryProgramSet();
+        boolean everyFolderCompiled = true;
+        boolean loopFinished = false;
+        ProgramBinaryCache.beginFullCompile();
+        try {
+            int i = 0;
+            for (Map.Entry<String, ProgramSet> entry : programSets.entrySet()) {
+                final String folder = entry.getKey() != null ? entry.getKey() : "(base shaders)";
+                i++;
+                final ProgramSet programs = entry.getValue();
+                try {
+                    shaderPackLoadId++;
+                    logger.info("[Load #{}] Compiling shader folder {}/{}: {}", shaderPackLoadId, i, programSets.size(), folder);
+                    ShaderTransformExecutor.prepare();
+                    final DeferredWorldRenderingPipeline pipeline = new DeferredWorldRenderingPipeline(programs);
+                    try {
+                        // Built lazily on the first draw otherwise, after this pipeline is gone
+                        if (ShaderProviderHolder.getProvider() instanceof IrisCeleritasShaderProvider terrain) {
+                            terrain.compileTerrainPrograms(pipeline.getCeleritasTerrainPipeline());
+                        }
+                    } finally {
+                        getPipelineManager().discardPipeline(pipeline);
+                    }
+                } catch (Exception e) {
+                    everyFolderCompiled = false;
+                    logger.error("Failed to compile shader folder '{}' for saving", folder, e);
+                } finally {
+                    RetainedPrograms.afterPipelineBuilt();
+                }
+            }
+            loopFinished = true;
+        } finally {
+            ProgramBinaryCache.finishFullCompile(loopFinished && everyFolderCompiled ? currentPackSettings : null);
+        }
+    }
+
+    private record HashedFile(long size, long modified, String hash) {}
+
+    private static final Map<Path, HashedFile> contentHashes = new ConcurrentHashMap<>();
+
+    private static String contentHash(Path file, BasicFileAttributes attributes) throws IOException {
+        final long size = attributes.size();
+        final long modified = attributes.lastModifiedTime().toMillis();
+        final HashedFile known = contentHashes.get(file);
+        if (known != null && known.size() == size && known.modified() == modified) return known.hash();
+        final String hash;
+        try {
+            hash = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+        contentHashes.put(file, new HashedFile(size, modified, hash));
+        return hash;
+    }
+
+    private record VisitedFolder(Path path, @Nullable Object key) {}
+
+    private static Map<String, String> describeFolder(Path root, VisitedFolder folder, List<VisitedFolder> ancestors, boolean byContent) {
+        final Map<String, String> files = new HashMap<>();
+        final List<Supplier<Map<String, String>>> subfolders = new ArrayList<>();
+        final List<VisitedFolder> lineage = new ArrayList<>(ancestors);
+        lineage.add(folder);
+        try (DirectoryStream<Path> entries = Files.newDirectoryStream(folder.path())) {
+            for (Path entry : entries) {
+                BasicFileAttributes attributes;
+                try {
+                    attributes = Files.readAttributes(entry, BasicFileAttributes.class);
+                } catch (IOException e) {
+                    attributes = Files.readAttributes(entry, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                }
+                if (attributes.isDirectory()) {
+                    final VisitedFolder subfolder = new VisitedFolder(entry, attributes.fileKey());
+                    for (VisitedFolder ancestor : lineage) {
+                        final boolean same = subfolder.key() != null && ancestor.key() != null
+                            ? subfolder.key().equals(ancestor.key())
+                            : Files.isSameFile(ancestor.path(), entry);
+                        if (same) throw new FileSystemLoopException(entry.toString());
+                    }
+                    subfolders.add(() -> describeFolder(root, subfolder, lineage, byContent));
+                } else if (attributes.isRegularFile()) {
+                    files.put(root.relativize(entry).toString(),
+                        byContent ? contentHash(entry, attributes) : attributes.size() + "|" + attributes.lastModifiedTime().toMillis());
+                }
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        for (Map<String, String> nested : AngelicaWorkers.invokeAll(subfolders)) {
+            files.putAll(nested);
+        }
+        return files;
+    }
+
+    /**
+     * {@return a fingerprint of everything a loaded pack depends on, or null when the pack cannot be
+     * read}
+     *
+     * <p>{@code byContent} hashes file contents instead of trusting size and timestamp: the fingerprint
+     * that gates the saved programs must not change when a file was merely touched.</p>
+     */
+    @Nullable
+    static String describeSettings(String packName, Path packRoot, Properties options, Iterable<StringPair> environmentDefines, boolean byContent) {
+        final StringBuilder settings = new StringBuilder(packName).append('\n');
+        if (Files.isRegularFile(packRoot)) {
+            try {
+                settings.append(Files.size(packRoot)).append('|').append(Files.getLastModifiedTime(packRoot).toMillis());
+            } catch (IOException e) {
+                return null;
+            }
+        } else if (Files.isDirectory(packRoot)) {
+            final TreeMap<String, String> files = new TreeMap<>();
+            try {
+                // One stat per file; this runs on the render thread when shaders turn on, so folders are read in parallel
+                final Object rootKey = Files.readAttributes(packRoot, BasicFileAttributes.class).fileKey();
+                files.putAll(describeFolder(packRoot, new VisitedFolder(packRoot, rootKey), List.of(), byContent));
+            } catch (IOException | UncheckedIOException e) {
+                return null;
+            }
+            files.forEach((file, state) -> settings.append(file).append('|').append(state).append('\n'));
+        } else {
+            return null;
+        }
+        settings.append('\n');
+        new TreeMap<>(options).forEach((key, value) -> settings.append(key).append('=').append(value).append('\n'));
+        for (StringPair define : environmentDefines) {
+            settings.append('#').append(define.getKey()).append(' ').append(define.getValue()).append('\n');
+        }
+        return settings.toString();
+    }
 
     /**
      * Creates a pipeline for a canonical dimension key.
@@ -884,7 +1154,13 @@ public class Iris {
         try {
             shaderPackLoadId++;
             long startTime = System.nanoTime();
-            WorldRenderingPipeline pipeline = new DeferredWorldRenderingPipeline(programs);
+            final WorldRenderingPipeline pipeline;
+            try {
+                pipeline = new DeferredWorldRenderingPipeline(programs);
+            } finally {
+                // Programs the pipeline did not take back are never taken again
+                RetainedPrograms.afterPipelineBuilt();
+            }
             long endTime = System.nanoTime();
             logger.info("[Load #{}] Total shaderpack load time for '{}' in dimension '{}': {} ms", shaderPackLoadId, currentPackName, dimensionName, String.format("%.1f", (endTime - startTime) / 1_000_000.0));
             return pipeline;

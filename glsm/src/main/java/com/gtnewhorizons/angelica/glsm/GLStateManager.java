@@ -30,6 +30,7 @@ import com.gtnewhorizons.angelica.glsm.recording.ImmediateModeRecorder;
 import com.gtnewhorizons.angelica.glsm.recording.commands.IndexedDrawCapture;
 import com.gtnewhorizons.angelica.glsm.recording.commands.TexImage2DCmd;
 import com.gtnewhorizons.angelica.glsm.recording.commands.TexSubImage2DCmd;
+import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import com.gtnewhorizons.angelica.glsm.stacks.AlphaStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.BlendStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.BooleanStateStack;
@@ -7835,8 +7836,25 @@ public class GLStateManager {
         if (ShaderManager.getInstance().isEnabled()) {
             generateVertexShaderIfNeeded(program);
         }
+        if (ProgramBinaryCache.isEnabled()) {
+            ProgramBinaryCache.markRetrievable(program);
+        }
         long linkEpoch = CompatUniformManager.beforeLinkProgram(program);
         RENDER_BACKEND.linkProgram(program);
+        CompatUniformManager.onLinkProgram(program, linkEpoch);
+    }
+
+    public static void glProgramParameteri(int program, int pname, int value) {
+        RENDER_BACKEND.programParameteri(program, pname, value);
+    }
+
+    public static void glGetProgramBinary(int program, IntBuffer length, IntBuffer binaryFormat, ByteBuffer binary) {
+        RENDER_BACKEND.getProgramBinary(program, length, binaryFormat, binary);
+    }
+
+    public static void glProgramBinary(int program, int binaryFormat, ByteBuffer binary) {
+        final long linkEpoch = CompatUniformManager.beforeLinkProgram(program);
+        RENDER_BACKEND.programBinary(program, binaryFormat, binary);
         CompatUniformManager.onLinkProgram(program, linkEpoch);
     }
 

@@ -2,7 +2,9 @@ package net.coderbot.iris.gui.screen;
 
 import com.gtnewhorizons.angelica.AngelicaMod;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
+import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.gui.GuiUtil;
 import net.coderbot.iris.gui.NavigationController;
@@ -51,6 +53,21 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
     private static final String SELECT_TITLE = I18n.format("pack.iris.select.title");
     private static final String CONFIGURE_TITLE = I18n.format("pack.iris.configure.title");
     private static final int COMMENT_PANEL_WIDTH = 314;
+    private static final int TOOLTIP_WIDTH = 300;
+    private static final int OPTION_ROW_WIDTH = 308;
+
+    private static String saveCompiledLabel() {
+        return I18n.format(Iris.getIrisConfig().shouldSaveCompiledShaders() ? "options.iris.saveCompiledShaders.on" : "options.iris.saveCompiledShaders.off");
+    }
+
+    private List<String> saveCompiledTooltip() {
+        final List<String> lines = new ArrayList<>(this.fontRenderer.listFormattedStringToWidth(I18n.format("options.iris.saveCompiledShaders.tooltip"), TOOLTIP_WIDTH));
+        if (!RenderSystem.supportsProgramBinary()) {
+            lines.add("");
+            lines.addAll(this.fontRenderer.listFormattedStringToWidth(I18n.format("options.iris.saveCompiledShaders.unsupported"), TOOLTIP_WIDTH));
+        }
+        return lines;
+    }
 
     private final GuiScreen parent;
     private final String title;
@@ -62,6 +79,7 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
     private @Nullable ShaderPackOptionList shaderOptionList = null;
     private @Nullable NavigationController navigation = null;
     private GuiButton screenSwitchButton;
+    private @Nullable GuiButton saveCompiledButton;
 
     private String notificationDialog = null;
     private int notificationDialogTimer = 0;
@@ -166,6 +184,13 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
                     this.fontRenderer.drawStringWithShadow(this.hoveredElementCommentBody.get(i), x + 4, (y + 16) + (i * 10), 0xFFFFFF);
                 }
             }
+
+            final GuiButton saveButton = this.saveCompiledButton;
+            if (saveButton != null && mouseX >= saveButton.x && mouseY >= saveButton.y
+                && mouseX < saveButton.x + saveButton.width && mouseY < saveButton.y + saveButton.height) {
+                final List<String> tooltip = saveCompiledTooltip();
+                GuiUtil.drawTextPanel(this.fontRenderer, tooltip, saveButton.x, saveButton.y - (tooltip.size() * 10 + 10));
+            }
         }
 
         // Render everything queued to drawScreen last
@@ -197,12 +222,12 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
         final int topCenter = this.width / 2 - 76;
         final boolean inWorld = this.mc.world != null;
 
-        this.shaderPackList = new ShaderPackSelectionList(this, this.mc, this.width, this.height, 32, this.height - 58, 0, this.width);
+        this.shaderPackList = new ShaderPackSelectionList(this, this.mc, this.width, this.height, 32, this.height - 82, 0, this.width);
 
         if (Iris.getCurrentPack().isPresent() && this.navigation != null) {
             final ShaderPack currentPack = Iris.getCurrentPack().get();
 
-            this.shaderOptionList = new ShaderPackOptionList(this, this.navigation, currentPack, this.mc, this.width, this.height, 32, this.height - 58, 0, this.width);
+            this.shaderOptionList = new ShaderPackOptionList(this, this.navigation, currentPack, this.mc, this.width, this.height, 32, this.height - 82, 0, this.width);
             this.navigation.setActiveOptionList(this.shaderOptionList);
 
             this.shaderOptionList.rebuild();
@@ -219,8 +244,16 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
         }
 
         this.buttonList.clear();
+        this.saveCompiledButton = null;
 
         if (!this.guiHidden) {
+
+            this.saveCompiledButton = new IrisButton(topCenter - 78, this.height - 75, OPTION_ROW_WIDTH, 20,
+                saveCompiledLabel(), button -> {
+                    this.toggleSaveCompiledShaders();
+                    button.displayString = saveCompiledLabel();
+                });
+            this.buttonList.add(this.saveCompiledButton);
 
             this.buttonList.add(new IrisButton(bottomCenter + 104, this.height - 27, 100, 20,
                 I18n.format("gui.done"), button -> this.onClose()));
@@ -348,6 +381,28 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
                 irisButton.onPress();
             }
         }
+    }
+
+    public void toggleSaveCompiledShaders() {
+        final boolean save = !Iris.getIrisConfig().shouldSaveCompiledShaders();
+        try {
+            Iris.getIrisConfig().setSaveCompiledShaders(save);
+        } catch (IOException e) {
+            Iris.logger.error("Failed to save the Iris config", e);
+        }
+        if (!save) {
+            ProgramBinaryCache.deleteAll();
+            return;
+        }
+        if (!Iris.getIrisConfig().areShadersEnabled()) return;
+
+        // Turning saving on compiles every dimension's shaders once, which only happens on a reload
+        try {
+            Iris.reload();
+        } catch (IOException e) {
+            Iris.logger.error("Failed to reload shaders after turning on Save Compiled Shaders", e);
+        }
+        refreshForChangedPack();
     }
 
     public void refreshForChangedPack() {

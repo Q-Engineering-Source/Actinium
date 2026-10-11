@@ -130,6 +130,15 @@ public class PipelineManager {
 
 
 	/**
+	 * Destroys a pipeline that was built only to warm the caches (a full compile of every shader
+	 * folder) and was never made current.
+	 */
+	public void discardPipeline(WorldRenderingPipeline unused) {
+		resetTextureState();
+		unused.destroy();
+	}
+
+	/**
 	 * Destroys all the current pipelines.
 	 *
 	 * <p>This method is <b>EXTREMELY DANGEROUS!</b> It is a huge potential source of hard-to-trace inconsistencies

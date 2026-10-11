@@ -1,5 +1,6 @@
 package net.coderbot.iris.config;
 
+import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.gui.option.IrisVideoSettings;
 
@@ -44,6 +45,11 @@ public class IrisConfig {
 	 */
 	private boolean enableDebugOptions;
 
+	/**
+	 * Whether compiled programs are saved to disk so later runs restore them instead of recompiling.
+	 */
+	private boolean saveCompiledShaders;
+
 	private final Path propertiesPath;
 
 	public IrisConfig(Path propertiesPath) {
@@ -51,6 +57,7 @@ public class IrisConfig {
 		enableShaders = true;
 		disableUpdateMessage = false;
 		enableDebugOptions = false;
+		saveCompiledShaders = false;
 		this.propertiesPath = propertiesPath;
 	}
 
@@ -125,6 +132,16 @@ public class IrisConfig {
 		return enableDebugOptions;
 	}
 
+	public boolean shouldSaveCompiledShaders() {
+		return saveCompiledShaders;
+	}
+
+	public void setSaveCompiledShaders(boolean save) throws IOException {
+		this.saveCompiledShaders = save;
+		ProgramBinaryCache.setEnabled(save);
+		save();
+	}
+
 	/**
 	 * loads the config file and then populates the string, int, and boolean entries with the parsed entries
 	 *
@@ -149,6 +166,8 @@ public class IrisConfig {
 		}
 		enableDebugOptions = "true".equals(properties.getProperty("enableDebugOptions"));
 		disableUpdateMessage = "true".equals(properties.getProperty("disableUpdateMessage"));
+		saveCompiledShaders = "true".equals(properties.getProperty("saveCompiledShaders"));
+		ProgramBinaryCache.setEnabled(saveCompiledShaders);
         // TODO: GUI
         try {
             IrisVideoSettings.shadowDistance = Integer.parseInt(properties.getProperty("maxShadowRenderDistance", "32"));
@@ -176,6 +195,7 @@ public class IrisConfig {
 		properties.setProperty("enableShaders", enableShaders ? "true" : "false");
 		properties.setProperty("enableDebugOptions", enableDebugOptions ? "true" : "false");
 		properties.setProperty("disableUpdateMessage", disableUpdateMessage ? "true" : "false");
+		properties.setProperty("saveCompiledShaders", saveCompiledShaders ? "true" : "false");
 		properties.setProperty("maxShadowRenderDistance", String.valueOf(IrisVideoSettings.shadowDistance));
 		// NB: This uses ISO-8859-1 with unicode escapes as the encoding
 		try (OutputStream os = Files.newOutputStream(propertiesPath)) {
