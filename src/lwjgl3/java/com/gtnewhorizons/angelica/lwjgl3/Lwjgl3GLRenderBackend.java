@@ -18,6 +18,7 @@ import org.lwjgl.opengl.EXTDirectStateAccess;
 import org.lwjgl.opengl.EXTPolygonOffsetClamp;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11C;
+import org.lwjgl.PointerBuffer;
 import org.lwjgl.opengl.GL12C;
 import org.lwjgl.opengl.GL13C;
 import org.lwjgl.opengl.GL14C;
@@ -49,6 +50,7 @@ import java.nio.IntBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.ShortBuffer;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * LWJGL3 GL implementation of {@link RenderBackend}.
@@ -62,10 +64,20 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     private GLDebugMessageCallback debugCallback;
     private GLDebugMessageCallback appDebugCallback;
     private boolean debugOutputActive;
+    private boolean amdShaderSourceWorkaround;
 
     @Override
     public void init() {
         caps = GL.getCapabilities();
+        if (GLStateManager.isWindows()) {
+            final String vendor = GL11C.glGetString(GL11C.GL_VENDOR);
+            if (vendor != null) {
+                final String normalizedVendor = vendor.toLowerCase(Locale.ROOT);
+                amdShaderSourceWorkaround = normalizedVendor.startsWith("amd")
+                    || normalizedVendor.startsWith("ati technologies")
+                    || normalizedVendor.startsWith("advanced micro devices");
+            }
+        }
         if (RenderSystem.isGLES()) {
             pfnClearDepthf = GL.getFunctionProvider().getFunctionAddress("glClearDepthf");
             pfnDepthRangef = GL.getFunctionProvider().getFunctionAddress("glDepthRangef");
@@ -799,7 +811,20 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public void shaderSource(int shader, CharSequence source) {
-        GL20C.glShaderSource(shader, source);
+        if (!amdShaderSourceWorkaround) {
+            GL20C.glShaderSource(shader, source);
+            return;
+        }
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            final ByteBuffer encodedSource = MemoryUtil.memUTF8(source, true);
+            try {
+                final PointerBuffer pointers = stack.mallocPointer(1);
+                pointers.put(encodedSource);
+                GL20C.nglShaderSource(shader, 1, pointers.address0(), 0L);
+            } finally {
+                MemoryUtil.memFree(encodedSource);
+            }
+        }
     }
 
     @Override

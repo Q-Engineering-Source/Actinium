@@ -12,6 +12,8 @@
 > #2138 / #2142（`9dd60f6a` / `1babfd96` / `44c930f4` / `a8c29fa3`，Phase 3）已于
 > 2026-10-11 同步 sdl-gpu 侧**（详见「上游同步状态（2026-10-11，Phase 3）」；
 > 该阶段的 glsm 状态栈 COW / per-drawable context 重构**未同步**，原因见同一节）。
+> **上游 #2153 / #2157（`e17b45c8` / `7bb5bfd4`，Phase 4）已于 2026-10-11 同步**
+> （详见「上游同步状态（2026-10-11，Phase 4）」）。
 > 本文档
 > 逐条记录 Actinium 的 `sdl-gpu` 模块相对 Angelica 上游（`D:\Code\Angelica`，
 > 运行于 lwjgl3ify/GTNH 环境）的**代码差异及其理由**。多数差异源于运行环境不同
@@ -590,3 +592,80 @@ GL context 测试台（glsm-sdl rig 暂缓）可验证语义。后续接入 glsm
   `copiesAbsoluteIndicesAcrossBufferKinds` 覆盖。
 - 测试里的 `VertexAttribState.init(0)`（Actinium 版 `VAOManager.init(0)`）保留：
   上游 #2142 的 per-drawable VAO 重构未同步，init 仍是必需步骤。
+
+## 上游同步状态（2026-10-11，Phase 4）
+
+已同步上游两个提交：`e17b45c8`（#2153，FBO clear/readback 状态跟踪）与
+`7bb5bfd4`（#2157，logic op 模拟 + pixel readback 重写）。两者都在 Phase 3 的
+sdl-gpu 基础上叠加，未触及 Phase 3 记录为未同步的 glsm COW / per-drawable 部分。
+
+**#2153（`e17b45c8`）**
+
+- 用 `ResourceManager` 的 `definedContentTextures` 取代每帧的
+  `clearedTexturesThisFrame` / `clearedStencilTexturesThisFrame` 两个集合：
+  `ContextState` 删除这两个字段，`AttachmentClear`、`FBOClearTracker` 的各登记点
+  删除，`PipelineApplier` 改用 `resourceManager.isTextureContentDefined(...)`
+  判断是否需要首次 clear，`markTextureContentDefined` 幂等化（已定义则直接返回）。
+- `discardPendingClearIfFullyCovered` / `resolveDestinationForWrite` 增加
+  `allAspects` 参数：depth-stencil 附件上的**部分 aspect** 写入不再丢弃 pending
+  clear（原来按「整份写覆盖」判断，导致 NEI/ModularUI2 这类只写 color 或单 aspect
+  的路径把 depth/stencil clear 吞掉，物品图标随后变黑/消失）；
+  `resolveDestinationForWrite` 结束时统一 `markTextureContentDefined(destTex)`。
+- `blitNamedFramebuffer`（color 走 `allAspects = true`，depth/stencil 时按
+  mask 是否同时包含 DEPTH|STENCIL 或目标非 depth-stencil 格式决定）、
+  `TextureOps.copyTexSubImageImpl`、`copyTextureToTexture` 等调用点同步。
+- 测试：`ClearConsumptionTest`、`FullCoverageClearDiscardTest`、
+  `StencilClearTrackingTest` 已同步；3 个 rig 测试
+  （`GlsmSdlAttachmentClearTest`、`GlsmSdlCopyBlitTest`、`GlsmSdlHeadlessRig`）
+  未同步。
+
+**#2157（`7bb5bfd4`）**
+
+- glsm：
+  - `RenderBackend.readPixels(..., long pixelBufferOffset)` 从 Actinium 的「具体
+    实现抛 `UnsupportedOperationException`」改为**抽象方法**（上游该提交的做法），
+    由各后端实现；`Lwjgl2GLRenderBackend` 在 Actinium 不存在，其实现跳过。
+  - Actinium 的 `GLStateManager.glReadPixels(..., long)` 已存在且语义一致
+    （`remapPixelTypeForGLES` + 不扰动 pixel-pack 绑定），无需改动。
+  - 新增 `@Getter private static boolean windows`（在 `init()` 里按 `os.name`
+    赋值）与 Lwjgl3 AMD workaround 所需的 `GLStateManager.isWindows()`：上游的
+    平台探测字段，Actinium 之前只有 `vendorIsAMD()`/`vendorIsIntel()`。
+  - `src/test/.../streaming/StubRenderBackend`（Actinium 测试替身）补
+    `readPixels(..., long)` override（抛 `UnsupportedOperationException`，与该类
+    其余 GL 入口一致）。
+- `Lwjgl3GLRenderBackend`：Windows + AMD（vendor 以 amd / ati technologies /
+  advanced micro devices 开头）时 `glShaderSource` 改走
+  `nglShaderSource(shader, 1, pointers, 0L)` + `MemoryUtil.memUTF8(source, true)`
+  （上游 lwjgl3-backend 的实现；LWJGL 3.4.1 已具备这些 API，无需升级）。
+- sdl-gpu 22 个主源文件全部落地：新增 `pipeline/DepthStencilReadback`、
+  `pipeline/FullscreenPass`、`pipeline/LogicOpEmulator`、`resource/PackState`、
+  `resource/PixelPack`、`shader/LogicOpFormats`、`shader/LogicOpLowering`、
+  `shader/LogicOpVariant`；`SDLGPURenderBackend` 的 4 个 `readPixels` 与 3 个
+  `getTexImage` 全部汇入统一的 `readPixelsInto` / `getTexImageInto` / `readback`
+  路径（支持 PBO offset、depth/stencil 经 `DepthStencilReadback` 渲染回读、
+  BGRA/格式打包由 `PixelPack` 处理）；`PixelOps`、`ResourceManager`、
+  `TextureOps`、`SamplerBinder`、`PipelineApplier`/`PipelineCache`、
+  `FBOClearTracker`、`FrameManager`/`SdlFramePlots`、`ContextState`、
+  `ShaderManager`、`DrawDispatch`、`AttachmentClear` 同步更新。
+- GLSL 资源按 Phase 3 的约定放在根工程
+  `src/main/resources/assets/angelica/shaders/sdlgpu/`：`logic_op.glsl`（片段，
+  由 `LogicOpLowering.SNIPPET` 静态加载并内联进 pipeline 的片段着色器）、
+  `readback_depth.fsh`、`readback_stencil.fsh`。三者函数体非空，
+  **不需要** Phase 3 `clear_attachment.fsh` 那种惰性语句 workaround。
+- **适配**：
+  - 新文件的 `ShaderLoader` 引用改为 Actinium 的 embedded 包
+    `dhj.embeddedt.embeddium.impl.render.shader.ShaderLoader`
+    （`FullscreenPass`、`DepthStencilReadback`、`LogicOpLowering`，与 Phase 3 的
+    `AttachmentClear` 一致）。
+  - `AttachmentClear` 在本提交中收缩（clear pipeline 迁入 `FullscreenPass`），
+    其 12 个不再使用的 import 手动清理：上游的 import hunk 因 Phase 3 的
+    `ShaderLoader` 包名适配而未能自动应用（body 改动均已应用）。
+- 测试：`DepthStencilReadbackTest`、`PixelPackTest`、`LogicOpLoweringTest`、
+  `BgraStorageChannelTest`、`ResourceManagerFormatMappingTest` 已同步。
+- **未同步**：rig 测试 `GlsmSdlLogicOpTest`、`GlsmSdlReadbackMatrixTest`；glsm 侧
+  `ReadbackGLTest`、`ffp/LogicOpGLTest` 及 testFixtures
+  `ReadbackFixture`/`LogicOpFixture`（需要 GL core context 与 glsm test 源集）；
+  上游 `GLSMRedirectorTest` 的新断言（`glReadPixels`/`glGetTexImage` 的 PBO
+  overload 重定向目标）——Actinium 的 redirector 早已包含这些条目，且其
+  redirector 测试是自写 harness；`src/` 侧的 `MixinGuiTextField`/
+  `TextHighlightHooks`/reeses sodium options 改动属核心 GUI 范畴。

@@ -276,6 +276,8 @@ public class GLStateManager {
     private static long loggedUncachedTextureTargets = 0;
 
     @Getter private static Vendor VENDOR;
+    /** True on Windows hosts; some drivers need per-platform workarounds. */
+    @Getter private static boolean windows;
 
     // This setting varies depending on driver, so it gets queried at runtime
     public static int DEFAULT_DRAW_BUFFER = 0x0405; // GL_BACK
@@ -617,6 +619,8 @@ public class GLStateManager {
 
         final String glVendor = RENDER_BACKEND.getString(GL11.GL_VENDOR);
         VENDOR = Vendor.getVendor(glVendor.toLowerCase());
+
+        windows = System.getProperty("os.name").toLowerCase().contains("win");
 
         // Keep the driver aligned with the cached all-ones defaults. The driver clamps these masks to the
         // stencil width of whichever framebuffer is current when a draw occurs.

@@ -119,6 +119,7 @@ class StubRenderBackend extends RenderBackend {
     @Override public void readPixels(int x, int y, int width, int height, int format, int type, ByteBuffer pixels) { throw new UnsupportedOperationException(); }
     @Override public void readPixels(int x, int y, int width, int height, int format, int type, FloatBuffer pixels) { throw new UnsupportedOperationException(); }
     @Override public void readPixels(int x, int y, int width, int height, int format, int type, IntBuffer pixels) { throw new UnsupportedOperationException(); }
+    @Override public void readPixels(int x, int y, int width, int height, int format, int type, long pixelBufferOffset) { throw new UnsupportedOperationException(); }
     @Override public void getTexImage(int target, int level, int format, int type, ByteBuffer pixels) { throw new UnsupportedOperationException(); }
     @Override public void getTexImage(int target, int level, int format, int type, IntBuffer pixels) { throw new UnsupportedOperationException(); }
     @Override public int getFramebufferAttachmentParameteri(int target, int attachment, int pname) { throw new UnsupportedOperationException(); }

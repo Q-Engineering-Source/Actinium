@@ -408,9 +408,7 @@ public abstract class RenderBackend {
     public abstract void readPixels(int x, int y, int width, int height, int format, int type, FloatBuffer pixels);
     public abstract void readPixels(int x, int y, int width, int height, int format, int type, IntBuffer pixels);
     /** Reads pixels into the currently bound pixel-pack buffer at a byte offset. */
-    public void readPixels(int x, int y, int width, int height, int format, int type, long pixelBufferOffset) {
-        throw new UnsupportedOperationException(getName() + ": pixel-pack-buffer readback unsupported");
-    }
+    public abstract void readPixels(int x, int y, int width, int height, int format, int type, long pixelBufferOffset);
     public abstract void getTexImage(int target, int level, int format, int type, ByteBuffer pixels);
     public abstract void getTexImage(int target, int level, int format, int type, IntBuffer pixels);
     public abstract void getTexImage(int target, int level, int format, int type, long pixelBufferOffset);
