@@ -1,6 +1,7 @@
 package com.gtnewhorizons.angelica.sdlgpu;
 
 import com.gtnewhorizons.angelica.sdlgpu.frame.ContextState;
+import com.gtnewhorizons.angelica.sdlgpu.resource.ResourceManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.lwjgl.opengl.EXTTextureFilterAnisotropic;
@@ -14,6 +15,9 @@ import org.lwjgl.opengl.GL40;
 import java.nio.ByteBuffer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.lwjgl.sdl.SDLGPU.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
 
 class ProxyTextureLimitsTest {
 
@@ -52,6 +56,39 @@ class ProxyTextureLimitsTest {
         assertEquals(2048, SDLGPURenderBackend.proxyDimensionLimit(GL12.GL_PROXY_TEXTURE_3D));
         assertEquals(16384, SDLGPURenderBackend.proxyDimensionLimit(GL13.GL_PROXY_TEXTURE_CUBE_MAP));
         assertEquals(16384, SDLGPURenderBackend.proxyDimensionLimit(GL40.GL_PROXY_TEXTURE_CUBE_MAP_ARRAY));
+    }
+
+    /**
+     * Callers use the anisotropy limit to decide whether anisotropic filtering can be offered at all, and read
+     * it through glGetFloat, so both entry points have to answer with the desktop maximum.
+     */
+    @Test
+    void anisotropyIsAdvertisedAtTheDesktopMaximum() {
+        final SDLGPURenderBackend backend = new SDLGPURenderBackend();
+        final int pname = EXTTextureFilterAnisotropic.GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT;
+
+        assertEquals(16, SDLGPURenderBackend.deviceLimit(pname));
+        assertEquals(16, backend.getInteger(pname));
+        assertEquals(16.0f, backend.getFloat(pname));
+    }
+
+    /**
+     * The level chain grows when GL defines a level the texture was not created with, so a texture that
+     * already carries enough levels has to be reused rather than reallocated.
+     */
+    @Test
+    void texturesWithSpareMipLevelsAreReused() {
+        final ResourceManager.TextureMeta mipped = new ResourceManager.TextureMeta(
+            GL11.GL_TEXTURE_2D, GL11.GL_RGBA8, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, 16, 16, 1, 5, 0);
+
+        assertTrue(SDLGPURenderBackend.canReuseTexture(mipped, 7L, GL11.GL_TEXTURE_2D, GL11.GL_RGBA8,
+            SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, 16, 16, 1, 5));
+        assertTrue(SDLGPURenderBackend.canReuseTexture(mipped, 7L, GL11.GL_TEXTURE_2D, GL11.GL_RGBA8,
+            SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, 16, 16, 1, 3));
+        assertFalse(SDLGPURenderBackend.canReuseTexture(mipped, 7L, GL11.GL_TEXTURE_2D, GL11.GL_RGBA8,
+            SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, 16, 16, 1, 6));
+        assertFalse(SDLGPURenderBackend.canReuseTexture(mipped, 7L, GL11.GL_TEXTURE_2D, GL11.GL_RGBA8,
+            SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, 32, 16, 1, 5));
     }
 
     @Test

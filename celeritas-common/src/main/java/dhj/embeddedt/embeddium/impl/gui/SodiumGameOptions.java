@@ -13,6 +13,8 @@ import dhj.embeddedt.embeddium.impl.gui.framework.TextComponent;
 import dhj.embeddedt.embeddium.impl.gui.options.TextProvider;
 import dhj.embeddedt.embeddium.impl.render.chunk.MultiDrawMode;
 import dhj.embeddedt.embeddium.impl.render.chunk.occlusion.AsyncOcclusionMode;
+import dhj.embeddedt.embeddium.impl.texture.TexelSampling;
+import dhj.embeddedt.embeddium.impl.texture.TextureFilterMode;
 
 import java.io.FileReader;
 import java.io.IOException;
@@ -155,6 +157,15 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         public float biomeColorNoiseGrassIntensity = 0.08F;
         public float biomeColorNoiseFoliageIntensity = 0.08F;
         public float biomeColorNoiseWaterIntensity = 0.08F;
+
+        public TextureFilterMode textureFilterMode = TextureFilterMode.ANISOTROPIC;
+        public TexelSampling texelSampling = TexelSampling.LINEAR;
+
+        /**
+         * log2 of the anisotropic filtering amount the terrain sampler asks for, so 1 is 2x and 4 is 16x.
+         * Vanilla dropped its own anisotropic-filtering setting after 1.7.10, so Actinium owns the amount.
+         */
+        public int anisotropicLevel = 1;
     }
 
     public static class NotificationSettings {
@@ -272,6 +283,14 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
 
         if (config.advanced.streamingUploadStrategy == null) {
             config.advanced.streamingUploadStrategy = StreamingUploadStrategy.MAP_BUFFER_RANGE;
+        }
+
+        if (config.quality.textureFilterMode == null) {
+            config.quality.textureFilterMode = TextureFilterMode.ANISOTROPIC;
+        }
+
+        if (config.quality.texelSampling == null) {
+            config.quality.texelSampling = TexelSampling.LINEAR;
         }
 
         try {

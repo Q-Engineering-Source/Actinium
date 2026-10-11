@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableList;
 import com.dhj.actinium.config.ActiniumRuntimeOptions;
 import com.dhj.actinium.compat.scalingguis.ScalingGuiCompat;
 import com.dhj.actinium.render.pacing.FpsReducer;
+import com.dhj.actinium.render.terrain.TerrainTextureFiltering;
 import com.gtnewhorizon.gtnhlib.compat.Mods;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
 import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
@@ -19,6 +20,9 @@ import dhj.embeddedt.embeddium.api.options.control.TickBoxControl;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
 import dhj.embeddedt.embeddium.impl.gui.framework.TextComponent;
 import dhj.embeddedt.embeddium.impl.render.chunk.MultiDrawMode;
+import dhj.embeddedt.embeddium.impl.texture.TexelSampling;
+import dhj.embeddedt.embeddium.impl.texture.TextureFilterMode;
+import net.minecraft.util.math.MathHelper;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import dhj.embeddedt.embeddium.api.options.structure.OptionFlag;
 import dhj.embeddedt.embeddium.api.options.structure.OptionGroup;
@@ -395,6 +399,21 @@ public class ActiniumGameOptionPages {
                 .build());
 
 
+        final int anisotropyMin = TerrainTextureFiltering.minAnisotropyLevel();
+        final int anisotropyMax = Math.max(TerrainTextureFiltering.maxAnisotropyLevel(), anisotropyMin + 1);
+
+        final OptionImpl<SodiumGameOptions, TextureFilterMode> textureFilterMode =
+                OptionImpl.createBuilder(TextureFilterMode.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "texture_filtering", TextureFilterMode.class))
+                        .setName(TextComponent.translatable("sodium.options.texture_filtering.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.texture_filtering.tooltip"))
+                        .setControl(option -> new CyclingControl<>(option, TextureFilterMode.class,
+                                TextureFilterMode.selectableValues(TerrainTextureFiltering.anisotropySupported())))
+                        .setBinding((opts, value) -> opts.quality.textureFilterMode = value,
+                                opts -> TerrainTextureFiltering.resolveFilterMode(opts.quality.textureFilterMode))
+                        .setImpact(OptionImpact.LOW)
+                        .build();
+
         groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.MIPMAPS)
                 .add(OptionImpl.createBuilder(int.class, vanillaOpts)
@@ -405,6 +424,27 @@ public class ActiniumGameOptionPages {
                         .setBinding((opts, value) -> opts.mipmapLevels = value, opts -> opts.mipmapLevels)
                         .setImpact(OptionImpact.MEDIUM)
                         .setFlags(OptionFlag.REQUIRES_ASSET_RELOAD)
+                        .build())
+                .add(textureFilterMode)
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "anisotropic_filtering", int.class))
+                        .setName(TextComponent.translatable("sodium.options.anisotropic_filtering.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.anisotropic_filtering.tooltip"))
+                        .setControl(option -> new SliderControl(option, anisotropyMin, anisotropyMax, 1,
+                                value -> TextComponent.literal((1 << value) + "x")))
+                        .setBinding((opts, value) -> opts.quality.anisotropicLevel = value,
+                                opts -> MathHelper.clamp(opts.quality.anisotropicLevel, anisotropyMin, anisotropyMax))
+                        .setImpact(OptionImpact.MEDIUM)
+                        .setEnabledPredicate(() -> textureFilterMode.getValue().usesAnisotropy()
+                                && TerrainTextureFiltering.hasAnisotropyRange())
+                        .build())
+                .add(OptionImpl.createBuilder(TexelSampling.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "texel_sampling", TexelSampling.class))
+                        .setName(TextComponent.translatable("sodium.options.texel_sampling.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.texel_sampling.tooltip"))
+                        .setControl(option -> new CyclingControl<>(option, TexelSampling.class))
+                        .setBinding((opts, value) -> opts.quality.texelSampling = value, opts -> opts.quality.texelSampling)
+                        .setImpact(OptionImpact.LOW)
                         .build())
                 .build());
 

@@ -15,6 +15,7 @@ import net.coderbot.iris.texture.pbr.PBRSpriteHolder;
 import net.coderbot.iris.texture.pbr.PBRType;
 import net.coderbot.iris.texture.pbr.TextureAtlasSpriteExtension;
 import net.coderbot.iris.texture.util.ImageManipulationUtil;
+import dhj.embeddedt.embeddium.impl.texture.SpritePaddingExtension;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.client.resources.IResource;
@@ -157,9 +158,10 @@ public class AtlasPBRLoader implements PBRTextureLoader<TextureMap> {
 
             animationMetadata = normalizeAnimationMetadata(animationMetadata, nativeImage.getHeight(), frameWidth, frameHeight);
 
-            final int x = sprite.getOriginX();
-            final int y = sprite.getOriginY();
-            pbrSprite = new PBRTextureAtlasSprite(pbrSpriteInfo, animationMetadata, atlasWidth, atlasHeight, x, y, nativeImage, mipLevel);
+            final int gutter = ((SpritePaddingExtension) sprite).angelica$getGutterWidth();
+
+            pbrSprite = new PBRTextureAtlasSprite(pbrSpriteInfo, animationMetadata, atlasWidth, atlasHeight,
+                sprite.getOriginX(), sprite.getOriginY(), gutter, nativeImage, mipLevel);
             syncAnimation(sprite, pbrSprite);
             PBRDebug.spriteLoaded(pbrType, pbrImageLocation, pbrSprite);
         } catch (FileNotFoundException e) {
@@ -251,11 +253,14 @@ public class AtlasPBRLoader implements PBRTextureLoader<TextureMap> {
 
     public static class PBRTextureAtlasSprite extends TextureAtlasSprite implements CustomMipmapGenerator.Provider {
         // This feels super janky
-        protected PBRTextureAtlasSprite(TextureAtlasSpriteInfo info, AnimationMetadataSection animationMetaDataSection, int atlasWidth, int atlasHeight, int x, int y, NativeImage nativeImage, int miplevel) {
+        protected PBRTextureAtlasSprite(TextureAtlasSpriteInfo info, AnimationMetadataSection animationMetaDataSection, int atlasWidth, int atlasHeight, int x, int y, int gutter, NativeImage nativeImage, int miplevel) {
             super(info.name().toString());
+            // The sprite's own origin is inset from the slot by its gutter, so the slot origin has to be
+            // handed to initSprite for the shared inset to land on the same texel as the base atlas.
+            ((SpritePaddingExtension) this).angelica$setGutterWidth(gutter);
             super.setIconWidth(info.width());
             super.setIconHeight(info.height());
-            super.initSprite(atlasWidth, atlasHeight, x, y, false);
+            super.initSprite(atlasWidth, atlasHeight, x - gutter, y - gutter, false);
             this.animationMetadata = animationMetaDataSection;
 
             final CustomMipmapGenerator mipmapGenerator = getMipmapGenerator(info, atlasWidth, atlasHeight);

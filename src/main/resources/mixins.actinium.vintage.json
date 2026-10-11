@@ -58,6 +58,7 @@
     "features.pacing.MixinSoundManagerFpsReducerVolume",
     "features.render.tileentity.piston.MixinTileEntityPistonRenderer",
     "features.textures.MixinRenderItem",
+    "features.textures.MixinStitcherHolder",
     "features.textures.MixinTextureAtlas",
     "features.textures.MixinTextureAtlasSprite",
     "fontrenderer.MixinFontRenderer",

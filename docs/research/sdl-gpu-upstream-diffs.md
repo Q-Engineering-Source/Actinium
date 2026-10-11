@@ -444,6 +444,15 @@ bypass fixes #2099）、`26c161f0`（texture filtering #2096，仅 sdl-gpu 侧�
   sodium GUI、celeritas、iris PBR、shader 等）——Actinium 没有
   `MipmapGenerator` / `SpritePadding` / `TextureFilterMode` /
   `TexelSampling` 对应类。
+- **2026-10-11 更正与补齐**：上一条实测只落地了 `ResourceManager` 的两项与
+  anisotropy 采样参数追踪（`TextureSamplerState.setf/seti`、`SamplerBinder`）；
+  `SDLGPURenderBackend` 侧的三个 helper、`canReuseTexture` 放宽、
+  `texImage2D`/`copyTexImage2D`/`textureImage2DEXT`/`generateTextureMipmap` 的按需
+  扩容、`getInteger`/`getFloat` 的各向异性上限当时**未落地**，
+  `ResourceManager.ensureTextureLevels` 因此是无调用者的死代码。这些调用侧，以及
+  上游主体的纹理过滤特性，已在 `docs/research/texture-filtering-port.md` 记录的
+  提交中补齐（含 `SpritePadding`、`TextureFilterMode`、`TexelSampling` 等类，
+  放置位置与上游不同，理由见该文档）。
 
 **#2104 instance more things（仅 sdl-gpu 侧）**
 

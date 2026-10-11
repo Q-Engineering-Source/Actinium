@@ -19,8 +19,6 @@ import dhj.embeddedt.embeddium.api.shader.vertex.ExtendedDataHelper;
 import static com.mitchej123.lwjgl.LWJGLServiceProvider.LWJGL;
 
 public class ExtendedChunkVertexEncoder implements ContextAwareChunkVertexEncoder {
-    private static final float TEX_CENTROID_BIAS = 1.0f / 32768.0f;
-
     private final ExtendedChunkVertexType vertexType;
     private final ChunkVertexEncoder baseEncoder = VanillaLikeChunkVertex.createBaseEncoder();
     private final LwjglQuadView quad = new LwjglQuadView();
@@ -30,7 +28,6 @@ public class ExtendedChunkVertexEncoder implements ContextAwareChunkVertexEncode
     private final int normalOffset;
     private final int mcEntityOffset;
     private final int midBlockOffset;
-    private final int texCoordOffset;
     private final int stride;
 
     private BlockRenderContext context;
@@ -45,7 +42,6 @@ public class ExtendedChunkVertexEncoder implements ContextAwareChunkVertexEncode
         this.normalOffset = getOffset(TerrainVertexFormatRequirements.Attribute.NORMAL, "iris_Normal");
         this.mcEntityOffset = getOffset(TerrainVertexFormatRequirements.Attribute.MC_ENTITY, "mc_Entity");
         this.midBlockOffset = getOffset(TerrainVertexFormatRequirements.Attribute.MID_BLOCK, "at_midBlock");
-        this.texCoordOffset = vertexType.getVertexFormat().getAttribute("a_TexCoord").getPointer();
         this.stride = vertexType.getVertexFormat().getStride();
     }
 
@@ -151,17 +147,6 @@ public class ExtendedChunkVertexEncoder implements ContextAwareChunkVertexEncode
             if (this.midTexOffset >= 0) {
                 int midUV = ExtendedChunkVertexType.encodeMidTexture(this.uSum * 0.25f, this.vSum * 0.25f);
                 writeQuadInt(ptr, this.midTexOffset, midUV);
-
-                float midU = this.uSum * 0.25f;
-                float midV = this.vSum * 0.25f;
-                for (int vertexIndex = 0; vertexIndex < 4; vertexIndex++) {
-                    long uvBase = ptr - (long) (3 - vertexIndex) * this.stride + this.texCoordOffset;
-                    float vertexU = LWJGL.memGetFloat(uvBase);
-                    float vertexV = LWJGL.memGetFloat(uvBase + 4L);
-
-                    LWJGL.memPutFloat(uvBase, vertexU + (vertexU < midU ? TEX_CENTROID_BIAS : -TEX_CENTROID_BIAS));
-                    LWJGL.memPutFloat(uvBase + 4L, vertexV + (vertexV < midV ? TEX_CENTROID_BIAS : -TEX_CENTROID_BIAS));
-                }
                 this.uSum = 0.0f;
                 this.vSum = 0.0f;
             }

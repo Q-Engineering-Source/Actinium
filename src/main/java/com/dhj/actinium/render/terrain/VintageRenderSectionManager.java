@@ -39,6 +39,10 @@ import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.render.terrain.compile.VintageChunkBuildContext;
 import com.dhj.actinium.render.terrain.compile.task.ChunkBuilderMeshingTask;
 import com.dhj.actinium.render.terrain.sprite.SpriteUtil;
+import com.gtnewhorizons.angelica.glsm.RenderSystem;
+import org.lwjgl.opengl.EXTTextureFilterAnisotropic;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL12;
 
 import java.util.List;
 
@@ -202,8 +206,20 @@ public class VintageRenderSectionManager extends RenderSectionManager {
     }
 
     private static class ChunkRenderer extends DefaultChunkRenderer {
+        private static final int BLOCK_TEXTURE_UNIT = 0;
+
         private GlProgram<? extends ChunkShaderInterface> actiniumProgram;
         private boolean usingActiniumProgram;
+        private int terrainSampler;
+        private boolean terrainSamplerResolved;
+        private int terrainSamplerAnisotropy = -1;
+        private boolean terrainSamplerNearest;
+        private boolean terrainSamplerMipped;
+        private int packTerrainSampler;
+        private boolean packTerrainSamplerResolved;
+        private int packTerrainSamplerAnisotropy = -1;
+        private boolean packTerrainSamplerMipped;
+        private boolean terrainSamplerBound;
 
         public ChunkRenderer(RenderDevice device, RenderPassConfiguration<?> renderPassConfiguration) {
             super(device, renderPassConfiguration);
@@ -227,6 +243,7 @@ public class VintageRenderSectionManager extends RenderSectionManager {
                     this.activeProgram = (GlProgram<ChunkShaderInterface>) override;
                     this.actiniumProgram = override;
                     this.usingActiniumProgram = true;
+                    bindPackTerrainSampler();
                     return;
                 }
             }
@@ -234,10 +251,13 @@ public class VintageRenderSectionManager extends RenderSectionManager {
             this.usingActiniumProgram = false;
             this.actiniumProgram = null;
             super.begin(pass);
+            bindTerrainSampler();
         }
 
         @Override
         protected void end(TerrainRenderPass pass) {
+            unbindTerrainSampler();
+
             if (this.usingActiniumProgram && this.actiniumProgram != null) {
                 RenderDebugHooksHolder.logCurrentFramebufferSamples("terrain:" + pass.name(), 1);
                 this.actiniumProgram.getInterface().restoreState();
@@ -250,6 +270,117 @@ public class VintageRenderSectionManager extends RenderSectionManager {
             }
 
             super.end(pass);
+        }
+
+        @Override
+        public void delete(CommandList commandList) {
+            unbindTerrainSampler();
+            RenderSystem.destroySampler(terrainSampler);
+            terrainSampler = 0;
+            terrainSamplerResolved = false;
+            terrainSamplerAnisotropy = -1;
+            terrainSamplerNearest = false;
+            terrainSamplerMipped = false;
+            RenderSystem.destroySampler(packTerrainSampler);
+            packTerrainSampler = 0;
+            packTerrainSamplerResolved = false;
+            packTerrainSamplerAnisotropy = -1;
+            packTerrainSamplerMipped = false;
+
+            super.delete(commandList);
+        }
+
+        /**
+         * Min/mag filtering comes from the Texel Sampling option and anisotropic filtering from the Texture
+         * Filtering mode, so the sampler is rebuilt whenever either of them changes.
+         */
+        private void bindTerrainSampler() {
+            final int anisotropy = TerrainTextureFiltering.resolvedAnisotropicFiltering();
+            final boolean nearest = ActiniumRuntime.options().quality.texelSampling.isNearest();
+            final boolean mipped = blockAtlasHasMipmaps();
+
+            if (!terrainSamplerResolved || terrainSamplerAnisotropy != anisotropy || terrainSamplerNearest != nearest
+                || terrainSamplerMipped != mipped) {
+                if (!terrainSamplerResolved) {
+                    terrainSampler = RenderSystem.genSampler();
+                    if (terrainSampler == 0) {
+                        ActiniumRuntime.logger().warn("Sampler objects unavailable; terrain filtering will fall back to the atlas texture's own parameters");
+                    }
+                }
+                terrainSamplerResolved = true;
+                terrainSamplerAnisotropy = anisotropy;
+                terrainSamplerNearest = nearest;
+                terrainSamplerMipped = mipped;
+
+                configureTerrainSampler(terrainSampler, nearest, mipped, anisotropy);
+            }
+
+            if (terrainSampler != 0) {
+                RenderSystem.bindSamplerToUnit(BLOCK_TEXTURE_UNIT, terrainSampler);
+                terrainSamplerBound = true;
+            }
+        }
+
+        /**
+         * Shader packs filter the block atlas themselves, so their terrain sampler only applies the
+         * anisotropic footprint and leaves magnification unfiltered.
+         */
+        private void bindPackTerrainSampler() {
+            final int anisotropy = TerrainTextureFiltering.resolvedAnisotropicFiltering();
+            final boolean mipped = blockAtlasHasMipmaps();
+
+            if (!packTerrainSamplerResolved || packTerrainSamplerAnisotropy != anisotropy
+                || packTerrainSamplerMipped != mipped) {
+                if (!packTerrainSamplerResolved) {
+                    packTerrainSampler = RenderSystem.genSampler();
+                    if (packTerrainSampler == 0) {
+                        ActiniumRuntime.logger().warn("Sampler objects unavailable; shader pack terrain filtering will fall back to the atlas texture's own parameters");
+                    }
+                }
+                packTerrainSamplerResolved = true;
+                packTerrainSamplerAnisotropy = anisotropy;
+                packTerrainSamplerMipped = mipped;
+
+                configureTerrainSampler(packTerrainSampler, true, mipped, anisotropy);
+            }
+
+            if (packTerrainSampler != 0) {
+                RenderSystem.bindSamplerToUnit(BLOCK_TEXTURE_UNIT, packTerrainSampler);
+                terrainSamplerBound = true;
+            }
+        }
+
+        /**
+         * A bound sampler object overrides the atlas texture's own filter state, so the mipmap filter can only
+         * be requested while the atlas actually carries mip levels: sampling a single-level atlas with a
+         * mipmap filter would read an incomplete texture and come out black.
+         */
+        private static boolean blockAtlasHasMipmaps() {
+            return Minecraft.getMinecraft().getTextureMapBlocks().getMipmapLevels() > 0;
+        }
+
+        private static void configureTerrainSampler(int sampler, boolean nearest, boolean mipped, int anisotropy) {
+            if (sampler == 0) {
+                return;
+            }
+            RenderSystem.samplerParameteri(sampler, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+            RenderSystem.samplerParameteri(sampler, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+            RenderSystem.samplerParameteri(sampler, GL11.GL_TEXTURE_MIN_FILTER,
+                mipped ? (nearest ? GL11.GL_NEAREST_MIPMAP_LINEAR : GL11.GL_LINEAR_MIPMAP_LINEAR)
+                    : (nearest ? GL11.GL_NEAREST : GL11.GL_LINEAR));
+            RenderSystem.samplerParameteri(sampler, GL11.GL_TEXTURE_MAG_FILTER,
+                nearest ? GL11.GL_NEAREST : GL11.GL_LINEAR);
+            if (TerrainTextureFiltering.anisotropySupported()) {
+                RenderSystem.samplerParameteri(sampler,
+                    EXTTextureFilterAnisotropic.GL_TEXTURE_MAX_ANISOTROPY_EXT, anisotropy);
+            }
+        }
+
+        private void unbindTerrainSampler() {
+            if (terrainSamplerBound) {
+                RenderSystem.bindSamplerToUnit(BLOCK_TEXTURE_UNIT, 0);
+                terrainSamplerBound = false;
+            }
         }
 
         @Override
