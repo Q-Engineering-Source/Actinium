@@ -17,7 +17,10 @@
 > （`c10d30b2` / `80e5b544` / `1587a12c`，Phase 5）已于 2026-10-11 同步**
 > （详见「上游同步状态（2026-10-11，Phase 5）」）；**上游 #2192 / #2194 / #2195 /
 > #2213（`85892c0f` / `37afddab` / `bdcb4d18` / `38af64f1`，Phase 6）已于
-> 2026-10-11 同步**（详见「上游同步状态（2026-10-11，Phase 6）」）。
+> 2026-10-11 同步**（详见「上游同步状态（2026-10-11，Phase 6）」）；**上游
+> #2204 / #2211 / #2215 / #2217（`61bb779d` / `6dfb0312` / `2a8c8756` /
+> `12857006`，Phase 7）已于 2026-10-11 同步**（详见「上游同步状态
+> （2026-10-11，Phase 7）」，其中 persistent-mapping 偏差的裁决见同一节）。
 > 本文档
 > 逐条记录 Actinium 的 `sdl-gpu` 模块相对 Angelica 上游（`D:\Code\Angelica`，
 > 运行于 lwjgl3ify/GTNH 环境）的**代码差异及其理由**。多数差异源于运行环境不同
@@ -139,9 +142,17 @@
   staging 持续写入，`StreamingUploader` 每帧 map+unmap 会命中并 memFree 仍在
   使用的 staging → **use-after-free native 崩溃**（进世界渲染开始后 1-2 秒，
   `StubRoutines::jbyte_disjoint_arraycopy`）。
+  **2026-10-11（Phase 7）裁决：保留**（依据见「Phase 7」一节的
+  「persistent-mapping 偏差裁决」）：上游 `12857006` 的加固**未改变**
+  “`unmapBuffer` 释放 persistent staging”这一语义，其 `freeAfterSeq` 延迟释放只
+  保护**已入队的上传读取**，不保护客户端仍持有的映射地址，故不能吞并本偏差。
+  Phase 7 仅按上游补上 `getPersistentMapping(glId) != null → return true` 分支
+  （返回成功但不触碰映射），使 `glUnmapBuffer` 的返回值符合 GL 语义。
 - **`releasePersistentStaging` 幂等化**（`PersistentMapping.markReleased`）：多条
   释放路径（remap swap / buffer delete）可能重叠，防止同一 staging 被重复
-  `memFree`。
+  `memFree`。**2026-10-11（Phase 7）**：签名随上游改为
+  `releasePersistentStaging(pm, glId, cause)`（新增释放来源 debug 日志），
+  `markReleased` 幂等判断保留在原处。
 - 新增一次性「first draw/bindFramebuffer」诊断日志与 dropped-draw 细分警告
   （`frameInactive/rpInactive/pipeline/eboMissing/fan` 计数），用于定位绘制丢失。
   （每秒帧统计诊断 `t+Ns frame=... drawsTotal=...` 已随调试结束删除。）
@@ -886,3 +897,183 @@ workaround + present 期间 pump）。三者的 sdl-gpu / glsm 侧均已落地�
   `gl/GlResource`、`pipeline/DeferredWorldRenderingPipeline`、
   `pipeline/transform/ShaderTransformer`、`shaderpack/{ConstDirectiveParser,IdMap,ShaderPack}`、
   `texture/pbr/PBRResourceIndex`、`uniforms/custom/CustomUniforms`、`proxy/ClientProxy`。
+
+## 上游同步状态（2026-10-11，Phase 7）
+
+已同步上游四个提交：`61bb779d`（#2204，GL 入口的 context 守卫与字体 provider）、
+`6dfb0312`（#2211，pixel store 状态拆分 + legacy 栈查询）、`2a8c8756`（#2215，
+后端选项/启动守卫 + 驱动候选）、`12857006`（#2217，buffer mapping 生命周期加固）。
+sdl-gpu 与 glsm 侧按下面的范围落地；`src/`（Angelica 根部的 GUI、配置项、字体、
+workflows、moltenvk 模块等）按范围跳过。
+
+**#2204（`61bb779d`）**
+
+- glsm：新增 `GLStateManager.requireContext(String call)`（主线程或
+  `RENDER_BACKEND.hasContextOnThread()` 之外直接抛 `IllegalStateException`），并在
+  18 处入口插入守卫：`glGenTextures`（2 个重载）、`glGenSamplers`（3）、
+  `glGenBuffers`（3）、`glCreateBuffers`（3）、`glGenVertexArrays`、
+  `glGenFramebuffers`、`glGenRenderbuffers`、`glGenQueries`（2）、`glCreateShader`、
+  `glCreateProgram`；`RenderBackend.hasContextOnThread()`（默认 `hasContext()`）；
+  `DSAARB.createFramebuffer/createTexture` 与 `DSAUnsupported.createTexture`
+  （后者改为走 `GLStateManager.glGenTextures()`）同步。
+- sdl-gpu：`SDLGPURenderBackend.hasContextOnThread()`——当前线程是主线程，或该线程
+  有 `tlState`（`hasContext() && (mainThread || tlState != null)`）。
+- **跳过**：`src/.../client/font/FontProviderCustom.java`（+198/-179）——Actinium 的
+  `src/main/java/com/gtnewhorizons/angelica/client/font/` 只有
+  `BatchingFontRenderer`/`FontProvider`/`FontProviderMC`/`FontProviderUnicode`/
+  `FontStrategist`/`GlResourceInitializer`，**没有该文件**（属未同步的 `src/` 字体
+  重构），无落点。其测试同样跳过：rig 测试 `GlsmSdlOffContextCreationTest` 与
+  GL 测试 `GLSM_OffContextCreation_GLTest`（Actinium 无 rig / 无真 GL core context）。
+
+**#2211（`6dfb0312`）**
+
+- **`PixelUnpackState` → `PixelStoreState`**：新增
+  `glsm/states/PixelStoreState`（pack/unpack 双向：`isPack(pname)` + `with(...)` +
+  `applyDiff(from, to, pack)`），删除 `PixelUnpackState` 及其测试。`GLContextState`
+  的 `pixelUnpackState` 改类型并新增 `pixelPackState`，以及
+  `glPushClientAttrib` 需要保存的
+  `clientAttribSavedMask`/`clientAttribSavedPixelUnpack`/`clientAttribSavedPixelPack`/
+  `clientAttribSavedUnpackBuffer`/`clientAttribSavedPackBuffer`/
+  `clientAttribSavedVertexArray`（按 `GLStateManager.CLIENT_ATTRIB_STACK_DEPTH`）。
+- `GLStateManager`：`glPixelStorei` 按 `PixelStoreState.isPack(pname)` 分流到
+  pack/unpack；`glPushClientAttrib`/`glPopClientAttrib` 改为 mask 感知（像素存储、
+  缓冲绑定、顶点数组三部分，顶点数组部分沿用 Actinium 的
+  `ShaderManager.getInstance().getCurrentVertexFlags()/setCurrentVertexFlags` 加新增的
+  `isPositionArrayEnabled()`）；`glPopAttrib` 增加 `attribDepth == 0` 下溢守卫 +
+  `warnOnce("popattrib-underflow", ...)`。新增 12 个 legacy 查询
+  （`GL_ATTRIB_STACK_DEPTH`/`GL_CLIENT_ATTRIB_STACK_DEPTH`/`GL_TEXTURE_STACK_DEPTH`、
+  5 个 `GL_MAX_*`、`GL_MAX_TEXTURE_UNITS`、`GL_MAX_LIGHTS`、
+  `GL_STENCIL_BITS`/`GL_DEPTH_BITS`，其中 `STENCIL_BITS`/`DEPTH_BITS` 走新增的
+  `drawFramebufferBits(boolean stencil)`）、`putLightingInts`、
+  `glGetMaterial(int,int,IntBuffer)`、`glGetLight(int,int,IntBuffer)`；
+  `GL_CURRENT_TEXTURE_COORDS` 改为按 unit 分支——unit 1 用
+  `GLSMConfig.lastBrightnessX/Y`（**注意：Actinium 的亮度坐标在 `GLSMConfig`，
+  不在 `GLContextState`**），其余走 `ShaderManager.getCurrentTexCoord(unit)`，unit
+  上界用 `VertexKey.MAX_UNITS`（`MAX_LEGACY_TEXTURE_UNITS = min(VertexKey.MAX_UNITS,
+  MAX_TEXTURE_UNITS)`）。
+- `GLSMRedirector`：ARB FBO 表补 `glGenerateMipmap`，EXT FBO 表补
+  `glGenerateMipmapEXT → glGenerateMipmap`。
+- 其它类型改名：`TexImage2DCmd`/`TexSubImage2DCmd`/`LTWWorkaround` 的像素存储调用
+  随类型更名（注意只改类型字段，**方法名 `forcePixelUnpackState` 保持不变**）。
+- 测试：`PixelStoreStateTest` 已同步（位于根工程
+  `src/test/java/com/gtnewhorizons/angelica/glsm/states/`，`PixelUnpackStateTest` 删除）。
+- **跳过**：`GLSM_LegacyStackQueries_GLTest`（需真 GL core context）、上游
+  `GLSMRedirectorTest` 增量（Actinium 是自写 harness，结构与上游不同）、rig 测试
+  `GlsmSdlLWJGLServiceRoutingTest`。
+
+**#2215（`2a8c8756`）**
+
+- 新增 `glsm/backend/BackendOptions`（`latch(sdlGpu, driver, glVersion)` +
+  `sdlGpuRequested()`/`sdlGpuDriver()`，系统属性覆盖优先）与
+  `glsm/backend/BackendStartGuard`（标记文件探测上次启动是否在 SDL GPU 模式下崩过）。
+  **形态说明**：`BackendStartGuard` 与 `BackendOptions.latch(...)` 在 Actinium
+  **没有调用方**——上游的启用路径在 `AngelicaConfig`/`AngelicaClientTweaker`（`src/`，
+  未同步）；按“不注册 SDL 后端、启用路径保持断开”的既定约束，两者作为 API 与测试
+  保留，接线时再接。测试 `BackendStartGuardTest` 已同步。
+- `SystemProperties`：`USE_SDL_GPU` → `SDL_GPU_OVERRIDE`、`SDL_GPU_DRIVER` →
+  `SDL_GPU_DRIVER_OVERRIDE`（新增 `parseBooleanOverride`/`parseStringOverride`，
+  空串视作未设置），使“未设置”与“显式 false”可区分。**`KEY_USE_SDL_GPU`
+  （`angelica.sdlgpu.enable`）仍是唯一激活开关，未改名**；`MOLTENVK_DIR` 未同步。
+- `SDLGPUGate.probe()` 与 `SDLGPURenderBackend.isAvailable()` 改用
+  `BackendOptions.sdlGpuRequested()`（保留 Actinium「不检查 `isEngaged`」的偏差）。
+- `device/Device`：`resolveDriverName` 删除，改为 `driverCandidates(requested, platform)`
+  （MACOSX→`metal,vulkan`、WINDOWS→`vulkan,direct3d12`、其它→`vulkan`；显式 requested
+  优先且去重）+ `isVulkan`；`createGPUDevice(debug, candidates)` 逐个候选调用
+  `SDL_CreateGPUDevice`，失败逐个告警。原先的 `SDL_SetHint(SDL_HINT_GPU_DRIVER, ...)`
+  与会话级 hint 不再设置（驱动名直接进 `SDL_CreateGPUDevice`），因此
+  `SDL_HINT_GPU_DRIVER`/`SDL_SetHint` 两个 import 一并去掉。
+  `DriverSelectionTest` 按上游更新。
+- **MoltenVK 结构化去除**：不移植 `glsm/backend/MoltenVK`、`MoltenVKTest`、`moltenvk/`
+  子模块与 `.github/workflows/build-moltenvk.yml`，`Device` 里的
+  `SDL_HINT_VULKAN_LIBRARY` 设置与 macOS「缺 MoltenVK」告警分支一并缺失
+  （该分支只在 macOS 上生效，Actinium 当前目标平台为 Windows/Linux；macOS 的
+  `vulkan` 候选在缺 MoltenVK 时只会创建失败并回落到 `metal`）。
+- **跳过**：`moltenvk` 模块、`RendererOptionPages`（+174，GUI）、notfine GUI 删除、
+  `AngelicaConfig`/`GLVersionChoice`/`RenderBackendChoice`/`SdlGpuDriver`、
+  `dependencies.gradle.kts`/`gradle/libs.versions.toml`/`settings.gradle.kts`、
+  workflows、`ReeseSodiumVideoOptionsScreen`（均属未同步的 `src/` 与构建配置）。
+
+**#2217（`12857006`）**
+
+- **plain mapping 的归属从 `ContextState` 移到 `ResourceManager`**：
+  `ContextState` 的 6 个 `mapped*` 字段删除，改为一个 `mappingScratch`（`MappedRange`
+  临时对象）；`ResourceManager` 新增 `plainMappings` 表 + `MappedRange` 对象池与
+  `putPlainMappingIfAbsent`/`takePlainMapping`/`takePlainStaging`/`peekPlainMapping`/
+  `copyMappedRange`/`removePlainMappingLocked`。修掉了旧实现「同一时刻只跟踪一个
+  plain mapping」的缺陷（第二个 buffer 的 map 会顶掉前一个）。
+- `ResourceManager` 其余新增/变更：`putPersistentMapping` → `putPersistentMappingIfAbsent`
+  （与 plain mapping 互斥，`swapPersistentMapping` 删除）、`removePersistentMapping`
+  仅在真的移除时递增 `mappingsVersion`、`beginPersistentDrain`/`endPersistentDrain`
+  （读锁保护的 drain 窗口）、`deleteBuffer` 释放 plain staging、
+  `enqueuePersistentCopyDeferred(..., readOffset, size, ...)`（越界即返回 false 让调用方
+  回退）、`uploadFromPersistentMapping` 用 `covers` 校验、
+  `uploadToBuffer` 拆出 `uploadRangeToBuffer(copyPass, src, srcOff, size, dstOff, ...)`
+  （绝对区间上界检查 + 直接按 `srcOff` 拷贝）、`copyShadowRegion` 删除改用
+  `ByteRegionCopy.copyByteRegion`、`shutdown()` 释放 plain mapping 与对象池、
+  copy callsite 常量 `COPY_CALLSITE_UPLOAD_BUFFER` 删除并新增
+  `COPY_CALLSITE_FILL_BUFFER`。
+- `PersistentMapping` 新增 `stagingIndex(bufferOffset)` 与 `covers(offset, size)`，
+  persistent 的偏移从此都按「GL 缓冲偏移 → staging 索引」换算
+  （`PipelineApplier` UBO 直址、`PersistentBufferSync` drain 与镜像拷贝、
+  延迟 copy 的 `accept`）。
+- `PersistentBufferSync`：`onPersistentBufferWrite` 返回 `boolean`（越界返回 false，
+  由后端 `warnInvalidBufferOp` 告警）；`processDirtyPersistentRegions` 在 drain 窗口内
+  重新确认映射未被替换、并改用 `pm.offset + off` 作为 GPU 目标偏移；
+  `mirrorPersistentCopy(src, ...)` 改收 `PersistentMapping`。
+- `SDLGPURenderBackend`：`unmapBuffer` 与 `mapBufferRange` 重写为基于
+  `MappedRange`/`ResourceManager` 的实现（删除 `clearMappedState`/`dropMappingFor`）；
+  新增 `refuseImmutable`（不可变存储上的 `glBufferData`/`glBufferStorage`/
+  `glNamedBufferData` 拒绝并告警）、`freePlainMappingFor`、`warnInvalidBufferOp`
+  （按「操作 + buffer」去重的一次性告警）、`respecifyStore` 拆分；
+  `glCopyBufferSubData`/`glClearBufferSubData`/UBO `glBufferSubData` 增加越界拒绝；
+  persistent map 增加「存储必须带 `GL_MAP_PERSISTENT_BIT`」校验；
+  `downloadBufferBlocking` 的 `flushDeferredUploadsForRead` 由既有的
+  `flushAndSubmitMidFrame()` 取代（后者是它的超集，含 attrib ring 与 mid-frame submit）。
+- `TransferThread`：`StagingReadUpload` 拷贝改为绝对偏移 `memCopy`，越界则丢弃该次
+  上传并 `retireSeq` + 释放对象（不再让 `put` 抛异常打断传输线程）。
+- `ByteRegionCopy`：新增越界 `IllegalStateException`，非 direct 路径统一走
+  `dst.put(dstOff, src, srcOff, len)`（去掉 array/逐字节两条分支）。
+- **persistent-mapping 偏差裁决：保留**（条目 6 的 `unmapBuffer`）。
+  - 上游 #2217 的加固**没有改变**「`glUnmapBuffer` 释放 persistent staging」这一
+    语义：上游 `unmapBuffer` 仍是 `removePersistentMapping` +
+    `releasePersistentStaging(pm, glId, "unmap")`；其新增的 `freeAfterSeq` 延迟释放
+    只在 `pm.lastEnqueuedSeq > transferThread.getSubmittedSeq()` 时生效，保护的是
+    **已经入队的 staging 读取**（transfer 线程提交该序号之前不 memFree），**不保护
+    客户端仍持有的映射地址**（`PersistentStreamingBuffer`/Embeddium
+    `MappedStagingBuffer` 在上传路径里继续 `memCopy` 到映射地址）。
+  - 因此采纳判断：**不能吞并**。Actinium 的 `unmapBuffer` 在
+    `getPersistentMapping(glId) != null` 时**返回 true 但不移除、不释放**；persistent
+    staging 的生命周期仍是「buffer 删除（`ResourceManager.deleteBuffer` →
+    `releasePersistentStaging(..., "delete")`）」或「`shutdown`」，`destroy()` 里
+    unmap 后随即 `glDeleteBuffers` 仍会释放。
+  - 本提交其余加固（plain/persistent 互斥、`covers` 越界拒绝、drain 窗口、
+    `MappedRange`、绝对区间上传、TransferThread 越界丢弃、双层告警）**全部采纳**——
+    它们与偏差正交，且正是让「不释放」这条路更安全的部分。
+  - `releasePersistentStaging` 的幂等标记 `PersistentMapping.markReleased` 保留在
+    新签名内（上游该提交没有幂等标记，用 `freeAfterSeq` 顶替；Actinium 两条释放路径
+    可能重叠，重复 memFree 更危险）。
+- **跳过**：
+  - glsm 侧 `RenderBackend.isBufferImmutable(int)` 与 `GLStateManager` 的 buffer map
+    状态跟踪改动（`onBufferStorage`/`onBufferMap`/`onBufferMapRange`/`onBufferUnmap`/
+    `bufferForTarget`/`markPersistentlyMapped`，以及只在映射成功时才记账的
+    null 检查）。原因：Actinium 的 glsm **没有**这套 buffer-mapping 状态跟踪，
+    `markPersistentlyMapped` 的消费者 `FfpExtendedAttribs.markPersistent` 也不存在
+    （`glsm/ffp/` 只有着色器生成器 `VertexShaderGenerator`/`FragmentShaderGenerator`/
+    `VertexKey` 等），没有落点。SDL 侧的不可变存储拒绝由
+    `SDLGPURenderBackend.refuseImmutable` 直接查 `ResourceManager` 实现，与上游
+    `refuseImmutable` 同一语义。
+  - `pipeline/FFPTrace` 的 `stagingIndex` 修正（上游要按 staging 索引读 UBO 内容并打印
+    uniform 值；Actinium 的 `FFPTrace` 只打印 `uboRangeOffset`，不读 staging 内容）。
+  - rig 测试 `GlsmSdlBufferMappingLifetimeTest`（+393，需要真 SDL GPU 设备）与
+    `GlsmSdlReadbackTest` 的增量（+26，同上）。
+- 测试：`ResourceManagerConcurrencyTest`（+4 个 plain-mapping 竞争用例）、
+  `PersistentBufferSyncDirtyGateTest`、`PersistentDrainBoundaryTest`（4096→16384
+  staging）、`ReleasePersistentStagingTest`（新签名）、`AbsoluteCopyRegionTest`
+  （`mirrorPersistentCopy` 新签名）已同步；`sdl-gpu:test` 全绿。
+- **遗留风险（仅当 SDL 后端接线后被激活才成立）**：新加的「persistent map 必须有
+  persistent 存储标记」校验依赖 storage flags 由 SDL 后端记录。Embeddium 的
+  `MappedStagingBuffer` 经 `com.mitchej123.lwjgl.LWJGLServiceProvider.LWJGL` 创建
+  immutable storage，而 Actinium 的 provider 恒为 `LWJGL3Service`（条目 5），在
+  SDL 模式下不会经过 `SDLGPURenderBackend.bufferStorage`；上游因为 provider 会切到
+  SDL 服务而不存在该问题。接线 SDL 后端时需一并处理（否则 `MappedStagingBuffer` 的
+  persistent map 会被拒绝）。当前后端起用路径是断开的，OpenGL 后端不受影响。
