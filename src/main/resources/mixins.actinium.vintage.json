@@ -60,6 +60,7 @@
     "features.textures.MixinRenderItem",
     "features.textures.MixinStitcherHolder",
     "features.textures.MixinTextureAtlas",
+    "features.textures.MixinTextureAtlasParallelLoad",
     "features.textures.MixinTextureAtlasSprite",
     "fontrenderer.MixinFontRenderer",
     "gui.MixinGuiMainMenu"

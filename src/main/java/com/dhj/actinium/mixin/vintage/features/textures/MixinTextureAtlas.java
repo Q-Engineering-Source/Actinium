@@ -1,9 +1,11 @@
 package com.dhj.actinium.mixin.vintage.features.textures;
 
+import com.dhj.actinium.mixin.vintage.features.textures.mixinterface.AtlasSessionHolder;
 import com.dhj.actinium.render.terrain.sprite.VisibleTextureIterator;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.texture.SpriteExtension;
 import com.dhj.actinium.texture.TextureMapExtension;
+import com.dhj.actinium.texture.atlas.AtlasLoadSession;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.sugar.Local;
 import dhj.embeddedt.embeddium.impl.texture.SpritePadding;
@@ -79,6 +81,10 @@ public class MixinTextureAtlas implements TextureMapExtension {
             target = "Lnet/minecraft/client/renderer/texture/TextureUtil;uploadTextureMipmap([[IIIIIZZ)V"))
     private void angelica$uploadPaddedSprite(int[][] frameData, int width, int height, int originX, int originY,
         boolean blur, boolean clamp) {
+        final AtlasLoadSession session = ((AtlasSessionHolder) this).angelica$atlasSession();
+        if (session != null && session.takeUploaded(frameData)) {
+            return;
+        }
         SpritePadding.uploadPadded(frameData, width, height, originX, originY, this.celeritas$atlasGutter, blur, clamp);
     }
 

@@ -11,6 +11,10 @@ public final class ActiniumRuntimeOptions {
     private static final String DEFERRED_PARTICLE_BATCHING_PROPERTY = "actinium.deferredParticleBatching";
     private static final String PERF_DEBUG_PROPERTY = "actinium.perfDebug";
     private static final String PBR_DEBUG_PROPERTY = "actinium.pbrDebug";
+    private static final String PARALLEL_ATLAS_DECODE_PROPERTY = "actinium.parallelAtlasDecode";
+    private static final String PARALLEL_ATLAS_MIPMAPS_PROPERTY = "actinium.parallelAtlasMipmaps";
+    private static final String BATCHED_ATLAS_UPLOAD_PROPERTY = "actinium.batchedAtlasUpload";
+    private static final String WORKER_THREADS_PROPERTY = "actinium.workerThreads";
 
     private ActiniumRuntimeOptions() {
     }
@@ -108,6 +112,63 @@ public final class ActiniumRuntimeOptions {
         } catch (RuntimeException | LinkageError ignored) {
             return false;
         }
+    }
+
+    public static boolean enableParallelAtlasDecode() {
+        String override = System.getProperty(PARALLEL_ATLAS_DECODE_PROPERTY);
+        if (override != null) {
+            return Boolean.parseBoolean(override);
+        }
+
+        try {
+            return ActiniumRuntime.options().performance.enableParallelAtlasDecode;
+        } catch (RuntimeException | LinkageError ignored) {
+            return true;
+        }
+    }
+
+    public static boolean enableParallelAtlasMipmaps() {
+        String override = System.getProperty(PARALLEL_ATLAS_MIPMAPS_PROPERTY);
+        if (override != null) {
+            return Boolean.parseBoolean(override);
+        }
+
+        try {
+            return ActiniumRuntime.options().performance.enableParallelAtlasMipmaps;
+        } catch (RuntimeException | LinkageError ignored) {
+            return true;
+        }
+    }
+
+    public static boolean enableBatchedAtlasUpload() {
+        String override = System.getProperty(BATCHED_ATLAS_UPLOAD_PROPERTY);
+        if (override != null) {
+            return Boolean.parseBoolean(override);
+        }
+
+        try {
+            return ActiniumRuntime.options().performance.enableBatchedAtlasUpload;
+        } catch (RuntimeException | LinkageError ignored) {
+            return true;
+        }
+    }
+
+    /** Zero means the pool sizes itself from the CPU count. */
+    public static int workerThreadCount() {
+        try {
+            return resolveWorkerThreadCount(ActiniumRuntime.options().performance.workerThreadCount);
+        } catch (RuntimeException | LinkageError ignored) {
+            return resolveWorkerThreadCount(0);
+        }
+    }
+
+    public static int resolveWorkerThreadCount(int configuredCount) {
+        String override = System.getProperty(WORKER_THREADS_PROPERTY);
+        if (override != null) {
+            return Integer.parseInt(override);
+        }
+
+        return configuredCount;
     }
 
     public static boolean resolvePbrDebugEnabled(boolean configuredEnabled) {

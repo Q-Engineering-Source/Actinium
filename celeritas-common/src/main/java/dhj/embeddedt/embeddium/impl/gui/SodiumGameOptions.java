@@ -95,6 +95,20 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         public boolean useFastBlockRenderer = true;
         public AsyncOcclusionMode asyncOcclusionMode = AsyncOcclusionMode.ONLY_SHADOW;
         public boolean useRasterOcclusionCulling = true;
+
+        // Texture loading. The two atlas phases and the batched upload are independent switches, and the
+        // worker count is shared with shader pack loading.
+        public boolean enableParallelAtlasDecode = true;
+        public boolean enableParallelAtlasMipmaps = true;
+        public boolean enableBatchedAtlasUpload = true;
+        public int workerThreadCount = 0;
+
+        /** Resource pack classes allowed to be read on worker threads, and the ones explicitly refused. */
+        public String[] atlasTrustedPacks = new String[0];
+        public String[] atlasDistrustedPacks = new String[0];
+
+        /** Resource pack classes whose domains had to load serially, so the pack screen can offer them. */
+        public String[] atlasObservedPacks = new String[0];
     }
 
     /**
@@ -291,6 +305,18 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
 
         if (config.quality.texelSampling == null) {
             config.quality.texelSampling = TexelSampling.LINEAR;
+        }
+
+        if (config.performance.atlasTrustedPacks == null) {
+            config.performance.atlasTrustedPacks = new String[0];
+        }
+
+        if (config.performance.atlasDistrustedPacks == null) {
+            config.performance.atlasDistrustedPacks = new String[0];
+        }
+
+        if (config.performance.atlasObservedPacks == null) {
+            config.performance.atlasObservedPacks = new String[0];
         }
 
         try {

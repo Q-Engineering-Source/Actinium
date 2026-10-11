@@ -1,7 +1,10 @@
 package com.dhj.actinium.mixin.vintage.features.textures;
 
 import com.dhj.actinium.texture.SpriteExtension;
+import com.dhj.actinium.texture.atlas.AtlasLoadSession;
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dhj.embeddedt.embeddium.impl.texture.SpritePadding;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import org.spongepowered.asm.mixin.Mixin;
@@ -9,6 +12,10 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Redirect;
+
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.io.InputStream;
 
 @Mixin(TextureAtlasSprite.class)
 public abstract class MixinTextureAtlasSprite implements SpriteExtension {
@@ -65,6 +72,34 @@ public abstract class MixinTextureAtlasSprite implements SpriteExtension {
         boolean blur, boolean clamp) {
         SpritePadding.uploadPadded(frameData, width, height, originX, originY,
             this.angelica$gutterWidth, blur, clamp);
+    }
+
+    /**
+     * Takes the image a worker decoded for this sprite instead of decoding it here again, and while the
+     * session is still waiting for one registers this call as the decoding function its workers should use.
+     */
+    @WrapOperation(
+        method = "loadSpriteFrames",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/texture/TextureUtil;readBufferedImage(Ljava/io/InputStream;)Ljava/awt/image/BufferedImage;"))
+    private BufferedImage angelica$takePrefetchedImage(InputStream stream, Operation<BufferedImage> original)
+        throws IOException {
+        final AtlasLoadSession session = AtlasLoadSession.active();
+        if (session == null) {
+            return original.call(stream);
+        }
+
+        final BufferedImage prefetched = session.takeImage((TextureAtlasSprite) (Object) this, stream);
+        if (prefetched != null) {
+            return prefetched;
+        }
+
+        final BufferedImage image = original.call(stream);
+        if (session.wantsDecoder()) {
+            session.onMainDecode(prefetchedStream -> original.call(prefetchedStream));
+        }
+        return image;
     }
 
     @Override

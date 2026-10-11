@@ -551,6 +551,63 @@ public class ActiniumGameOptionPages {
                 )
                 .build());
 
+        groups.add(OptionGroup.createBuilder()
+                .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "texture_loading"))
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "parallel_atlas_decode", boolean.class))
+                        .setName(TextComponent.translatable("sodium.options.parallel_atlas_decode.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.parallel_atlas_decode.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setImpact(OptionImpact.MEDIUM)
+                        .setFlags(OptionFlag.REQUIRES_ASSET_RELOAD)
+                        .setBinding((opts, value) -> opts.performance.enableParallelAtlasDecode = value, opts -> opts.performance.enableParallelAtlasDecode)
+                        .build()
+                )
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "parallel_atlas_mipmaps", boolean.class))
+                        .setName(TextComponent.translatable("sodium.options.parallel_atlas_mipmaps.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.parallel_atlas_mipmaps.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setImpact(OptionImpact.MEDIUM)
+                        .setFlags(OptionFlag.REQUIRES_ASSET_RELOAD)
+                        .setBinding((opts, value) -> opts.performance.enableParallelAtlasMipmaps = value, opts -> opts.performance.enableParallelAtlasMipmaps)
+                        .build()
+                )
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "batched_atlas_upload", boolean.class))
+                        .setName(TextComponent.translatable("sodium.options.batched_atlas_upload.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.batched_atlas_upload.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setImpact(OptionImpact.MEDIUM)
+                        .setFlags(OptionFlag.REQUIRES_ASSET_RELOAD)
+                        .setBinding((opts, value) -> opts.performance.enableBatchedAtlasUpload = value, opts -> opts.performance.enableBatchedAtlasUpload)
+                        .build()
+                )
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "worker_threads", int.class))
+                        .setName(TextComponent.translatable("sodium.options.worker_threads.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.worker_threads.tooltip"))
+                        .setControl(option -> new SliderControl(option, 0, 32, 1,
+                                ControlValueFormatter.translateDisabledOrVariable(
+                                        "sodium.options.worker_threads.default",
+                                        "sodium.options.worker_threads.value")))
+                        .setImpact(OptionImpact.MEDIUM)
+                        .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
+                        .setBinding((opts, value) -> opts.performance.workerThreadCount = value, opts -> opts.performance.workerThreadCount)
+                        .build()
+                )
+                .add(OptionImpl.createBuilder(Void.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "atlas_packs"))
+                        .setName(TextComponent.translatable("sodium.options.atlas_packs.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.atlas_packs.tooltip"))
+                        .setControl(option -> new ExternalButtonControl(option,
+                                parent -> Minecraft.getMinecraft().displayGuiScreen(new AtlasPackScreen(parent)),
+                                TextComponent.translatable("sodium.options.atlas_packs.button")))
+                        .setBinding((opts, value) -> { }, opts -> null)
+                        .build()
+                )
+                .build());
+
         return new OptionPage(StandardOptions.Pages.ADVANCED, TextComponent.translatable("sodium.options.pages.advanced"), ImmutableList.copyOf(groups));
     }
 
