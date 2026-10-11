@@ -91,6 +91,10 @@ SDL_GPU 支持外部窗口互操作：`glfwGetWin32Window(glfwWindow)` 取平台
 建窗后取平台句柄包装并 claim，且绕过 lwjglxx 的 GL 上下文创建（lwjglxx 无
 `setCreateGLContext(false)`，需在接管流程中处理）。
 
+> 上述互操作方案已被取代：GLFW 窗口带 GL context，GPU 设备无法认领。当前方案是
+> **bridge 直接提供原生 SDL 窗口**（`Launch.blackboard["actinium.sdlgpu.sdlWindow"]`），
+> 启用路径与窗口交接契约见 `sdl-gpu-enable-path.md`。
+
 ### 4.3 其他适配
 
 - `retrofuturabootstrap.MainStartOnFirstThread`（presenter 线程，1 文件）→ Cleanroom 等价

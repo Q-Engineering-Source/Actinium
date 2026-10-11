@@ -7,6 +7,7 @@ import com.gtnewhorizons.angelica.sdlgpu.util.MemoryAccess;
 import com.mitchej123.lwjgl.DebugMessageHandler;
 import com.mitchej123.lwjgl.GLExtension;
 import com.mitchej123.lwjgl.LWJGLService;
+import com.mitchej123.lwjgl.LWJGLServiceProvider;
 import com.mitchej123.lwjgl.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 
@@ -20,8 +21,19 @@ import java.nio.IntBuffer;
  * {@link BackendManager#RENDER_BACKEND} (the SDL GPU backend when active) instead of the real GL
  * context, which does not exist in SDL GPU mode (the fabricated GLCapabilities only contain
  * sentinel function pointers).
+ *
+ * <p>{@link LWJGLServiceProvider} instantiates this class (through {@link #create()}) only when the
+ * selected render backend reports {@code isSDLGPU()}, so every Embeddium GL object created after
+ * backend selection is served by the SDL backend rather than by the sentinel GL function pointers.
+ * Unlike the upstream lwjgl3ify integration this needs no separate armed flag: the backend choice
+ * itself is the switch.</p>
  */
 public final class SDLGPULWJGLService implements LWJGLService {
+
+    /** Factory used by {@link LWJGLServiceProvider}; see the class comment for the selection rule. */
+    public static SDLGPULWJGLService create() {
+        return new SDLGPULWJGLService();
+    }
 
     @Override public boolean isOpenGLVersionSupported(int major, int minor) {
         return major < 4 || (major == 4 && minor <= 6);
@@ -67,7 +79,12 @@ public final class SDLGPULWJGLService implements LWJGLService {
     }
     @Override public void glBufferStorage(int target, long size, int flags) { BackendManager.RENDER_BACKEND.bufferStorage(target, size, flags); }
     @Override public ByteBuffer glMapBufferRange(int target, long offset, long length, int flags) { return BackendManager.RENDER_BACKEND.mapBufferRange(target, offset, length, flags); }
-    @Override public long nglMapBuffer(int target, int access) { return 0; }
+    @Override public long nglMapBuffer(int target, int access) {
+        final ByteBuffer mapped = BackendManager.RENDER_BACKEND.mapBuffer(target, access);
+        // GL semantics: a null pointer means the map failed. The backend returns null when the
+        // bound buffer has no known size, which is the only recoverable failure it reports.
+        return mapped == null ? 0L : MemoryUtil.memAddress(mapped);
+    }
     @Override public ByteBuffer glMapBuffer(int target, int access) { return BackendManager.RENDER_BACKEND.mapBuffer(target, access); }
     @Override public void glUnmapBuffer(int target) { BackendManager.RENDER_BACKEND.unmapBuffer(target); }
     @Override public void glFlushMappedBufferRange(int target, long offset, long length) { BackendManager.RENDER_BACKEND.flushMappedBufferRange(target, offset, length); }
@@ -97,11 +114,11 @@ public final class SDLGPULWJGLService implements LWJGLService {
     @Override public void glUseProgram(int program) { GLStateManager.glUseProgram(program); }
     @Override public void glDeleteProgram(int program) { BackendManager.RENDER_BACKEND.deleteProgram(program); }
     @Override public void glBindAttribLocation(int program, int index, CharSequence name) { BackendManager.RENDER_BACKEND.bindAttribLocation(program, index, name); }
-    @Override public void glBindFragDataLocation(int program, int colorNumber, CharSequence name) {}
+    @Override public void glBindFragDataLocation(int program, int colorNumber, CharSequence name) { BackendManager.RENDER_BACKEND.bindFragDataLocation(program, colorNumber, name); }
 
     @Override public int glGetUniformLocation(int program, CharSequence name) { return BackendManager.RENDER_BACKEND.getUniformLocation(program, name); }
-    @Override public int glGetUniformBlockIndex(int program, CharSequence name) { return -1; /* TODO */ }
-    @Override public void glUniformBlockBinding(int program, int blockIndex, int blockBinding) { /* TODO */ }
+    @Override public int glGetUniformBlockIndex(int program, CharSequence name) { return BackendManager.RENDER_BACKEND.getUniformBlockIndex(program, name); }
+    @Override public void glUniformBlockBinding(int program, int blockIndex, int blockBinding) { BackendManager.RENDER_BACKEND.uniformBlockBinding(program, blockIndex, blockBinding); }
     @Override public void glUniform1f(int location, float v0) { BackendManager.RENDER_BACKEND.uniform1f(location, v0); }
     @Override public void glUniform1i(int location, int v0) { BackendManager.RENDER_BACKEND.uniform1i(location, v0); }
     @Override public void glUniform1fv(int location, FloatBuffer value) { BackendManager.RENDER_BACKEND.uniform1fv(location, value); }

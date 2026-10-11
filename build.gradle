@@ -255,8 +255,16 @@ unimined.minecraft {
 
         loader '0.6.12-alpha'
 
+        // SDL GPU backend client run (task: runClientSdl): the same client setup plus the SDL
+        // backend flag, so the backend can be exercised without passing extra_jvm_args by hand.
+        runs.config('clientSdl') {
+        }
+
         runs.all {
             args += ['--username', propertyString('minecraft_username')]
+            if (name == 'clientSdl') {
+                jvmArgs += '-Dangelica.sdlgpu.enable=true'
+            }
             def extraArgs = propertyString('extra_jvm_args')
             if (extraArgs != null && !extraArgs.trim().isEmpty()) {
                 jvmArgs += extraArgs.split('\\s+').toList()
@@ -383,6 +391,14 @@ tasks.named('preRunClient').configure {
     dependsOn prepareChunkAnimatorMcpMappings
 }
 
+// runClientSdl inherits runClient's classpath (see the afterEvaluate block below), which points at
+// the dev shadow jar; without these dependencies it would start against a stale or missing one.
+tasks.named('preRunClientSdl').configure {
+    dependsOn tasks.named('classes')
+    dependsOn devShadowJar
+    dependsOn prepareChunkAnimatorMcpMappings
+}
+
 tasks.named('preRunServer').configure {
     dependsOn tasks.named('classes')
     dependsOn devShadowJar
@@ -473,6 +489,9 @@ idea {
                 '3. Run Server'(Gradle) {
                     taskNames = ['runServer']
                 }
+                '4. Run Client (SDL)'(Gradle) {
+                    taskNames = ['runClientSdl']
+                }
             }
             compiler.javac {
                 afterEvaluate {
@@ -486,6 +505,28 @@ idea {
                 afterSync tasks.named('genSources')
             }
         }
+    }
+}
+
+// Unimined only applies the full run template (mainClass, classpath, env, args, workingDir and the
+// ${...} placeholder properties) to the fixed "client"/"server" names; custom runs like clientSdl
+// start empty. Inherit the client run's launch configuration after evaluation so runClientSdl (and
+// the IDEA run config generated from it) is complete. The property map must be copied too:
+// applyAll() resolves ${mcp_to_srg} etc. from it, and without it FML fails to load the
+// deobfuscation map at startup.
+afterEvaluate {
+    def runClient = tasks.findByName('runClient')
+    def runClientSdl = tasks.findByName('runClientSdl')
+    if (runClient instanceof JavaExec && runClientSdl instanceof JavaExec) {
+        runClientSdl.setMainClass(runClient.getMainClass())
+        runClientSdl.setClasspath(runClient.getClasspath())
+        runClientSdl.setWorkingDir(runClient.getWorkingDir())
+        runClientSdl.setArgs(runClient.getArgs())
+        runClientSdl.setJvmArgs(runClient.getJvmArgs() + ['-Dangelica.sdlgpu.enable=true'])
+        runClientSdl.setEnvironment(runClient.getEnvironment())
+        runClientSdl.setJavaVersion(runClient.getJavaVersion())
+        runClientSdl.getProperties().putAll(runClient.getProperties())
+        logger.lifecycle('[Actinium] runClientSdl inherited client launch configuration ({} classpath entries, {} properties)', runClientSdl.getClasspath().files.size(), runClientSdl.getProperties().size())
     }
 }
 

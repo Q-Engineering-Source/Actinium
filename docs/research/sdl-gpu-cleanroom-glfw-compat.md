@@ -25,11 +25,13 @@
   中移除，后端选择永远不会命中 SDL；`sdl-gpu` 模块源码与测试完整保留（编译、嵌入
   jar、测试照常），`Device.claimPlatformWindow` / `SDL_ShowWindow` / finalTarget
   修复 / persistent 写入通知 / GLSL 保留字兜底等架构性修复全部保留。
-- **重接入口**（CRL 原生 SDL 窗口就绪后）：把 `SDLGPURenderBackend` 加回
-  `META-INF/services/com.gtnewhorizons.angelica.glsm.backend.RenderBackend`；在
-  窗口创建路径认领 CRL 的 SDL 窗口句柄（`Device.claimWindow`）；恢复帧内
-  present 驱动（参考 `SDLGPUDisplayBridge.present()`）。上游参考实现见
-  Angelica `SDLGPUGate`（lwjgl3ify `DisplayEvents` 路径）。
+- **重接入口**：见 `sdl-gpu-enable-path.md`（2026-10-12）。启用路径已经写出：后端加回
+  `META-INF/services/com.gtnewhorizons.angelica.glsm.backend.RenderBackend`，窗口由
+  **Vintage-SDL-Bridge** coremod 提供并通过 `Launch.blackboard["actinium.sdlgpu.sdlWindow"]`
+  交给 Actinium（`SDLGPUWindowHandover` / `SDLGPUGate.handOverWindow`），Actinium 侧只保留
+  认领窗口、装 drawable 与接管 GL 特定引擎路径（display 创建分支、present/pump、销毁重定向、
+  字体/FML splash 的无 context 分支、LWJGL 服务桥）。前提条件未满足时后端不会被选中，
+  OpenGL 路径不变。
 
 ## 背景
 

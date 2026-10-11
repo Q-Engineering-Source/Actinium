@@ -7,6 +7,7 @@ import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.streaming.StreamingUploader;
 import com.gtnewhorizons.angelica.glsm.states.Color4;
 import com.gtnewhorizons.angelica.mixins.interfaces.FontRendererAccessor;
+import com.gtnewhorizons.angelica.sdlgpu.SDLGPUGate;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import lombok.Setter;
 import net.coderbot.iris.gl.program.Program;
@@ -174,6 +175,12 @@ public class BatchingFontRenderer {
 
 
     private static boolean hasCurrentGlContext() {
+        // The SDL backend presents without a GL context, so the GLFW query below would always fail
+        // and the batcher would refuse to draw. Gated on the engaged window so the GL path keeps
+        // its context check.
+        if (SDLGPUGate.isEngaged()) {
+            return true;
+        }
         final boolean current = GLFW.glfwGetCurrentContext() != 0L;
         if (!current) {
             LOGGER.error("Font rendering attempted without a current OpenGL context on thread {}", Thread.currentThread().getName());

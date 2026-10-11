@@ -492,7 +492,11 @@ per-drawable context 重构**未同步**（见本节末尾的冲突说明）。
   `ContextState`/`SdlFramePlots`/`ComputeBinder`/`DrawDispatch`/`PipelineApplier`/
   `FBOClearTracker`/`PersistentBufferSync`/`TextureOps`/`PixelOps` 同步更新。
 - `SDLGPUGate` 改用 `DependencyVerifier.firstMissing()` + `Check` 列表做依赖探测
-  （lwjgl3ify 最低版本、lwjgl-sdl/shaderc/spvc 缺失诊断）。
+  （lwjgl-sdl/shaderc/spvc 缺失诊断）。**2026-10-12 修正**：该同步带入了上游的
+  lwjgl3ify `DisplayEvents` 检查，但 Actinium 不使用 `DisplayEvents`（见上文「未同步」）
+  且 Cleanroom 实例不装 lwjgl3ify，保留会让 `isSDLGPUAvailable()` 恒为 false，
+  于是后端永远选不中；现已移除该检查并把缺失提示改为本仓库的说法
+  （见 `sdl-gpu-enable-path.md`）。
 - GLSL 资源按 Actinium 约定放到 `src/main/resources/assets/angelica/shaders/sdlgpu/`
   （与 `clear_image3d.csh` 同处），并新增 `clear_attachment.{v,f}sh`。
 - glsm 侧必需项（已同步）：`SystemProperties.SDL_DISABLE_IN_PASS_CLEAR`、

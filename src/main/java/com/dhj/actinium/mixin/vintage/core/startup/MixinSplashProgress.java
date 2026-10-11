@@ -5,6 +5,7 @@ import com.gtnewhorizons.angelica.glsm.recording.ImmediateModeRecorder;
 import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
 import com.dhj.actinium.render.BufferBuilderStreamingDrawer;
 import com.dhj.actinium.render.VanillaVertexBufferRenderer;
+import com.gtnewhorizons.angelica.sdlgpu.SDLGPUGate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11;
@@ -13,6 +14,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -38,6 +40,29 @@ public class MixinSplashProgress {
     @Inject(method = "start", at = @At("HEAD"))
     private static void celeritas$initSplashTessellator(CallbackInfo ci) {
         ImmediateModeRecorder.initSplashTessellator();
+    }
+
+    /**
+     * Disables the FML splash on the SDL backend.
+     *
+     * <p>Forge's splash renders through a GL shared context, which does not exist once the SDL
+     * backend owns the window; the first {@code getBool} in {@code start()} reads the "enabled"
+     * flag, and forcing it false leaves Forge's own early return in charge of the rest of the
+     * method. The SDL backend presents its own startup screen.</p>
+     */
+    @Redirect(
+        method = "start",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraftforge/fml/client/SplashProgress;getBool(Ljava/lang/String;Z)Z",
+            ordinal = 0
+        )
+    )
+    private static boolean celeritas$sdlDisableSplash(String key, boolean def) {
+        if (SDLGPUGate.isEngaged() && "enabled".equals(key)) {
+            return false;
+        }
+        return def;
     }
 
     @Inject(method = "finish", at = @At("RETURN"))

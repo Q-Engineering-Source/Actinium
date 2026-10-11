@@ -3,6 +3,7 @@ package com.dhj.actinium.mixin.vintage.core.startup;
 import com.dhj.actinium.debug.ActiniumStartupDebugConfig;
 import com.dhj.actinium.debug.CoreProfileContextAttributes;
 import com.dhj.actinium.debug.OpenGlVersion;
+import com.gtnewhorizons.angelica.sdlgpu.SDLGPUGate;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.client.ForgeHooksClient;
 import net.minecraftforge.common.ForgeEarlyConfig;
@@ -46,8 +47,38 @@ public abstract class MixinMinecraftCoreProfileDisplay {
         }
     }
 
+    /**
+     * Creates the display on the SDL GPU path.
+     *
+     * <p>The bridge replaces the window creation inside {@code Display.create} with a native SDL
+     * window, so this calls the same entry point the GL path does and then takes the window the
+     * bridge published. No GL context exists afterwards, which is why the core-profile loop, the
+     * {@code GL_VERSION} validation and Forge's window style/taskbar hooks (they resolve the window
+     * through the GL context) are all skipped here; the backend owns presentation.</p>
+     */
+    @Unique
+    private void celeritas$createSdlDisplay(CallbackInfo ci) throws LWJGLException {
+        Display.setResizable(true);
+        Display.setTitle("Cleanroom");
+        // The pixel format and context attribs are ignored by the bridge, which owns window and
+        // context creation; they are passed so the bridge can hook one single lwjglx signature.
+        Display.create(new PixelFormat().withDepthBits(24).withStencilBits(8), new ContextAttribs(4, 6));
+        SDLGPUGate.handOverWindow();
+        celeritas$LOGGER.info("SDL GPU display is up; the OpenGL engine paths are replaced by the backend");
+        ci.cancel();
+    }
+
     @Unique
     private void celeritas$createCoreProfileDisplayInner(CallbackInfo ci) throws LWJGLException {
+        // SDL GPU: a GPU device cannot claim the window lwjglx would create with a GL context, so the
+        // window and the whole display lifecycle are handed to the bridge
+        // (see docs/research/sdl-gpu-enable-path.md). isHandoverAvailable() is false whenever the SDL
+        // backend was not requested or is not usable, so the GL path below stays byte-identical.
+        if (SDLGPUGate.isHandoverAvailable()) {
+            celeritas$createSdlDisplay(ci);
+            return;
+        }
+
         Display.setResizable(true);
         Display.setTitle("Cleanroom");
 

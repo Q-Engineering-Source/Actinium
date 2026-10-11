@@ -8,7 +8,6 @@ import com.gtnewhorizons.angelica.glsm.CaptureGate;
 import com.gtnewhorizons.angelica.glsm.GLContextState;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.profiling.Tracy;
-import com.gtnewhorizons.angelica.glsm.backend.BackendOptions;
 import com.gtnewhorizons.angelica.glsm.backend.GLDebugMessageListener;
 import com.gtnewhorizons.angelica.glsm.backend.MainThreadPump;
 import com.gtnewhorizons.angelica.glsm.backend.VertexWriteReplaySetup;
@@ -542,13 +541,10 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
 
     @Override public boolean isAvailable() {
-        // isEngaged() is not checked here: backend selection runs before the window is created
-        // (BackendManager loads during GLStateManager class initialization), so the gate is the
-        // SDL GPU availability probe + the backend-selection flag. The backend is currently not listed
-        // in the RenderBackend service file: the GLFW window workaround this environment needed
-        // for claiming a window was reverted, and re-enabling selection requires a window source
-        // a GPU device can claim (a native SDL window) wired through SDLGPUGate.
-        return BackendOptions.sdlGpuRequested() && SDLGPUGate.isSDLGPUAvailable();
+        // Backend selection runs before the window exists (BackendManager loads during GLStateManager
+        // class initialization), so the gate is the full availability check minus the engagement.
+        // Nothing here reads the window: the handover happens later, from the display creation path.
+        return SDLGPUGate.isHandoverAvailable();
     }
 
     @Override public String getName() {
