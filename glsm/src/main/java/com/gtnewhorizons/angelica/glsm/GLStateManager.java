@@ -4626,6 +4626,26 @@ public class GLStateManager {
         postVanillaBlendChangeIfMoved(blendSnapshotted);
     }
 
+    private static boolean firstClearPending;
+    private static long firstClearBlockNanos;
+
+    /**
+     * Marks that the next clear of the default framebuffer is the first draw of a frame whose swap
+     * has already been submitted. Some drivers block inside that clear, because the scanout still
+     * owns the buffer the swap gave them; the block is the panel's cost and not the frame's, so it
+     * must be kept out of the frame's own CPU time.
+     */
+    public static void markFirstClearPending() {
+        firstClearPending = true;
+    }
+
+    /** Returns the driver time spent in the frame's first clear since the last call, and resets it. */
+    public static long takeFirstClearBlockNanos() {
+        final long value = firstClearBlockNanos;
+        firstClearBlockNanos = 0L;
+        return value;
+    }
+
     public static void glClear(int mask) {
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
@@ -4633,6 +4653,17 @@ public class GLStateManager {
             if (mode == RecordMode.COMPILE) {
                 return;
             }
+        }
+        if (firstClearPending && Thread.currentThread() == MainThread && getDrawFramebuffer() == 0) {
+            firstClearPending = false;
+            final long start = System.nanoTime();
+            RENDER_BACKEND.clear(mask);
+            final long end = System.nanoTime();
+            if (end - start > 0) {
+                firstClearBlockNanos += end - start;
+                RENDER_BACKEND.recordGate(end - start, end);
+            }
+            return;
         }
         recordGpuCommand(GpuCommandType.CLEAR, GpuCommandPhase.BEGIN, mask, 0);
         RENDER_BACKEND.clear(mask);

@@ -52,6 +52,7 @@ public final class SystemProperties {
     public static final int FLYBY_LENGTH = Integer.getInteger("angelica.flyby.length", 0); // Blocks for moving routes, ticks for stationary
     public static final double FLYBY_SPEED = parseDouble("angelica.flyby.speed"); // Travel speed in blocks per tick
     public static final boolean FLYBY_EXIT_WHEN_DONE = Boolean.getBoolean("angelica.flyby.exitWhenDone");
+    public static final FlybyPacing FLYBY_PACING = parseEnum("angelica.flyby.pacing", FlybyPacing.UNCAPPED, FlybyPacing.UNCAPPED, FlybyPacing.class);
 
     // Debug
     public static final boolean LWJGL_DEBUG = Boolean.getBoolean("org.lwjgl.util.Debug");
@@ -101,6 +102,12 @@ public final class SystemProperties {
         OFF,
         WARN,
         FATAL
+    }
+
+    /** How a benchmark run reconciles the frame rate limiter with the run's own goals. */
+    public enum FlybyPacing {
+        UNCAPPED,
+        CONFIGURED
     }
 
     private static <E extends Enum<E>> E parseEnum(String key, E whenAbsent, E whenInvalid, Class<E> type) {

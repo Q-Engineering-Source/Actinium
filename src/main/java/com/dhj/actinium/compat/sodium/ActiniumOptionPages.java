@@ -32,6 +32,7 @@ public final class ActiniumOptionPages {
                 ActiniumGameOptionPages.quality(),
                 CommonOptionPages.performance(options),
                 ActiniumGameOptionPages.advanced(),
+                ActiniumGameOptionPages.fpsReducer(),
                 ActiniumGameOptionPages.debug()));
         pages.addAll(new IrisConfigEntryPoint().createPages());
         return List.copyOf(retainEnabledPages(pages, options));

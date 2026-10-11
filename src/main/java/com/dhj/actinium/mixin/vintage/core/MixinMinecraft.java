@@ -5,10 +5,15 @@ import net.coderbot.iris.debug.flight.GlFlightStreamingSource;
 import com.dhj.actinium.gui.ActiniumWindowModeController;
 import com.dhj.actinium.render.BufferBuilderStreamingDrawer;
 import com.dhj.actinium.render.EndPortalCompositeRenderer;
+import com.dhj.actinium.render.pacing.FpsReducer;
+import com.dhj.actinium.render.pacing.FramePacer;
 import com.dhj.actinium.runtime.ActiniumRuntime;
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
+import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
 import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
 import com.gtnewhorizons.angelica.sdlgpu.SDLGPUGate;
+import com.llamalad7.mixinextras.injector.v2.WrapWithCondition;
 import com.mitchej123.lwjgl.LWJGLServiceProvider;
 import net.minecraft.client.Minecraft;
 import dhj.embeddedt.embeddium.impl.render.frame.RenderAheadManager;
@@ -30,7 +35,38 @@ public class MixinMinecraft {
     private static boolean actinium$gameLoopStarted;
 
     @Unique
-    private static boolean actinium$vsyncPushed;
+    private static boolean actinium$hadWorld;
+
+    /**
+     * The render-ahead fence wait. It belongs after the swap, before the next frame's work starts,
+     * because that is the first point at which the previous frame's commands are known to have been
+     * submitted; the pacer calls it and charges the wait to the frame that is about to start.
+     */
+    @Unique
+    private final Runnable celeritas$renderAheadWait = () -> {
+        final int limit = supportsCpuRenderAhead() ? ActiniumRuntime.options().advanced.cpuRenderAheadLimit : 0;
+        if (limit > 0) {
+            celeritas$renderAheadManager.startFrame(limit);
+        }
+    };
+
+    /**
+     * Routes vanilla's startup vsync switch through the render backend.
+     *
+     * <p>The pacer decides whether the driver will block on the swap from the backend's effective
+     * vsync mode, and only the backend knows what it actually asked the driver for. Letting vanilla
+     * set the swap interval behind its back leaves the pacer believing a tearing interval is a
+     * tear-free one, and it would then pace every frame onto the panel's cadence with vsync off.
+     * Both backends' own entry points perform the call vanilla would have made, and on the SDL
+     * backend lwjglx's call targets a window the backend does not own.</p>
+     */
+    @Redirect(
+            method = "init",
+            at = @At(value = "INVOKE", target = "Lorg/lwjgl/opengl/Display;setVSyncEnabled(Z)V", remap = false)
+    )
+    private void actinium$routeVSync(boolean sync) {
+        BackendManager.RENDER_BACKEND.setVSyncEnabled(sync);
+    }
 
     @Inject(method = "runTick", at = @At("HEAD"))
     private void preRender(CallbackInfo ci) {
@@ -61,18 +97,6 @@ public class MixinMinecraft {
             actinium$gameLoopStarted = true;
             BackendManager.RENDER_BACKEND.onFrameBegin();
         }
-        // The SDL backend presents through its own swapchain, so lwjglx's Display.setVSyncEnabled
-        // (a glfwSwapInterval call on a window the backend does not own) cannot bound the frame rate.
-        // Push the user's preference into the backend once; without it the client thread free-runs.
-        final Minecraft minecraft = (Minecraft) (Object) this;
-        if (SDLGPUGate.isEngaged() && !actinium$vsyncPushed && minecraft.gameSettings != null) {
-            actinium$vsyncPushed = true;
-            BackendManager.RENDER_BACKEND.setVSyncEnabled(minecraft.gameSettings.enableVsync);
-        }
-        final int limit = supportsCpuRenderAhead() ? ActiniumRuntime.options().advanced.cpuRenderAheadLimit : 0;
-        if (limit > 0) {
-            celeritas$renderAheadManager.startFrame(limit);
-        }
     }
 
     @Inject(
@@ -93,9 +117,44 @@ public class MixinMinecraft {
         GlFlightRecording.beginStreamingSync(GlFlightStreamingSource.BUFFER_BUILDER);
         BufferBuilderStreamingDrawer.endFrame();
         GlFlightRecording.endStreamingSync(GlFlightStreamingSource.BUFFER_BUILDER);
+        FramePacer.beforePresent();
         GlFlightRecording.beginSwap();
         // Frame boundary: notify the active render backend that the frame's draws are complete.
         BackendManager.RENDER_BACKEND.onFrameEnd();
+    }
+
+    /**
+     * Takes over the frame rate limiter. Vanilla reaches {@code Display.sync} at the very end of the
+     * loop, after the frame has already been presented, which limits the average rate but hands the
+     * panel every bit of jitter the frame's own cost introduces. The pacer instead sleeps before the
+     * present; the yield is the last point in the loop at which the swap is known to be behind us,
+     * so it is where the pacer reads the driver's gate and starts the next frame. The yield is kept
+     * for unpaced frames so the loop still gives the scheduler a chance to run.
+     */
+    @WrapWithCondition(method = "runGameLoop", at = @At(value = "INVOKE", target = "Ljava/lang/Thread;yield()V", remap = false))
+    private boolean actinium$paceFrame() {
+        final Minecraft minecraft = (Minecraft) (Object) this;
+        final boolean hasWorld = minecraft.world != null;
+        if (hasWorld != actinium$hadWorld) {
+            actinium$hadWorld = hasWorld;
+            FramePacer.invalidate();
+        }
+
+        FpsReducer.evaluateFrame();
+        final int capHz = FpsReducer.effectiveCap(minecraft.gameSettings.limitFramerate,
+                minecraft.world == null && minecraft.currentScreen != null);
+        FramePacer.endFrame(capHz, celeritas$renderAheadWait);
+        return !FramePacer.pacedLastFrame();
+    }
+
+    /**
+     * Retires vanilla's frame limiter. {@code Display.sync} sleeps on an independent timer that
+     * knows nothing about the pacer's phase, so leaving it in would add a second, uncoordinated
+     * sleep to every frame.
+     */
+    @WrapWithCondition(method = "runGameLoop", at = @At(value = "INVOKE", target = "Lorg/lwjgl/opengl/Display;sync(I)V", remap = false))
+    private boolean actinium$noopVanillaFpsLimiter(int fps) {
+        return false;
     }
 
     @Inject(
@@ -125,25 +184,41 @@ public class MixinMinecraft {
     }
 
     /**
-     * Replaces the GL swap on the SDL backend.
+     * Owns the swap and the window pump.
      *
-     * <p>{@code Display.update()} swaps the GL context of the window lwjglx would have created, which
-     * the SDL backend does not own. Presentation is driven by the frame hooks instead
-     * ({@code onFrameEnd} before this method submits the final target, {@code onFrameBegin} after it
-     * starts the next frame); only the event and input pump {@code Display.update()} also performs is
-     * kept, through the backend's own pump. Everything else in {@code updateDisplay}, including the
-     * resize check, runs unchanged.</p>
+     * <p>On the SDL backend {@code Display.update()} swaps the GL context of the window lwjglx would
+     * have created, which the SDL backend does not own. Presentation is driven by the frame hooks
+     * instead ({@code onFrameEnd} before this method submits the final target, {@code onFrameBegin}
+     * after it starts the next frame); only the event and input pump {@code Display.update()} also
+     * performs is kept, through the backend's own pump. Everything else in {@code updateDisplay},
+     * including the resize check, runs unchanged.</p>
+     *
+     * <p>On the GL backends the swap is where the pacer's timing comes from, so the pump is done
+     * first and the swap is timed on its own: {@code Display.update(true)} would file the window
+     * event pump and the input polling under the driver's vsync gate, which is exactly the block the
+     * pacer measures and must not be confused with. The measured block is recorded as the frame's
+     * gate sample, and the frame's first clear is marked as belonging to the panel rather than to the
+     * frame, because that is where a driver that still owns the previous buffer will block.</p>
      */
     @Redirect(
             method = "updateDisplay",
             at = @At(value = "INVOKE", target = "Lorg/lwjgl/opengl/Display;update()V", remap = false)
     )
-    private static void actinium$sdlUpdateDisplay() {
-        if (!SDLGPUGate.isEngaged()) {
-            Display.update();
+    private static void actinium$updateDisplay() {
+        final RenderBackend backend = BackendManager.RENDER_BACKEND;
+        backend.pumpDisplayMessages();
+        if (SDLGPUGate.isEngaged()) {
             return;
         }
-        BackendManager.RENDER_BACKEND.pumpDisplayMessages();
+        if (!backend.wantsDisplayUpdateGateTiming()) {
+            Display.update(false);
+            return;
+        }
+        final long start = System.nanoTime();
+        Display.update(false);
+        final long end = System.nanoTime();
+        backend.recordGate(end - start, end);
+        GLStateManager.markFirstClearPending();
     }
 
     /**

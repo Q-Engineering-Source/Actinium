@@ -12,6 +12,8 @@ import com.dhj.actinium.config.ActiniumRuntimeOptions;
 import com.dhj.actinium.debug.ActiniumDiagnostics;
 import com.dhj.actinium.mixin.vintage.core.terrain.AccessorEntityRenderer;
 import com.dhj.actinium.render.FastLitItemDisplayListCache;
+import com.dhj.actinium.render.pacing.FpsReducer;
+import com.dhj.actinium.render.pacing.FramePacer;
 import com.dhj.actinium.render.terrain.ActiniumWorldRenderer;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.gtnewhorizons.angelica.proxy.ClientProxy;
@@ -154,6 +156,7 @@ public class Actinium {
             }
         });
         GLSMPerfDebugHooks.addStatsProvider(Actinium::dumpExtraPerfStats);
+        GLSMPerfDebugHooks.addStatsProvider(FramePacer::statsSummary);
         GLSMPerfDebugHooks.setConfiguredEnabled(
             ActiniumRuntimeOptions.resolvePerfDebugEnabled(ActiniumRuntime.options().debug.enableActiniumPerfDebug)
         );
@@ -174,6 +177,7 @@ public class Actinium {
         ChunkAnimatorCompat.install();
         KirinoCompat.install();
         NeverEnoughAnimationsAlphaOverride.install();
+        FpsReducer.init();
 
         ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
                 .registerReloadListener(resourceManager -> MissingModelCompat.onResourceManagerReload());

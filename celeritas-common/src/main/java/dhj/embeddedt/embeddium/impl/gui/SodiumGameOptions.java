@@ -42,6 +42,7 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
     public final NotificationSettings notifications = new NotificationSettings();
     public final DebugSettings debug = new DebugSettings();
     public final WindowSettings window = new WindowSettings();
+    public final ReducerSettings reducer = new ReducerSettings();
 
     private boolean readOnly;
 
@@ -92,6 +93,21 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         public boolean useFastBlockRenderer = true;
         public AsyncOcclusionMode asyncOcclusionMode = AsyncOcclusionMode.ONLY_SHADOW;
         public boolean useRasterOcclusionCulling = true;
+    }
+
+    /**
+     * Frame rate and volume policy for a window the player is not looking at. Everything here is
+     * inert until {@link #enabled} is set.
+     */
+    public static class ReducerSettings {
+        public boolean enabled = false;
+        public int unfocusedFpsLimit = 10;
+        public int unfocusedVolume = 100;
+        public int minimizedVolume = 100;
+        public int idleTimeoutMinutes = 5;
+        public int idleFpsLimit = 30;
+        public int idleVolume = 100;
+        public boolean limitMenuFrameRate = true;
     }
 
     public static class AdvancedSettings {

@@ -3,8 +3,10 @@ package com.dhj.actinium.gui;
 import com.google.common.collect.ImmutableList;
 import com.dhj.actinium.config.ActiniumRuntimeOptions;
 import com.dhj.actinium.compat.scalingguis.ScalingGuiCompat;
+import com.dhj.actinium.render.pacing.FpsReducer;
 import com.gtnewhorizon.gtnhlib.compat.Mods;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
+import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.client.settings.GameSettings;
@@ -16,7 +18,6 @@ import dhj.embeddedt.embeddium.api.options.control.SliderControl;
 import dhj.embeddedt.embeddium.api.options.control.TickBoxControl;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
 import dhj.embeddedt.embeddium.impl.gui.framework.TextComponent;
-import org.lwjgl.opengl.Display;
 import dhj.embeddedt.embeddium.impl.render.chunk.MultiDrawMode;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import dhj.embeddedt.embeddium.api.options.structure.OptionFlag;
@@ -34,10 +35,23 @@ import static com.mitchej123.lwjgl.LWJGLServiceProvider.LWJGL;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiConsumer;
 
 public class ActiniumGameOptionPages {
     private static final SodiumGameOptions sodiumOpts = ActiniumRuntime.options();
     private static final MinecraftOptionsStorage vanillaOpts = new MinecraftOptionsStorage();
+
+    private static final OptionIdentifier<Void> FPS_REDUCER_PAGE = OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer");
+    private static final OptionIdentifier<Void> FPS_REDUCER_BACKGROUND = OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_background");
+    private static final OptionIdentifier<Void> FPS_REDUCER_IDLE = OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_idle");
+    private static final OptionIdentifier<Void> FPS_REDUCER_MENU = OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_menu");
+
+    /**
+     * The reducer's frame rate sliders span the same range as the player's own Max Framerate, so
+     * their maximum reads as "Unlimited" and the reducer treats it as no limit at all.
+     */
+    private static final int REDUCER_MIN_FRAMERATE = 5;
+    private static final int REDUCER_MAX_FRAMERATE = 260;
 
     private static int computeMaxRangeForRenderDistance(@SuppressWarnings("SameParameterValue") int injectedRenderDistance) {
         return injectedRenderDistance;
@@ -170,7 +184,7 @@ public class ActiniumGameOptionPages {
                         .setControl(TickBoxControl::new)
                         .setBinding((opts, value) -> {
                             opts.enableVsync = value;
-                            Display.setVSyncEnabled(opts.enableVsync);
+                            BackendManager.RENDER_BACKEND.setVSyncEnabled(value);
                         }, opts -> opts.enableVsync)
                         .setImpact(OptionImpact.VARIES)
                         .build())
@@ -498,6 +512,111 @@ public class ActiniumGameOptionPages {
                 .build());
 
         return new OptionPage(StandardOptions.Pages.ADVANCED, TextComponent.translatable("sodium.options.pages.advanced"), ImmutableList.copyOf(groups));
+    }
+
+    /**
+     * The reducer's settings. The frame rate limits here are ceilings the reducer applies on top of
+     * the player's own Max Framerate; the volume percentages scale the player's own master volume
+     * rather than replacing it.
+     */
+    public static OptionPage fpsReducer() {
+        List<OptionGroup> groups = new ArrayList<>();
+
+        groups.add(OptionGroup.createBuilder()
+                .setId(FPS_REDUCER_BACKGROUND)
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_enabled", boolean.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.fps_reducer_enabled.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.fps_reducer_enabled.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setImpact(OptionImpact.LOW)
+                        .setBinding(reducerBinding((opts, value) -> opts.reducer.enabled = value),
+                                opts -> opts.reducer.enabled)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_unfocused_fps_limit", int.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.unfocused_fps_limit.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.unfocused_fps_limit.tooltip"))
+                        .setControl(option -> new SliderControl(option, REDUCER_MIN_FRAMERATE, REDUCER_MAX_FRAMERATE, 1, ControlValueFormatter.fpsLimit()))
+                        .setImpact(OptionImpact.LOW)
+                        .setBinding(reducerBinding((opts, value) -> opts.reducer.unfocusedFpsLimit = value),
+                                opts -> opts.reducer.unfocusedFpsLimit)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_unfocused_volume", int.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.unfocused_volume.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.unfocused_volume.tooltip"))
+                        .setControl(option -> new SliderControl(option, 0, 100, 1, ControlValueFormatter.percentage()))
+                        .setImpact(OptionImpact.LOW)
+                        .setBinding(reducerBinding((opts, value) -> opts.reducer.unfocusedVolume = value),
+                                opts -> opts.reducer.unfocusedVolume)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_minimized_volume", int.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.minimized_volume.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.minimized_volume.tooltip"))
+                        .setControl(option -> new SliderControl(option, 0, 100, 1, ControlValueFormatter.percentage()))
+                        .setImpact(OptionImpact.LOW)
+                        .setBinding(reducerBinding((opts, value) -> opts.reducer.minimizedVolume = value),
+                                opts -> opts.reducer.minimizedVolume)
+                        .build())
+                .build());
+
+        groups.add(OptionGroup.createBuilder()
+                .setId(FPS_REDUCER_IDLE)
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_idle_timeout", int.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.idle_timeout.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.idle_timeout.tooltip"))
+                        .setControl(option -> new SliderControl(option, 0, 30, 1,
+                                ControlValueFormatter.translateDisabledOrVariable(
+                                        "sodium.options.actinium.idle_timeout.off",
+                                        "sodium.options.actinium.idle_timeout.value")))
+                        .setImpact(OptionImpact.LOW)
+                        .setBinding(reducerBinding((opts, value) -> opts.reducer.idleTimeoutMinutes = value),
+                                opts -> opts.reducer.idleTimeoutMinutes)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_idle_fps_limit", int.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.idle_fps_limit.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.idle_fps_limit.tooltip"))
+                        .setControl(option -> new SliderControl(option, REDUCER_MIN_FRAMERATE, REDUCER_MAX_FRAMERATE, 1, ControlValueFormatter.fpsLimit()))
+                        .setImpact(OptionImpact.LOW)
+                        .setBinding(reducerBinding((opts, value) -> opts.reducer.idleFpsLimit = value),
+                                opts -> opts.reducer.idleFpsLimit)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_idle_volume", int.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.idle_volume.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.idle_volume.tooltip"))
+                        .setControl(option -> new SliderControl(option, 0, 100, 1, ControlValueFormatter.percentage()))
+                        .setImpact(OptionImpact.LOW)
+                        .setBinding(reducerBinding((opts, value) -> opts.reducer.idleVolume = value),
+                                opts -> opts.reducer.idleVolume)
+                        .build())
+                .build());
+
+        groups.add(OptionGroup.createBuilder()
+                .setId(FPS_REDUCER_MENU)
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_limit_menu_fps", boolean.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.limit_menu_fps.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.limit_menu_fps.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setImpact(OptionImpact.LOW)
+                        .setBinding(reducerBinding((opts, value) -> opts.reducer.limitMenuFrameRate = value),
+                                opts -> opts.reducer.limitMenuFrameRate)
+                        .build())
+                .build());
+
+        return new OptionPage(FPS_REDUCER_PAGE, TextComponent.translatable("sodium.options.actinium.pages.fps_reducer"), ImmutableList.copyOf(groups));
+    }
+
+    private static <T> BiConsumer<SodiumGameOptions, T> reducerBinding(BiConsumer<SodiumGameOptions, T> setter) {
+        return (opts, value) -> {
+            setter.accept(opts, value);
+            FpsReducer.markConfigChanged();
+        };
     }
 
     public static OptionPage debug() {
