@@ -14,6 +14,14 @@ public interface ChunkRenderListIterable {
     }
 
     /**
+     * {@return the render list for region index {@code index}, in the order the lists were collected}
+     *
+     * <p>Indexed access lets a pass walk the region list in its own order (the shadow voxelizer walks
+     * forward or reversed depending on the pass) without materialising the lists first.</p>
+     */
+    ChunkRenderList getRegion(int index);
+
+    /**
      * {@return true if there are sections that need rendering for the given pass}
      */
     default boolean hasPass(TerrainRenderPass pass) {

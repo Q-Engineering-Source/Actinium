@@ -185,6 +185,9 @@ public class CeleritasTerrainPipeline {
                 target.setSource(PatchShaderType.VERTEX, vertexSource);
                 target.setSource(PatchShaderType.GEOMETRY, result.get(PatchShaderType.GEOMETRY));
                 target.setSource(PatchShaderType.FRAGMENT, result.get(PatchShaderType.FRAGMENT));
+                // The image-store extraction turns terrain image writes into a compute pre-pass that
+                // replays the pass's vertices; the shadow voxelizer consumes it for the shadow pass.
+                target.setSource(PatchShaderType.COMPUTE, result.get(PatchShaderType.COMPUTE));
             }
             PatchedShaderPrinter.debugPatchedShaders(sourceName + "_celeritas",
                 result.get(PatchShaderType.VERTEX), result.get(PatchShaderType.GEOMETRY), result.get(PatchShaderType.FRAGMENT));
@@ -233,6 +236,19 @@ public class CeleritasTerrainPipeline {
 
     public ProgramImages initShadowImages(int programId) {
         return createShadowImages.apply(programId);
+    }
+
+    /**
+     * {@return the compute pre-pass the shadow pass's image writes were extracted into}
+     *
+     * <p>Shaderpacks that write images from the shadow terrain stage get a compute program that
+     * replays the pass's vertices; the SDL GPU backend's shadow voxelizer drives it from the chunk
+     * render lists. Absent when the pack writes no images there.</p>
+     */
+    public Optional<String> getShadowVoxelizationComputeSource() {
+        final PassInfo shadow = passInfoMap.get(IrisTerrainPass.SHADOW);
+        if (shadow == null) return Optional.empty();
+        return shadow.sources.get(PatchShaderType.COMPUTE);
     }
 
     static AlphaTestOverride resolveAlphaTestOverride(Optional<AlphaTestOverride> shaderPackOverride, IrisTerrainPass pass) {

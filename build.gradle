@@ -197,6 +197,9 @@ dependencies {
     // Gradle's merged main output alone is not a test-module dependency in the IDE model.
     testImplementation project(':celeritas-common')
     testImplementation project(':shader')
+    // The SDL GPU capabilities shim lets tests that only need native memory (or capability flags)
+    // run without a GL context.
+    testImplementation project(':sdl-gpu')
     // glsm-side tests live in this project (the glsm module has no test source set), so the shared
     // glsm test fixtures (Reflect, GLCoreTest, ...) must be on the test classpath.
     testImplementation testFixtures(project(':glsm'))

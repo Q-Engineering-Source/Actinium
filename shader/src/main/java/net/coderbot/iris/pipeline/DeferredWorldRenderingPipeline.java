@@ -90,8 +90,12 @@ import net.minecraft.client.shader.Framebuffer;
 import net.minecraft.init.Blocks;
 import org.apache.commons.lang3.tuple.Pair;
 import dhj.embeddedt.embeddium.impl.gl.profiling.TimerQueryManager;
+import dhj.embeddedt.embeddium.impl.gl.shader.uniform.GlUniformMatrix3f;
+import dhj.embeddedt.embeddium.impl.gl.shader.uniform.GlUniformMatrix4f;
 import dhj.embeddedt.embeddium.impl.model.light.debug.AODebug;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Matrix3f;
+import org.joml.Matrix4fc;
 import org.joml.Vector3d;
 import org.joml.Vector4f;
 import org.lwjgl.opengl.GL11;
@@ -103,6 +107,7 @@ import org.lwjgl.opengl.GL43;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -125,6 +130,12 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	private ShadowRenderTargets shadowRenderTargets;
 	@Nullable
 	private ComputeProgram[] shadowComputes;
+	/**
+	 * Compute pre-pass that replays the shadow pass's vertices when the pack writes images there; the
+	 * SDL GPU shadow voxelizer drives it. Null when the pack has no such writes.
+	 */
+	@Nullable
+	private ComputeProgram shadowVoxelizationCompute;
 	private final Supplier<ShadowRenderTargets> shadowTargetsSupplier;
 
 	private final ProgramTable<Pass> table;
@@ -639,6 +650,9 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			celeritasShadowFb);
 
 		this.dhCompat = new DHCompat(this, shadowDirectives.isDhShadowEnabled().orElse(true));
+
+		this.shadowVoxelizationCompute = createShadowVoxelizationCompute();
+		bindVoxelizationMatrixUniforms();
 	}
 
 	private RenderTargets getRenderTargets() {
@@ -1387,6 +1401,10 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		}
 
 		vertexWriteReplays.destroy();
+		if (shadowVoxelizationCompute != null) {
+			shadowVoxelizationCompute.destroy();
+			shadowVoxelizationCompute = null;
+		}
 
 		// Destroy shadow composite renderer
 		if (shadowCompositeRenderer != null) {
@@ -1624,6 +1642,90 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 
 		return programs;
+	}
+
+	/**
+	 * Builds the compute program that replays the shadow pass's vertices.
+	 *
+	 * <p>The pack's shadow terrain stage writes its image output from a vertex shader, which SDL GPU
+	 * cannot express; the image-store extraction moves those writes into a compute pre-pass that reads
+	 * the terrain vertex buffer through an SSBO. This program is that pre-pass, and the SDL GPU shadow
+	 * voxelizer dispatches it from the chunk render lists.</p>
+	 *
+	 * @return the program, or null when the pack writes no images in the shadow pass
+	 */
+	@Nullable
+	private ComputeProgram createShadowVoxelizationCompute() {
+		if (celeritasTerrainPipeline == null) return null;
+		final Optional<String> sourceOpt = celeritasTerrainPipeline.getShadowVoxelizationComputeSource();
+		if (sourceOpt.isEmpty()) return null;
+		final String src = sourceOpt.get();
+		final ProgramBuilder builder;
+		try {
+			PatchedShaderPrinter.debugPatchedShaders("shadow_voxelization_compute", null, null, null, src);
+			builder = ProgramBuilder.beginCompute("shadow_voxelization", src, IrisSamplers.WORLD_RESERVED_TEXTURE_UNITS);
+		} catch (RuntimeException e) {
+			Iris.logger.error("Voxelization compute shader compilation failed; colored lighting will not render", e);
+			return null;
+		}
+		CommonUniforms.addDynamicUniforms(builder, FogMode.PER_VERTEX);
+		this.customUniforms.assignTo(builder);
+		final Supplier<ImmutableSet<Integer>> flipped = () -> flippedBeforeShadow;
+		final TextureStage textureStage = TextureStage.GBUFFERS_AND_SHADOW;
+		final ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor =
+			ProgramSamplers.customTextureSamplerInterceptor(builder, customTextureManager.getCustomTextureIdMap(textureStage));
+		IrisSamplers.addRenderTargetSamplers(customTextureSamplerInterceptor, flipped, renderTargets, false, this);
+		IrisImages.addRenderTargetImages(builder, flipped, renderTargets);
+		IrisSamplers.addLevelSamplers(customTextureSamplerInterceptor, this, whitePixel, new InputAvailability(true, true));
+		IrisSamplers.addNoiseSampler(customTextureSamplerInterceptor, customTextureManager.getNoiseTexture());
+		IrisSamplers.addCustomImages(customTextureSamplerInterceptor, customImages);
+		IrisSamplers.addCustomTextures(customTextureSamplerInterceptor, customTextureManager.getIrisCustomTextures());
+		if (IrisSamplers.hasShadowSamplers(customTextureSamplerInterceptor) && shadowRenderTargets != null) {
+			IrisSamplers.addShadowSamplers(customTextureSamplerInterceptor, shadowRenderTargets, null, true);
+			IrisImages.addShadowColorImages(builder, shadowRenderTargets, null);
+		}
+		// The extracted source declares its images with binding indices taken from the sorted image
+		// names, so the program has to bind them in that same order or the writes land on the wrong images.
+		customImages.stream()
+			.sorted(Comparator.comparing(GlImage::getName))
+			.forEach(image -> builder.addTextureImage(image::getId, image.getInternalFormat(), image.getName()));
+		final ComputeProgram program = builder.buildCompute();
+		this.customUniforms.mapholderToPass(builder, program);
+		return program;
+	}
+
+	/** {@return the compute pre-pass the SDL GPU shadow voxelizer dispatches, or null when the pack has none} */
+	@Nullable
+	public ComputeProgram getShadowVoxelizationCompute() { return shadowVoxelizationCompute; }
+
+	private GlUniformMatrix4f voxelizationModelView;
+	private GlUniformMatrix3f voxelizationNormalMatrix;
+	private final Matrix3f voxelizationNormalScratch = new Matrix3f();
+
+	private void bindVoxelizationMatrixUniforms() {
+		if (shadowVoxelizationCompute == null) return;
+		final int id = shadowVoxelizationCompute.getProgramId();
+		final int modelView = GLStateManager.glGetUniformLocation(id, "iris_ModelViewMatrix");
+		final int normal = GLStateManager.glGetUniformLocation(id, "iris_NormalMatrix");
+		this.voxelizationModelView = modelView >= 0 ? new GlUniformMatrix4f(modelView) : null;
+		this.voxelizationNormalMatrix = normal >= 0 ? new GlUniformMatrix3f(normal) : null;
+	}
+
+	/**
+	 * Pushes the pass matrices and the per-frame custom uniforms the voxelization compute reads.
+	 *
+	 * @param modelView the shadow pass's model-view matrix, i.e. the one the replayed vertices use
+	 */
+	public void prepareShadowVoxelizationCompute(Matrix4fc modelView) {
+		if (shadowVoxelizationCompute == null) return;
+		if (voxelizationModelView != null) {
+			voxelizationModelView.set(modelView);
+		}
+		if (voxelizationNormalMatrix != null) {
+			voxelizationNormalScratch.set(modelView).invert().transpose();
+			voxelizationNormalMatrix.set(voxelizationNormalScratch);
+		}
+		customUniforms.push(shadowVoxelizationCompute);
 	}
 
 	private ComputeProgram[] createSetupComputes(ComputeSource[] compute) {

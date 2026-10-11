@@ -291,8 +291,11 @@ public final class BatchAssembler {
 
     /**
      * Packs maximal consecutive set-bit runs as two four-bit facing values per run, followed by the run count.
+     *
+     * <p>Public because the shadow voxelizer walks the same runs for its compute dispatch instead of
+     * duplicating the encoding (Celeritas 2.5.12 exposes the same four helpers).</p>
      */
-    private static long packRuns(int mask) {
+    public static long packRuns(int mask) {
         long runs = 0L;
         int count = 0;
 
@@ -311,15 +314,15 @@ public final class BatchAssembler {
         return runs | ((long) count << RUN_COUNT_SHIFT);
     }
 
-    private static int runCount(long runs) {
+    public static int runCount(long runs) {
         return (int) (runs >>> RUN_COUNT_SHIFT) & 0xF;
     }
 
-    private static int runFirst(long runs, int run) {
+    public static int runFirst(long runs, int run) {
         return (int) (runs >>> (run << 3)) & 0xF;
     }
 
-    private static int runLast(long runs, int run) {
+    public static int runLast(long runs, int run) {
         return (int) (runs >>> ((run << 3) + 4)) & 0xF;
     }
 

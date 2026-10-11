@@ -21,6 +21,7 @@ import dhj.embeddedt.embeddium.impl.render.chunk.shader.ChunkShaderInterface;
 import dhj.embeddedt.embeddium.impl.render.chunk.shader.ChunkShaderTextureSlot;
 import dhj.embeddedt.embeddium.impl.render.chunk.shader.ChunkFogMode;
 import dhj.embeddedt.embeddium.impl.render.chunk.sprite.GenericSectionSpriteTicker;
+import dhj.embeddedt.embeddium.impl.render.chunk.lists.ChunkRenderListIterable;
 import dhj.embeddedt.embeddium.impl.render.chunk.terrain.TerrainRenderPass;
 import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.ChunkVertexType;
 import dhj.embeddedt.embeddium.impl.render.viewport.CameraTransform;
@@ -39,10 +40,20 @@ import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.render.terrain.compile.VintageChunkBuildContext;
 import com.dhj.actinium.render.terrain.compile.task.ChunkBuilderMeshingTask;
 import com.dhj.actinium.render.terrain.sprite.SpriteUtil;
+import com.dhj.actinium.render.voxelization.SdlShadowVoxelizationSink;
+import com.dhj.actinium.render.voxelization.ShadowVoxelizer;
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
+import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
+import net.coderbot.iris.Iris;
+import net.coderbot.iris.gl.program.ComputeProgram;
+import net.coderbot.iris.pipeline.DeferredWorldRenderingPipeline;
+import net.coderbot.iris.pipeline.WorldRenderingPipeline;
+import net.coderbot.iris.shadows.ShadowRenderingState;
 import org.lwjgl.opengl.EXTTextureFilterAnisotropic;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
+import org.lwjgl.opengl.GL20;
 
 import java.util.List;
 
@@ -221,6 +232,10 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         private boolean packTerrainSamplerMipped;
         private boolean terrainSamplerBound;
 
+        private final SdlShadowVoxelizationSink shadowVoxelSink = new SdlShadowVoxelizationSink();
+        private static final ShadowVoxelizer shadowVoxelizer = new ShadowVoxelizer();
+        private static int loggedVoxelizationSkips;
+
         public ChunkRenderer(RenderDevice device, RenderPassConfiguration<?> renderPassConfiguration) {
             super(device, renderPassConfiguration);
 
@@ -273,7 +288,75 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         }
 
         @Override
+        public void render(ChunkRenderMatrices matrices, CommandList commandList, ChunkRenderListIterable renderLists,
+                           TerrainRenderPass renderPass, CameraTransform occlusionCamera, CameraTransform camera) {
+            voxelizeShadowTerrain(matrices, renderLists, renderPass, occlusionCamera, camera);
+            super.render(matrices, commandList, renderLists, renderPass, occlusionCamera, camera);
+        }
+
+        /**
+         * Replays this pass's terrain vertices through the pack's voxelization compute shader.
+         *
+         * <p>Shader packs that write images from the shadow terrain stage get their vertex-stage image
+         * writes moved into a compute pre-pass (the SDL GPU backend has no vertex-stage image writes).
+         * That compute shader replays the pass's vertices from the terrain vertex buffer, so it has to
+         * be told exactly which vertex runs the pass would draw - which is what {@link ShadowVoxelizer}
+         * collects from the same render lists the draw uses. Only the SDL GPU backend needs this: the
+         * OpenGL path keeps the original vertex-stage writes.</p>
+         */
+        private void voxelizeShadowTerrain(ChunkRenderMatrices matrices, ChunkRenderListIterable renderLists, TerrainRenderPass renderPass, CameraTransform occlusionCamera, CameraTransform camera) {
+            if (!BackendManager.RENDER_BACKEND.isSDLGPU()) return;
+            if (!ShadowRenderingState.areShadowsCurrentlyBeingRendered()) return;
+            if (!renderLists.hasPass(renderPass)) {
+                logVoxelizationSkipOnce(VoxelizationSkip.NO_RENDER_LISTS);
+                return;
+            }
+
+            final WorldRenderingPipeline pipeline = Iris.getPipelineManager().getPipelineNullable();
+            if (!(pipeline instanceof DeferredWorldRenderingPipeline deferred)) {
+                logVoxelizationSkipOnce(VoxelizationSkip.NO_DEFERRED_PIPELINE);
+                return;
+            }
+            final ComputeProgram voxelCompute = deferred.getShadowVoxelizationCompute();
+            if (voxelCompute == null) {
+                logVoxelizationSkipOnce(VoxelizationSkip.NO_VOXELIZATION_COMPUTE);
+                return;
+            }
+
+            final int prevProgram = GLStateManager.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+            voxelCompute.use();
+            deferred.prepareShadowVoxelizationCompute(matrices.modelView());
+            try {
+                shadowVoxelizer.walkPass(renderLists, renderPass, renderPass.vertexType().getVertexFormat(), camera, occlusionCamera, useBlockFaceCulling(), shadowVoxelSink);
+                shadowVoxelSink.flush();
+            } finally {
+                shadowVoxelSink.discard();
+                if (prevProgram != 0) GLStateManager.glUseProgram(prevProgram);
+            }
+        }
+
+        private enum VoxelizationSkip {
+            NO_RENDER_LISTS("pass has no render lists"),
+            NO_DEFERRED_PIPELINE("no deferred pipeline"),
+            NO_VOXELIZATION_COMPUTE("pack declares no shadow voxelization");
+
+            private final String message;
+
+            VoxelizationSkip(String message) {
+                this.message = message;
+            }
+        }
+
+        private static void logVoxelizationSkipOnce(VoxelizationSkip reason) {
+            final int bit = 1 << reason.ordinal();
+            if ((loggedVoxelizationSkips & bit) != 0) return;
+            loggedVoxelizationSkips |= bit;
+            ActiniumRuntime.logger().info("shadow voxelization skipped: {}", reason.message);
+        }
+
+        @Override
         public void delete(CommandList commandList) {
+            shadowVoxelSink.delete();
             unbindTerrainSampler();
             RenderSystem.destroySampler(terrainSampler);
             terrainSampler = 0;

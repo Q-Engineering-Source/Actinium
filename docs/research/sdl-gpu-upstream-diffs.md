@@ -768,13 +768,20 @@ workaround + present 期间 pump）。三者的 sdl-gpu / glsm 侧均已落地�
   vertexCount)` 替换为 `voxelizeRegion(pass, rebindVertexBuffer, x, y, z,
   rangeBase, rangeCount, vertexTotal)`；`SDLGPURenderBackend` 与
   `compute/VoxelizationDispatcher` 同步实现（区域偏移 uniform + 可选顶点缓冲重绑 +
-  范围表遍历）。Actinium 目前没有 voxelization 调用方，API 与后端实现仍按上游
-  落地，保持后端表面一致。
+  范围表遍历）。
 - 测试：`VoxelizationDispatcherTest`、`MslCrossCompileTest` 已同步；rig 测试
   `GlsmSdlVoxelRegionBindTest` 上游该提交已删除（Actinium 从未有过）。
-- **未同步**：`src/` 的 voxelization 主体（`SdlShadowVoxelizationSink`、
-  `ShadowVoxelizer`、`VoxelRangeTable`、`TracyFramePlots`、
-  `AngelicaChunkRenderer`、`RwImageStoreExtractor` 及其测试）。
+- **`src/` 侧与调用方已于 2026-10-11 补完**（见 `sdl-gpu-voxelization.md`）：
+  `VoxelRangeTable`/`ShadowVoxelizer`/`SdlShadowVoxelizationSink` 落到
+  `com.dhj.actinium.render.voxelization`，调用方接在
+  `VintageRenderSectionManager.ChunkRenderer.render`（对应上游 `AngelicaChunkRenderer`），
+  shader 模块补 `CeleritasTerrainPipeline.getShadowVoxelizationComputeSource()` 与
+  `DeferredWorldRenderingPipeline` 的 voxelization compute（上游在 `8da561d3` 就有，
+  此前未同步；**同一提交里 Actinium 的 pass 源循环漏了 `PatchShaderType.COMPUTE`**，
+  已补）。`TracyFramePlots` 及其计数仍跳过（Actinium 无 game 侧 plot 聚合器）。
+  另与 celeritas-common vendored 副本对齐 3 处：`BatchAssembler` 的
+  `packRuns/runCount/runFirst/runLast` 恢复 public、`ChunkRenderListIterable`
+  补 `getRegion(int)`、`SortedRenderLists` 实现它（Celeritas 2.5.12 本就是如此）。
 
 **#2191（`1587a12c`）**
 
