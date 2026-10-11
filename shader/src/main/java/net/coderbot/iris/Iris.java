@@ -583,6 +583,7 @@ public class Iris {
 
         try {
             currentPack = new ShaderPack(shaderPackPath, changedConfigs, StandardMacros.createStandardEnvironmentDefines());
+            currentPack.activate();
 
             final MutableOptionValues changedConfigsValues = currentPack.getShaderPackOptions().getOptionValues().mutableCopy();
 

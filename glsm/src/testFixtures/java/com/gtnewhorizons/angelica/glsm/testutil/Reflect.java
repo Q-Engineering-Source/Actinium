@@ -4,9 +4,23 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
+import sun.misc.Unsafe;
+
 public final class Reflect {
 
+    private static final Unsafe UNSAFE = unsafe();
+
     private Reflect() {}
+
+    private static Unsafe unsafe() {
+        try {
+            final Field f = Unsafe.class.getDeclaredField("theUnsafe");
+            f.setAccessible(true);
+            return (Unsafe) f.get(null);
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
+    }
 
     public static Field field(Class<?> owner, String name) {
         for (Class<?> c = owner; c != null; c = c.getSuperclass()) {
@@ -55,16 +69,8 @@ public final class Reflect {
     }
 
     public static <F> void setStaticFinal(Class<?> owner, String name, Class<F> type, F value) {
-        try {
-            final Field f = field(owner, name);
-            f.setAccessible(true);
-            final Field modifiers = Field.class.getDeclaredField("modifiers");
-            modifiers.setAccessible(true);
-            modifiers.setInt(f, f.getModifiers() & ~java.lang.reflect.Modifier.FINAL);
-            f.set(null, value);
-        } catch (ReflectiveOperationException e) {
-            throw new AssertionError(e);
-        }
+        final Field f = field(owner, name);
+        UNSAFE.putObject(UNSAFE.staticFieldBase(f), UNSAFE.staticFieldOffset(f), value);
     }
 
     public static void setDeclared(Class<?> owner, Object target, String name, Object value) {

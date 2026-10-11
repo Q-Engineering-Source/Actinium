@@ -15,6 +15,7 @@ import net.coderbot.iris.features.FeatureFlags;
 import net.coderbot.iris.gl.buffer.ShaderStorageInfo;
 import net.coderbot.iris.gl.image.ImageInformation;
 import net.coderbot.iris.gl.texture.TextureDefinition;
+import net.coderbot.iris.pipeline.transform.RwImageStoreExtractor;
 import net.coderbot.iris.shaderpack.include.AbsolutePackPath;
 import net.coderbot.iris.shaderpack.include.IncludeGraph;
 import net.coderbot.iris.shaderpack.include.IncludeProcessor;
@@ -368,6 +369,11 @@ public class ShaderPack {
         this.customUniforms = shaderProperties.getCustomUniforms();
 		this.customImages = shaderProperties.getCustomImages();
 		this.bufferObjects = shaderProperties.getBufferObjects();
+	}
+
+	/** Publishes this pack's custom images to the shader transformers; call when the pack becomes the current one. */
+	public void activate() {
+		RwImageStoreExtractor.setActiveCustomImages(this.customImages);
 	}
 
 	private String getCurrentProfileName() {

@@ -392,10 +392,13 @@ public final class FrameManager {
 
 
     private volatile Runnable preRenderPassHook;
+    private volatile Runnable renderPassEndHook;
     private volatile Runnable beforeSubmit;
     private volatile Runnable afterPresent;
 
     public void setPreRenderPassHook(Runnable hook) { this.preRenderPassHook = hook; }
+
+    public void setRenderPassEndHook(Runnable hook) { this.renderPassEndHook = hook; }
 
     public void noteComputePassBegun() {
         final FrameState f = frame();
@@ -483,6 +486,8 @@ public final class FrameManager {
             f.currentColorTarget = 0;
             f.currentDepthTarget = 0;
             f.activeLayoutHash = 0;
+            final Runnable hook = renderPassEndHook;
+            if (hook != null) hook.run();
         }
     }
 

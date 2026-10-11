@@ -20,7 +20,10 @@
 > 2026-10-11 同步**（详见「上游同步状态（2026-10-11，Phase 6）」）；**上游
 > #2204 / #2211 / #2215 / #2217（`61bb779d` / `6dfb0312` / `2a8c8756` /
 > `12857006`，Phase 7）已于 2026-10-11 同步**（详见「上游同步状态
-> （2026-10-11，Phase 7）」，其中 persistent-mapping 偏差的裁决见同一节）。
+> （2026-10-11，Phase 7）」，其中 persistent-mapping 偏差的裁决见同一节）；**上游
+> #2218 / #2224 / #2226（`3389b952` / `5ed1c925` / `d056bf6f`，Phase 8）已于
+> 2026-10-11 同步，SDL-GPU 上游追赶就此收尾**（详见「上游同步状态
+> （2026-10-11，Phase 8）」）。
 > 本文档
 > 逐条记录 Actinium 的 `sdl-gpu` 模块相对 Angelica 上游（`D:\Code\Angelica`，
 > 运行于 lwjgl3ify/GTNH 环境）的**代码差异及其理由**。多数差异源于运行环境不同
@@ -1077,3 +1080,176 @@ workflows、moltenvk 模块等）按范围跳过。
   SDL 模式下不会经过 `SDLGPURenderBackend.bufferStorage`；上游因为 provider 会切到
   SDL 服务而不存在该问题。接线 SDL 后端时需一并处理（否则 `MappedStagingBuffer` 的
   persistent map 会被拒绝）。当前后端起用路径是断开的，OpenGL 后端不受影响。
+
+## 上游同步状态（2026-10-11，Phase 8）
+
+**基线**：`shader/`、`glsm/`、`sdl-gpu/` 三个模块的**在范围内**代码自此追平上游
+`21a054a4`。`d056bf6f` 之后上游对这三个模块没有其它在范围改动（`21a054a4` 是
+CloudRenderer 的 `src/` 修复，见本节末尾的跳过清单）。本节是 SDL-GPU 上游追赶的
+收尾，逐条列出移植、适配、跳过与最终遗留。
+
+上游时间顺序为 `3389b952`（#2218）→ `5ed1c925`（#2224）→ `d056bf6f`（#2226）；
+任务单把 #2218 排在 #2224 之后，但 `3389b952` 是 `5ed1c925` 的祖先，因此移植时
+所有文件统一取 **`d056bf6f` 的状态**（含 #2218 的修复与 #2226 的改动）。
+
+**#2218（`3389b952`）**
+
+- `RwImageStoreExtractor` +13：`imageAtomic*` 的结果被使用时不再被当成可丢的
+  「只写」语义（否则设备侧编译失败）。
+- `RwImageStoreExtractorTest`（651 行）随该提交建立，本阶段随 #2224 的最终状态
+  一并移植（详见下面的测试清单）。
+
+**#2224（`5ed1c925`）**
+
+- sdl-gpu 主源（9 文件 + 资源）：
+  - 新增 `compute/InvocationDispatch`（24 行，dispatch 分组的 `MAX_GROUPS_PER_DISPATCH`
+    / `WORKGROUP_SIZE` 上界与 `IntUniformWriter` 接口）。
+  - 新增 `compute/VertexWriteReplayer`（635 行）：捕获每次绘制的顶点/索引范围、
+    在 render pass 结束后重放图像写入、间接绘制标记、图像用法登记
+    （`ensureImageUsage`）、`hasPending`/`flush`/`setReplay`。
+  - `ComputeBinder`：sampler / RW 存储缓冲 / UBO 三段覆盖
+    （`setSamplerOverrides`/`setReadWriteStorageBufferOverrides`/
+    `setUniformBlockOverrides`）、`samplerHandle`、
+    `beginComputePassWithoutStorageBuffers`、`bindRoStorageBufferHandles`、
+    `rebindSamplers`、`uniformBlockView`，并把 UBO 去重缓存加上「同一 program + 同一
+    命令缓冲」的条件。
+  - `VoxelizationDispatcher` 改用 `InvocationDispatch.dispatch(...)`（上界逻辑抽走，
+    `MAX_GROUPS_PER_DISPATCH` 随之下移到 `InvocationDispatch`）。
+  - `FrameManager` 新增 `renderPassEndHook`（render pass 结束时回调）。
+  - `ResourceManager` 新增 `textureReplaceHook`（纹理被替换/删除/realloc 前回调），
+    `createTextureCore`/`deleteTexture`/`releaseTextureHandleForRealloc` 三个入口触发。
+  - `SamplerBinder` 拆出 `getSampler(samplerObject, glTexId)` 供重放使用。
+  - `ShaderManager.ProgramObject` 增加 `vertexWriteReplay` 字段。
+  - `SDLGPURenderBackend`：各绘制入口 `prepareVertexWrites`/`captureVertexWrites`、
+    `setVertexWriteReplay`、`memoryBarrier` 与纹理变更前 flush、
+    `supportsComputeImageAtomics*`、`flushVertexWritesBeforeTextureChange`。
+- glsm：新增 `backend/VertexWriteReplaySetup`（23 行 record）、
+  `RenderBackend.setVertexWriteReplay(int, VertexWriteReplaySetup)`（默认空实现）、
+  `supportsComputeImageAtomics()`（默认 `true`）。
+  **`Lwjgl3GLRenderBackend` 无需改动**——核对上游同提交：`lwjgl3-backend` 同样没有
+  覆写这两个成员，GL 后端走基类默认（空实现 / `true`）。
+- shader 模块（Actinium 的 Iris 在 `shader/` 模块）：
+  - 新增 `pipeline/transform/RwImageStoreExtractor`（1239 行）、
+    `pipeline/transform/GlslAstHelpers`（116 行，被 extractor 使用）、
+    `pipeline/transform/PreRasterComputeDispatcher`（41 行）、
+    `pipeline/VertexWriteReplays`（161 行）。
+  - 新增 GLSL 资源 `src/main/resources/assets/actinium/shaders/include/vertex_replay_fetch.glsl`
+    （103 行）。**命名空间适配**：上游放
+    `assets/angelica/shaders/include/vertex_replay_fetch.glsl` 并写
+    `angelica:include/...`；Actinium 的 Iris 相关 include 统一在
+    `assets/actinium/shaders/include/`（`ShaderTransformer` 用的
+    `actinium:include/chunk_vertex.glsl` 同处），`angelica:` 命名空间留给
+    sdlgpu/glsm 的后端着色器，故改用 `actinium:include/vertex_replay_fetch.glsl`。
+  - `ShaderTransformer`：新增 `extractRwImageStores`/`extractVertexReplay`/
+    `needsUnsupportedAtomics`，并在 `transformInternal` 末尾按上游位置加
+    `if (BackendManager.RENDER_BACKEND.isSDLGPU()) extractRwImageStores(result, patchType, RwImageStoreExtractor::supportsAtomics);`。
+  - `DeferredWorldRenderingPipeline`：把 gbuffer 的 sampler/image 接线搬进
+    `wireGbufferResources(SamplerHolder, ImageHolder, flipped, availability, shadow)`
+    （内容原样，不改语义），建好 program 后
+    `vertexWriteReplays.attach(name, builtProgram, transformed, (samplers, images) -> wireGbufferResources(samplers, images, flipped, availability, shadow))`，
+    `destroy()` 里调用 `vertexWriteReplays.destroy()`。
+  - `ShaderPack.activate()`（+ 在 `Iris.loadShaderpack` 里调用）把包的 custom images
+    发布给 `RwImageStoreExtractor.setActiveCustomImages(...)`。
+- **接线决策（RwImageStoreExtractor）——接线，不是「只移植不接线」**：
+  - 钩子点与上游一致（`ShaderTransformer.transformInternal` 末尾、`isSDLGPU()` 门控），
+    且下游消费者在 Actinium 齐备：ATTRIBUTES（gbuffers/shadow 顶点）抽出的
+    `PatchShaderType.COMPUTE` 由 `DeferredWorldRenderingPipeline` →
+    `VertexWriteReplays.attach` 建成 compute 孪生程序（`ProgramBuilder.beginCompute`/
+    `buildCompute` 在 Actinium 已有）→ `RenderBackend.setVertexWriteReplay` →
+    `SDLGPURenderBackend` 的 `VertexWriteReplayer`。整条 vertex-replay 链端到端打通。
+  - **适配 1（artifactsOut）**：Actinium 的 `ShaderTransformer` 没有上游的
+    `StageArtifact`/`artifactsOut`，也没有 `ShaderDiskCache` 的 iris-transform 磁盘键，
+    故 `extractRwImageStores`/`extractVertexReplay` **去掉 `artifactsOut` 形参**与其
+    `artifactsOut.remove(...)`；抽取结果的缓存失效改用 Actinium 的等价物
+    `TransformPatcher.clearCache()` + `ShaderTransformer.clearSessionState()`
+    （`RwImageStoreExtractor.setActiveCustomImages` 内）。
+  - **适配 2（DWRP 结构）**：Actinium 没有上游的
+    `beginBuilder`/`wireGbufferProgram` 拆分，改为把 `createPassInner` 里原有的内联
+    接线原样搬进新方法 `wireGbufferResources(...)` 并复用，`createPassInner` 只多带
+    `name`/`transformed` 两个参数。重放程序需要的 sampler/image 与 gbuffer 程序一致。
+  - **已知缺口（未同步，导致 COMPOSITE/CELERITAS_TERRAIN 的抽取结果无人消费）**：
+    上游把非 ATTRIBUTES 分支抽出的 compute 做成 pre-raster 前置通道——消费方是
+    `CompositeRenderer`/`ShadowCompositeRenderer` 的 `preRasterCompute`
+    （`PreRasterComputeDispatcher.dispatch`），这套机制来自更早的 #1993（`8da561d3`），
+    Actinium 的 shader 模块**完全没有** `preRaster*`。因此：
+    `PreRasterComputeDispatcher` 已按上游整文件移植但**当前无调用方**；
+    COMPOSITE/CELERITAS_TERRAIN 的 image 写入会被剥离而不会被重放（其它补丁类型
+    的「剥离并丢弃」就是上游行为）。SDL 后端当前不可达，故对用户无影响；将来接线
+    SDL 后端或继续同步 pre-raster 机制时必须一并补上。
+  - **跳过**：上游 gbuffer **variant** 程序的接线（`sourceName + kind.variantSuffix`）
+    ——Actinium 的 `DeferredWorldRenderingPipeline` 没有这套变体程序。
+  - **跳过**：`InstancedAttribs`/`Instancing`（上游 glsm 的 FFP 实例化）与
+    `TransformPatcher.patchAttributesInstanced` 在 Actinium 不存在，
+    `VertexReplayExtractionTest.instancedVariantReadsEntityIdFromItsInstanceAttribute`
+    用例及其 import 一并去掉。
+- **跳过（Dragon API 与 Angelica `src/` 接线）**：`src/api/EyePassRenderer`、
+  `src/api/EnderDragonBeams`（GTNH 1.7.10 内容，Actinium 无对应物）、
+  `src/mixin/java/.../MixinRenderDragon`、`helpers/RendererLivingEntityHelper`、
+  上游 `src/` 侧 `DeferredWorldRenderingPipeline` 的 Dragon 相关改动
+  （Actinium 的该文件在 `shader/` 模块，只移植 SDL 相关接线）。
+
+**#2226（`d056bf6f`）**
+
+- sdl-gpu：新增 `compute/ImageAtomicsProbe`（152 行，Metal 运行时探针：编译
+  `atomic_probe.csh`、建 compute pipeline、跑一次并回读以判断该尺寸是否支持原生
+  image atomics）；`shader/cross/CrossCompileUtil.usesImageAtomics(ByteBuffer)`
+  （扫 `SpvOpImageTexelPointer`，并顺带把 `parseLocalSize` 的指令遍历重写为共用的
+  `nextInstruction`）；`shader/msl/MslCrossCompile` 的 MSL 2.2 / 3.1 双缓存
+  （`compile(spirv, glShaderType, textureAtomics)` 按需选择 `CACHE_3_1`）；
+  `Device.readMetalLanguageVersion()`/`metalTextureAtomics()`/
+  `supportsImageAtomics(w,h,d)`（按尺寸缓存）；`SDLGPURenderBackend` 的两个
+  `supportsComputeImageAtomics*` 覆写；`ShaderManager` 把
+  `device.metalTextureAtomics()` 传给 MSL 交叉编译。
+- GLSL 资源按 Actinium 约定放 `src/main/resources/assets/angelica/shaders/sdlgpu/atomic_probe.csh`
+  （上游放 `sdl-gpu/src/main/resources/assets/angelica/shaders/sdlgpu/`；本仓库
+  sdlgpu 后端着色器统一在根 `src/main/resources`，与 `clear_image3d.csh`
+  `logic_op.glsl` 同处，加载名 `angelica:sdlgpu/atomic_probe.csh` 不变）。
+- glsm：`RenderBackend.supportsComputeImageAtomics(int, int, int)` 重载
+  （默认转调无参版本）。
+- **适配**：`SystemProperties.FLYBY_DIMENSION`（该提交新增）**未移植**——唯一消费者
+  `FlybyRunner` 属未同步的 flyby/profiling 代码，移植会留下没人读取的常量。
+  `build.gradle.kts`、`scripts/flyby-*`、`FlybyRunner` 一并跳过。
+- 跳过：GPU 测试 `ImageAtomicsGpuTest`、`DeviceImageAtomicsGpuTest`（需要真 SDL GPU
+  设备）。
+
+**Phase 8 的测试**
+
+- sdl-gpu：`VoxelizationDispatcherTest`、`MslCrossCompileTest`、
+  `FragmentStorageTextureSlotTest` 按上游更新（`MslCrossCompile.compile` 的新形参、
+  `InvocationDispatch.MAX_GROUPS_PER_DISPATCH`）。
+- 根工程（Actinium 的 shader 模块测试挂在根 `src/test`）：新增
+  `RwImageStoreExtractorTest`（44 例）、`VertexReplayExtractionTest`（12 例）、
+  `CompositeVertexWriteExtractionTest`（2 例）、`CustomImageAtomicsTest`（3 例）、
+  `GlslAstHelpersTest`（4 例）。
+- **适配**：
+  - `CustomImageAtomicsTest` 上游用 Mockito 的委托替身替换
+    `BackendManager.RENDER_BACKEND`；Actinium 没有 Mockito 依赖，改为把
+    `src/test/.../glsm/streaming/StubRenderBackend` 提升为 `public` 并派生一个只覆写
+    那两个 `supportsComputeImageAtomics` 的替身。
+  - `Reflect.setStaticFinal` 原实现用 `Field.modifiers` hack，在 JDK 12 之后必抛
+    `NoSuchFieldException`（本阶段第一次真正用到它），改为
+    `sun.misc.Unsafe.staticFieldOffset/staticFieldBase + putObject`。
+  - extractor 源码里上游用了 Java 22+ 的未命名变量（`_ ->`，
+    `addAttr` 的 `computeIfAbsent`），本项目 `-source 21`，改写为具名参数。
+  - 上游 `org.embeddedt.embeddium...ShaderLoader` → `dhj.embeddedt...`；
+    `ImageInformation.internalTextureFormat()` 返回 Actinum 的
+    `net.coderbot.iris.gl.texture.InternalTextureFormat`，故 extractor 的
+    `InternalTextureFormat`/`TextureType` import 一并改到该包
+    （`VertexWriteReplays` 同）。上游 `InputAvailability.of(...)` 在 Actinium 不存在，
+    测试改用构造函数。
+- 跳过：`ShaderTransformerTest`（该提交只改 4 行，但 Actinium 从来没有这个文件，
+  属未同步的 shader 测试集）。
+
+**跳过清单（最终，Phase 1–8 累积）**
+
+- 上游提交整条跳过：`0dfffca8`（#2061 Flyby 与 OSX 改进）、`c9d46e70`（#2151
+  Celeritas 2.5.12 半透明排序）、`af599f29`（#2158 Iris instancing/batching）、
+  `38b1d9a0`（#2190 加速启动）、`c97fb700`（#2196，其修复本身已在 Phase 6 采纳）、
+  `10922edc`（#2216 补脚本）、`338d9419`（#2197 帧节奏）、`21a054a4`（#2227
+  CloudRenderer 世界客户端泄漏，属 `src/`）。
+- 范围外模块/主题：`moltenvk` 子模块与 MoltenVK 集成、GUI（RendererOptionPages、
+  notfine 删除、ReeseSodium 选项屏）、`src/api/{EyePassRenderer,EnderDragonBeams}`
+  等 GTNH 1.7.10 内容、glsm-sdl headless rig 与其 rig 测试、glsm 状态栈 COW 重构、
+  per-drawable GLSM context 重构、上游 `lwjgl3-backend` 模块本体、`src/` 的
+  Iris 接线/GUI/字体/flyby/profiling 主体、构建配置（`dependencies.gradle.kts`、
+  `libs.versions.toml`、`settings.gradle.kts`、workflows）。

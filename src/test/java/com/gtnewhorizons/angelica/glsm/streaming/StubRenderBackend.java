@@ -13,7 +13,7 @@ import java.nio.ShortBuffer;
  * Test double for {@link RenderBackend}: every GL call throws {@link UnsupportedOperationException}
  * except the handful of buffer-mapping hooks recorded below. Used by {@link StreamingUploaderTest}.
  */
-class StubRenderBackend extends RenderBackend {
+public class StubRenderBackend extends RenderBackend {
 
     /** Returned by {@link #mapBufferRange}; {@code null} simulates a driver-side mapping failure. */
     ByteBuffer mapBufferRangeResult;

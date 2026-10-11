@@ -163,6 +163,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 	// Custom images and SSBOs
 	private final Set<GlImage> customImages;
+	private final VertexWriteReplays vertexWriteReplays = new VertexWriteReplays();
 	private final GlImage[] imagesToClear;
 	@Nullable
 	private final ShaderStorageBufferHolder ssboHolder;
@@ -1031,7 +1032,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		ProgramBuilder builder = ProgramBuilder.begin(source.getName(), vertex, geometry, tessControl, tessEval, fragment,
 			IrisSamplers.WORLD_RESERVED_TEXTURE_UNITS);
 
-		return createPassInner(builder, source.getDirectives(), availability, shadow, id);
+		return createPassInner(builder, source.getName(), transformed, source.getDirectives(), availability, shadow, id);
 	}
 
 	private static InputAvailability getTransformInputAvailability(ProgramId id, InputAvailability availability) {
@@ -1041,7 +1042,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		return availability;
 	}
 
-	private Pass createPassInner(ProgramBuilder builder, ProgramDirectives programDirectives, InputAvailability availability, boolean shadow, ProgramId id) {
+	private Pass createPassInner(ProgramBuilder builder, String name, Map<PatchShaderType, String> transformed, ProgramDirectives programDirectives, InputAvailability availability, boolean shadow, ProgramId id) {
 
 		CommonUniforms.addDynamicUniforms(builder, FogMode.PER_VERTEX);
         this.customUniforms.assignTo(builder);
@@ -1054,41 +1055,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			flipped = () -> isBeforeTranslucent ? flippedAfterPrepare : flippedAfterTranslucent;
 		}
 
-		TextureStage textureStage = TextureStage.GBUFFERS_AND_SHADOW;
-
-		ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor =
-			ProgramSamplers.customTextureSamplerInterceptor(builder,
-				customTextureManager.getCustomTextureIdMap(textureStage));
-
-		IrisSamplers.addRenderTargetSamplers(customTextureSamplerInterceptor, flipped, renderTargets, false, this);
-		IrisImages.addRenderTargetImages(builder, flipped, renderTargets);
-
-		if (!shouldBindPBR) {
-			shouldBindPBR = IrisSamplers.hasPBRSamplers(customTextureSamplerInterceptor);
-		}
-
-		IrisSamplers.addLevelSamplers(customTextureSamplerInterceptor, this, whitePixel, availability);
-
-		if (!shadow) {
-			IrisSamplers.addWorldDepthSamplers(customTextureSamplerInterceptor, renderTargets);
-		}
-
-		IrisSamplers.addNoiseSampler(customTextureSamplerInterceptor, customTextureManager.getNoiseTexture());
-
-		IrisSamplers.addCustomImages(customTextureSamplerInterceptor, customImages);
-		IrisSamplers.addCustomTextures(customTextureSamplerInterceptor, customTextureManager.getIrisCustomTextures());
-		IrisImages.addCustomImages(builder, customImages);
-
-		if (IrisSamplers.hasShadowSamplers(customTextureSamplerInterceptor)) {
-			if (!shadow) {
-				shadowTargetsSupplier.get();
-			}
-
-			if (shadowRenderTargets != null) {
-				IrisSamplers.addShadowSamplers(customTextureSamplerInterceptor, shadowRenderTargets, null, true);
-				IrisImages.addShadowColorImages(builder, shadowRenderTargets, null);
-			}
-		}
+		wireGbufferResources(builder, builder, flipped, availability, shadow);
 
 		GlFramebuffer framebufferBeforeTranslucents;
 		GlFramebuffer framebufferAfterTranslucents;
@@ -1120,6 +1087,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		});
 
         Program builtProgram = builder.build();
+        vertexWriteReplays.attach(name, builtProgram, transformed, (samplers, images) -> wireGbufferResources(samplers, images, flipped, availability, shadow));
         IrisGlDebug.logProgramSamplerState("create-pass", builtProgram.getProgramId(), availability.toString(), getPhase().name());
 
         Pass pass = new Pass(builtProgram, framebufferBeforeTranslucents, framebufferAfterTranslucents, alphaTestOverride,
@@ -1128,6 +1096,45 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
         this.customUniforms.mapholderToPass(builder, pass);
 
 		return pass;
+	}
+
+	private void wireGbufferResources(SamplerHolder samplers, ImageHolder images, Supplier<ImmutableSet<Integer>> flipped,
+									  InputAvailability availability, boolean shadow) {
+		TextureStage textureStage = TextureStage.GBUFFERS_AND_SHADOW;
+
+		ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor =
+			ProgramSamplers.customTextureSamplerInterceptor(samplers,
+				customTextureManager.getCustomTextureIdMap(textureStage));
+
+		IrisSamplers.addRenderTargetSamplers(customTextureSamplerInterceptor, flipped, renderTargets, false, this);
+		IrisImages.addRenderTargetImages(images, flipped, renderTargets);
+
+		if (!shouldBindPBR) {
+			shouldBindPBR = IrisSamplers.hasPBRSamplers(customTextureSamplerInterceptor);
+		}
+
+		IrisSamplers.addLevelSamplers(customTextureSamplerInterceptor, this, whitePixel, availability);
+
+		if (!shadow) {
+			IrisSamplers.addWorldDepthSamplers(customTextureSamplerInterceptor, renderTargets);
+		}
+
+		IrisSamplers.addNoiseSampler(customTextureSamplerInterceptor, customTextureManager.getNoiseTexture());
+
+		IrisSamplers.addCustomImages(customTextureSamplerInterceptor, customImages);
+		IrisSamplers.addCustomTextures(customTextureSamplerInterceptor, customTextureManager.getIrisCustomTextures());
+		IrisImages.addCustomImages(images, customImages);
+
+		if (IrisSamplers.hasShadowSamplers(customTextureSamplerInterceptor)) {
+			if (!shadow) {
+				shadowTargetsSupplier.get();
+			}
+
+			if (shadowRenderTargets != null) {
+				IrisSamplers.addShadowSamplers(customTextureSamplerInterceptor, shadowRenderTargets, null, true);
+				IrisImages.addShadowColorImages(images, shadowRenderTargets, null);
+			}
+		}
 	}
 
 	public void addGbufferOrShadowSamplers(SamplerHolder samplers, ImageHolder images, Supplier<ImmutableSet<Integer>> flipped,
@@ -1378,6 +1385,8 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 				}
 			}
 		}
+
+		vertexWriteReplays.destroy();
 
 		// Destroy shadow composite renderer
 		if (shadowCompositeRenderer != null) {
