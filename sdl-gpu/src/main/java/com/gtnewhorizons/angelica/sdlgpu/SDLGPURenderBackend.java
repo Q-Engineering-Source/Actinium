@@ -7,6 +7,7 @@ import com.gtnewhorizons.angelica.glsm.CaptureGate;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.profiling.Tracy;
 import com.gtnewhorizons.angelica.glsm.backend.GLDebugMessageListener;
+import com.gtnewhorizons.angelica.glsm.backend.MainThreadPump;
 import com.gtnewhorizons.angelica.glsm.backend.VSyncMode;
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMConfig;
@@ -20,11 +21,13 @@ import com.gtnewhorizons.angelica.sdlgpu.frame.FrameManager;
 import com.gtnewhorizons.angelica.sdlgpu.frame.FrameManager.FrameState;
 import com.gtnewhorizons.angelica.sdlgpu.frame.Presenter;
 import com.gtnewhorizons.angelica.sdlgpu.pipeline.DrawDispatch;
+import com.gtnewhorizons.angelica.sdlgpu.pipeline.FFPTrace;
 import com.gtnewhorizons.angelica.sdlgpu.pipeline.PipelineApplier;
 import com.gtnewhorizons.angelica.sdlgpu.pipeline.PipelineCache;
 import com.gtnewhorizons.angelica.sdlgpu.pipeline.PipelineStore;
 import com.gtnewhorizons.angelica.sdlgpu.pipeline.VertexAttribs;
 import com.gtnewhorizons.angelica.sdlgpu.resource.BufferParams;
+import com.gtnewhorizons.angelica.sdlgpu.resource.CopyRectClip;
 import com.gtnewhorizons.angelica.sdlgpu.resource.FBOClearTracker;
 import com.gtnewhorizons.angelica.sdlgpu.resource.FboState;
 import com.gtnewhorizons.angelica.sdlgpu.resource.FormatMap;
@@ -88,6 +91,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 
 import org.lwjgl.sdl.SDLGPU;
+import org.lwjgl.sdl.SDLTimer;
 import org.lwjgl.sdl.SDL_GPUBlitInfo;
 import org.lwjgl.sdl.SDL_GPUBufferLocation;
 import org.lwjgl.sdl.SDL_GPUTextureLocation;
@@ -99,6 +103,8 @@ import org.lwjglx.opengl.Display;
 import com.gtnewhorizons.angelica.sdlgpu.compat.Lwjgl3GLCapabilitiesShim;
 
 import static org.lwjgl.sdl.SDLGPU.*;
+import static org.lwjgl.sdl.SDLSurface.SDL_FLIP_NONE;
+import static org.lwjgl.sdl.SDLSurface.SDL_FLIP_VERTICAL;
 
 /** SDL GPU implementation of {@link RenderBackend}. */
 public class SDLGPURenderBackend extends RenderBackend {
@@ -141,6 +147,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         });
     private final PipelineApplier pipelineApplier = new PipelineApplier(frameManager, resourceManager, shaderManager, pipelineStore, fboClearTracker, persistentSync, samplerBinder, storageTextureBinder, storageBufferBinder);
     private final DrawDispatch drawDispatch = new DrawDispatch(device, frameManager, resourceManager, pipelineApplier, this::enqueuePreCopied);
+    private final FFPTrace ffpTrace = SystemProperties.FFP_TRACE ? new FFPTrace(resourceManager) : null;
 
     private final IntOpenHashSet missingProgramWarned = new IntOpenHashSet();
 
@@ -214,7 +221,11 @@ public class SDLGPURenderBackend extends RenderBackend {
 
     @Override public void onPostWindowCreate(long window) {
         buildCachedStrings();
-        populateGLCapabilities();
+        if (window != 0L) populateGLCapabilities();
+    }
+
+    private boolean hasWindow() {
+        return device.getClaimedWindow() != 0L;
     }
 
     @Override public void init() {
@@ -278,9 +289,13 @@ public class SDLGPURenderBackend extends RenderBackend {
         // DisplayEvents; the Cleanroom/lwjglxx bridge has no such event bus yet.
         GLSMConfig.expandVertexFormats = true;
         resourceManager.cachePreferredDepthFormats();
-        LOG.warn("Swapchain texture format: 0x{} (12=B8G8R8A8_UNORM, 53=B8G8R8A8_SRGB, 4=R8G8B8A8_UNORM)", Integer.toHexString(device.getSwapchainTextureFormat()));
-        cachedSwapchainFormatArray = new int[]{device.getSwapchainTextureFormat()};
+        cachedSwapchainFormatArray = new int[]{
+            hasWindow() ? device.getSwapchainTextureFormat() : resourceManager.mapTextureFormat(GL11.GL_RGBA8)
+        };
         PipelineCache.setSwapchainFormats(cachedSwapchainFormatArray);
+        if (hasWindow()) {
+            LOG.warn("Swapchain texture format: 0x{} (12=B8G8R8A8_UNORM, 53=B8G8R8A8_SRGB, 4=R8G8B8A8_UNORM)", Integer.toHexString(cachedSwapchainFormatArray[0]));
+        }
         pipelineStore.setBufferHandleResolver(resourceManager::getBufferHandle);
         pipelineStore.setVertexVariantResolver(shaderManager::getOrBuildVertexVariant);
         resourceManager.setBufferLivenessListener(this::markAllPipelineInputDirty);
@@ -296,15 +311,17 @@ public class SDLGPURenderBackend extends RenderBackend {
             LOG.info("SDL presenter thread enabled: presents run on '{}'", device.getWindowThread() != null ? device.getWindowThread().getName() : "window thread");
         }
 
-        final int splashW = Math.max(1, Display.getWidth());
-        final int splashH = Math.max(1, Display.getHeight());
-        final int[] maxDesktop = device.getMaxDesktopSizePixels();
-        final int splashTexW = Math.max(splashW, maxDesktop[0]);
-        final int splashTexH = Math.max(splashH, maxDesktop[1]);
-        splashTarget = new OffscreenTarget();
-        splashTarget.create(device, resourceManager, splashTexW, splashTexH, device.getSwapchainTextureFormat());
-        SplashDispatcher.seedDrawnSize(splashW, splashH);
-        LOG.info("Splash offscreen target {}x{} (window {}x{}, max desktop {}x{})", splashTexW, splashTexH, splashW, splashH, maxDesktop[0], maxDesktop[1]);
+        if (hasWindow()) {
+            final int splashW = Math.max(1, Display.getWidth());
+            final int splashH = Math.max(1, Display.getHeight());
+            final int[] maxDesktop = device.getMaxDesktopSizePixels();
+            final int splashTexW = Math.max(splashW, maxDesktop[0]);
+            final int splashTexH = Math.max(splashH, maxDesktop[1]);
+            splashTarget = new OffscreenTarget();
+            splashTarget.create(device, resourceManager, splashTexW, splashTexH, device.getSwapchainTextureFormat());
+            SplashDispatcher.seedDrawnSize(splashW, splashH);
+            LOG.info("Splash offscreen target {}x{} (window {}x{}, max desktop {}x{})", splashTexW, splashTexH, splashW, splashH, maxDesktop[0], maxDesktop[1]);
+        }
 
         Lwjgl3GLCapabilitiesShim.installOnCurrentThread(advertisedCapabilities());
 
@@ -400,25 +417,27 @@ public class SDLGPURenderBackend extends RenderBackend {
         }
     }
 
-    @Override protected int queryDisplayRefreshRateHz() {
-        return device.getDisplayRefreshRateHz();
+    @Override protected long queryRefreshPeriodNanos() {
+        return device.getDisplayRefreshPeriodNanos();
     }
-
-    @Override public boolean gateAnchorsNextFrameStart() { return true; }
 
     @Override public boolean wantsDisplayUpdateGateTiming() { return false; }
 
-    @Override public long lastFrameGateNanos() {
-        if (presenter != null) return frameManager.windowFrame().lastFrameGateNanos;
-        return frameManager.lastFrameGateNanos();
-    }
-
-    @Override public long lastFrameGateEndNanos() {
-        if (presenter != null) return frameManager.windowFrame().lastFrameGateEndNanos;
-        return frameManager.lastFrameGateEndNanos();
-    }
-
     @Override public boolean hasSwapchainBackpressure() { return true; }
+
+    @Override public void awaitPresent() {
+        if (presenter != null) presenter.drain();
+    }
+
+    @Override public void parkNanos(long nanos) {
+        SDLTimer.SDL_DelayNS(nanos);
+    }
+
+    private static final class Pump {
+        static final MainThreadPump INSTANCE = new MainThreadPump(Runnable::run, GLStateManager::isMainThread, Display::processMessages, MainThreadPump::pollInput);
+    }
+
+    @Override public void pumpDisplayMessages() { Pump.INSTANCE.pumpMessages(); }
 
     @Override public void shutdown() {
         if (shutdown) return;
@@ -694,6 +713,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         }
 
         awaitUploadFlush();
+        if (SystemProperties.FFP_TRACE) ffpTrace.frameEnd(f);
         frameManager.endFrame();
         frameManager.presentFinalTarget();
         fenceTracker.resolvePendingFences();
@@ -702,6 +722,7 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
 
     @Override public void onPreSwapchainInvalidatingChange(Object change) {
+        super.onPreSwapchainInvalidatingChange(change);
         if (presenter != null) presenter.drain();
         endFrameUploadFlush();
         if (frameManager.isFrameActive()) {
@@ -1031,7 +1052,9 @@ public class SDLGPURenderBackend extends RenderBackend {
         }
         final ContextState st = s();
         if (mode == GL11.GL_TRIANGLE_FAN && count >= 3) {
-            drawDispatch.drawTriangleFanAsTriangleList(st, first, count);
+            if (drawDispatch.drawTriangleFanAsTriangleList(st, first, count) && SystemProperties.FFP_TRACE) {
+                ffpTrace.trace(st, "arraysFan", mode, count, 0, first, 0);
+            }
             return;
         }
         drawDispatch.setPrimitiveTypeForDraw(st, FormatMap.mapPrimitiveType(mode));
@@ -1055,6 +1078,7 @@ public class SDLGPURenderBackend extends RenderBackend {
             return;
         }
         logFirstDraw("drawArrays", mode, count, st.boundFboId, frameManager.getCurrentColorTarget());
+        if (SystemProperties.FFP_TRACE) ffpTrace.trace(st, "arrays", mode, count, 0, first, 0);
         SDL_DrawGPUPrimitives(f.renderPass, count, 1, first, 0);
     }
 
@@ -1063,6 +1087,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         final long rp = prepareIndexedDrawBind(st, mode, type, "drawElements");
         if (rp == 0) return;
         final int firstIndex = (int) (indices / FormatMap.indexElementSize(type));
+        if (SystemProperties.FFP_TRACE) ffpTrace.trace(st, "elements", mode, count, type, firstIndex, 0);
         drawDispatch.issueIndexedDraw(st, rp, st.currentVao.elementBuffer, type, count, 1, firstIndex, 0);
     }
 
@@ -1071,6 +1096,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         final long rp = prepareIndexedDrawBind(st, mode, type, "drawElementsInstanced");
         if (rp == 0) return;
         final int firstIndex = (int) (indices / FormatMap.indexElementSize(type));
+        if (SystemProperties.FFP_TRACE) ffpTrace.trace(st, "elementsInstanced", mode, count, type, firstIndex, 0);
         drawDispatch.issueIndexedDraw(st, rp, st.currentVao.elementBuffer, type, count, primcount, firstIndex, 0);
     }
 
@@ -1080,6 +1106,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         final long rp = prepareIndexedDrawBind(st, mode, type, "drawElementsBaseVertex");
         if (rp == 0) return;
         final int firstIndex = (int) (indices / FormatMap.indexElementSize(type));
+        if (SystemProperties.FFP_TRACE) ffpTrace.trace(st, "elementsBaseVertex", mode, count, type, firstIndex, baseVertex);
         drawDispatch.issueIndexedDraw(st, rp, st.currentVao.elementBuffer, type, count, 1, firstIndex, baseVertex);
     }
 
@@ -1118,7 +1145,10 @@ public class SDLGPURenderBackend extends RenderBackend {
             final int count = MemoryUtil.memGetInt(pCount + offset);
             if (count <= 0) continue;
             final long indices = MemoryUtil.memGetAddress(pIndices + (long) i * Pointer.POINTER_SIZE);
-            drawDispatch.issueIndexedDraw(st, rp, ebo, type, count, 1, (int) (indices / elementSize), MemoryUtil.memGetInt(pBaseVertex + offset));
+            final int firstIndex = (int) (indices / elementSize);
+            final int baseVertex = MemoryUtil.memGetInt(pBaseVertex + offset);
+            if (SystemProperties.FFP_TRACE) ffpTrace.trace(st, "multiElementsBaseVertex", mode, count, type, firstIndex, baseVertex);
+            drawDispatch.issueIndexedDraw(st, rp, ebo, type, count, 1, firstIndex, baseVertex);
         }
     }
 
@@ -1143,6 +1173,7 @@ public class SDLGPURenderBackend extends RenderBackend {
                     + "sentinel indices in the EBO will be drawn as regular indices.");
                 drawDispatch.restartMultiDrawWarned = true;
             }
+            if (SystemProperties.FFP_TRACE) ffpTrace.trace(st, "elementsIndirect", mode, drawcount, type, (int) indirect, 0);
             SDL_DrawGPUIndexedPrimitivesIndirect(rp, indirectHandle, (int) indirect, drawcount);
         } finally {
             Tracy.endZone();
@@ -1156,7 +1187,7 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
 
     @Override public void dispatchComputeIndirect(long offset) {
-        final int indirectGlId = getBoundBuffer(GL40.GL_DRAW_INDIRECT_BUFFER);
+        final int indirectGlId = getBoundBuffer(GL43.GL_DISPATCH_INDIRECT_BUFFER);
         if (indirectGlId == 0) return;
         final long indirectHandle = resourceManager.getBufferHandle(indirectGlId);
         if (indirectHandle == 0) return;
@@ -1254,6 +1285,7 @@ public class SDLGPURenderBackend extends RenderBackend {
 
 
     @Override public void bindTexture(int target, int texture) {
+        if (isProxyTarget(target)) return;
         final ContextState st = s();
         if (st.activeTextureUnit >= 0 && st.activeTextureUnit < st.boundTextures.length) {
             if (st.boundTextures[st.activeTextureUnit] != texture) {
@@ -1265,6 +1297,87 @@ public class SDLGPURenderBackend extends RenderBackend {
     @Override public void activeTexture(int texture) {
         final ContextState st = s();
         st.activeTextureUnit = texture - GL13.GL_TEXTURE0;
+    }
+
+    static boolean isProxyTarget(int target) {
+        return TextureInfoCache.isProxyTarget(target);
+    }
+
+    private static boolean proxyLayersInHeight(int target) {
+        return target == GL30.GL_PROXY_TEXTURE_1D_ARRAY;
+    }
+
+    private static boolean proxyLayersInDepth(int target) {
+        return isProxyArrayTarget(target) && !proxyLayersInHeight(target);
+    }
+
+    private static boolean isProxyArrayTarget(int target) {
+        return target == GL30.GL_PROXY_TEXTURE_1D_ARRAY || target == GL30.GL_PROXY_TEXTURE_2D_ARRAY || target == GL32.GL_PROXY_TEXTURE_2D_MULTISAMPLE_ARRAY || target == GL40.GL_PROXY_TEXTURE_CUBE_MAP_ARRAY;
+    }
+
+    public static int proxyLevelSize(int base, int level) {
+        return PixelOps.mipLevelSize(base, level);
+    }
+
+    static int proxyDimensionLimit(int target) {
+        return switch (target) {
+            case GL12.GL_PROXY_TEXTURE_3D -> MAX_3D_TEXTURE_SIZE;
+            case GL13.GL_PROXY_TEXTURE_CUBE_MAP, GL40.GL_PROXY_TEXTURE_CUBE_MAP_ARRAY -> MAX_CUBE_MAP_TEXTURE_SIZE;
+            default -> MAX_TEXTURE_SIZE;
+        };
+    }
+
+    static int levelZeroEquivalentSize(int size, int level) {
+        if (size <= 0 || level < 0 || level >= Integer.SIZE - 1) return 0;
+        final long scaled = (long) size << level;
+        return scaled > Integer.MAX_VALUE ? 0 : (int) scaled;
+    }
+
+    private void recordProxyTexImage(ContextState st, int target, int level, int internalFormat, int width, int height, int depth) {
+        final boolean layersInHeight = proxyLayersInHeight(target);
+        final boolean layersInDepth = proxyLayersInDepth(target);
+        final int dimLimit = proxyDimensionLimit(target);
+        final int w = levelZeroEquivalentSize(width, level);
+        final int h = layersInHeight ? height : levelZeroEquivalentSize(height, level);
+        final int d = layersInDepth ? depth : levelZeroEquivalentSize(depth, level);
+        final int hLimit = layersInHeight ? MAX_ARRAY_TEXTURE_LAYERS : dimLimit;
+        final int dLimit = layersInDepth ? MAX_ARRAY_TEXTURE_LAYERS : dimLimit;
+        final boolean fits = w >= 1 && w <= dimLimit && h >= 1 && h <= hLimit && d >= 1 && d <= dLimit
+            && resourceManager.isMappableTextureFormat(internalFormat);
+        if (fits) {
+            st.proxyTexture.accept(target, w, h, d, internalFormat);
+        } else {
+            st.proxyTexture.reject(target);
+        }
+    }
+
+    private static int boundTextureFor(ContextState st, int target) {
+        return isProxyTarget(target) ? 0 : st.boundTextures[st.activeTextureUnit];
+    }
+
+    private void ensureLevel0Storage(ContextState st, int glId, int target, int internalFormat, int width, int height, int depth, int format, boolean mipmapped) {
+        final int numLevels;
+        if (mipmapped) {
+            final TextureSamplerState ss = resourceManager.getOrCreateTexSamplerState(glId);
+            numLevels = ss.maxLevel >= 0 ? ss.maxLevel + 1 : PixelOps.defaultMipLevels(width, height);
+        } else {
+            numLevels = 1;
+        }
+        final boolean bgraSwizzle = format == GL12.GL_BGRA && (internalFormat == GL11.GL_RGBA || internalFormat == GL11.GL_RGBA8);
+        final int targetSdlFormat = bgraSwizzle
+            ? SDLGPU.SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM
+            : resourceManager.mapTextureFormat(internalFormat);
+        if (canReuseTexture(resourceManager.getTextureMeta(glId), resourceManager.getTextureHandle(glId),
+                target, internalFormat, targetSdlFormat, width, height, depth, numLevels)) {
+            return;
+        }
+        textureOps.releaseTextureForRealloc(st, glId);
+        if (bgraSwizzle) {
+            resourceManager.createTextureWithSdlFormat(glId, target, SDLGPU.SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM, internalFormat, width, height, depth, numLevels);
+        } else {
+            resourceManager.createTexture(glId, target, internalFormat, width, height, depth, numLevels);
+        }
+        resourceManager.refreshTextureReferences(glId);
     }
 
     private static boolean canReuseTexture(ResourceManager.TextureMeta m, long handle, int target, int glFormat, int sdlFormat, int w, int h, int d, int levels) {
@@ -1281,26 +1394,15 @@ public class SDLGPURenderBackend extends RenderBackend {
 
     @Override public void texImage2D(int target, int level, int internalFormat, int width, int height, int border, int format, int type, ByteBuffer pixels) {
         final ContextState st = s();
+        if (isProxyTarget(target)) {
+            recordProxyTexImage(st, target, level, internalFormat, width, height, 1);
+            return;
+        }
         final int glId = st.boundTextures[st.activeTextureUnit];
         if (glId == 0) return;
 
         if (level == 0) {
-            final TextureSamplerState ss = resourceManager.getOrCreateTexSamplerState(glId);
-            final int numLevels = ss.maxLevel >= 0 ? ss.maxLevel + 1 : PixelOps.defaultMipLevels(width, height);
-            final boolean bgraSwizzle = format == GL12.GL_BGRA && (internalFormat == GL11.GL_RGBA || internalFormat == GL11.GL_RGBA8);
-            final int targetSdlFormat = bgraSwizzle
-                ? SDLGPU.SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM
-                : resourceManager.mapTextureFormat(internalFormat);
-            if (!canReuseTexture(resourceManager.getTextureMeta(glId), resourceManager.getTextureHandle(glId),
-                    target, internalFormat, targetSdlFormat, width, height, 1, numLevels)) {
-                textureOps.releaseTextureForRealloc(st, glId);
-                if (bgraSwizzle) {
-                    resourceManager.createTextureWithSdlFormat(glId, target, SDLGPU.SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM, internalFormat, width, height, 1, numLevels);
-                } else {
-                    resourceManager.createTexture(glId, target, internalFormat, width, height, 1, numLevels);
-                }
-                resourceManager.refreshTextureReferences(glId);
-            }
+            ensureLevel0Storage(st, glId, target, internalFormat, width, height, 1, format, true);
         }
 
         textureOps.uploadTextureRegion(st, glId, resourceManager.getTextureMeta(glId), resourceManager.getTextureHandle(glId), pixels, 0, 0, width, height, level, format, type);
@@ -1316,18 +1418,15 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
     @Override public void texImage3D(int target, int level, int internalFormat, int width, int height, int depth, int border, int format, int type, ByteBuffer pixels) {
         final ContextState st = s();
+        if (isProxyTarget(target)) {
+            recordProxyTexImage(st, target, level, internalFormat, width, height, depth);
+            return;
+        }
         final int glId = st.boundTextures[st.activeTextureUnit];
         if (glId == 0) return;
 
         if (level == 0) {
-            final int numLevels = 1;
-            final int targetSdlFormat = resourceManager.mapTextureFormat(internalFormat);
-            if (!canReuseTexture(resourceManager.getTextureMeta(glId), resourceManager.getTextureHandle(glId),
-                    target, internalFormat, targetSdlFormat, width, height, depth, numLevels)) {
-                textureOps.releaseTextureForRealloc(st, glId);
-                resourceManager.createTexture(glId, target, internalFormat, width, height, depth, numLevels);
-                resourceManager.refreshTextureReferences(glId);
-            }
+            ensureLevel0Storage(st, glId, target, internalFormat, width, height, depth, GL11.GL_NONE, false);
         }
         if (pixels == null) return;
         final long texHandle = resourceManager.getTextureHandle(glId);
@@ -1349,18 +1448,15 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
     @Override public void texImage1D(int target, int level, int internalFormat, int width, int border, int format, int type, ByteBuffer pixels) {
         final ContextState st = s();
+        if (isProxyTarget(target)) {
+            recordProxyTexImage(st, target, level, internalFormat, width, 1, 1);
+            return;
+        }
         final int glId = st.boundTextures[st.activeTextureUnit];
         if (glId == 0) return;
 
         if (level == 0) {
-            final int numLevels = 1;
-            final int targetSdlFormat = resourceManager.mapTextureFormat(internalFormat);
-            if (!canReuseTexture(resourceManager.getTextureMeta(glId), resourceManager.getTextureHandle(glId),
-                    target, internalFormat, targetSdlFormat, width, 1, 1, numLevels)) {
-                textureOps.releaseTextureForRealloc(st, glId);
-                resourceManager.createTexture(glId, target, internalFormat, width, 1, 1, numLevels);
-                resourceManager.refreshTextureReferences(glId);
-            }
+            ensureLevel0Storage(st, glId, target, internalFormat, width, 1, 1, GL11.GL_NONE, false);
         }
         if (pixels == null) return;
         textureOps.uploadTextureRegion(st, glId, resourceManager.getTextureMeta(glId), resourceManager.getTextureHandle(glId),
@@ -1368,18 +1464,15 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
     @Override public void texImage2D(int target, int level, int internalFormat, int width, int height, int border, int format, int type, long pixelBufferOffset) {
         final ContextState st = s();
+        if (isProxyTarget(target)) {
+            recordProxyTexImage(st, target, level, internalFormat, width, height, 1);
+            return;
+        }
         final int glId = st.boundTextures[st.activeTextureUnit];
         if (glId == 0) return;
 
         if (level == 0) {
-            final TextureSamplerState ss = resourceManager.getOrCreateTexSamplerState(glId);
-            final int numLevels = ss.maxLevel >= 0 ? ss.maxLevel + 1 : PixelOps.defaultMipLevels(width, height);
-            final int targetSdlFormat = resourceManager.mapTextureFormat(internalFormat);
-            if (!canReuseTexture(resourceManager.getTextureMeta(glId), resourceManager.getTextureHandle(glId), target, internalFormat, targetSdlFormat, width, height, 1, numLevels)) {
-                textureOps.releaseTextureForRealloc(st, glId);
-                resourceManager.createTexture(glId, target, internalFormat, width, height, 1, numLevels);
-                resourceManager.refreshTextureReferences(glId);
-            }
+            ensureLevel0Storage(st, glId, target, internalFormat, width, height, 1, format, true);
         }
 
         if (st.boundPixelUnpackBuffer == 0) return;
@@ -1396,7 +1489,7 @@ public class SDLGPURenderBackend extends RenderBackend {
 
     @Override public void texSubImage2D(int target, int level, int xoffset, int yoffset, int width, int height, int format, int type, ByteBuffer pixels) {
         final ContextState st = s();
-        final int glId = st.boundTextures[st.activeTextureUnit];
+        final int glId = boundTextureFor(st, target);
         if (glId == 0 || pixels == null) return;
         textureOps.uploadTextureRegion(st, glId, resourceManager.getTextureMeta(glId), resourceManager.getTextureHandle(glId), pixels, xoffset, yoffset, width, height, level, format, type);
     }
@@ -1406,7 +1499,7 @@ public class SDLGPURenderBackend extends RenderBackend {
     @Override public void texSubImage2D(int target, int level, int xoffset, int yoffset, int width, int height, int format, int type, long pboOffset) {
         final ContextState st = s();
         if (st.boundPixelUnpackBuffer == 0) return;
-        final int glId = st.boundTextures[st.activeTextureUnit];
+        final int glId = boundTextureFor(st, target);
         if (glId == 0) return;
         final ByteBuffer staging = resourceManager.getPboStaging(st.boundPixelUnpackBuffer);
         if (staging == null) return;
@@ -1420,24 +1513,29 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
     @Override public void copyTexSubImage2D(int target, int level, int xoffset, int yoffset, int x, int y, int width, int height) {
         final ContextState cs = s();
-        final int destGlId = cs.boundTextures[cs.activeTextureUnit];
-        textureOps.copyTexSubImageImpl(cs,destGlId, level, xoffset, yoffset, x, y, width, height);
+        textureOps.copyTexSubImageImpl(cs, boundTextureFor(cs, target), level, xoffset, yoffset, x, y, width, height);
     }
 
     @Override public void copyTexImage2D(int target, int level, int internalFormat, int x, int y, int width, int height, int border) {
         final ContextState cs = s();
-        final int destGlId = cs.boundTextures[cs.activeTextureUnit];
+        final int destGlId = boundTextureFor(cs, target);
+        if (destGlId == 0) return;
+
+        if (level == 0) {
+            ensureLevel0Storage(cs, destGlId, target, internalFormat, width, height, 1, GL11.GL_NONE, true);
+        }
+
         textureOps.copyTexSubImageImpl(cs, destGlId, level, 0, 0, x, y, width, height);
     }
 
     @Override public void texParameteri(int target, int pname, int param) {
         final ContextState cs = s();
-        textureOps.texParameteri(cs, pname, param, cs.boundTextures[cs.activeTextureUnit]);
+        textureOps.texParameteri(cs, pname, param, boundTextureFor(cs, target));
     }
 
     @Override public void texParameterf(int target, int pname, float param) {
         final ContextState cs = s();
-        textureOps.texParameterf(cs, pname, param, cs.boundTextures[cs.activeTextureUnit]);
+        textureOps.texParameterf(cs, pname, param, boundTextureFor(cs, target));
     }
 
     @Override public void texParameteriv(int target, int pname, IntBuffer params) {
@@ -1448,22 +1546,31 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
     @Override public int getTexParameteri(int target, int pname) {
         final ContextState cs = s();
-        return getTextureParameteri(cs.boundTextures[cs.activeTextureUnit], target, pname);
+        return getTextureParameteri(boundTextureFor(cs, target), target, pname);
     }
     @Override public float getTexParameterf(int target, int pname) {
         final ContextState cs = s();
-        return getTextureParameterf(cs.boundTextures[cs.activeTextureUnit], target, pname);
+        return getTextureParameterf(boundTextureFor(cs, target), target, pname);
     }
     @Override public int getTexLevelParameteri(int target, int level, int pname) {
         final ContextState cs = s();
+        if (isProxyTarget(target)) {
+            final ContextState.ProxyTextureState proxy = cs.proxyTexture;
+            if (proxy.target != target) return 0;
+            return switch (pname) {
+                case GL11.GL_TEXTURE_WIDTH -> proxyLevelSize(proxy.width, level);
+                case GL11.GL_TEXTURE_HEIGHT -> proxyLayersInHeight(target) ? proxy.height : proxyLevelSize(proxy.height, level);
+                case GL12.GL_TEXTURE_DEPTH -> proxyLayersInDepth(target) ? proxy.depth : proxyLevelSize(proxy.depth, level);
+                case GL11.GL_TEXTURE_INTERNAL_FORMAT -> proxy.internalFormat;
+                default -> 0;
+            };
+        }
         final int glId = cs.boundTextures[cs.activeTextureUnit];
         final ResourceManager.TextureMeta meta = resourceManager.getTextureMeta(glId);
         if (meta == null) return 0;
-        final int mipW = Math.max(1, meta.width() >> level);
-        final int mipH = Math.max(1, meta.height() >> level);
         return switch (pname) {
-            case GL11.GL_TEXTURE_WIDTH -> mipW;
-            case GL11.GL_TEXTURE_HEIGHT -> mipH;
+            case GL11.GL_TEXTURE_WIDTH -> PixelOps.mipLevelSize(meta.width(), level);
+            case GL11.GL_TEXTURE_HEIGHT -> PixelOps.mipLevelSize(meta.height(), level);
             case GL11.GL_TEXTURE_INTERNAL_FORMAT -> {
                 final int stored = meta.glFormat();
                 yield TextureInfoCache.isGenericCompressedInternalFormat(stored) ? GL11.GL_RGBA8 : stored;
@@ -1472,8 +1579,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         };
     }
     @Override public void generateMipmap(int target) {
-        final ContextState st = s();
-        generateTextureMipmap(st.boundTextures[st.activeTextureUnit]);
+        generateTextureMipmap(boundTextureFor(s(), target));
     }
     @Override public void pixelStorei(int pname, int param) {
         final ContextState.PixelStoreState ps = s().pixelStore;
@@ -1748,12 +1854,20 @@ public class SDLGPURenderBackend extends RenderBackend {
 
 
     @Override public void readPixels(int x, int y, int width, int height, int format, int type, ByteBuffer pixels) {
+        if (pixels == null || width <= 0 || height <= 0) return;
         final ContextState cs = s();
+        final boolean fromFbo0 = cs.boundReadFboId == 0;
         final long texHandle;
         final int srcSdlFormat;
-        if (cs.boundReadFboId == 0) {
+        final int srcWidth;
+        final int srcHeight;
+        final int srcY;
+        if (fromFbo0) {
             texHandle = frameManager.getFbo0Texture();
             srcSdlFormat = frameManager.getSwapchainFormat();
+            srcWidth = frameManager.getFbo0Width();
+            srcHeight = frameManager.getFbo0Height();
+            srcY = srcHeight - y - height;
         } else {
             final FboState fbo = resourceManager.getFbo(cs.boundReadFboId);
             if (fbo == null) return;
@@ -1761,10 +1875,58 @@ public class SDLGPURenderBackend extends RenderBackend {
             texHandle = resourceManager.getTextureHandle(colorGlId);
             final ResourceManager.TextureMeta meta = resourceManager.getTextureMeta(colorGlId);
             srcSdlFormat = meta != null ? meta.sdlFormat() : SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+            srcWidth = meta != null ? meta.width() : fbo.width;
+            srcHeight = meta != null ? meta.height() : fbo.height;
+            srcY = y;
         }
-        textureOps.readbackTexture(texHandle, x, y, width, height, 0, pixels);
-        pixels.rewind();
-        PixelOps.postProcessReadback(pixels, width, height, format, srcSdlFormat, cs.boundReadFboId == 0);
+        if (texHandle == 0 || srcWidth <= 0 || srcHeight <= 0) return;
+
+        final long clip = CopyRectClip.clipCopyRect(x, srcY, 0, 0, width, height, srcWidth, srcHeight, width, height);
+        if (clip == CopyRectClip.EMPTY) return;
+        final int sx = CopyRectClip.srcX(clip);
+        final int sy = CopyRectClip.srcY(clip);
+        final int w = CopyRectClip.width(clip);
+        final int h = CopyRectClip.height(clip);
+        final int colOffset = CopyRectClip.dstX(clip, x, 0);
+        final int dy = CopyRectClip.dstY(clip, srcY, 0);
+        final int rowOffset = fromFbo0 ? (height - h - dy) : dy;
+
+        final int basePos = pixels.position();
+        final int baseLimit = pixels.limit();
+        final int stride = width * 4;
+        if (baseLimit - basePos < height * stride) return;
+        try {
+            if (w == width) {
+                final int start = basePos + rowOffset * stride;
+                pixels.position(0);
+                pixels.limit(start + h * stride);
+                pixels.position(start);
+                textureOps.readbackTexture(texHandle, sx, sy, w, h, 0, pixels);
+                pixels.position(0);
+                pixels.limit(baseLimit);
+                pixels.position(start);
+                PixelOps.postProcessReadback(pixels, width, h, format, srcSdlFormat, fromFbo0);
+            } else {
+                final ByteBuffer staging = MemoryUtil.memAlloc(w * h * 4);
+                try {
+                    textureOps.readbackTexture(texHandle, sx, sy, w, h, 0, staging);
+                    staging.rewind();
+                    PixelOps.postProcessReadback(staging, w, h, format, srcSdlFormat, fromFbo0);
+                    for (int row = 0; row < h; row++) {
+                        staging.position(0);
+                        staging.limit((row + 1) * w * 4);
+                        staging.position(row * w * 4);
+                        pixels.position(basePos + (rowOffset + row) * stride + colOffset * 4);
+                        pixels.put(staging);
+                    }
+                } finally {
+                    MemoryUtil.memFree(staging);
+                }
+            }
+        } finally {
+            pixels.limit(baseLimit);
+            pixels.position(basePos);
+        }
     }
     @Override public void readPixels(int x, int y, int width, int height, int format, int type, FloatBuffer pixels) {
         readPixels(x, y, width, height, format, type, MemoryUtil.memByteBuffer(pixels));
@@ -1774,7 +1936,7 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
     @Override public void getTexImage(int target, int level, int format, int type, ByteBuffer pixels) {
         final ContextState cs = s();
-        final int glId = cs.boundTextures[cs.activeTextureUnit];
+        final int glId = boundTextureFor(cs, target);
         final long texHandle = resourceManager.getTextureHandle(glId);
         final ResourceManager.TextureMeta meta = resourceManager.getTextureMeta(glId);
         if (meta == null) return;
@@ -1789,7 +1951,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         final ContextState cs = s();
         final int pbo = cs.boundPixelPackBuffer;
         if (pbo == 0) return;
-        final int glId = cs.boundTextures[cs.activeTextureUnit];
+        final int glId = boundTextureFor(cs, target);
         final ResourceManager.TextureMeta meta = resourceManager.getTextureMeta(glId);
         if (meta == null) return;
         final ByteBuffer tmp = MemoryUtil.memAlloc(meta.width() * meta.height() * 4);
@@ -2331,6 +2493,7 @@ public class SDLGPURenderBackend extends RenderBackend {
             case GL30.GL_PIXEL_UNPACK_BUFFER -> st.boundPixelUnpackBuffer = buffer;
             case GL30.GL_PIXEL_PACK_BUFFER -> st.boundPixelPackBuffer = buffer;
             case GL40.GL_DRAW_INDIRECT_BUFFER -> st.boundIndirectBuffer = buffer;
+            case GL43.GL_DISPATCH_INDIRECT_BUFFER -> st.boundDispatchIndirectBuffer = buffer;
             case GL31.GL_COPY_READ_BUFFER -> st.boundCopyReadBuffer = buffer;
             case GL31.GL_COPY_WRITE_BUFFER -> st.boundCopyWriteBuffer = buffer;
             case GL43.GL_SHADER_STORAGE_BUFFER -> {
@@ -3126,14 +3289,26 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
     @Override public void texStorage1D(int target, int levels, int internalFormat, int width) {
         final ContextState st = s();
+        if (isProxyTarget(target)) {
+            recordProxyTexImage(st, target, 0, internalFormat, width, 1, 1);
+            return;
+        }
         texStorageImpl(st, st.boundTextures[st.activeTextureUnit], target, internalFormat, width, 1, 1, levels);
     }
     @Override public void texStorage2D(int target, int levels, int internalFormat, int width, int height) {
         final ContextState st = s();
+        if (isProxyTarget(target)) {
+            recordProxyTexImage(st, target, 0, internalFormat, width, height, 1);
+            return;
+        }
         texStorageImpl(st, st.boundTextures[st.activeTextureUnit], target, internalFormat, width, height, 1, levels);
     }
     @Override public void texStorage3D(int target, int levels, int internalFormat, int width, int height, int depth) {
         final ContextState st = s();
+        if (isProxyTarget(target)) {
+            recordProxyTexImage(st, target, 0, internalFormat, width, height, depth);
+            return;
+        }
         texStorageImpl(st, st.boundTextures[st.activeTextureUnit], target, internalFormat, width, height, depth, levels);
     }
     @Override public void textureStorage1D(int texture, int levels, int internalFormat, int width) {
@@ -3224,45 +3399,72 @@ public class SDLGPURenderBackend extends RenderBackend {
         applyDrawBuffersFromIntBuffer(fbo, bufs, framebuffer == s().boundFboId);
     }
     @Override public void blitNamedFramebuffer(int readFramebuffer, int drawFramebuffer, int srcX0, int srcY0, int srcX1, int srcY1, int dstX0, int dstY0, int dstX1, int dstY1, int mask, int filter) {
-        final FboState srcFbo = resourceManager.getFbo(readFramebuffer);
-        // GL_FRAMEBUFFER 0 is the default (window) framebuffer; the SDL backend renders it as the
-        // final target texture.
-        final FboState dstFbo = drawFramebuffer == 0 ? null : resourceManager.getFbo(drawFramebuffer);
-        if (srcFbo == null) return;
-        if (dstFbo == null && drawFramebuffer != 0) return;
+        final boolean srcIsFbo0 = readFramebuffer == 0;
+        final boolean dstIsFbo0 = drawFramebuffer == 0;
+        final FboState srcFbo = srcIsFbo0 ? null : resourceManager.getFbo(readFramebuffer);
+        final FboState dstFbo = dstIsFbo0 ? null : resourceManager.getFbo(drawFramebuffer);
+        if ((srcFbo == null && !srcIsFbo0) || (dstFbo == null && !dstIsFbo0)) return;
 
-        final boolean isDepth = (mask & GL11.GL_DEPTH_BUFFER_BIT) != 0;
-        long srcTex = 0, dstTex = 0;
-        int dstGlId = 0;
-        if (isDepth) {
-            if (dstFbo == null) return; // no depth blit to the default framebuffer target
-            srcTex = srcFbo.depthTexture;
-            dstTex = dstFbo.depthTexture;
-            dstGlId = dstFbo.depthGlId;
-        } else if ((mask & GL11.GL_COLOR_BUFFER_BIT) != 0) {
-            srcTex = srcFbo.colorTextures[srcFbo.readBufferIndex];
-            dstTex = dstFbo != null ? dstFbo.colorTextures[0] : frameManager.finalTarget().colorTexture();
-            dstGlId = dstFbo != null ? dstFbo.colorGlIds[0] : 0;
+        final boolean anyFbo0 = srcIsFbo0 || dstIsFbo0;
+        final int fbo0Height = frameManager.getFbo0Height();
+        if (anyFbo0 && fbo0Height <= 0) return;
+
+        final long colorSrcTex;
+        final long colorDstTex;
+        final int colorSrcGlId;
+        final int colorDstGlId;
+        if ((mask & GL11.GL_COLOR_BUFFER_BIT) != 0) {
+            colorSrcTex = srcIsFbo0 ? frameManager.getFbo0Texture() : srcFbo.colorTextures[srcFbo.readBufferIndex];
+            colorDstTex = dstIsFbo0 ? frameManager.getFbo0Texture() : dstFbo.colorTextures[0];
+            colorSrcGlId = srcIsFbo0 ? 0 : srcFbo.colorGlIds[srcFbo.readBufferIndex];
+            colorDstGlId = dstIsFbo0 ? 0 : dstFbo.colorGlIds[0];
+        } else {
+            colorSrcTex = 0L;
+            colorDstTex = 0L;
+            colorSrcGlId = 0;
+            colorDstGlId = 0;
         }
-        if (srcTex == 0 || dstTex == 0) return;
+        final boolean blitColor = colorSrcTex != 0 && colorDstTex != 0 && colorSrcTex != colorDstTex;
+
+        final boolean depthRequested = (mask & (GL11.GL_DEPTH_BUFFER_BIT | GL11.GL_STENCIL_BUFFER_BIT)) != 0;
+        final long depthSrcTex = (depthRequested && !anyFbo0) ? srcFbo.depthTexture : 0L;
+        final long depthDstTex = (depthRequested && !anyFbo0) ? dstFbo.depthTexture : 0L;
+        final boolean blitDepth = depthSrcTex != 0 && depthDstTex != 0 && depthSrcTex != depthDstTex;
+
+        if (!blitColor && !blitDepth) return;
 
         final ContextState cs = s();
-        fboClearTracker.materializePendingClearForTexture(cs, srcTex);
-        if (!fboClearTracker.discardPendingClearIfFullyCovered(cs, dstTex, dstX0, dstY0, 0, dstX1 - dstX0, dstY1 - dstY0, resourceManager.getTextureMeta(dstGlId))) {
-            fboClearTracker.materializePendingClearForTexture(cs, dstTex);
+        if (dstIsFbo0 || (srcIsFbo0 && (cs.pendingSwapchainClear || cs.pendingSwapchainDepthClear || cs.pendingSwapchainStencilClear))) {
+            frameManager.ensureFbo0RenderPass(frameManager.frame(), cs);
         }
 
-        if (isDepth) {
-            textureOps.copyTexture(srcTex, srcX0, srcY0, dstTex, dstX0, dstY0, srcX1 - srcX0, srcY1 - srcY0);
-        } else {
-            final ResourceManager.TextureMeta srcMeta = resourceManager.getTextureMeta(srcFbo.colorGlIds[srcFbo.readBufferIndex]);
-            final ResourceManager.TextureMeta dstMeta = resourceManager.getTextureMeta(dstGlId);
-            if (TextureOps.canCopyInsteadOfBlit(srcMeta, dstMeta, srcX1 - srcX0, srcY1 - srcY0, dstX1 - dstX0, dstY1 - dstY0)) {
-                textureOps.copyTexture(srcTex, srcX0, srcY0, dstTex, dstX0, dstY0, srcX1 - srcX0, srcY1 - srcY0);
+        final int srcW = srcX1 - srcX0;
+        final int srcH = srcY1 - srcY0;
+        final int dstW = dstX1 - dstX0;
+        final int dstH = dstY1 - dstY0;
+        final int srcY = srcIsFbo0 ? (fbo0Height - srcY0 - srcH) : srcY0;
+        final int dstY = dstIsFbo0 ? (fbo0Height - dstY0 - dstH) : dstY0;
+        final int flipMode = (srcIsFbo0 != dstIsFbo0) ? SDL_FLIP_VERTICAL : SDL_FLIP_NONE;
+
+        if (blitColor) {
+            resolveBlitClears(cs, colorSrcTex, colorDstTex, colorDstGlId, dstX0, dstY, dstW, dstH);
+            final ResourceManager.TextureMeta srcMeta = resourceManager.getTextureMeta(colorSrcGlId);
+            final ResourceManager.TextureMeta dstMeta = resourceManager.getTextureMeta(colorDstGlId);
+            if (flipMode == SDL_FLIP_NONE && TextureOps.canCopyInsteadOfBlit(srcMeta, dstMeta, srcW, srcH, dstW, dstH)) {
+                textureOps.copyTexture(colorSrcTex, srcX0, srcY, colorDstTex, 0, dstX0, dstY, srcW, srcH);
             } else {
-                textureOps.blitTexture(srcTex, srcX0, srcY0, srcX1 - srcX0, srcY1 - srcY0, dstTex, dstX0, dstY0, dstX1 - dstX0, dstY1 - dstY0, filter);
+                textureOps.blitTexture(colorSrcTex, srcX0, srcY, srcW, srcH, colorDstTex, 0, dstX0, dstY, dstW, dstH, filter, flipMode);
             }
         }
+        if (blitDepth) {
+            resolveBlitClears(cs, depthSrcTex, depthDstTex, dstFbo.depthGlId, dstX0, dstY, dstW, dstH);
+            textureOps.copyTexture(depthSrcTex, srcX0, srcY, depthDstTex, 0, dstX0, dstY, srcW, srcH);
+        }
+    }
+
+    private void resolveBlitClears(ContextState cs, long srcTex, long dstTex, int dstGlId, int dstX, int dstY, int dstW, int dstH) {
+        fboClearTracker.materializePendingClearForTexture(cs, srcTex);
+        fboClearTracker.resolveDestinationForWrite(cs, dstTex, resourceManager.getTextureMeta(dstGlId), 0, dstX, dstY, 0, dstW, dstH);
     }
     @Override public int createBuffers() { return resourceManager.genBuffer(); }
     @Override public void namedBufferData(int buffer, long size, int usage) {
@@ -3342,11 +3544,9 @@ public class SDLGPURenderBackend extends RenderBackend {
     @Override public int getTextureLevelParameteri(int texture, int level, int pname) {
         final ResourceManager.TextureMeta meta = resourceManager.getTextureMeta(texture);
         if (meta == null) return 0;
-        final int mipW = Math.max(1, meta.width() >> level);
-        final int mipH = Math.max(1, meta.height() >> level);
         return switch (pname) {
-            case GL11.GL_TEXTURE_WIDTH -> mipW;
-            case GL11.GL_TEXTURE_HEIGHT -> mipH;
+            case GL11.GL_TEXTURE_WIDTH -> PixelOps.mipLevelSize(meta.width(), level);
+            case GL11.GL_TEXTURE_HEIGHT -> PixelOps.mipLevelSize(meta.height(), level);
             case GL11.GL_TEXTURE_INTERNAL_FORMAT -> {
                 final int stored = meta.glFormat();
                 yield TextureInfoCache.isGenericCompressedInternalFormat(stored) ? GL11.GL_RGBA8 : stored;
@@ -3358,7 +3558,6 @@ public class SDLGPURenderBackend extends RenderBackend {
     @Override public int getInteger(int pname) {
         final ContextState cs = s();
         return switch (pname) {
-            case GL11.GL_MAX_TEXTURE_SIZE -> 16384;
             case GL20.GL_MAX_TEXTURE_IMAGE_UNITS -> 17;
             case GL20.GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS -> 17;
             case GL20.GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS -> 32;
@@ -3416,12 +3615,18 @@ public class SDLGPURenderBackend extends RenderBackend {
         return switch (pname) {
             case GL20.GL_MAX_VERTEX_UNIFORM_COMPONENTS, GL20.GL_MAX_FRAGMENT_UNIFORM_COMPONENTS -> MAX_UNIFORM_COMPONENTS_PER_STAGE;
             case GL30.GL_MAX_ARRAY_TEXTURE_LAYERS -> MAX_ARRAY_TEXTURE_LAYERS;
+            case GL11.GL_MAX_TEXTURE_SIZE -> MAX_TEXTURE_SIZE;
+            case GL12.GL_MAX_3D_TEXTURE_SIZE -> MAX_3D_TEXTURE_SIZE;
+            case GL13.GL_MAX_CUBE_MAP_TEXTURE_SIZE -> MAX_CUBE_MAP_TEXTURE_SIZE;
             default -> -1;
         };
     }
 
     static final int MAX_UNIFORM_COMPONENTS_PER_STAGE = 4096 / Float.BYTES;
     static final int MAX_ARRAY_TEXTURE_LAYERS = 256;
+    static final int MAX_TEXTURE_SIZE = 16384;
+    static final int MAX_CUBE_MAP_TEXTURE_SIZE = 16384;
+    static final int MAX_3D_TEXTURE_SIZE = 2048;
 
     private static int unknownGetInteger(int pname) {
         synchronized (UNKNOWN_GET_INTEGER_SEEN) {
@@ -3541,9 +3746,9 @@ public class SDLGPURenderBackend extends RenderBackend {
         if (texHandle == 0 || frameManager.getCommandBuffer() == 0) return;
         final ResourceManager.TextureMeta meta = resourceManager.getTextureMeta(texture);
         if (meta == null || level >= meta.levels()) return;
-        final int mipW = Math.max(1, meta.width() >> level);
-        final int mipH = Math.max(1, meta.height() >> level);
-        final int mipD = Math.max(1, meta.depth() >> level);
+        final int mipW = PixelOps.mipLevelSize(meta.width(), level);
+        final int mipH = PixelOps.mipLevelSize(meta.height(), level);
+        final int mipD = PixelOps.mipLevelSize(meta.depth(), level);
         final int bpp = PixelOps.sdlFormatTexelBytes(meta.sdlFormat());
         if (mipW <= 0 || mipH <= 0 || bpp <= 0) return;
 
@@ -3600,9 +3805,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         if (srcTex == 0 || dstTex == 0) return;
         final ContextState copySt = s();
         fboClearTracker.materializePendingClearForTexture(copySt, srcTex);
-        if (dstZ != 0 || !fboClearTracker.discardPendingClearIfFullyCovered(copySt, dstTex, dstX, dstY, dstLevel, srcWidth, srcHeight, resourceManager.getTextureMeta(dstName))) {
-            fboClearTracker.materializePendingClearForTexture(copySt, dstTex);
-        }
+        fboClearTracker.resolveDestinationForWrite(copySt, dstTex, resourceManager.getTextureMeta(dstName), dstLevel, dstX, dstY, dstZ, srcWidth, srcHeight);
         final long cp = frameManager.ensureCopyPass();
         if (cp == 0) return;
         try (var stack = MemoryStack.stackPush()) {
@@ -3747,6 +3950,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         pipelineApplier.ensureRenderPass(st);
         if (!frameManager.isRenderPassActive()) return;
         if (!pipelineApplier.applyPipelineAndState(st)) return;
+        if (SystemProperties.FFP_TRACE) ffpTrace.trace(st, "arraysInstanced", mode, count, 0, first, 0);
         SDL_DrawGPUPrimitives(frameManager.getRenderPass(), count, primcount, first, 0);
     }
 

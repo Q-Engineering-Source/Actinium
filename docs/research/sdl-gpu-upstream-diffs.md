@@ -3,7 +3,10 @@
 > 状态：进行中（2026-08-15）；**GLFW 适配部分已于 2026-08-31 撤除**（见条目内
 > 「2026-08-31」标注，撤除详情见
 > `docs/research/sdl-gpu-cleanroom-glfw-compat.md`）；**上游 #2025（SDL presenter
-> fixes and frame pacer adjustments，`b2f597a7`）已于 2026-08-31 同步**。本文档
+> fixes and frame pacer adjustments，`b2f597a7`）已于 2026-08-31 同步**；
+> **上游 #2065 / #2086 / #2087（`961b23fd` / `2845c9e0` / `3b4ebcf6`）的
+> sdl-gpu 端口（Phase 1）已于 2026-10-11 同步**（详见「上游同步状态
+> （2026-10-11，Phase 1）」）。本文档
 > 逐条记录 Actinium 的 `sdl-gpu` 模块相对 Angelica 上游（`D:\Code\Angelica`，
 > 运行于 lwjgl3ify/GTNH 环境）的**代码差异及其理由**。多数差异源于运行环境不同
 > （lwjgl3ify vs Cleanroom/lwjglxx）；部分改动（如 persistent-buffer 同步）与
@@ -195,6 +198,111 @@
 **未同步**（均为 lwjgl3ify 专属或当前不可达，重接时按上游 HEAD 重写）：
 `SDLGPULWJGLService` 的 query 计时重构与 `isOfferedAsAvailable` 优先级门控、
 `SDLGPUGate` 的 lwjgl3ify 事件接线（`DisplayEvents` / `MainThreadExec`）。
+
+## 上游同步状态（2026-10-11，Phase 1）
+
+已同步上游三个提交：`961b23fd`（Fix tests #2065）、`2845c9e0`（FPS pacer work
+#2086，仅 glsm API + sdl-gpu 侧）与 `3b4ebcf6`（Update Celeritas #2087，仅
+sdl-gpu 主源与部分测试）。
+
+**glsm（`2845c9e0` 的 API 面，sdl-gpu 依赖部分）**
+
+- `RenderBackend` 刷新率 API 由 Hz 改为周期：
+  `getDisplayRefreshRateHz()/queryDisplayRefreshRateHz()/refreshHzFrom()` 删除，
+  改为 `refreshPeriodNanos()` / `queryRefreshPeriodNanos()` /
+  `periodFromRational()` / `periodFromIntegerHz()` / `hzFromPeriod()` /
+  `plausiblePeriodNanos()`（20–1000Hz 合理性过滤，仅接受 1ms–50ms）。
+- 新增 `applyHonored()` / `vsyncHonored()`、`displayGeneration()` /
+  `bumpDisplayGeneration()`（`publishVSyncMode` 与
+  `onPreSwapchainInvalidatingChange` 都会递增）。
+- gate API 改为 `GateRecorder` + `GateSample`：`recordGate` / `recordGpuWait` /
+  `readGateSample`；删除 `recordFrameGate` / `lastFrameGateNanos` /
+  `lastFrameGateEndNanos` / `gateAnchorsNextFrameStart`。
+- 新增 `awaitPresent()`、`parkNanos()`、`pumpDisplayMessages()`、
+  `setPresentSuppressed()` / `isPresentSuppressed()`。
+- 新增 `MainThreadPump`（RFB 主线程消息泵，含 `pollInput`）；对应测试
+  `BackendPolicyTest` / `GateRecorderTest` / `MainThreadPumpTest` 放在**根工程**
+  `src/test/java/com/gtnewhorizons/angelica/glsm/backend/`（glsm 无 test 源集）。
+- `SystemProperties.FFP_TRACE` 与 `TextureInfoCache.isProxyTarget()` 随
+  `3b4ebcf6` 的 sdl-gpu 代码一并引入（`GLStateManager.glBindTexture` 的
+  proxy 旁路未同步，见下）。
+- **Actinium 适配**：
+  - `Lwjgl3GLRenderBackend.queryRefreshPeriodNanos()` 走 GLFW 显示器模式 +
+    `periodFromIntegerHz()`（上游用 SDL 的有理数模式）。GLFW 无 swap interval
+    回读 API，因此不覆写 `applyHonored()`，沿用基类 `true`。
+  - `SDLGPURenderBackend.pumpDisplayMessages()` 的 `MainThreadPump` 用
+    `Runnable::run` + `GLStateManager::isMainThread` +
+    `Display::processMessages`（上游用 retrofuturabootstrap / lwjgl3ify 的
+    `MainStartOnFirstThread` / `MainThreadExec` / `Lwjgl3ifyEventLoop`）。
+  - `parkNanos` 走 `SDLTimer.SDL_DelayNS`（与上游一致）。
+- **未同步**：上游 `GLStateManager.updateDisplay()` 的 gate/present 重构与
+  `setPresentSuppressed` 包装、`firstClear` 计时——Actinium 的 glsm 没有
+  `updateDisplay`（`Display.update()` 仍由 vanilla `Minecraft.runGameLoop`
+  直接调用），无对应接入点。
+
+**sdl-gpu（`3b4ebcf6` 主源 + `961b23fd` / `2845c9e0`）**
+
+- `FrameManager`：`acquireAffinityViolated()`（2 参）、swapchain acquire 拆成
+  `SDL_WaitForGPUSwapchain`（GPU 等待，记 `recordGpuWait`）+
+  `SDL_AcquireGPUSwapchainTexture`；`sdl.gpuWaitUs` plot；`presentFinalTarget`
+  受 `isPresentSuppressed()` 门控；`getSwapchainFormat()` 无窗口时回退
+  finalTarget 的 FBO0 颜色格式。
+- `SplashDispatcher.intervalElapsed()`、`Presenter` 复用预分配 `Runnable`。
+- proxy texture 支持：`ContextState.ProxyTextureState`、`texImage1D/2D/3D` /
+  `texStorage*` / `getTexLevelParameteri` 的 proxy 分支、
+  `ProxyTextureTargetTest` / `ProxyTextureLimitsTest`。
+- `readPixels` 重写（FBO0 行翻转 + `CopyRectClip` 裁剪 + 非整宽走 staging）；
+  `blitNamedFramebuffer` 重写（FBO0 双向 + `SDL_FLIP_VERTICAL` +
+  `resolveBlitClears`）——原「6 的 `blitNamedFramebuffer` finalTarget 修复」
+  已被上游的通用实现吸收，等价（`getFbo0Texture()` 即
+  `finalTarget.colorTexture()`）。
+- `TextureOps`：`copyTexture`/`blitTexture` 增加 mip level 与 flipMode 参数；
+  新增 `copyFromDefaultFramebuffer`（FBO0 → 纹理）。
+- `PixelOps.mipLevelSize()`、`ResourceManager.isMappableTextureFormat()` +
+  `lookupTextureFormat()`（未映射格式告警去重）、
+  `FBOClearTracker.resolveDestinationForWrite()`。
+- `ShaderManager.patchAttribLocations` 重写：binding 优先、未绑定输入占用最小
+  空闲槽、保留被优化掉的绑定位置、重复位置报错。
+- `dispatchComputeIndirect` 改用 `GL_DISPATCH_INDIRECT_BUFFER` 绑定
+  （`ContextState.boundDispatchIndirectBuffer`）。
+- 新增 `FFPTrace`（`angelica.debug.ffpTrace`）与 `CopyRectClip`。
+- 同步的测试：`AcquireAffinityTest`、`PresenterTest`（复用 Runnable）、
+  `DispatchIndirectBindingTest`、`ProxyTextureTargetTest`、
+  `ProxyTextureLimitsTest`、`CopyRectClipTest`、
+  `CopyTexSubImageFromFbo0GpuTest`、`AttribLocationPatchTest`（重写后的
+  patchAttribLocations 语义）。`ReadbackSubmitOrderGpuTest` 的上游改动
+  （`assertNotEquals(0L, commandBuffer)`）与 Actinium 既有写法
+  （`assertTrue(commandBuffer != 0L)`）语义相同，保留 Actinium 版本。
+
+**Phase 1 未同步 / 保留的差异**
+
+- **headless glsm-sdl 测试台**（`glsmSdlStubs` / `glsmSdlAgent` 源集、
+  `GlsmSdlRedirectAgent`、27 个 `glsm-sdl` tag 测试、`glsmSdlTest` 任务、
+  `glsm-stubs` capability）按用户决定暂缓，`sdl-gpu/build.gradle` 未改动。
+- `SDLGPULWJGLService` 的 celeritas 迁移（`org.taumc.celeritas.lwjgl.*`、
+  `create()` / `bind()` / `unbind()` / `isConstructed()`、
+  `KEY_CELERITAS_LWJGL_SERVICE`）不适用：Actinium 保留
+  `com.mitchej123.lwjgl.LWJGLService` 自建接口与全部直连后端的转发，且
+  `SDLGPUGate` 无 `fallBackToGL()` 路径，故 `961b23fd`/`3b4ebcf6` 中
+  `SDLGPUGate`、`SDLGPULWJGLService` 的改动整体未同步
+  （`SDLGPULWJGLServiceGatingTest` 不在 Actinium，无测试改动）。
+- `FFPTrace` 的 FFP UBO 成员值转储未同步：`appendFfpUniforms` 只输出绑定的
+  UBO id 与 base offset，不再解码 `u_AlphaRef` / `u_MVPMatrix` /
+  `u_LightmapTextureMatrix`——Actinium 的 glsm FFP 走普通 uniform
+  （`Program.locMVPMatrix`），没有上游 `glsm.ffp.FFPUniformBlock` 的 std140
+  布局可解码。上游 `FFPTraceTest`（反射调用 `floatIgnoringLimit`）随之不适用。
+- `glsm/GLStateManager.glBindTexture` 的 proxy 旁路、`initialize()` 的
+  Display 尺寸回退、`GLDebug.pushGroup(String, long)`、`FFPTrace` 之外的
+  `glsm/*`（`hooks/`、`loading/`、`texture/TextureTargets`）改动属 Angelica 核心
+  / lwjgl3ify 转向器范畴，不在本次 sdl-gpu 端口范围内。
+- `DrawDispatch` / `SDLGPURenderBackend` 的 dropped 细分诊断保留（上游只计数，
+  不细分）；因此 fan 路径只由 `DrawDispatch` 计数，后端调用点不重复 `+1`。
+- `MemoryStackWrapper` 的 import 仍为 `com.mitchej123.lwjgl.MemoryStack`
+  （上游改为 `org.taumc.celeritas.lwjgl.MemoryStack`）。
+- RenderBackend service 文件仍只注册
+  `com.gtnewhorizons.angelica.lwjgl3.Lwjgl3GLRenderBackend`，SDL 后端未注册
+  （上游 `sdl-gpu/src/main/resources/META-INF/services/com.mitchej123.lwjgl.LWJGLService`
+  在 Actinium 从未存在，无需删除）。
 
 ## 撤除 / 回归建议（2026-08-31 已执行）
 

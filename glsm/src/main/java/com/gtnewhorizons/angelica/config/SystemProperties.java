@@ -61,6 +61,7 @@ public final class SystemProperties {
     private static final boolean DUMP_SHADERS_PROP = Boolean.getBoolean("angelica.debug.dumpShaders");
     public static final boolean REDIRECTOR_LOGSPAM = Boolean.getBoolean("angelica.debug.redirectorLogspam");
     public static final boolean DEBUG_DISPLAY_LISTS = Boolean.getBoolean("angelica.debug.displayLists");
+    public static final boolean FFP_TRACE = Boolean.getBoolean("angelica.debug.ffpTrace");
     public static final boolean LOG_DISPLAY_LIST_COMPILATION = Boolean.getBoolean("angelica.debug.displayLists.compilation");
     public static final boolean FORCE_ORPHAN_STREAMING = Boolean.getBoolean("angelica.debug.forceOrphanStreaming");
     public static final String SHADER_DUMP_ROOT = "angelica_dumps";

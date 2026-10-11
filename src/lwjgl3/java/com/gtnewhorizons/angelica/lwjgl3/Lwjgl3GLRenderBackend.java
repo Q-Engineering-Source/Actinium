@@ -152,13 +152,12 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
-    protected int queryDisplayRefreshRateHz() {
+    protected long queryRefreshPeriodNanos() {
         final long monitor = GLFW.glfwGetPrimaryMonitor();
-        if (monitor == 0) return 0;
+        if (monitor == 0) return 0L;
         final GLFWVidMode mode = GLFW.glfwGetVideoMode(monitor);
-        if (mode == null) return 0;
-        final int refreshRate = mode.refreshRate();
-        return refreshHzFrom(refreshRate, 1, refreshRate);
+        if (mode == null) return 0L;
+        return periodFromIntegerHz(mode.refreshRate());
     }
 
     @Override

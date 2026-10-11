@@ -142,7 +142,7 @@ public final class DrawDispatch {
         }
     }
 
-    public void drawTriangleFanAsTriangleList(ContextState st, int first, int count) {
+    public boolean drawTriangleFanAsTriangleList(ContextState st, int first, int count) {
         final int numTriangles = count - 2;
         final boolean use32bit = (first + count - 1) > 65535;
         final int bytesPerIndex = use32bit ? 4 : 2;
@@ -199,7 +199,7 @@ public final class DrawDispatch {
                 fanRpInactiveWarned = true;
                 LOG.warn("drawTriangleFanAsTriangleList: render pass not active after ensureRenderPass; draw skipped (first={} count={} boundFbo={} frameActive={})", first, count, st.boundFboId, f.frameActive);
             }
-            return;
+            return false;
         }
         if (!pipelineApplier.applyPipelineAndState(st)) {
             final FrameState f = frameManager.frame();
@@ -209,13 +209,14 @@ public final class DrawDispatch {
                 fanPipelineWarned = true;
                 LOG.warn("drawTriangleFanAsTriangleList: applyPipelineAndState failed; draw skipped (first={} count={} boundFbo={})", first, count, st.boundFboId);
             }
-            return;
+            return false;
         }
 
         final int elementSize = use32bit ? SDL_GPU_INDEXELEMENTSIZE_32BIT : SDL_GPU_INDEXELEMENTSIZE_16BIT;
         final long rp = frameManager.getRenderPass();
         bindIndexBufferIfChanged(st, rp, st.fanIndexBuffer, elementSize, uploadOffset);
         SDL_DrawGPUIndexedPrimitives(rp, numTriangles * 3, 1, 0, 0, 0);
+        return true;
     }
 
     private long createFanIndexBuffer(int capacity) {
