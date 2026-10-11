@@ -6,7 +6,9 @@
 > fixes and frame pacer adjustments，`b2f597a7`）已于 2026-08-31 同步**；
 > **上游 #2065 / #2086 / #2087（`961b23fd` / `2845c9e0` / `3b4ebcf6`）的
 > sdl-gpu 端口（Phase 1）已于 2026-10-11 同步**（详见「上游同步状态
-> （2026-10-11，Phase 1）」）。本文档
+> （2026-10-11，Phase 1）」）；**上游 #2095 / #2099 / #2096 / #2104
+> （`81b82748` / `a07cecb8` / `26c161f0` / `3876f7e6`，Phase 2）已于 2026-10-11
+> 同步**（详见「上游同步状态（2026-10-11，Phase 2）」）。本文档
 > 逐条记录 Actinium 的 `sdl-gpu` 模块相对 Angelica 上游（`D:\Code\Angelica`，
 > 运行于 lwjgl3ify/GTNH 环境）的**代码差异及其理由**。多数差异源于运行环境不同
 > （lwjgl3ify vs Cleanroom/lwjglxx）；部分改动（如 persistent-buffer 同步）与
@@ -315,3 +317,128 @@ sdl-gpu 主源与部分测试）。
   `Lwjgl3GLCapabilitiesShim`、`SDLDrawable`。
 - 重接后回归验证清单：主菜单显示、鼠标/键盘、点击切换界面、窗口 resize、进入
   世界渲染、`glBlitFramebuffer`（FBO0→finalTarget）路径。
+
+## 上游同步状态（2026-10-11，Phase 2）
+
+已同步上游四个提交：`81b82748`（readback ordering #2095）、`a07cecb8`（GLSM
+bypass fixes #2099）、`26c161f0`（texture filtering #2096，仅 sdl-gpu 侧）、
+`3876f7e6`（instance more things #2104，仅 sdl-gpu 侧）。
+
+**#2095 readback ordering**
+
+- `SDLGPURenderBackend`：从 `midFrameFenceFlush()` 拆出
+  `flushAndSubmitMidFrame()`，并在每个 readback 前调用（`readPixels` 两条路径 +
+  `getTexImage`）。
+- `TextureOps.readbackTexture` 不再自行 `frameManager.submitMidFrame()`，改为
+  `/// requires a flush + submit to not read stale data` 文档约定（调用方负责）。
+- 删除 `ReadbackSubmitOrderGpuTest`（上游以 `CopyTexSubImageFromFbo0GpuTest`
+  覆盖；Actinium 的该测试已在 Phase 1 引入，本次补 `frameManager.submitMidFrame()`
+  到其 `download(...)` 助手）。
+- **未同步**：rig 测试 `GlsmSdlReadbackTest`（glsm-sdl 测试台暂缓）。
+
+**#2099 GLSM bypass fixes**
+
+- 新增 `glsm/states/SamplerUnitArray`（+`GLContextState.samplerUnits`）与
+  `BlendStateStack.setFuncUnknownState/isFuncUnknown/clearFuncUnknownState`。
+- `RenderSystem`：sampler 单元追踪从 `RenderSystem.samplers[]` 移入 GLSM
+  （新增 `maxCombinedTextureImageUnits`）；`enableBufferBlend` /
+  `disableBufferBlend` / `blendFuncSeparatei` / `genSampler` / `destroySampler` /
+  `samplerParameteri` / `bindSamplerToUnit` / `unbindAllSamplers` 一律改走
+  `GLStateManager.gl*`，不再直连后端（原路径会绕过 GLSM 的绑定缓存）。
+- `GLStateManager`：新增 `glEnablei` / `glDisablei` / `markIndexedCapUnknown` /
+  `glBlendFuncSeparatei`（indexed 调用会把 blend/scissor 的 enable 与 blend func
+  标记为 unknown，下一次非 indexed 调用强制重放）、`glGenSamplers` /
+  `glDeleteSamplers` / `glBindSampler(s)` 的数组与 `IntBuffer` 重载 + 绑定追踪、
+  `getSamplerBinding` / `getSamplerUnitCount`、`glMapBufferRangeAddress`、
+  `GL33.GL_SAMPLER_BINDING` 查询、`replayStateToBackend` 补
+  `clearFuncUnknownState()` 与 sampler 回放。
+- **Actinium 适配**：
+  - `applyRestoredState` 没有上游的 `restoreBlendChanged` 标志，故只在无 blend
+    handler 覆盖时应用 blendFunc 并清 `funcUnknown`；blend equation/color 的
+    应用条件保持 Actinium 既有行为（不随该提交收窄）。
+  - `glMapBufferRangeAddress` 不调用上游的 `onBufferMapRange`（Actinium 无该
+    GLSM hook，`glMapBufferRange`/`glUnmapBuffer` 同为直通包装）。
+- `GLSMRedirector`：`glBindSamplers` 并入 gl44 表；新增 `ARBSamplerObjects`、
+  `ARBMultiBind` 重定向表。Actinium 的 redirector 结构不同
+  （`org/lwjgl/opengl/...` 常量 + `METHOD_REDIRECTS`），按同一 intent 落地；
+  新增目标（`glIsSampler` 等）在 Actinium GLStateManager 中均已声明。
+- `RenderBackend.bindVoxelizationRegion` 去掉 `vertexBufferGlId` 参数：SSBO 必须已
+  经 GLSM 的 `glBindBufferBase` 绑定，后端只校验 `boundSsboByIndex`。
+- streaming：`OrphanStreamingBuffer` 与 `PersistentStreamingBuffer` 的
+  genBuffers / bindBuffer / mapBufferRange / unmapBuffer / deleteBuffers /
+  fenceSync 改走 `GLStateManager`（进入 GLSM 的绑定缓存与删除失效路径），
+  `onPersistentBufferWrite`（SDL 专属通知，见条目 9）保留。
+- **未同步（streaming）**：上游 `GlStreamingRing` / `UniformRingBuffer` 在
+  Actinium 不存在（Actinium 是 `GlFence` + `PersistentStreamingBuffer` 的自有
+  ring 设计），其绑定缓存改动无处落地；`StreamingUploader` 保留 Actinium 的
+  `upload(RenderBackend, ...)` 测试接缝与 null-map 兜底（`StreamingUploaderTest`
+  是无 GL 的回归测试，且测试 JVM 里没有可用后端）；
+  `PersistentStreamingBuffer` 的 fence 仍由 `GlFence` 经 LWJGLService 等待/删除。
+- `BlendModeStorage`（上游 root `src/main`，Actinium 位于
+  `shader/src/main/java/net/coderbot/iris/gl/blending/`）：
+  `deferBlendModeToggle` / `deferBlendFunc` 仅在值真的变化时记录，
+  避免每次 vanilla blend 调用都触发 override 冲刷重放。Actinium 的字段名是
+  `originalBlend` / `originalBlendEnable`，故按其语义落地。
+- **未同步的测试**：`GLSM_BlendFuncUnknownState_GLTest`、
+  `GLSM_SamplerBinding_GLTest`、`StreamingBindingCacheGLTest` 需要上游 glsm 的
+  test 源集 + 真 GL core context（Actinium 的 glsm 无 test 源集，glsm-sdl 测试台
+  暂缓）；`StreamingBindingCacheGLTest` 还引用 Actinium 不存在的
+  `glsm.ffp.FfpExtendedAttribs`。上游 `GLSMRedirectorTest` 是另一套 harness
+  （Actinium 已有自写的 redirector 测试），其断言未同步；改为新增
+  `SamplerUnitArrayTest` 覆盖 sampler 数组语义（越界拒绝、删除即解绑）。
+  上游 `BlendModeStorageDeferDedupeTest` 用反射读写私有字段，Actinium 版改为经
+  `setBlendStateAccessForTesting` 注入记录型 `BlendStateAccess` 做行为断言。
+- sdl-gpu：`PipelineCache` 每个 draw buffer 的 blend factor 数组 +
+  `setBlendFactors`（全局/按 buffer 两个重载）、`setVertexInputs`、
+  `PipelineApplier.reuseOrAlloc` 改为可空并让各 uniform 入口早退、
+  `deleteBuffers` 解除 VAO/索引/各绑定槽、`applyDrawBuffersFromIntBuffer` 数量上限、
+  `uniform3fv/uniform4fv(float[])` 走 staging 存储、`ReadbackShadows.release`
+  用迭代器删除、`FFPTrace` 字段改名。
+- **未同步（sdl-gpu）**：`SDLGPULWJGLService` 的整文件
+  `BackendManager.RENDER_BACKEND.*` → `GLStateManager.gl*` 转换——该文件在
+  Actinium 不可达（未注册进 service 文件、无任何调用方，见条目 5），其上游改动
+  属 celeritas `LWJGLService` 迁移；对应 rig 测试
+  `GlsmSdlLWJGLServiceRoutingTest` / `GlsmSdlSamplerBindingTest` /
+  `GlsmSdlIndexedBlendRestoreTest` / `GlsmSdlStreamingRingTest` /
+  `GlsmSdlVoxelRegionBindTest` 未同步。
+
+**#2096 texture filtering（仅 sdl-gpu 侧）**
+
+- `SDLGPURenderBackend`：`requestedMipLevels` / `fullMipLevels` /
+  `growForLevel` 三个 helper；`ensureLevel0Storage` 简化；新增
+  `ResourceManager.ensureTextureLevels`（按需重建带更多 mip 层级的纹理并拷贝已
+  填充层级）；`canReuseTexture` 允许 `levels >=`；`generateTextureMipmap` 先补齐
+  层级链再生成；`textureImage2DEXT` 复用 `ensureLevel0Storage`/`growForLevel`；
+  anisotropy 采样器参数追踪 + `GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT` 返回 16 +
+  `getFloat` 未处理 pname 的告警去重（原为静默 0）。
+- `ResourceManager`：usage promote 改走 `createTextureWithSdlFormat`，保留纹理的
+  SDL 格式（此前会把 sRGB 等格式降级掉）。
+- **未同步（按指示跳过）**：上游主体（`src/utils/MipmapGenerator`、
+  `src/utils/SpritePadding`、`TextureFilterMode`/`TexelSampling`、mixin、
+  sodium GUI、celeritas、iris PBR、shader 等）——Actinium 没有
+  `MipmapGenerator` / `SpritePadding` / `TextureFilterMode` /
+  `TexelSampling` 对应类。
+
+**#2104 instance more things（仅 sdl-gpu 侧）**
+
+- 新增 `pipeline/ScissorClamp`（越界 scissor 钳制为 `int[4]`，空矩形返回 false）；
+  `PipelineApplier` 对 scissor 做钳制与一次性告警，空矩形直接放弃本帧
+  （`SDL_Rect` 写入移到钳制之后）。
+- `PipelineCache.vertexOffsetBase` / `vertexOffsetMisalign`：顶点缓冲绑定偏移
+  按 4 字节对齐，失配位进入 pipeline key 并加到 attrib relative offset 上
+  （否则未对齐绑定会取到错的顶点数据）。
+- 空绘制早退：`DrawDispatch.issueIndexedDraw`（`count <= 0 || instances <= 0`）、
+  `SDLGPURenderBackend.drawArrays`（`count <= 0`）、`drawArraysInstanced`
+  （`count <= 0 || primcount <= 0`）。
+- `ShaderManager`：新增变换结果缓存（`TransformKey`/`TransformEntry`，
+  上限 256，`clearPrewarmCache` 一并清空），避免每次 `shaderSource` 重跑
+  GLSL→Vulkan 预处理/去采样器/PerFrame 注入。
+- 快路径：`PerFrameBlockInjector.inject`（两个 block 皆空则原样返回）、
+  `SamplerStripper.stripUnused`（源码不含 `sampler` 则原样返回）。
+- sdl-gpu 测试：新增 `ScissorClampTest`、`ShaderSourceTransformCacheTest`、
+  `ShaderTransformChain`；更新 `PerFrameBlockInjectorTest`、
+  `SdlSamplerStripperPreprocessorTest`、`PrewarmSingleParseEquivalenceTest`。
+- **未同步**：TESR/Particle/Item 实例化主体（上游 `glsm/ffp/*` 实例化、
+  Cube/Particle mesh、TESR API、mixin、Flyby/Tracy 等 ~+9950 行）——Actinium
+  无对应实现；rig 测试 `GlsmSdlDegenerateDrawTest` / `GlsmSdlFbo0ViewportTest` /
+  `GlsmSdlFfpTest` / `GlsmSdlUnalignedAttribTest` 未同步。

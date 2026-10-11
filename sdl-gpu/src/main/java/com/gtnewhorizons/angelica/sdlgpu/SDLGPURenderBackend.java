@@ -640,7 +640,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         }
     }
 
-    private void midFrameFenceFlush() {
+    private void flushAndSubmitMidFrame() {
         final ContextState st = s();
         drainDeferredPersistentRegions(st);
         pipelineApplier.flushAttribRingChunk(st);
@@ -649,6 +649,10 @@ public class SDLGPURenderBackend extends RenderBackend {
             transferThread.awaitSubmittedUpTo(st.frameHighestEnqueuedSeq);
         }
         frameManager.submitMidFrame();
+    }
+
+    private void midFrameFenceFlush() {
+        flushAndSubmitMidFrame();
         fenceTracker.resolvePendingFences();
     }
 
@@ -780,8 +784,8 @@ public class SDLGPURenderBackend extends RenderBackend {
         final ContextState cs = s();
         if (cap == GL11.GL_BLEND) {
             if (index < 0 || index >= ContextState.MAX_COLOR_ATTACHMENTS) return;
-            if (cs.pipeline.blendEnabledPerAttachment[index] != on) {
-                cs.pipeline.blendEnabledPerAttachment[index] = on;
+            if (cs.pipeline.blendEnabledPerDrawBuffer[index] != on) {
+                cs.pipeline.blendEnabledPerDrawBuffer[index] = on;
                 cs.pipeline.markOutputDirty();
             }
             return;
@@ -795,8 +799,8 @@ public class SDLGPURenderBackend extends RenderBackend {
             case GL11.GL_BLEND -> {
                 boolean changed = false;
                 for (int i = 0; i < ContextState.MAX_COLOR_ATTACHMENTS; i++) {
-                    if (cs.pipeline.blendEnabledPerAttachment[i] != on) {
-                        cs.pipeline.blendEnabledPerAttachment[i] = on;
+                    if (cs.pipeline.blendEnabledPerDrawBuffer[i] != on) {
+                        cs.pipeline.blendEnabledPerDrawBuffer[i] = on;
                         changed = true;
                     }
                 }
@@ -825,21 +829,12 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
 
     @Override public void blendFuncSeparate(int srcRGB, int dstRGB, int srcAlpha, int dstAlpha) {
-        final ContextState cs = s();
-        final int sc = FormatMap.mapBlendFactor(srcRGB);
-        final int dc = FormatMap.mapBlendFactor(dstRGB);
-        final int sa = FormatMap.mapBlendFactor(srcAlpha);
-        final int da = FormatMap.mapBlendFactor(dstAlpha);
-        if (sc == cs.pipeline.srcColorFactor && dc == cs.pipeline.dstColorFactor && sa == cs.pipeline.srcAlphaFactor && da == cs.pipeline.dstAlphaFactor) return;
-        cs.pipeline.srcColorFactor = sc;
-        cs.pipeline.dstColorFactor = dc;
-        cs.pipeline.srcAlphaFactor = sa;
-        cs.pipeline.dstAlphaFactor = da;
-        cs.pipeline.markOutputDirty();
+        s().pipeline.setBlendFactors(FormatMap.mapBlendFactor(srcRGB), FormatMap.mapBlendFactor(dstRGB), FormatMap.mapBlendFactor(srcAlpha), FormatMap.mapBlendFactor(dstAlpha));
     }
 
     @Override public void blendFuncSeparatei(int buf, int srcRGB, int dstRGB, int srcAlpha, int dstAlpha) {
-        blendFuncSeparate(srcRGB, dstRGB, srcAlpha, dstAlpha);
+        if (buf < 0 || buf >= ContextState.MAX_COLOR_ATTACHMENTS) return;
+        s().pipeline.setBlendFactors(buf, FormatMap.mapBlendFactor(srcRGB), FormatMap.mapBlendFactor(dstRGB), FormatMap.mapBlendFactor(srcAlpha), FormatMap.mapBlendFactor(dstAlpha));
     }
 
     @Override public void blendEquation(int mode) {
@@ -1040,6 +1035,7 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
 
     @Override public void drawArrays(int mode, int first, int count) {
+        if (count <= 0) return;
         final FrameState f = frameManager.frame();
         if (!f.frameActive) {
             f.droppedDrawsThisFrame++;
@@ -1816,6 +1812,7 @@ public class SDLGPURenderBackend extends RenderBackend {
 
     private void applyDrawBuffersFromIntBuffer(FboState fbo, IntBuffer bufs, boolean isBound) {
         final int count = bufs.remaining();
+        if (count > ContextState.MAX_COLOR_ATTACHMENTS) return;
         final int basePos = bufs.position();
         if (fbo.drawBuffers.length == count) {
             boolean same = true;
@@ -1901,6 +1898,7 @@ public class SDLGPURenderBackend extends RenderBackend {
                 pixels.position(0);
                 pixels.limit(start + h * stride);
                 pixels.position(start);
+                flushAndSubmitMidFrame();
                 textureOps.readbackTexture(texHandle, sx, sy, w, h, 0, pixels);
                 pixels.position(0);
                 pixels.limit(baseLimit);
@@ -1909,6 +1907,7 @@ public class SDLGPURenderBackend extends RenderBackend {
             } else {
                 final ByteBuffer staging = MemoryUtil.memAlloc(w * h * 4);
                 try {
+                    flushAndSubmitMidFrame();
                     textureOps.readbackTexture(texHandle, sx, sy, w, h, 0, staging);
                     staging.rewind();
                     PixelOps.postProcessReadback(staging, w, h, format, srcSdlFormat, fromFbo0);
@@ -1940,6 +1939,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         final long texHandle = resourceManager.getTextureHandle(glId);
         final ResourceManager.TextureMeta meta = resourceManager.getTextureMeta(glId);
         if (meta == null) return;
+        flushAndSubmitMidFrame();
         textureOps.readbackTexture(texHandle, 0, 0, meta.width(), meta.height(), level, pixels);
         pixels.rewind();
         PixelOps.postProcessReadback(pixels, meta.width(), meta.height(), format, meta.sdlFormat(), false);
@@ -2076,10 +2076,8 @@ public class SDLGPURenderBackend extends RenderBackend {
         cs.pipeline.fragmentShader = prog.sdlFragmentShader;
         cs.pipeline.programId = program;
         cs.pipeline.maxFragOutputLocation = prog.maxFragOutputLocation;
-        cs.pipeline.shaderInputMask = prog.vertexInputMask;
-        cs.pipeline.shaderInputVecSize = prog.vertexInputVecSize;
-        cs.pipeline.shaderInputBaseType = prog.vertexInputBaseType;
-        cs.pipeline.shaderInputName = prog.vertexInputName;
+        cs.pipeline.setVertexInputs(prog.vertexInputMask, prog.vertexInputVecSize, prog.vertexInputBaseType, prog.vertexInputName);
+        cs.pipeline.markInputDirty();
         cs.pipeline.markShaderDirty();
     }
     @Override public void useProgram(int program) {
@@ -2129,10 +2127,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         cs.pipeline.fragmentShader = prog.sdlFragmentShader;
         cs.pipeline.programId = program;
         cs.pipeline.maxFragOutputLocation = prog.maxFragOutputLocation;
-        cs.pipeline.shaderInputMask = prog.vertexInputMask;
-        cs.pipeline.shaderInputVecSize = prog.vertexInputVecSize;
-        cs.pipeline.shaderInputBaseType = prog.vertexInputBaseType;
-        cs.pipeline.shaderInputName = prog.vertexInputName;
+        cs.pipeline.setVertexInputs(prog.vertexInputMask, prog.vertexInputVecSize, prog.vertexInputBaseType, prog.vertexInputName);
         cs.pipeline.markShaderDirty();
     }
 
@@ -2340,6 +2335,7 @@ public class SDLGPURenderBackend extends RenderBackend {
             LOG.warn("uniform1i: loc={} val={} -- NO program bound", location, v0);
         }
         final float[] a = pipelineApplier.reuseOrAlloc(st, location, 1);
+        if (a == null) return;
         a[0] = Float.intBitsToFloat(v0);
         pipelineApplier.putUniform(st, location, a);
     }
@@ -2347,6 +2343,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         if (location < 0) return;
         final ContextState st = s();
         final float[] a = pipelineApplier.reuseOrAlloc(st, location, 1);
+        if (a == null) return;
         a[0] = v0;
         pipelineApplier.putUniform(st, location, a);
     }
@@ -2354,6 +2351,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         if (location < 0) return;
         final ContextState st = s();
         final float[] a = pipelineApplier.reuseOrAlloc(st, location, 2);
+        if (a == null) return;
         a[0] = v0; a[1] = v1;
         pipelineApplier.putUniform(st, location, a);
     }
@@ -2361,6 +2359,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         if (location < 0) return;
         final ContextState st = s();
         final float[] a = pipelineApplier.reuseOrAlloc(st, location, 2);
+        if (a == null) return;
         a[0] = Float.intBitsToFloat(v0); a[1] = Float.intBitsToFloat(v1);
         pipelineApplier.putUniform(st, location, a);
     }
@@ -2368,6 +2367,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         if (location < 0) return;
         final ContextState st = s();
         final float[] a = pipelineApplier.reuseOrAlloc(st, location, 3);
+        if (a == null) return;
         a[0] = v0; a[1] = v1; a[2] = v2;
         pipelineApplier.putUniform(st, location, a);
     }
@@ -2375,6 +2375,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         if (location < 0) return;
         final ContextState st = s();
         final float[] a = pipelineApplier.reuseOrAlloc(st, location, 3);
+        if (a == null) return;
         a[0] = Float.intBitsToFloat(v0); a[1] = Float.intBitsToFloat(v1); a[2] = Float.intBitsToFloat(v2);
         pipelineApplier.putUniform(st, location, a);
     }
@@ -2382,6 +2383,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         if (location < 0) return;
         final ContextState st = s();
         final float[] a = pipelineApplier.reuseOrAlloc(st, location, 4);
+        if (a == null) return;
         a[0] = v0; a[1] = v1; a[2] = v2; a[3] = v3;
         pipelineApplier.putUniform(st, location, a);
     }
@@ -2389,6 +2391,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         if (location < 0) return;
         final ContextState st = s();
         final float[] a = pipelineApplier.reuseOrAlloc(st, location, 4);
+        if (a == null) return;
         a[0] = Float.intBitsToFloat(v0); a[1] = Float.intBitsToFloat(v1);
         a[2] = Float.intBitsToFloat(v2); a[3] = Float.intBitsToFloat(v3);
         pipelineApplier.putUniform(st, location, a);
@@ -2410,6 +2413,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         final int n = value.remaining();
         final int pos = value.position();
         final float[] v = pipelineApplier.reuseOrAlloc(st, location, n);
+        if (v == null) return;
         for (int i = 0; i < n; i++) v[i] = Float.intBitsToFloat(value.get(pos + i));
         pipelineApplier.putUniform(st, location, v);
     }
@@ -2419,8 +2423,16 @@ public class SDLGPURenderBackend extends RenderBackend {
     @Override public void uniform4(int location, FloatBuffer value) {
         pipelineApplier.putUniformFv(s(), location, value);
     }
-    @Override public void uniform3fv(int location, float[] values) { pipelineApplier.putUniform(s(), location, values); }
-    @Override public void uniform4fv(int location, float[] values) { pipelineApplier.putUniform(s(), location, values); }
+    @Override public void uniform3fv(int location, float[] values) { storeFloatUniform(location, values); }
+    @Override public void uniform4fv(int location, float[] values) { storeFloatUniform(location, values); }
+    private void storeFloatUniform(int location, float[] values) {
+        if (location < 0) return;
+        final ContextState st = s();
+        final float[] a = pipelineApplier.reuseOrAlloc(st, location, values.length);
+        if (a == null) return;
+        System.arraycopy(values, 0, a, 0, values.length);
+        pipelineApplier.putUniform(st, location, a);
+    }
     @Override public void uniformMatrix2(int location, boolean transpose, FloatBuffer value) {
         pipelineApplier.storeMatrix(s(), location, transpose, value, 2);
     }
@@ -2463,14 +2475,60 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
 
     @Override public int genBuffers() { return resourceManager.genBuffer(); }
-    @Override public void deleteBuffers(int buffer) { dropMappingFor(buffer); readbackShadows.release(buffer); resourceManager.deleteBuffer(buffer); }
+    @Override public void deleteBuffers(int buffer) { deleteBuffer(buffer); }
     @Override public void deleteBuffers(IntBuffer buffers) {
         for (int i = 0; i < buffers.remaining(); i++) {
-            final int buffer = buffers.get(buffers.position() + i);
-            dropMappingFor(buffer);
-            readbackShadows.release(buffer);
-            resourceManager.deleteBuffer(buffer);
+            deleteBuffer(buffers.get(buffers.position() + i));
         }
+    }
+
+    private void deleteBuffer(int buffer) {
+        dropMappingFor(buffer);
+        if (buffer != 0) unbindDeletedBuffer(s(), buffer);
+        readbackShadows.release(buffer);
+        resourceManager.deleteBuffer(buffer);
+    }
+
+    private static void unbindDeletedBuffer(ContextState st, int buffer) {
+        final ContextState.VAOState vao = st.currentVao;
+        boolean vaoChanged = false;
+        for (int i = 0; i < ContextState.MAX_VERTEX_ATTRIBS; i++) {
+            if (vao.bindingBuffer[i] == buffer) {
+                vao.bindingBuffer[i] = 0;
+                vaoChanged = true;
+            }
+            if (vao.attribVBO[i] == buffer) vao.attribVBO[i] = 0;
+        }
+        if (vao.elementBuffer == buffer) {
+            vao.elementBuffer = 0;
+            vaoChanged = true;
+        }
+        if (vaoChanged) st.bumpAttribStateGen();
+        if (st.boundArrayBuffer == buffer) st.boundArrayBuffer = 0;
+        if (st.boundIndirectBuffer == buffer) st.boundIndirectBuffer = 0;
+        if (st.boundDispatchIndirectBuffer == buffer) st.boundDispatchIndirectBuffer = 0;
+        if (st.boundCopyReadBuffer == buffer) st.boundCopyReadBuffer = 0;
+        if (st.boundCopyWriteBuffer == buffer) st.boundCopyWriteBuffer = 0;
+        if (st.boundUniformBuffer == buffer) st.boundUniformBuffer = 0;
+        if (st.boundSSBO == buffer) st.boundSSBO = 0;
+        if (st.boundPixelPackBuffer == buffer) st.boundPixelPackBuffer = 0;
+        if (st.boundPixelUnpackBuffer == buffer) st.boundPixelUnpackBuffer = 0;
+        boolean uboChanged = false;
+        boolean ssboChanged = false;
+        for (int i = 0; i < ContextState.MAX_INDEXED_BUFFERS; i++) {
+            if (st.boundUboByIndex[i] == buffer) {
+                st.boundUboByIndex[i] = 0;
+                st.uboRangeOffset[i] = 0;
+                st.uboRangeSize[i] = 0;
+                uboChanged = true;
+            }
+            if (st.boundSsboByIndex[i] == buffer) {
+                st.boundSsboByIndex[i] = 0;
+                ssboChanged = true;
+            }
+        }
+        if (uboChanged) st.uboRangeGen++;
+        if (ssboChanged) st.ssboBindGen++;
     }
 
     private static void dropMappingFor(int buffer) {
@@ -3663,7 +3721,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         final ContextState cs = s();
         return switch (pname) {
             case GL11.GL_DEPTH_TEST -> cs.pipeline.depthTestEnabled;
-            case GL11.GL_BLEND -> cs.pipeline.blendEnabledPerAttachment[0];
+            case GL11.GL_BLEND -> cs.pipeline.blendEnabledPerDrawBuffer[0];
             case GL11.GL_CULL_FACE -> cs.pipeline.cullEnabled;
             case GL11.GL_SCISSOR_TEST -> cs.scissorEnabled;
             case GL11.GL_STENCIL_TEST -> cs.pipeline.stencilTestEnabled;
@@ -3905,11 +3963,11 @@ public class SDLGPURenderBackend extends RenderBackend {
     private int voxLocStart = -1;
     private int voxLocCount = -1;
 
-    @Override public boolean bindVoxelizationRegion(int ssboBinding, int vertexBufferGlId, long openPass, float x, float y, float z) {
-        if (ssboBinding < 0 || ssboBinding >= ContextState.MAX_INDEXED_BUFFERS || vertexBufferGlId == 0) return false;
+    @Override public boolean bindVoxelizationRegion(int ssboBinding, long openPass, float x, float y, float z) {
+        if (ssboBinding < 0 || ssboBinding >= ContextState.MAX_INDEXED_BUFFERS) return false;
         final ContextState st = s();
         if (st.boundProgram == 0) return false;
-        bindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, ssboBinding, vertexBufferGlId);
+        if (st.boundSsboByIndex[ssboBinding] == 0) return false;
         final int loc = shaderManager.getUniformLocation(st.boundProgram, "u_RegionOffset");
         if (loc >= 0) GLStateManager.glUniform3f(loc, x, y, z);
         if (openPass != 0) voxelizationDispatcher.rebindVertexBuffer(st, openPass);
@@ -3944,6 +4002,7 @@ public class SDLGPURenderBackend extends RenderBackend {
 
     @Override
     public void drawArraysInstanced(int mode, int first, int count, int primcount) {
+        if (count <= 0 || primcount <= 0) return;
         if (!frameManager.isFrameActive()) return;
         final ContextState st = s();
         drawDispatch.setPrimitiveTypeForDraw(st, FormatMap.mapPrimitiveType(mode));

@@ -10,6 +10,7 @@ import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandPhase;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandType;
 import com.gtnewhorizons.angelica.glsm.texture.TextureInfoCache;
+import lombok.Getter;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import org.joml.Vector3i;
@@ -46,6 +47,7 @@ public class RenderSystem {
     private static boolean supportsTesselation;
     private static boolean supportsSamplerObjects;
     private static int maxImageUnits;
+    @Getter private static int maxCombinedTextureImageUnits;
     private static int maxSSBOBindings;
     private static int maxGlslVersion;
     private static boolean supportsGpuShader4;
@@ -57,9 +59,6 @@ public class RenderSystem {
 
     private static volatile boolean isLTW;
     private static volatile boolean ltwDetected;
-
-    // Sampler object state tracking (null if unsupported)
-    private static int[] samplers;
 
     private static final Pattern SEMVER_PATTERN = Pattern.compile("(?<major>\\d+)\\.(?<minor>\\d+)\\.*(?<bugfix>\\d*)(.*)");
 
@@ -140,7 +139,7 @@ public class RenderSystem {
         // Check for sampler objects support (GL 3.3+ or ARB extension)
         supportsSamplerObjects = GLStateManager.capabilities.OpenGL33 || GLStateManager.capabilities.GL_ARB_sampler_objects;
         if (supportsSamplerObjects) {
-            samplers = new int[RENDER_BACKEND.getInteger(GL20.GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS)];
+            maxCombinedTextureImageUnits = RENDER_BACKEND.getInteger(GL20.GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS);
         }
 
         maxGlslVersion = Integer.parseInt(parseGlVersionString(RENDER_BACKEND.getString(GL20.GL_SHADING_LANGUAGE_VERSION)));
@@ -456,17 +455,15 @@ public class RenderSystem {
     }
 
     public static void disableBufferBlend(int buffer) {
-        RENDER_BACKEND.disablei(GL11.GL_BLEND, buffer);
-        GLStateManager.getBlendMode().setUnknownState();
+        GLStateManager.glDisablei(GL11.GL_BLEND, buffer);
     }
 
     public static void enableBufferBlend(int buffer) {
-        RENDER_BACKEND.enablei(GL11.GL_BLEND, buffer);
-        GLStateManager.getBlendMode().setUnknownState();
+        GLStateManager.glEnablei(GL11.GL_BLEND, buffer);
     }
 
     public static void blendFuncSeparatei(int buffer, int srcRGB, int dstRGB, int srcAlpha, int dstAlpha) {
-        RENDER_BACKEND.blendFuncSeparatei(buffer, srcRGB, dstRGB, srcAlpha, dstAlpha);
+        GLStateManager.glBlendFuncSeparatei(buffer, srcRGB, dstRGB, srcAlpha, dstAlpha);
     }
 
     public static void bindTextureToUnit(int unit, int texture) {
@@ -611,32 +608,30 @@ public class RenderSystem {
 
     public static int genSampler() {
         if (!supportsSamplerObjects) return 0;
-        return RENDER_BACKEND.genSamplers();
+        return GLStateManager.glGenSamplers();
     }
 
     public static void destroySampler(int sampler) {
         if (!supportsSamplerObjects || sampler == 0) return;
-        RENDER_BACKEND.deleteSamplers(sampler);
+        GLStateManager.glDeleteSamplers(sampler);
     }
 
     public static void samplerParameteri(int sampler, int pname, int param) {
         if (!supportsSamplerObjects || sampler == 0) return;
-        RENDER_BACKEND.samplerParameteri(sampler, pname, param);
+        GLStateManager.glSamplerParameteri(sampler, pname, param);
     }
 
     public static void bindSamplerToUnit(int unit, int sampler) {
         if (!supportsSamplerObjects) return;
-        if (samplers[unit] == sampler) return;
-        RENDER_BACKEND.bindSampler(unit, sampler);
-        samplers[unit] = sampler;
+        GLStateManager.glBindSampler(unit, sampler);
     }
 
     public static void unbindAllSamplers() {
         if (!supportsSamplerObjects) return;
-        for (int i = 0; i < samplers.length; i++) {
-            if (samplers[i] != 0) {
-                RENDER_BACKEND.bindSampler(i, 0);
-                samplers[i] = 0;
+        final int count = GLStateManager.getSamplerUnitCount();
+        for (int i = 0; i < count; i++) {
+            if (GLStateManager.getSamplerBinding(i) != 0) {
+                GLStateManager.glBindSampler(i, 0);
             }
         }
     }

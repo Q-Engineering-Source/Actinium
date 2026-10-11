@@ -96,6 +96,8 @@ public class GLSMRedirector {
     private static final String EXTGPU_SHADER4 = "org/lwjgl/opengl/EXTGPUShader4";
     private static final String ARB_TIMER_QUERY = "org/lwjgl/opengl/ARBTimerQuery";
     private static final String EXT_TIMER_QUERY = "org/lwjgl/opengl/EXTTimerQuery";
+    private static final String ARB_SAMPLER_OBJECTS = "org/lwjgl/opengl/ARBSamplerObjects";
+    private static final String ARB_MULTI_BIND = "org/lwjgl/opengl/ARBMultiBind";
     private static final String UNIVERSAL_VAO = "com/gtnewhorizon/gtnhlib/client/opengl/UniversalVAO";
     private static final String MINECRAFT_CLIENT = "net.minecraft.client";
     private static final String SPLASH_PROGRESS = "cpw.mods.fml.client.SplashProgress";
@@ -488,6 +490,7 @@ public class GLSMRedirector {
             .add("glMultiDrawElementsIndirect");
         Map<String, String> gl44 = RedirectMap.newMap()
             .add("glBufferStorage")
+            .add("glBindSamplers")
             .add("glClearTexImage");
         Map<String, String> gl45 = RedirectMap.newMap()
             .add("glCreateBuffers")
@@ -913,6 +916,17 @@ public class GLSMRedirector {
         METHOD_REDIRECTS.put(ARB_MAP_BUFFER_RANGE, RedirectMap.newMap()
             .add("glMapBufferRange")
             .add("glFlushMappedBufferRange")
+        );
+        METHOD_REDIRECTS.put(ARB_SAMPLER_OBJECTS, RedirectMap.newMap()
+            .add("glGenSamplers")
+            .add("glDeleteSamplers")
+            .add("glIsSampler")
+            .add("glBindSampler")
+            .add("glSamplerParameteri")
+            .add("glSamplerParameterf")
+        );
+        METHOD_REDIRECTS.put(ARB_MULTI_BIND, RedirectMap.newMap()
+            .add("glBindSamplers")
         );
         METHOD_REDIRECTS.put(APPLE_VERTEX_ARRAY_OBJECT, RedirectMap.newMap()
             .add("glBindVertexArrayAPPLE", "glBindVertexArray")

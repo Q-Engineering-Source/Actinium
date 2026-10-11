@@ -11,6 +11,9 @@ public class BlendStateStack extends BlendState implements IStateStack<BlendStat
     protected final BlendState[] stack;
 
     protected int pointer;
+
+    private boolean funcUnknown;
+
     @Setter private VanillaStateLayer<BlendState> vanillaLayer;
 
     public BlendStateStack() {
@@ -41,6 +44,18 @@ public class BlendStateStack extends BlendState implements IStateStack<BlendStat
             set(saved);
         }
         return this;
+    }
+
+    public void setFuncUnknownState() {
+        funcUnknown = true;
+    }
+
+    public boolean isFuncUnknown() {
+        return funcUnknown;
+    }
+
+    public void clearFuncUnknownState() {
+        funcUnknown = false;
     }
 
     /** Copies the effective blend state, including the deferred vanilla function when held. */

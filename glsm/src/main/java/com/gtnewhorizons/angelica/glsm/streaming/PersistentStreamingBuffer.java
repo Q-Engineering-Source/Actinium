@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.glsm.streaming;
 
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import it.unimi.dsi.fastutil.objects.ObjectArrayFIFOQueue;
@@ -42,19 +43,19 @@ public class PersistentStreamingBuffer implements StreamingBuffer {
         this.capacity = capacity;
         this.remaining = capacity;
 
-        this.bufferId = RENDER_BACKEND.genBuffers();
-        RENDER_BACKEND.bindBuffer(GL15.GL_ARRAY_BUFFER, bufferId);
+        this.bufferId = GLStateManager.glGenBuffers();
+        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, bufferId);
 
         final int storageFlags = GL44.GL_MAP_PERSISTENT_BIT | GL30.GL_MAP_WRITE_BIT | GL44.GL_MAP_COHERENT_BIT;
         RenderSystem.bufferStorage(GL15.GL_ARRAY_BUFFER, capacity, storageFlags);
 
         final int mapFlags = GL44.GL_MAP_PERSISTENT_BIT | GL30.GL_MAP_WRITE_BIT | GL44.GL_MAP_COHERENT_BIT;
-        this.mappedBuffer = RENDER_BACKEND.mapBufferRange(GL15.GL_ARRAY_BUFFER, 0, capacity, mapFlags);
+        this.mappedBuffer = GLStateManager.glMapBufferRange(GL15.GL_ARRAY_BUFFER, 0, capacity, mapFlags);
 
-        RENDER_BACKEND.bindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
 
         if (this.mappedBuffer == null) {
-            RENDER_BACKEND.deleteBuffers(bufferId);
+            GLStateManager.glDeleteBuffers(bufferId);
             bufferId = 0;
             throw new RuntimeException("Failed to persistently map streaming buffer");
         }
@@ -152,7 +153,7 @@ public class PersistentStreamingBuffer implements StreamingBuffer {
     private void createPendingFence() {
         final boolean perfDebugEnabled = GLSMPerfDebug.isEnabled();
         final long perfStart = perfDebugEnabled ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.STREAM_FENCE_CREATE) : 0L;
-        final long fenceId = RENDER_BACKEND.fenceSync(GL32.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+        final long fenceId = GLStateManager.glFenceSync(GL32.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
         if (perfDebugEnabled) {
             GLSMPerfDebug.end(GLSMPerfDebug.Stage.STREAM_FENCE_CREATE, perfStart);
         }
@@ -175,10 +176,10 @@ public class PersistentStreamingBuffer implements StreamingBuffer {
         pendingBytes = 0;
         fenceRequested = false;
         if (bufferId != 0) {
-            RENDER_BACKEND.bindBuffer(GL15.GL_ARRAY_BUFFER, bufferId);
-            RENDER_BACKEND.unmapBuffer(GL15.GL_ARRAY_BUFFER);
-            RENDER_BACKEND.bindBuffer(GL15.GL_ARRAY_BUFFER, 0);
-            RENDER_BACKEND.deleteBuffers(bufferId);
+            GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, bufferId);
+            GLStateManager.glUnmapBuffer(GL15.GL_ARRAY_BUFFER);
+            GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+            GLStateManager.glDeleteBuffers(bufferId);
             bufferId = 0;
         }
     }

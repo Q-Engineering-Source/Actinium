@@ -81,6 +81,7 @@ public final class TextureOps {
             case GL12.GL_TEXTURE_MAX_LOD -> ss.maxLod = (float) param;
             case GL14.GL_TEXTURE_COMPARE_MODE -> ss.compareMode = param;
             case GL14.GL_TEXTURE_COMPARE_FUNC -> ss.compareFunc = param;
+            case EXTTextureFilterAnisotropic.GL_TEXTURE_MAX_ANISOTROPY_EXT -> ss.maxAnisotropy = param;
             default -> { return; }
         }
         ss.sdlSampler = 0;
@@ -101,9 +102,9 @@ public final class TextureOps {
         st.samplerBindGen++;
     }
 
+    /// requires a flush + submit to not read stale data
     public void readbackTexture(long texHandle, int x, int y, int w, int h, int level, ByteBuffer output) {
         if (texHandle == 0 || output == null) return;
-        frameManager.submitMidFrame();
 
         final long cb = SDL_AcquireGPUCommandBuffer(device.getDevice());
         if (cb == 0) return;
