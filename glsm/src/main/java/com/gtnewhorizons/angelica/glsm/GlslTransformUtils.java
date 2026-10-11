@@ -24,7 +24,8 @@ import java.util.regex.Pattern;
  */
 public class GlslTransformUtils {
 
-    private static final String RENAMED_PREFIX = "actinium_renamed_";
+    /** Prefix applied to renamed identifiers; {@code ReservedWordRenameTest} pins the rename to it. */
+    static final String RENAMED_PREFIX = "actinium_renamed_";
 
     /** Texture function renames */
     public static final Map<String, String> TEXTURE_RENAMES = Map.ofEntries(
@@ -68,13 +69,15 @@ public class GlslTransformUtils {
     /** Reserved words added in later GLSL versions that may appear as identifiers in older shaders. */
     private record ReservedWordRename(Pattern pattern, String replacement) {}
     private static final Map<Integer, List<ReservedWordRename>> VERSIONED_RESERVED_WORDS = Map.of(
-        // Some reserved words to always rename
+        // Some reserved words to always rename. The literal is matched first and the word boundary is
+        // asserted afterwards: a leading \b makes the engine test every input position, which costs
+        // more than the literal scan on the long sources shader packs hand us.
         0, List.of(
-            new ReservedWordRename(Pattern.compile("\\bsample\\b"), RENAMED_PREFIX + "sample"),
-            new ReservedWordRename(Pattern.compile("\\bnew\\b"), RENAMED_PREFIX + "new")
+            new ReservedWordRename(Pattern.compile("sample(?<=\\bsample)\\b"), RENAMED_PREFIX + "sample"),
+            new ReservedWordRename(Pattern.compile("new(?<=\\bnew)\\b"), RENAMED_PREFIX + "new")
         ),
         400, List.of(
-            new ReservedWordRename(Pattern.compile("\\bsampler\\b(?!\\d)"), RENAMED_PREFIX + "sampler")
+            new ReservedWordRename(Pattern.compile("sampler(?<=\\bsampler)\\b(?!\\d)"), RENAMED_PREFIX + "sampler")
         )
     );
 

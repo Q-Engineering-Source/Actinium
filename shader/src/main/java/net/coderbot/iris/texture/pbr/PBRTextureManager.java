@@ -11,6 +11,7 @@ import net.coderbot.iris.texture.pbr.loader.PBRTextureLoader;
 import net.coderbot.iris.texture.pbr.loader.PBRTextureLoader.PBRTextureConsumer;
 import net.coderbot.iris.texture.pbr.loader.PBRTextureLoaderRegistry;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.resources.IResourceManager;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.opengl.GL11;
@@ -106,6 +107,17 @@ public class PBRTextureManager {
 			}
 		}
 		holders.clear();
+	}
+
+	/**
+	 * Drops the loaded PBR textures and rebuilds the resource index for the new pack list.
+	 *
+	 * <p>Both halves belong to one reload: the holder map is keyed by texture id, which a pack change
+	 * invalidates, and the index caches which packs provide which PBR files.</p>
+	 */
+	public void onResourceManagerReload(IResourceManager resourceManager) {
+		clear();
+		PBRResourceIndex.start(resourceManager);
 	}
 
 	public void close() {

@@ -26,6 +26,13 @@ public final class GLSMHooks {
     public static PerFrameUniformBlock perPassUniformBlock;
 
     /**
+     * Optional barrier the shader backends run before they read shader sources off the main thread
+     * (see the SDL ShaderManager): pre-processing runs on workers, and a barriered consumer has to
+     * wait for the warmup that would otherwise be reading the same state to finish first.
+     */
+    public static Runnable uniformBlockBarrier;
+
+    /**
      * Optional host callback notified after each executed {@code GL_TEXTURE_2D} bind request,
      * including cache hits. The host keeps vanilla's {@code GlStateManager.TEXTURES[].textureName}
      * mirror in sync for mods that read it reflectively to restore a prior binding.

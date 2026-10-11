@@ -195,6 +195,10 @@ public final class ShaderManager {
     public void shaderSource(int shader, CharSequence source) {
         final ShaderObject obj = shaderObjects.get(shader);
         if (obj == null) return;
+        // The pre-processing below reads the per-frame uniform block state; wait for the pack warmup
+        // that owns it, unless this call already runs on a warmup worker.
+        final Runnable barrier = GLSMHooks.uniformBlockBarrier;
+        if (barrier != null && !AngelicaWorkers.isWorkerThread()) barrier.run();
         discardSpirvFuture(obj);
 
         String raw = source.toString();

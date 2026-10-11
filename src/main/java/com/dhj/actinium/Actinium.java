@@ -28,6 +28,7 @@ import com.gtnewhorizons.angelica.iris.IrisGLSMBridge;
 import com.mojang.realmsclient.gui.ChatFormatting;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.pipeline.AdaptiveShadowBoundsStats;
+import net.coderbot.iris.texture.pbr.PBRTextureManager;
 import net.coderbot.iris.compat.dh.DHCompat;
 import net.coderbot.iris.rendertarget.IRenderTargetExt;
 import net.minecraft.client.Minecraft;
@@ -181,6 +182,10 @@ public class Actinium {
 
         ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
                 .registerReloadListener(resourceManager -> MissingModelCompat.onResourceManagerReload());
+        // PBR lookups are answered from an index of the loaded packs, so a pack change has to invalidate
+        // both the loaded PBR textures and that index.
+        ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
+                .registerReloadListener(PBRTextureManager.INSTANCE::onResourceManagerReload);
 
         if ((Boolean) Launch.blackboard.get("fml.deobfuscatedEnvironment")) {
             ClientCommandHandler.instance.registerCommand(new TogglePassCommand());
