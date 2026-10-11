@@ -145,6 +145,7 @@ public class CompatUniformManager {
 
         int[] locs = state.getLocations();
         // Uniform values are program-local, so each category is tracked per linked program on the cache-owning context.
+        state.bindOwner(GLStateManager.ctx());
         final int mvGen = GLStateManager.getMvGeneration();
         final int projGen = GLStateManager.getProjGeneration();
         final int texMatGen = GLStateManager.getTexMatrixGeneration();
@@ -217,6 +218,7 @@ public class CompatUniformManager {
         if (!state.isValid()) {
             return;
         }
+        state.bindOwner(GLStateManager.ctx());
         uploadMatrices(locs, true, true, true);
         state.markModelViewUploaded(GLStateManager.getMvGeneration());
         state.markProjectionUploaded(GLStateManager.getProjGeneration());

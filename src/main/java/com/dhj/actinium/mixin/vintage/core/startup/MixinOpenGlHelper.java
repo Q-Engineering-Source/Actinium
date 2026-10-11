@@ -3,6 +3,7 @@ package com.dhj.actinium.mixin.vintage.core.startup;
 import com.dhj.actinium.debug.ActiniumStartupDebugConfig;
 import net.coderbot.iris.debug.flight.GlFlightRecording;
 import net.coderbot.iris.debug.flight.GlFlightGpuCommandRecorder;
+import com.gtnewhorizons.angelica.glsm.QuadConverter;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMInitConfig;
@@ -41,6 +42,9 @@ public class MixinOpenGlHelper {
                 TessellatorStreamingDrawer.destroy();
                 BufferBuilderStreamingDrawer.destroy();
                 EndPortalCompositeRenderer.destroy();
+                // The quad EBO and the FFP program cache are shared between GLSM contexts, so they are
+                // torn down here rather than when a single context goes away.
+                QuadConverter.destroy();
             })
             .build());
 

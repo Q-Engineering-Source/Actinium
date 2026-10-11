@@ -1,5 +1,7 @@
 package com.gtnewhorizons.angelica.glsm.states;
 
+import com.gtnewhorizons.angelica.glsm.GLContextState;
+
 /**
  * Generation-tracked upload markers for one linked OpenGL program.
  *
@@ -13,6 +15,18 @@ public abstract class GenerationTrackedState {
 
     private final int[] generations;
     private int initialized;
+    /**
+     * The GLSM context the markers were written for. Generations are per context, so markers written
+     * while another drawable was current say nothing about the one being drawn into now.
+     */
+    private GLContextState owner;
+
+    /** Rebinds the markers to the context about to be uploaded for, dropping another context's markers. */
+    public final void bindOwner(GLContextState context) {
+        if (owner == context) return;
+        owner = context;
+        initialized = 0;
+    }
 
     protected GenerationTrackedState(int categoryCount) {
         this.generations = new int[categoryCount];

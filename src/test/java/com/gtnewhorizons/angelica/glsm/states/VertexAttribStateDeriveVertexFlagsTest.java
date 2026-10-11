@@ -1,6 +1,12 @@
 package com.gtnewhorizons.angelica.glsm.states;
 
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
+import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
+import com.gtnewhorizons.angelica.glsm.streaming.StubRenderBackend;
+import com.gtnewhorizons.angelica.glsm.testutil.Reflect;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFlags;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormatElement.Usage;
@@ -28,10 +34,27 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * {@code (0,0,0,1)} and renders black.</p>
  */
 class VertexAttribStateDeriveVertexFlagsTest {
+
+    /** Answers only the query GLStateManager makes while it initializes; the tests must not touch GL. */
+    private static final class InitBackend extends StubRenderBackend {
+        @Override public int getInteger(int pname) { return 32; }
+    }
+
+    private RenderBackend original;
+
+    // The install has to happen before anything touches GLStateManager: its clinit queries the backend.
+
+    @AfterEach
+    void restoreBackend() {
+        if (original != null) Reflect.setStaticFinal(BackendManager.class, "RENDER_BACKEND", RenderBackend.class, original);
+        original = null;
+    }
     @BeforeEach
     void setUp() {
+        original = BackendManager.RENDER_BACKEND;
+        Reflect.setStaticFinal(BackendManager.class, "RENDER_BACKEND", RenderBackend.class, new InitBackend());
         GLStateManager.ctx().vao.init(0);
-    }
+        }
 
     @AfterEach
     void tearDown() {

@@ -139,16 +139,20 @@ public class DisplayListManager {
     }
 
     public static boolean isCompileAndExecute() {
-        return glListMode == GL11.GL_COMPILE_AND_EXECUTE;
+        return isRecording() && glListMode == GL11.GL_COMPILE_AND_EXECUTE;
     }
 
     public static CommandRecorder pauseRecording() {
+        if (Thread.currentThread() != recordingThread) return null;
         final CommandRecorder r = currentRecorder;
         currentRecorder = null;
         return r;
     }
 
     public static void resumeRecording(CommandRecorder r) {
+        if (Thread.currentThread() != recordingThread) {
+            throw new IllegalStateException("Cannot resume another thread's display list compilation");
+        }
         currentRecorder = r;
     }
 
@@ -192,11 +196,11 @@ public class DisplayListManager {
     }
 
     public static int getRecordingListId() {
-        return glListId;
+        return Thread.currentThread() == recordingThread ? glListId : -1;
     }
 
     public static int getListMode() {
-        return glListMode;
+        return Thread.currentThread() == recordingThread ? glListMode : 0;
     }
 
     public static int getCommandCount() {
@@ -204,7 +208,7 @@ public class DisplayListManager {
     }
 
     public static void trackDrawRangeSource(String source) {
-        if (drawRangeSources != null) {
+        if (Thread.currentThread() == recordingThread && drawRangeSources != null) {
             drawRangeSources.add(source);
         }
     }
@@ -750,10 +754,8 @@ public class DisplayListManager {
      * @param list The display list ID to check
      * @return true if the display list exists, false otherwise
      */
-    public static boolean displayListExists(int list) {
-        if (displayListCache.containsKey(list)) {
-            return true;
-        }
+    public static synchronized boolean displayListExists(int list) {
+        if (displayListCache.containsKey(list)) return true;
         // Check VBOManager for GTNHLib compatibility (negative IDs)
         if (list < -1) {
             return VBOManager.get(list) != null;
@@ -767,7 +769,7 @@ public class DisplayListManager {
      * @param list The display list ID
      * @return The CompiledDisplayList, or null if not found
      */
-    public static CompiledDisplayList getDisplayList(int list) {
+    public static synchronized CompiledDisplayList getDisplayList(int list) {
         return displayListCache.get(list);
     }
 
@@ -777,7 +779,14 @@ public class DisplayListManager {
      *   GL_COMPILE: Commands are recorded only (not executed), GLSM cache unchanged
      *   GL_COMPILE_AND_EXECUTE: Commands are recorded AND executed (GLSM cache updated)
      */
-    public static void glNewList(int list, int mode) {
+    public static synchronized void glNewList(int list, int mode) {
+        // One compilation at a time: a drawable context on another thread must not interleave with this
+        // one's recorder (the state it inspects belongs to the thread that started the list).
+        final Thread recorder = recordingThread;
+        if (recorder != null && recorder != Thread.currentThread()) {
+            throw new IllegalStateException("glNewList(" + list + ") on " + Thread.currentThread().getName()
+                + " while " + recorder.getName() + " is compiling a display list");
+        }
         // Handle nested compilation - push current context onto stack
         final boolean isNested = glListMode > 0;
 
@@ -823,7 +832,12 @@ public class DisplayListManager {
     /**
      * End display list compilation and build optimized/unoptimized versions.
      */
-    public static void glEndList() {
+    public static synchronized void glEndList() {
+        final Thread recorder = recordingThread;
+        if (recorder != null && recorder != Thread.currentThread()) {
+            throw new IllegalStateException("glEndList on " + Thread.currentThread().getName()
+                + " while " + recorder.getName() + " is compiling a display list");
+        }
         if (glListMode == 0) {
             throw new RuntimeException("glEndList called outside of a display list!");
         }

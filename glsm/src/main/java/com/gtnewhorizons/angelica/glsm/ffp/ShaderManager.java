@@ -322,9 +322,9 @@ public class ShaderManager {
     }
 
     public void destroy() {
-        // The program cache is shared between drawable contexts, so it survives a context going away.
+        // The program cache and the quad EBO are shared between drawable contexts, so they survive a
+        // context going away; only per-context state is torn down here.
         uniforms.destroy();
-        QuadConverter.destroy();
         active = false;
         currentProgram = null;
     }

@@ -1481,7 +1481,9 @@ celeritas/渲染入口显式调用 `enterWorkerContext()`——那是 Actinium �
 `mirroredContext`、`SDLGPURenderBackend.enterContext`/`beginSplashFrame`/`bindFramebuffer(0)`
 重映射/`deleteFramebuffers` 重绑/`drawableEnum` 系列、`OffscreenTarget.isFor` 用
 `defaultFboId`：Phase 3 已落地绝大部分，本阶段只补上 `OffscreenTarget.isFor` 的
-`boundFboId → defaultFboId` 一处。**因此 SDL 镜像语义现在与上游一致**：同线程换 drawable
+`boundFboId → defaultFboId` 一处。**COW-B2（2026-10-11）补齐了 COW-B 留下的半转换状态**：见下一节。
+
+**因此 SDL 镜像语义现在与上游一致**：同线程换 drawable
 时 `st.mirroredContext != ctx` 成立 → `invalidateMirror()`，不再是 Phase 3 的“可接受弱化”。
 
 **适配与未移植（记录原因）**
@@ -1520,6 +1522,85 @@ celeritas/渲染入口显式调用 `enterWorkerContext()`——那是 Actinium �
 `GLSM_ServerSideState_UnitTest`（`@GLCompatTest`）、`GLSM_PerThread_UnitTest`
 与 `DrawableContexts` 夹具（需要真 `SharedDrawable`）按约定跳过。drawable context 的
 注册/切换本身**没有单元测试覆盖**（必须真 drawable），需 rig 或实机验证。
+
+**验证**：`./gradlew :glsm:compileJava :sdl-gpu:compileJava :shader:compileJava
+compileJava compileTestJava`、`./gradlew :glsm:test :sdl-gpu:test`、`./gradlew :test`、
+`./gradlew check` 全绿。
+
+## glsm 每上下文 FFP 状态补齐（2026-10-11，COW-B2）
+
+COW-B 只把「上下文注册/切换」和一批 GLStateManager 静态搬进了 `GLContextState`，六个
+大文件仍是半转换（静态状态与 `ctx()` 混用）。本节把它们收尾，规则同前：以上游 tip
+（`21a054a4`）语义为目标重写，保留 Actinium 自己的实现与扩展，凡是上游的每上下文答案
+依赖 Actinium 故意没有的东西（HUDCaching、BatchStateGuard、上游的 draw lock /
+display-list `virtualStateDepth`），就用 Actinium 的惯用法做最小等价实现。
+
+**逐文件**
+
+- `streaming/TessellatorStreamingDrawer` + 新增 `streaming/StreamingVaos`：per-format 的
+  VAO id 数组（`persistentVAOs`/`orphanVAOs`）从 TSD 静态数组搬进新的每上下文 holder
+  `StreamingVaos`（`GLContextState.streamingVaos`，与上游同名类同形）。上游为此删掉了
+  `persistentVaoOwners`/`orphanVaoOwners` 这两组「哪个线程创建了这个 VAO」的静态数组
+  ——**本仓库同样删除，并记录理由**：VAO 数组现在按上下文隔离，一个上下文的数组只可能
+  含它自己创建的 id，不再存在 issue #150 的「已死 splash 上下文的 id 被驱动回收后指向
+  新上下文里的活 VAO」问题；`destroy()` 改为删除**当前上下文**的 VAO（共享的
+  `persistentBuffer`/`orphanBuffers`/repack/ext 暂存仍为静态，与上游一致）。
+- `CompatUniformManager` + `states/GenerationTrackedState`：上游给 `ProgramUniforms` 加了
+  `owner`，上下文变化时清掉「已上传到第几代」标记。Actinium 的对应物是
+  `CompatProgramUniformState`（继承 `GenerationTrackedState`），因此把该守卫做在基类：
+  新增 `bindOwner(GLContextState)`，owner 变化即 `initialized = 0`；在
+  `CompatUniformManager.onUseProgram` 与 `refreshCurrentProgramMatrices` 里绑定当前上下文。
+  **这是本次修掉的真实每上下文缺陷**：同一个程序先被 drawable A 上传过，切到 drawable B
+  后生成号不同（或相同但值不同）时，旧标记会让 B 跳过上传。上游给 map 加
+  `acquireDrawLock` 的部分不需要——Actinium 的 `CompatProgramUniformStates` 自身
+  `synchronized`。
+- `RenderSystem`：`PROJECTION_MATRIX_BUFFER`（public static final 暂存 FloatBuffer）搬到
+  `GLContextState.projectionMatrixBuffer`，`setupProjectionMatrix` 改用
+  `ctx().projectionMatrixBuffer`（上游同名的每上下文暂存）。能力探测类静态（`supports*`/
+  `max*`/`isGLES`/`glesVersion`/`isLTW`/`dsaState`）与 GLES 处理、`remapPixelTypeForGLES`
+  等扩展原样保留——它们是进程级/后端级事实，不属于每上下文状态。
+- `QuadConverter`：**核对后不离散**——上游 tip 也把 quad/scratch EBO（`eboId`/`maxQuads`/
+  `scratchEbo*`）留作静态共享（EBO 是共享对象，且上游仍以静态方式持有），每上下文相关
+  的读取 Actinium 早已走 `ctx()`（`preDraw` 内部 `ctx()`、`getBoundEBO()` →
+  `ctx().boundEBO`）。本次只修一处生命周期问题：`ShaderManager.destroy()` 不再调用
+  `QuadConverter.destroy()`（否则销毁某一个上下文会删掉共享 EBO），改由既有的全局收尾
+  钩子（`MixinOpenGlHelper` 的 `streamingDrawerDestroy` lambda）调用，那里也一起销毁
+  `TessellatorStreamingDrawer`/`BufferBuilderStreamingDrawer`/`EndPortalCompositeRenderer`。
+- `ffp/Uniforms`：**核对后无需改动**——它没有静态可变状态；上传标记
+  （`normalGen`/`texCoordGen`/…）是 `Uniforms` 实例字段，而 `Uniforms` 属于
+  `ShaderManager`（COW-B 起每上下文一个）；它读取的 `ShaderManager.get*Generation()`/
+  `getCurrentTexCoord()` 等静态访问器在 COW-B 已改为读 `ctx().ffp`。上游把 `glCtx` 显式
+  传参只是形态差异，不改变语义。
+- `DisplayListManager`：显示列表录制是**线程作用域**而非上下文作用域。补齐上游的守卫：
+  `isCompileAndExecute()`/`describeCurrentCompilation()` 改用 `isRecording()`（线程感知）、
+  `pauseRecording`/`resumeRecording` 加录制线程校验（resume 跨线程直接抛错）、
+  `getRecordingListId`/`getListMode`/`trackDrawRangeSource` 非录制线程返回中性值、
+  `glNewList`/`glEndList` 加 `synchronized` + 「另一线程正在录制」快速失败。
+  读取 `displayListCache` 的两个入口用 `synchronized`（Actinium 没有上游的 draw lock，
+  用同一把类锁与 `glNewList`/`glEndList` 互斥）。Actinium 自己的 `recordPushAttrib(mask)`
+  记录模型不变。**未移植**：上游 `glNewList` 里的失败回滚（try/catch 释放 recorder 与
+  捕获层）——那是健壮性改进，与每上下文无关，记录为后续可选。
+- `applyStencilBitMask`（COW-B 的开口项，**已裁决并实现**）：按上游加
+  `GLContextState.stencilBitMask`（默认 `0xFFFFFFFF`）；`GLStateManager.init` 用
+  `GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE`（core profile 下 `GL_STENCIL_BITS` 已移除）
+  算出掩码、为 0 时告警，并用它初始化缓存的 value/write 掩码与驱动掩码；新建 drawable 上
+  下文继承 primary 的掩码；`glStencilMask`/`glStencilMaskSeparate` 把应用给的掩码按
+  `ctx().stencilBitMask` 夹紧后写入缓存（与驱动自身的夹紧一致，避免缓存里留下驱动从未
+  持有的值）。这样 Actinium 的 stencil 语义与上游一致，且不再有开口项。
+- `GLSMInitConfig.streamingDrawerDestroy`：保留（Actinium 的 drawer 的**共享**部分仍由它
+  收尾），但不再从每上下文的 `ShaderManager.destroy()` 调用；其 lambda 增加
+  `QuadConverter.destroy()`（见上）。
+
+**测试**：新增根 `src/test` 用例
+`com.gtnewhorizons.angelica.glsm.PerContextStateTest`（3 例：绑定第二个上下文后
+`ffp`/`vao`/`streamingVaos`/`vaoEboMap`/normalStack 都是独立实例；写一个上下文的状态不会
+泄漏到另一个；`StreamingVaos` 数组按上下文隔离）与
+`com.gtnewhorizons.angelica.glsm.GenerationTrackedStateTest`（2 例：同一上下文的标记保留、
+切换上下文后标记失效）。两者都先装一个只回答 `getInteger` 的 `StubRenderBackend` 替身
+（`BackendManager.RENDER_BACKEND` 通过 `Reflect.setStaticFinal` 换成替身），因为
+`GLStateManager` 的类初始化会查询后端，真实后端在没有 GL context 时会崩 JVM。同时给三个
+`VertexAttribState*` 测试补上同样的替身（COW-B 让它们开始经过 `ctx()`，之前只是靠测试执行
+顺序侥幸没崩）。上游的 GL/rig 测试（`GLSM_SharedDrawableContext_GLTest` 等）继续跳过。
 
 **验证**：`./gradlew :glsm:compileJava :sdl-gpu:compileJava :shader:compileJava
 compileJava compileTestJava`、`./gradlew :glsm:test :sdl-gpu:test`、`./gradlew :test`、

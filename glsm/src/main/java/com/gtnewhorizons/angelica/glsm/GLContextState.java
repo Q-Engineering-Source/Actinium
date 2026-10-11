@@ -32,6 +32,7 @@ import com.gtnewhorizons.angelica.glsm.states.PixelStoreState;
 import com.gtnewhorizons.angelica.glsm.states.SamplerUnitArray;
 import com.gtnewhorizons.angelica.glsm.states.TextureUnitArray;
 import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
+import com.gtnewhorizons.angelica.glsm.streaming.StreamingVaos;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import org.joml.Matrix4d;
@@ -101,6 +102,8 @@ public class GLContextState {
     public int clipPlaneGeneration;
     // Bit mask of enabled clip planes, kept in sync by ClipPlaneBooleanState
     public int clipPlaneEnabledMask;
+    /** Stencil width of this drawable's default framebuffer; app masks are clamped to it. */
+    public int stencilBitMask = 0xFFFFFFFF;
     // active shader program changes
     public int programGeneration;
     // draw framebuffer binding changes
@@ -258,6 +261,7 @@ public class GLContextState {
     public float lastBrightnessY;
     public final Int2IntOpenHashMap vaoEboMap = new Int2IntOpenHashMap();
     public final VertexAttribState vao = new VertexAttribState();
+    public final StreamingVaos streamingVaos = new StreamingVaos();
     public final ShaderManager ffp = new ShaderManager();
     public final Matrix4f multMatrix = new Matrix4f();
     public final Matrix4d conversionMatrix4d = new Matrix4d();

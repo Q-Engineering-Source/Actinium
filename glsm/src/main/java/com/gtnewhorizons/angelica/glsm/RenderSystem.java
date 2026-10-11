@@ -474,13 +474,14 @@ public class RenderSystem {
         dsaState.bindTextureToUnit(target, unit, texture);
     }
 
-    public static final FloatBuffer PROJECTION_MATRIX_BUFFER = BufferUtils.createFloatBuffer(16);
-
     public static void setupProjectionMatrix(Matrix4f matrix) {
+        // Per context: the scratch buffer is written and read around the load, so a shared one would
+        // let another drawable's setup overwrite this matrix.
+        final FloatBuffer projectionMatrixBuffer = GLStateManager.ctx().projectionMatrixBuffer;
         GLStateManager.glMatrixMode(GL11.GL_PROJECTION);
         GLStateManager.glPushMatrix();
-        matrix.get(0, PROJECTION_MATRIX_BUFFER);
-        GLStateManager.glLoadMatrix(PROJECTION_MATRIX_BUFFER);
+        matrix.get(0, projectionMatrixBuffer);
+        GLStateManager.glLoadMatrix(projectionMatrixBuffer);
         GLStateManager.glMatrixMode(GL11.GL_MODELVIEW);
     }
 
