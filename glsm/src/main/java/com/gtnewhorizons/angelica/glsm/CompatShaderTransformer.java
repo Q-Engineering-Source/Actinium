@@ -3,6 +3,7 @@ package com.gtnewhorizons.angelica.glsm;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormatElement.Usage;
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
 import org.apache.logging.log4j.LogManager;
+import com.gtnewhorizons.angelica.glsm.shader.ShaderDiskCache;
 import org.apache.logging.log4j.Logger;
 import org.taumc.glsl.ShaderParser;
 import org.taumc.glsl.Transformer;
@@ -130,12 +131,20 @@ public class CompatShaderTransformer {
                 return cached;
             }
 
-            try {
-                result = transformInternal(source, isFragment);
+            final ShaderDiskCache.Key dk = ShaderDiskCache.isEnabled() ? diskKey(source, isFragment) : null;
+            final String disk = dk != null ? ShaderDiskCache.getString(dk) : null;
+            if (disk != null) {
+                result = disk;
                 cache.put(key, result);
-            } catch (Exception e) {
-                LOGGER.warn("CompatShaderTransformer: AST transformation failed, falling back to version fixup only", e);
-                result = fixupVersion(source);
+            } else {
+                try {
+                    result = transformInternal(source, isFragment);
+                    cache.put(key, result);
+                    if (dk != null) ShaderDiskCache.putString(dk, result);
+                } catch (Exception e) {
+                    LOGGER.warn("CompatShaderTransformer: AST transformation failed, falling back to version fixup only", e);
+                    result = fixupVersion(source);
+                }
             }
         }
 
@@ -154,6 +163,14 @@ public class CompatShaderTransformer {
         return NEEDS_TRANSFORM_PATTERN.matcher(source).find();
     }
 
+    private static int minGlslVersion() {
+        return RENDER_BACKEND != null ? RENDER_BACKEND.getMinGLSLVersion() : 330;
+    }
+
+    static ShaderDiskCache.Key diskKey(String source, boolean isFragment) {
+        return ShaderDiskCache.key("compat").str(source).b(isFragment).i(minGlslVersion());
+    }
+
     private static String transformInternal(String source, boolean isFragment) {
         final Matcher versionMatcher = VERSION_PATTERN.matcher(source);
         int declaredVersion = 110;
@@ -161,7 +178,7 @@ public class CompatShaderTransformer {
             declaredVersion = Integer.parseInt(versionMatcher.group(1));
         }
 
-        final int targetVersion = Math.max(declaredVersion, RENDER_BACKEND != null ? RENDER_BACKEND.getMinGLSLVersion() : 330);
+        final int targetVersion = Math.max(declaredVersion, minGlslVersion());
 
         source = stripGlesPrecisionGuards(source);
         final SeparatedSource separatedSource = separatePreprocessorPreamble(source, targetVersion);

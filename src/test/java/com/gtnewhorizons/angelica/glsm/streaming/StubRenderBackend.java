@@ -211,12 +211,7 @@ class StubRenderBackend extends RenderBackend {
     @Override public void textureParameteri(int texture, int target, int pname, int param) { throw new UnsupportedOperationException(); }
     @Override public void textureParameterf(int texture, int target, int pname, float param) { throw new UnsupportedOperationException(); }
     @Override public void textureParameteriv(int texture, int target, int pname, IntBuffer params) { throw new UnsupportedOperationException(); }
-    @Override public void texStorage1D(int target, int levels, int internalFormat, int width) { throw new UnsupportedOperationException(); }
     @Override public void texStorage2D(int target, int levels, int internalFormat, int width, int height) { throw new UnsupportedOperationException(); }
-    @Override public void texStorage3D(int target, int levels, int internalFormat, int width, int height, int depth) { throw new UnsupportedOperationException(); }
-    @Override public void textureStorage1D(int texture, int levels, int internalFormat, int width) { throw new UnsupportedOperationException(); }
-    @Override public void textureStorage2D(int texture, int levels, int internalFormat, int width, int height) { throw new UnsupportedOperationException(); }
-    @Override public void textureStorage3D(int texture, int levels, int internalFormat, int width, int height, int depth) { throw new UnsupportedOperationException(); }
     @Override public void generateTextureMipmap(int texture) { throw new UnsupportedOperationException(); }
     @Override public void textureImage2DEXT(int texture, int target, int level, int internalformat, int width, int height, int border, int format, int type, ByteBuffer pixels) { throw new UnsupportedOperationException(); }
     @Override public void textureImage2DEXT(int texture, int target, int level, int internalformat, int width, int height, int border, int format, int type, IntBuffer pixels) { throw new UnsupportedOperationException(); }

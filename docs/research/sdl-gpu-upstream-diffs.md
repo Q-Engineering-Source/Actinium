@@ -15,7 +15,9 @@
 > **上游 #2153 / #2157（`e17b45c8` / `7bb5bfd4`，Phase 4）已于 2026-10-11 同步**
 > （详见「上游同步状态（2026-10-11，Phase 4）」）；**上游 #2167 / #2188 / #2191
 > （`c10d30b2` / `80e5b544` / `1587a12c`，Phase 5）已于 2026-10-11 同步**
-> （详见「上游同步状态（2026-10-11，Phase 5）」）。
+> （详见「上游同步状态（2026-10-11，Phase 5）」）；**上游 #2192 / #2194 / #2195 /
+> #2213（`85892c0f` / `37afddab` / `bdcb4d18` / `38af64f1`，Phase 6）已于
+> 2026-10-11 同步**（详见「上游同步状态（2026-10-11，Phase 6）」）。
 > 本文档
 > 逐条记录 Actinium 的 `sdl-gpu` 模块相对 Angelica 上游（`D:\Code\Angelica`，
 > 运行于 lwjgl3ify/GTNH 环境）的**代码差异及其理由**。多数差异源于运行环境不同
@@ -772,3 +774,115 @@ workaround + present 期间 pump）。三者的 sdl-gpu / glsm 侧均已落地�
   `FenceWaitTest`、`PresenterTest`、`TextureSamplerStateTest`、
   `TransferThreadWakePolicyTest`、`SamplerBindGenerationTest` 已同步；
   `src/` 的 `FlybyRunner` 未同步。
+
+## 上游同步状态（2026-10-11，Phase 6）
+
+已同步上游四个提交：`85892c0f`（#2192，DSA 绑定恢复 + 液体颜色）、`37afddab`
+（#2194，着色器编译结果落盘缓存）、`bdcb4d18`（#2195，Complementary/Euphoria ULTRA
+修复）、`38af64f1`（#2213，着色器加载优化第一步）。sdl-gpu 与 glsm 侧全部落地；
+`src/`（Angelica 根部 Iris 接线、GUI、TextureTracker、MultiListenerNotifier 等）按
+范围跳过，仅按用户指定把 Iris 预处理链的增量移入 Actinium 的 `shader/` 模块。
+
+**#2192（`85892c0f`）**
+
+- **`RenderBackend` 删除 5 个方法**：`texStorage1D`、`texStorage3D`、
+  `textureStorage1D`、`textureStorage2D`、`textureStorage3D`（`texStorage2D` 保留），
+  连带删除：
+  - `DSAAccess` 的 `textureStorage1D/2D/3D` 三个声明；
+  - `DSAARB`、`DSAUnsupported` 的实现；
+  - `RenderSystem.textureStorage1D/2D/3D` 三个转发；
+  - `SDLGPURenderBackend` 的 5 个覆写（`texStorageImpl` 保留供 `texStorage2D` 使用）；
+  - `Lwjgl3GLRenderBackend`（Actinium 的 `src/lwjgl3/`）的 5 个覆写；
+  - `StubRenderBackend`（Actinium 测试替身）的 5 个 override。
+  核查过 Actinium 无任何调用方（只有这些定义自身互相调用），故与上游一致删除；上游
+  `Lwjgl2GLRenderBackend` 在 Actinium 不存在。
+- `DSAUnsupported` 的 DSA 绑定恢复修复：新增 `bindingQuery(target)` /
+  `previousBinding(target)` / `previous2D()` / `bindForEdit` / `restoreBinding`，
+  2D 路径走 GLSM 缓存的纹理单元绑定（`GLStateManager.getTextures()
+  .getTextureUnitBindings(...)`，缓存启用时），其余 target 查
+  `GL_TEXTURE_BINDING_*`；`texParameter*`/`getTexParameteri`/`getTexLevelParameteri`/
+  `copyTexSubImage2D`/`textureImage2D`/`textureSubImage2D` 全部改用这套 helper。
+  **适配**：上游同一 hunk 还改了 `getTexParameterf`，Actinium 的 `DSAAccess` 没有这个
+  成员（既有的精简差异），该部分未同步。
+- `SDLGPURenderBackend.getInteger` 把 `GL_TEXTURE_BINDING_1D/3D/CUBE_MAP/
+  1D_ARRAY/2D_ARRAY/RECTANGLE/CUBE_MAP_ARRAY` 一并映射到 `boundTextureOf(...)`。
+- **未同步**：`src/` 的 `TextureTracker`、`IrisGLSMBridge`、`Mixins`、`TargetedMod`、
+  `ColorizeBlock`、`ProgramUniforms`、`MultiListenerNotifier`（+ 其测试）与
+  mcpatcherforge 的 `MixinRenderBlocks` 系列。**MultiListenerNotifier 核查结论**：
+  Actinium 的 `shader/src/main/java/net/coderbot/iris/gl/state/` 只有
+  `FogMode`/`StateUpdateNotifiers`/`ValueUpdateNotifier`，没有该类，故按约定跳过。
+- 测试：`DSAUnsupportedBindingTest`（`@GLCoreTest`，需要真 GL core context 与 glsm
+  test 源集）与 rig 测试 `GlsmSdlTextureBindingQueryTest` 均未同步。
+
+**#2194（`37afddab`）**
+
+- glsm 新增着色器落盘缓存：`shader/ShaderCacheIO`（原生库/驱动的库指纹 + 堆缓冲
+  序列化）与 `shader/ShaderDiskCache`（分层 key、字节/字符串/字符串表/blob 载荷、
+  容量控制、失败目录），`SpirvCompiler` 接入缓存（含 `shaderc_failures/` 转储，
+  已加入 `.gitignore`），`CompatShaderTransformer` 接入缓存。
+  **适配**：`ShaderCacheIO`/`SpirvCompiler` 的 `@Lwjgl3Aware` 注解与其 import 被去掉
+  —— Actinium 没有 lwjgl3ify（无该注解的消费方）；`CompatShaderTransformer` 的
+  `transform` 由上游 hunk 与本仓库既有 `dumpShader` 路径手工合并（保留 dump 与
+  `LOGGER` 用法），并顺手把上游插错的 `minGlslVersion()`/`diskKey()` 挪到类级位置。
+- sdl-gpu：`ShaderManager` 的落盘 key 接线（`sdl-stage` / `sdl-prewarm` /
+  `sdl-transform` 三层，含 toolchain/spvc 指纹），新增 `shader/ShaderStageSerializer`
+  （stage 序列化）、`shader/cross/CrossCompileCache`、`shader/cross/CrossCompileUtil`；
+  `dxbc/DxbcCrossCompile`、`msl/MslCrossCompile`、`dxbc/D3DCompiler`、`ClipZRemap`、
+  `PerFrameBlockInjector`、`SamplerStripper` 同步。
+- 测试：sdl-gpu 14 个文件（含新增 `ShaderStageSerializerTest`、`StageDiskCacheTest`）
+  全部同步；glsm 侧 `ShaderDiskCacheTest` 移入根工程
+  `src/test/java/com/gtnewhorizons/angelica/glsm/shader/`（Actinium 的 glsm 无 test
+  源集），`CompatShaderTransformerTest` 的磁盘缓存用例按 Actinium 的
+  `actinium_` uniform 前缀改写后并入既有测试。**适配**：根工程
+  `build.gradle` 增加 `testImplementation testFixtures(project(':glsm'))`，否则这些
+  glsm 侧测试用不到 `Reflect` 等测试夹具。
+- **未同步**：`SpirvCompilerDiskCacheTest`（需要上游 glsm 的 `spirvTest` 任务与
+  shaderc/spvc 原生库，Actinium 无该任务）与 `glsm/build.gradle.kts` 对该任务的
+  过滤器追加；`glsm/shader/ProgramBinaryCache` 在 Actinium 不存在（属其它血缘），
+  其增量跳过。
+
+**#2195（`bdcb4d18`）**
+
+- `glsm/shader/GlslVulkanPreprocess`：新增 `TARGET_RESERVED`（C++/GLSL 侧保留字表）
+  与 `RESERVED_RENAMED_PREFIX = "angelica_renamed_"`，遍历标识符时把命中保留字的
+  标识符重命名（Complementary/Euphoria ULTRA 的 `try`/`catch` 等局部变量导致 MSL
+  交叉编译失败的根因）。
+- sdl-gpu 测试：`PrewarmTreeHandoffEquivalenceTest`、`MslCrossCompileTest`（新增
+  `cppKeywordLocalIsRenamedBeforeMsl`）。
+  **适配**：上游该用例写成 `MslCrossCompile.Output`，而上游紧随其后的 `c97fb700`
+  （"Fix (#2196)"）才把它改成 `CrossCompileCache.Output`；这里直接采用修正后的形式，
+  否则测试无法编译。
+- **未同步**：`src/main/java/net/coderbot/iris/pipeline/transform/ShaderTransformer.java`
+  的 `extractRwImageStores(...)` 改动 —— Actinium 的对应文件
+  （`shader/src/main/java/net/coderbot/iris/pipeline/transform/ShaderTransformer.java`）
+  根本没有 RwImageStore 抽取阶段（无 `maybeExtractRwImageStores`、无
+  `RwImageStoreExtractor`，`shader/src` 中没有任何 `isSDLGPU` 引用），该 hunk 无落点；
+  同名测试 `ShaderTransformerTest`（上游）与 glsm 侧 `SpirvShaderTranslatorTest` 的
+  新增用例也未同步（Actinium 没有 spirv 测试任务，且 `SpirvShaderTranslatorTest`
+  不存在）。
+
+**#2213（`38af64f1`）**
+
+- glsm：`GlslTransformUtils`（+21，解析/格式化辅助）、`shader/ShaderDiskCache`
+  （+5/-1）、`threading/AngelicaWorkers`（+47，空闲钩子与提交计数）。
+- sdl-gpu：`SDLGPURenderBackend`、`resource/ResourceManager`（+70，纹理/着色器相关
+  缓存登记）、`shader/ShaderManager`（+123/-30，prewarm 重构）、
+  `shader/ShaderStageSerializer`；测试 `AttribLocationPatchTest`、
+  `AttribLocationReflectionTest`、`StageDiskCacheTest` 更新与新增
+  `UnusedSamplerReflectionTest`。
+- **Iris 预处理链（按指定移入 `shader/` 模块）**：`preprocessor/JcppProcessor`
+  （新增按内容哈希 + 宏集合缓存的 `glslPreprocessSource` 重载）、
+  `preprocessor/PreprocessedSourceCache`（新文件，`ShaderDiskCache` 之上的
+  preprocess 缓存）、`preprocessor/PropertiesPreprocessor`（接入同一缓存 +
+  `cleanLines`/`cleanLine` 重写行清理逻辑以在缓存 key 之前规范化）、
+  `include/IncludeProcessor`（并发缓存 + 内容哈希 + `getIncludedFileHash`）、
+  `include/IncludeGraph`（经 `AngelicaWorkers` 并行预读 include 文件）。
+  **适配**：`PropertiesPreprocessor` 保留 Actinium 既有的 LexerException 容忍
+  （跳过坏 macro 而不是整包加载失败），并把因此不再使用的
+  `java.util.stream.Collectors` import 去掉。
+- **未同步（Angelica 根部 Iris 接线，Actinium 对应物结构不同）**：
+  `iris/Iris.java`、`rendering/.../ShaderWarmup`、`utils/AngelicaJar`、
+  `gl/program/{Program,ProgramBuilder,ComputeProgram,RetainedPrograms}`、
+  `gl/GlResource`、`pipeline/DeferredWorldRenderingPipeline`、
+  `pipeline/transform/ShaderTransformer`、`shaderpack/{ConstDirectiveParser,IdMap,ShaderPack}`、
+  `texture/pbr/PBRResourceIndex`、`uniforms/custom/CustomUniforms`、`proxy/ClientProxy`。

@@ -3670,14 +3670,6 @@ public class SDLGPURenderBackend extends RenderBackend {
     @Override public void textureParameteriv(int texture, int target, int pname, IntBuffer params) {
         if (params.remaining() > 0) textureParameteri(texture, target, pname, params.get(params.position()));
     }
-    @Override public void texStorage1D(int target, int levels, int internalFormat, int width) {
-        final ContextState st = s();
-        if (isProxyTarget(target)) {
-            recordProxyTexImage(st, target, 0, internalFormat, width, 1, 1);
-            return;
-        }
-        texStorageImpl(st, st.boundTextures[st.activeTextureUnit], target, internalFormat, width, 1, 1, levels);
-    }
     @Override public void texStorage2D(int target, int levels, int internalFormat, int width, int height) {
         final ContextState st = s();
         if (isProxyTarget(target)) {
@@ -3685,23 +3677,6 @@ public class SDLGPURenderBackend extends RenderBackend {
             return;
         }
         texStorageImpl(st, st.boundTextures[st.activeTextureUnit], target, internalFormat, width, height, 1, levels);
-    }
-    @Override public void texStorage3D(int target, int levels, int internalFormat, int width, int height, int depth) {
-        final ContextState st = s();
-        if (isProxyTarget(target)) {
-            recordProxyTexImage(st, target, 0, internalFormat, width, height, depth);
-            return;
-        }
-        texStorageImpl(st, st.boundTextures[st.activeTextureUnit], target, internalFormat, width, height, depth, levels);
-    }
-    @Override public void textureStorage1D(int texture, int levels, int internalFormat, int width) {
-        texStorageImpl(s(), texture, GL11.GL_TEXTURE_2D, internalFormat, width, 1, 1, levels);
-    }
-    @Override public void textureStorage2D(int texture, int levels, int internalFormat, int width, int height) {
-        texStorageImpl(s(), texture, GL11.GL_TEXTURE_2D, internalFormat, width, height, 1, levels);
-    }
-    @Override public void textureStorage3D(int texture, int levels, int internalFormat, int width, int height, int depth) {
-        texStorageImpl(s(), texture, GL11.GL_TEXTURE_2D, internalFormat, width, height, depth, levels);
     }
 
     private void texStorageImpl(ContextState st, int glId, int target, int internalFormat, int w, int h, int d, int levels) {
@@ -4025,7 +4000,7 @@ public class SDLGPURenderBackend extends RenderBackend {
             case GL43.GL_MAX_DEBUG_MESSAGE_LENGTH -> 1024;
             case GL11.GL_DRAW_BUFFER -> drawBufferEnum(cs.boundFboId, cs.defaultFboId);
             case GL11.GL_READ_BUFFER -> readBufferEnum(cs.boundReadFboId, cs.defaultFboId);
-            case GL11.GL_TEXTURE_BINDING_2D -> boundTextureOf(cs.activeTextureUnit, cs.boundTextures);
+            case GL11.GL_TEXTURE_BINDING_2D, GL11.GL_TEXTURE_BINDING_1D, GL12.GL_TEXTURE_BINDING_3D, GL13.GL_TEXTURE_BINDING_CUBE_MAP, GL30.GL_TEXTURE_BINDING_1D_ARRAY, GL30.GL_TEXTURE_BINDING_2D_ARRAY, GL31.GL_TEXTURE_BINDING_RECTANGLE, GL40.GL_TEXTURE_BINDING_CUBE_MAP_ARRAY -> boundTextureOf(cs.activeTextureUnit, cs.boundTextures);
             case GL11.GL_DEPTH_BITS -> getFramebufferAttachmentParameteri(GL30.GL_DRAW_FRAMEBUFFER, GL11.GL_DEPTH, GL30.GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE);
             case GL11.GL_STENCIL_BITS -> getFramebufferAttachmentParameteri(GL30.GL_DRAW_FRAMEBUFFER, GL11.GL_STENCIL, GL30.GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE);
             case GL11.GL_PACK_ALIGNMENT -> cs.pixelStore.packAlignment;
@@ -4158,6 +4133,15 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
 
     private static final int CLEAR_CHUNK_BYTES = 64 * 1024;
+    private static final int FILL_CHUNK_BYTES = 4 * 1024 * 1024;
+
+    private static boolean isAllZero(ByteBuffer data, int elemBytes) {
+        final int n = Math.min(elemBytes, data.remaining());
+        for (int i = 0; i < n; i++) {
+            if (data.get(data.position() + i) != 0) return false;
+        }
+        return true;
+    }
     @Override public void clearBufferSubData(int target, int internalFormat, long offset, long size, int format, int type, ByteBuffer data) {
         final int glId = getBoundBuffer(target);
         if (glId == 0 || size <= 0) return;
@@ -4165,29 +4149,32 @@ public class SDLGPURenderBackend extends RenderBackend {
         if (handle == 0 || frameManager.getCommandBuffer() == 0) return;
 
         final int elemBytes = Math.max(1, PixelOps.glPixelSize(format, type));
-        final int chunkBytes = (int) Math.min(size, CLEAR_CHUNK_BYTES);
+        final boolean defer = s().deferUploads && target != GL43.GL_SHADER_STORAGE_BUFFER;
+        // Undeferred clears stage one large pattern and upload it repeatedly
+        final int chunkBytes = (int) Math.min(size, defer ? CLEAR_CHUNK_BYTES : FILL_CHUNK_BYTES);
         final int alignedChunk = (chunkBytes / elemBytes) * elemBytes;
         if (alignedChunk == 0) return;
         resourceManager.markBufferContentsDefined(glId);
-        final ByteBuffer chunk = MemoryUtil.memAlloc(alignedChunk);
+        final boolean zero = data == null || isAllZero(data, elemBytes);
+        final ByteBuffer chunk = zero ? MemoryUtil.memCalloc(alignedChunk) : MemoryUtil.memAlloc(alignedChunk);
         try {
-            for (int i = 0; i < alignedChunk; i++) {
-                final byte v = (data != null && (i % elemBytes) < data.remaining())
-                    ? data.get(data.position() + (i % elemBytes)) : 0;
-                chunk.put(i, v);
+            if (!zero) {
+                for (int i = 0; i < alignedChunk; i++) {
+                    final byte v = (i % elemBytes) < data.remaining() ? data.get(data.position() + (i % elemBytes)) : 0;
+                    chunk.put(i, v);
+                }
             }
             chunk.position(0).limit(alignedChunk);
+            if (!defer) {
+                resourceManager.fillBuffer(frameManager.ensureCopyPass(), chunk, handle, offset, size);
+                return;
+            }
             long remaining = size;
             long writeOffset = offset;
-            final boolean defer = s().deferUploads && target != GL43.GL_SHADER_STORAGE_BUFFER;
             while (remaining > 0) {
                 final int n = (int) Math.min(remaining, alignedChunk);
                 chunk.position(0).limit(n);
-                if (defer) {
-                    enqueuePreCopied(chunk, handle, writeOffset, false);
-                } else {
-                    resourceManager.uploadToBuffer(frameManager.ensureCopyPass(), chunk, handle, writeOffset, false);
-                }
+                enqueuePreCopied(chunk, handle, writeOffset, false);
                 remaining -= n;
                 writeOffset += n;
             }
@@ -4212,11 +4199,14 @@ public class SDLGPURenderBackend extends RenderBackend {
             return;
         }
 
-        // Volume-sized staging, so it is only reached for 3D formats the compute clear cannot address.
-        final long totalBytes = (long) mipW * mipH * mipD * bpp;
-        if (totalBytes <= 0 || totalBytes > Integer.MAX_VALUE) return;
         final long cp = frameManager.ensureCopyPass();
         if (cp == 0) return;
+        // A volume-sized staging buffer would allocate and upload each byte (1 GB for Euphoria Patches' floodfill!!)
+        if (mipD > 1 && resourceManager.zeroTexture3D(cp, texHandle, mipW, mipH, mipD, level, bpp)) {
+            return;
+        }
+        final long totalBytes = (long) mipW * mipH * mipD * bpp;
+        if (totalBytes <= 0 || totalBytes > Integer.MAX_VALUE) return;
         final ByteBuffer zeros = MemoryUtil.memCalloc((int) totalBytes);
         try {
             if (mipD > 1) {

@@ -1,8 +1,11 @@
 package com.gtnewhorizons.angelica.glsm;
 
+import com.gtnewhorizons.angelica.glsm.shader.ShaderDiskCache;
+import com.gtnewhorizons.angelica.glsm.testutil.Reflect;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.Token;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -10,6 +13,7 @@ import org.taumc.glsl.ShaderParser;
 import org.taumc.glsl.grammar.GLSLLexer;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -470,4 +474,28 @@ class CompatShaderTransformerTest {
         int preprocessorSyntaxErrors,
         int shaderSyntaxErrors
     ) {}
+
+    @Test
+    void diskCacheHitReplacesTransform(@TempDir Path dir) {
+        final String src = """
+            #version 120
+            void main() {
+                gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
+            }
+            """;
+        try {
+            ShaderDiskCache.configure(dir, "t");
+            CompatShaderTransformer.clearCache();
+            final String first = CompatShaderTransformer.transform(src, false);
+            assertTrue(first.contains("actinium_ProjectionMatrix"));
+            CompatShaderTransformer.clearCache();
+            assertEquals(first, CompatShaderTransformer.transform(src, false));
+            CompatShaderTransformer.clearCache();
+            ShaderDiskCache.putString(CompatShaderTransformer.diskKey(src, false), "POISON");
+            assertEquals("POISON", CompatShaderTransformer.transform(src, false));
+        } finally {
+            CompatShaderTransformer.clearCache();
+            Reflect.setStatic(ShaderDiskCache.class, "root", null);
+        }
+    }
 }
