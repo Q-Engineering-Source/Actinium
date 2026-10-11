@@ -1,0 +1,17 @@
+{
+  "package": "com.dhj.actinium.mixin.mod.architecturecraft",
+  "required": true,
+  "refmap": "mixins.actinium-refmap.json",
+  "target": "@env(DEFAULT)",
+  "minVersion": "0.8.5",
+  "compatibilityLevel": "JAVA_8",
+  "mixins": [],
+  "server": [],
+  "client": [
+    "MixinRenderTargetWorld",
+    "mixinterface.AccessorRenderTargetBase"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

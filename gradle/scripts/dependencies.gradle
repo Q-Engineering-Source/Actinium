@@ -96,6 +96,14 @@ dependencies {
     modImplementation 'curse.maven:stellarcore-1064321:8406201'
     modImplementation 'curse.maven:modern-splash-629058:8487408'
 
+    // Mekanism-CE-Unofficial 10.0.5.021 (issue #194: shader rendering repro on large machines).
+    // Runtime-only because Actinium has no compile-time references to Mekanism.
+    modRuntimeOnly 'curse.maven:mekanism-ce-unofficial-840735:8862568'
+
+    // Immersive Engineering 0.12-98 (issue #197: exercise the Garden Cloche translucent block-entity pass).
+    // Runtime-only because Actinium does not compile against IE classes.
+    modRuntimeOnly 'curse.maven:immersive-engineering-231951:2974106'
+
     // Draconic Evolution
     modCompileOnly 'maven.modrinth:draconic-evolution:2.3.28.354'
     modCompileOnly 'maven.modrinth:brandons-core:2.4.20.162'
@@ -143,7 +151,8 @@ dependencies {
 //    modImplementation "curse.maven:conquest-reforged-250077:2565963"
 
     modCompileOnly "curse.maven:rebooter-1625784:8518809"
-    modCompileOnly "curse.maven:forgelin-continuous-456403:8248535"
+    modImplementation "curse.maven:forgelin-continuous-456403:8248535"
+    modImplementation 'curse.maven:better-foliage-228529:3393955'
     modCompileOnly "curse.maven:rlfoliage-970462:7645701"
 
     modImplementation "curse.maven:cofh-core-69162:2920433"
@@ -239,4 +248,10 @@ dependencies {
     // run: the compat layer in com.dhj.actinium.compat.neverenoughanimations reads NEA's animation
     // state, and it is only loaded once Mods.NEVERENOUGHANIMATIONS reports the mod present.
     modImplementation 'curse.maven:neverenoughanimation-1062347:7289408'
+
+    // Issue #118 repro dependencies and compile-time types for the conditional drawer renderer mixin.
+    modCompileOnly 'curse.maven:chameleon-230497:2450900'
+    modCompileOnly 'curse.maven:storage-drawers-223852:2952606'
+    modRuntimeOnly 'curse.maven:chameleon-230497:2450900'
+    modRuntimeOnly 'curse.maven:storage-drawers-223852:2952606'
 }

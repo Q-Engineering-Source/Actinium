@@ -1,5 +1,6 @@
 package me.flashyreese.mods.reeses_sodium_options.client.gui.option;
 
+import com.dhj.actinium.gui.rso.compat.Component;
 import dhj.embeddedt.embeddium.api.options.OptionIdentifier;
 import dhj.embeddedt.embeddium.api.options.control.CyclingControl;
 import dhj.embeddedt.embeddium.api.options.control.ExternalButtonControl;
@@ -11,6 +12,8 @@ import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextComponentTranslation;
 import dhj.embeddedt.embeddium.api.options.structure.Option;
 import dhj.embeddedt.embeddium.impl.gui.framework.TextComponent;
+
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
@@ -174,6 +177,15 @@ public final class RsoOption {
     public java.util.function.Consumer<net.minecraft.client.gui.GuiScreen> getCurrentScreenConsumer() {
         return ((ExternalButtonControl) this.delegate.getControl())
                 .getScreenConsumer();
+    }
+
+    @Nullable
+    public Component externalButtonLabel() {
+        if (!(this.delegate.getControl() instanceof ExternalButtonControl control)) {
+            return null;
+        }
+        TextComponent label = control.getLabelText();
+        return label == null ? null : Component.fromEmbeddium(label);
     }
 
     /** Whether the control should be hidden while the option is disabled (always false here). */

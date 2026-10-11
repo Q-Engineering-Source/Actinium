@@ -8,3 +8,5 @@
 # Binary assets must never be transformed.
 *.png binary
 *.jar binary
+*.dll binary
+*.zip binary

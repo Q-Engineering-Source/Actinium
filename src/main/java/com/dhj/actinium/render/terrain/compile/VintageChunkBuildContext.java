@@ -108,10 +108,11 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
             bufferBuilder.finishDrawing();
             used[i] = false;
             ByteBuffer rawBuffer = bufferBuilder.getByteBuffer();
-            List<VanillaQuadContext> quadContexts = bufferBuilder instanceof BufferBuilderExtension extension
+            BufferBuilderExtension extension = bufferBuilder instanceof BufferBuilderExtension value ? value : null;
+            BlockRenderLayer layer = LAYERS[i];
+            List<VanillaQuadContext> quadContexts = extension != null
                     ? extension.actinium$consumeQuadContexts()
                     : Collections.emptyList();
-            BlockRenderLayer layer = LAYERS[i];
             var material = buffers.getRenderPassConfiguration().getMaterialForRenderType(layer);
             copyBlockData(rawBuffer, buffers, material, layer, quadContexts);
         }
@@ -239,6 +240,9 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
             }
             ModelQuadFacing facing = QuadUtil.findNormalFace(trueNormal);
             VanillaQuadContext quadContext = q < quadContexts.size() ? quadContexts.get(q) : null;
+            if (quadContext != null) {
+                quadContext = resolveDeferredBlockContext(quadContext);
+            }
             boolean isFluidQuad = quadContext != null && quadContext.renderType() == ExtendedDataHelper.FLUID_RENDER_TYPE;
             Material optimizedMaterial = selectMaterial(material, sprite);
             Material correctMaterial;
@@ -257,6 +261,24 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
                 encoder.finishRenderingBlock();
             }
         }
+    }
+
+    private VanillaQuadContext resolveDeferredBlockContext(VanillaQuadContext context) {
+        IBlockState deferredState = context.deferredBlockState();
+        if (deferredState == null) {
+            return context;
+        }
+
+        BlockPos pos = new BlockPos(
+                this.offX + context.localPosX(),
+                this.offY + context.localPosY(),
+                this.offZ + context.localPosZ()
+        );
+        Block block = deferredState.getBlock();
+        int metadata = block.getMetaFromState(deferredState);
+        int shaderBlockId = resolveShaderBlockStateId(block, applyShaderStateBits(deferredState, pos, metadata));
+        byte lightValue = (byte) deferredState.getLightValue(this.worldSlice, pos);
+        return context.withResolvedBlockState(shaderBlockId, lightValue);
     }
 
     private ContextAwareChunkVertexEncoder prepareVanillaEncoder(ChunkModelBuilder builder, VanillaQuadContext quadContext) {
@@ -316,5 +338,4 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         return BlockRenderingSettings.INSTANCE.resolveBlockNbtId(state.getBlock(), tileEntity);
     }
 }
-
 

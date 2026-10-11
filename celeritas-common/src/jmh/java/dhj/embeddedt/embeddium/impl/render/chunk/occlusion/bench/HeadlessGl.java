@@ -17,8 +17,8 @@ import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 
 /**
- * Headless EGL context: a real OpenGL context with no window or display server. Uses EGL rather than GLFW
- * so it works on headless machines (CI, SSH). Falls back to Mesa's llvmpipe when no GPU is available.
+ * Headless EGL context: a real desktop OpenGL context with no window or display server. Uses Mesa's surfaceless
+ * EGL runtime on Windows x64 and the system EGL runtime on other platforms.
  *
  * <p>Created once per JVM, left current on the creating thread. Multi-threaded benchmarks would need a
  * context per thread, which is not implemented.
@@ -40,6 +40,23 @@ public final class HeadlessGl {
 
         Configuration.OPENGL_EXPLICIT_INIT.set(true);
 
+        ensureEglContext();
+        GL.create((ByteBuffer name) -> EGL10.eglGetProcAddress(name));
+
+        var capabilities = GL.createCapabilities();
+        if (!capabilities.OpenGL44) {
+            throw new IllegalStateException("OpenGL 4.4 is required by the benchmark renderer; found "
+                    + GL11C.glGetString(GL11C.GL_VERSION));
+        }
+
+        // GLRenderDevice requires this; the benchmarks never touch vanilla GL state.
+        GLRenderDevice.VANILLA_STATE_RESETTER = () -> {
+        };
+
+        initialized = true;
+    }
+
+    private static void ensureEglContext() {
         long display = openDisplay();
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
@@ -68,15 +85,6 @@ public final class HeadlessGl {
                 throw new IllegalStateException("eglMakeCurrent failed: " + eglError());
             }
         }
-
-        GL.create((ByteBuffer name) -> EGL10.eglGetProcAddress(name));
-        GL.createCapabilities();
-
-        // GLRenderDevice requires this; the benchmarks never touch vanilla GL state.
-        GLRenderDevice.VANILLA_STATE_RESETTER = () -> {
-        };
-
-        initialized = true;
     }
 
     /** {@return a one-line description of the GL implementation backing the context} */

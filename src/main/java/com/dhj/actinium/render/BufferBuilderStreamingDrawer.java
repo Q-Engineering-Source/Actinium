@@ -14,16 +14,16 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import dhj.embeddedt.embeddium.api.debug.RenderDebugHooksHolder;
 import org.lwjgl.opengl.GL15;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 
 import java.nio.ByteBuffer;
-import java.util.HashMap;
 import java.util.Map;
 
 public final class BufferBuilderStreamingDrawer {
     private static final Logger LOGGER = LogManager.getLogger("BufferBuilderStreamingDrawer");
     private static final boolean ENABLED = Boolean.parseBoolean(System.getProperty("actinium.bufferBuilderStreaming", "true"));
 
-    private static final Map<VertexFormat, DrawState> DRAW_STATES = new HashMap<>();
+    private static final Map<VertexFormat, DrawState> DRAW_STATES = new Object2ObjectOpenHashMap<>();
     private static PersistentStreamingBuffer persistentBuffer;
     private static boolean initialized;
 
@@ -45,21 +45,14 @@ public final class BufferBuilderStreamingDrawer {
             return;
         }
 
-        init();
-
         VertexFormat format = bufferBuilder.getVertexFormat();
         int vertexCount = bufferBuilder.getVertexCount();
         int drawMode = bufferBuilder.getDrawMode();
-        int stride = format.getSize();
-        int byteCount = vertexCount * stride;
         if (perfDebugEnabled) {
             GLSMPerfDebug.countBufferBuilder(debugSource, drawMode, vertexCount);
         }
-        ByteBuffer buffer = bufferBuilder.getByteBuffer().duplicate();
-        buffer.position(0);
-        buffer.limit(byteCount);
-
-        drawRaw(buffer, format, vertexCount, drawMode, debugSource);
+        // drawRaw already creates the bounded view and leaves the source buffer untouched.
+        drawRaw(bufferBuilder.getByteBuffer(), format, vertexCount, drawMode, debugSource);
         bufferBuilder.reset();
         if (perfDebugEnabled) {
             GLSMPerfDebug.end(GLSMPerfDebug.Stage.BUFFERBUILDER_STREAM_DRAW, perfStart);
@@ -100,9 +93,14 @@ public final class BufferBuilderStreamingDrawer {
             }
 
             final DrawPath drawPath = DrawPath.fromFirstVertex(firstVertex);
+            if (drawPath == DrawPath.ORPHAN && state.orphanBuffer == null) {
+                restoreArrayBuffer = true;
+                state.orphanBuffer = new OrphanStreamingBuffer();
+                state.orphanVao = VanillaVertexBufferRenderer.createStreamingVertexArray(format, state.orphanBuffer.getBufferId());
+            }
             final int persistentVbo = drawPath == DrawPath.PERSISTENT ? persistentBuffer.getBufferId() : 0;
             final int vao = drawPath.select(state.persistentVao, state.orphanVao);
-            final int vbo = drawPath.select(persistentVbo, state.orphanBuffer.getBufferId());
+            final int vbo = drawPath == DrawPath.PERSISTENT ? persistentVbo : state.orphanBuffer.getBufferId();
             // Force the real VAO binding even when the GLStateManager cache already matches.
             // Native code outside this drawer can change the actual binding without updating the cache.
             GLStateManager.glBindVertexArray(vao);
@@ -220,9 +218,6 @@ public final class BufferBuilderStreamingDrawer {
 
         state = new DrawState();
         state.vertexFlags = VanillaVertexBufferRenderer.vertexFlags(format);
-        state.orphanBuffer = new OrphanStreamingBuffer();
-        state.orphanVao = VanillaVertexBufferRenderer.createStreamingVertexArray(format, state.orphanBuffer.getBufferId());
-
         if (persistentBuffer != null) {
             state.persistentVao = VanillaVertexBufferRenderer.createStreamingVertexArray(format, persistentBuffer.getBufferId());
         }
@@ -262,4 +257,3 @@ public final class BufferBuilderStreamingDrawer {
         }
     }
 }
-

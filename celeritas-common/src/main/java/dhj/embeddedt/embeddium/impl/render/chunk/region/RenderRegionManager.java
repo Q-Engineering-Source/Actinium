@@ -61,12 +61,17 @@ public class RenderRegionManager {
 
     public void uploadMeshes(CommandList commandList, Collection<ChunkJobResult.Success<? extends ChunkTaskOutput>> results, Runnable graphUpdateTrigger) {
         final long perfStart = GLSMPerfDebug.isEnabled() ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.CHUNK_UPLOAD) : 0L;
+        this.stagingBuffer.beginUploadBatch();
         try {
             for (var entry : this.createMeshUploadQueues(results)) {
                 new MeshUploader(commandList, entry.getKey(), graphUpdateTrigger).processResults(entry.getValue());
             }
         } finally {
-            GLSMPerfDebug.end(GLSMPerfDebug.Stage.CHUNK_UPLOAD, perfStart);
+            try {
+                this.stagingBuffer.endUploadBatch(commandList);
+            } finally {
+                GLSMPerfDebug.end(GLSMPerfDebug.Stage.CHUNK_UPLOAD, perfStart);
+            }
         }
     }
 
@@ -77,7 +82,7 @@ public class RenderRegionManager {
     }
 
     private class MeshUploader {
-        private final Map<GlVertexFormat, ArrayList<PendingSectionUpload>> uploadsByFormat = new Object2ObjectOpenHashMap<>(2);
+        private final Map<GlVertexFormat, List<PendingSectionUpload>> uploadsByFormat = new Object2ObjectOpenHashMap<>(2);
         private final CommandList commandList;
         private final RenderRegion region;
         private final Runnable graphUpdateTrigger;
@@ -90,8 +95,8 @@ public class RenderRegionManager {
             this.graphUpdateTrigger = graphUpdateTrigger;
         }
 
-        private ArrayList<PendingSectionUpload> getUploadQueue(TerrainRenderPass pass) {
-            return uploadsByFormat.computeIfAbsent(pass.vertexType().getVertexFormat(), $ -> new ArrayList<>());
+        private List<PendingSectionUpload> getUploadQueue(TerrainRenderPass pass) {
+            return uploadsByFormat.computeIfAbsent(pass.vertexType().getVertexFormat(), $ -> new ObjectArrayList<>());
         }
 
         private void processBuildResult(ChunkBuildOutput result) {
@@ -198,7 +203,7 @@ public class RenderRegionManager {
 
         for (var holder : results) {
             var result = holder.output();
-            var queue = map.computeIfAbsent(result.render.getRegion(), k -> new ArrayList<>());
+            var queue = map.computeIfAbsent(result.render.getRegion(), k -> new ObjectArrayList<>());
             queue.add(result);
         }
 

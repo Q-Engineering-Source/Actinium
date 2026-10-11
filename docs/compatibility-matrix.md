@@ -1,6 +1,6 @@
 # Actinium 兼容性矩阵
 
-最后更新：2026-09-23。
+最后更新：2026-10-10。
 
 状态定义：`已验证` 表示在记录的版本和场景中通过；`部分` 表示能运行但存在已知缺口；
 `无法启用` 表示光影包不能成功开启；`未验证` 不代表不兼容。更新记录时必须填写 Actinium commit、
@@ -8,6 +8,54 @@
 
 本轮验证环境：Actinium `30c7ffb`、Java 25.0.3、Cleanroom 0.5.12-alpha、Distant Horizons 3.1.2-b、
 Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
+
+> 2026-10-10 追加：第一人称手持染色玻璃被水面和云层遮挡的问题已修复。用户反馈该问题不限于 BSL；根因是
+> `HandRenderer` 依据光影包可选的 `layer.*` 覆盖表分类手持透明方块，未声明覆盖的包会让染色玻璃留在较早的
+> `HAND_SOLID` pass。现在改用 Minecraft 方块自身的 `getRenderLayer()`，因此不依赖光影包元数据。
+> Cleanroom 0.6.12-alpha + BSL 10.1.8，用户实机确认手持蓝色染色玻璃时水面和云层不再遮挡；此次记录未逐包列出
+> 其他光影包版本。`./gradlew compileJava --no-daemon` 通过，自动化 `check` 未运行。修复 commit `9a6d8c17`。
+
+> 2026-10-09 追加：Derivative Main d24.4.14 开启景深（DoF）后创建光影管线失败（`composite3.vsh`
+> 编译报 `assignment to non-lvalue`）并回退原版渲染的修复——该包在 composite3
+> （`program/Post/Temporal.vert`）中自声明 `flat out/in float centerDepthSmooth` varying 并在
+> vertex 阶段自行计算（colortex5 跨帧反馈），而 `CompositeDepthTransformer` 把该名字的**所有**声明
+> 无差别重定向到引擎供值纹理，赋值目标被改写成 `texture2D(...).r = ...` 这一非左值赋值；DoF 关闭时
+> 相关代码被预处理移除，故表现为"首次加载正常、打开 DoF 后必现"。修复为仅当该 stage 声明的是
+> `uniform`（引擎供值的 OptiFine 约定路径）时才重定向，包自有 varying/局部变量保持原样，替换串同时
+> 对齐 GTNH 上游改用 `texture()`。离线回归测试修复前复现输出与生产日志逐字一致，`./gradlew check`
+> 通过，用户实机确认（commit `b40e8427`），详见 [docs/compat/derivative.md](compat/derivative.md)。
+
+> 2026-10-02 追加：ScalingGUIs 1.12.2-1.0.3.1 与 RSO 页 GUI Scale 滑块的冲突已做兼容——检测到该
+> mod 时，Actinium 将滑块替换为复用其 "GUI Scales" 文本的无背景按钮，并直接打开其配置 GUI；未加载时
+> 维持原滑块。实机验证待用户确认，详见 [docs/compat/scalingguis.md](compat/scalingguis.md)。
+
+> 2026-09-30 追加：Immersive Engineering 0.12-98 Garden Cloche 在 shader 下玻璃不透明（issue #197）已修复；
+> 用户确认 Solas Shader V3.7b 下玻璃恢复半透明。根因是 `ProgramId.BlockTrans` 默认强制关闭 blend，
+> 锁住 GLSM 后延迟了方块实体自身的标准 alpha blend 请求；移除该默认值后，shader pack 显式 blend directive
+> 仍优先。ITT 3.2 与 Photon v1.3b 仍受其 1.12.2 block shader fallback 限制，见
+> [docs/compat/immersiveengineering.md](compat/immersiveengineering.md)。验证基于分支
+> `fix/ie-cloche-transparency`（`c318ed54`）。
+
+> 2026-09-29 追加：LittleTiles 1.5.87 在 shader 下与普通整块光照不一致（issue #193）已由用户在
+> Photon v1.3b dev 环境确认修复；验证场景含相邻原版橡木木板、ArchitectureCraft shape 与 LittleTiles
+> 方块。根因、quad 光照拆分及缓存期间保留 shader block context 的细节见
+> [docs/compat/littletiles.md](compat/littletiles.md)；ArchitectureCraft 1.12-3.108 的同类路径见
+> [docs/compat/architecturecraft.md](compat/architecturecraft.md)。原 issue 也报告 Solas 与其他 shader
+> pack，跨包回归尚未完成，因此两项只记录本次已测场景。
+
+> 2026-09-24 追加：Better Biome Blend Continued 1.2.0 + RLFoliage 2.5.3（issue #162）区块构建线程
+> 崩溃已修复——BBB 在 `BiomeColorHelper#getGrassColorAtPos` 等入口按 chunk 预计算混合颜色，并遍历该
+> chunk 的 3×3 chunk 邻域读取 biome；构建 origin 邻居 chunk 时这一遍历会伸到快照（origin chunk ±1）
+> 之外，而 `WorldSlice#getBiome(BlockPos)` 把相对 chunk 索引直接当数组下标，chunk 618 相对基准
+> 619 的 z 偏移 −1 遂变成 `sections[-4]`（`Index -4 out of bounds for length 64`）。修复为把 biome
+> 查询抽成 `BiomeLookup`：越界坐标夹到快照边缘（最近处的 biome 优于固定 PLAINS 兜底），未持有快照或
+> 缺失数据返回 PLAINS，坐标以 long 做差避免极端坐标回绕。回归测试与红-绿验证通过，实机验证待用户
+> 确认，详见 [docs/compat/betterbiomeblend.md](compat/betterbiomeblend.md)。
+> 
+> 2026-09-25 追加：ReplayMod 1.12.2-2.6.13 使用 BSL_v10.1p1 导出视频时崩溃已修复并由用户实机确认——
+> ReplayMod 在视频捕获时取消 `RenderGlobal.drawSelectionBox`，旧 outline HEAD/RETURN 注入因此漏掉清理；
+> PBO 捕获调用的 `glReadPixels(..., long)` 也缺 GLSM 路由。修复细节及 Cleanroom 实测环境见下方
+> [ReplayMod 行](#模组与环境)和 [docs/compat/replaymod.md](compat/replaymod.md)。
 
 > 2026-09-23 追加：GalaxySpace + AsmodeusCore 1.0.4 夜晚自定义天空显示错误（issue #164）的修复——
 > 见下方 [模组与环境](#模组与环境) 的 GalaxySpace 行与
@@ -158,6 +206,12 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 > 自己的光影状态，并用 `HandRenderer.DEPTH`（0.125）的投影压缩替代 OptiFine 的
 > `applyHandDepth`。Complementary Reimagined r5.5.1 + Distant Horizons 实测确认。
 
+> 2026-09-21 追加：NTM-Space 0.9.2 的 Stardar（系统地图）GUI 一打开即崩溃的修复
+> （issue #170，`Unsupported HBM RenderUtil attribute bits: 0x4`）——见下方
+> [模组与环境](#模组与环境) 的 HBM 行与 [docs/compat/hbm.md](compat/hbm.md)。
+> `HbmRenderStateCompat.toGlMask` 将未映射的 HBM attribute 位按 HBM 原有语义忽略；
+> 星图实机确认待补充。
+
 > 2026-09-22 追加：MMCE 使用的方块隐藏（Component Model Hider 1.0，modid
 > `component_model_hider`）在 Actinium 下整体失效的修复——见下方
 > [模组与环境](#模组与环境) 的 Component Model Hider 行与
@@ -181,9 +235,11 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 | BSL                                | 10.0          | 已验证  | 世界加载、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载、Distant Horizons LOD      | -         | `f261611`   |
 | Complementary Reimagined / Unbound | r5.5.1        | 已验证  | 开启、世界渲染、Distant Horizons LOD、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载   | -         | `f261611`   |
 | Bliss                              | 2.1.2         | 已验证  | 开启、世界渲染、Distant Horizons LOD、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载   | -         | `28d976d`   |
-| iterationT                         | 3.2.0         | 已验证  | 开启、世界渲染、Distant Horizons LOD、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载   | -         | `30c7ffb`   |
+| iterationT                         | 3.2.0         | 部分    | 开启、世界渲染、Distant Horizons LOD、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载   | Immersive Engineering Garden Cloche 玻璃泛白；该包 block shader 将输出 alpha 固定为 1 | `fix/ie-cloche-transparency` (`c318ed54` 基线) |
 | iterationRP                        | 0.7.7 / 0.8.7 | 已验证  | 开启、世界渲染、Distant Horizons LOD、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载   | -         | `28d976d`   |
-| Photon                             | v1.3b         | 部分    | 开启、世界渲染、地形、水（2026-08-31 水面修复后）、GUI                                     | 阴影/实体/维度切换/重载等场景待补充验证；选项菜单部分元素缺失（GTAO 等 profile 项告警，与水面无关） | `fix/photon-water-surface` |
+| Photon                             | v1.3b         | 部分    | 开启、世界渲染、地形、水（2026-08-31 水面修复后）、GUI、LittleTiles/ArchitectureCraft 相邻方块光照（issue #193，2026-09-29） | IE Garden Cloche 玻璃发黑：1.12.2 配置禁用专用 `gbuffers_block_translucent` 程序并回退 solid block shader；阴影/实体/维度切换/重载等场景待补充验证；选项菜单部分元素缺失（GTAO 等 profile 项告警，与水面无关） | `fix/ie-cloche-transparency` (`c318ed54` 基线) |
+| Solas Shader                      | V3.7b         | 部分    | Immersive Engineering 0.12-98 Garden Cloche（泥土 + 种子）玻璃半透明，issue #197，用户确认（2026-09-30） | 其他渲染路径未验证 | `fix/ie-cloche-transparency` (`c318ed54` 基线) |
+| Derivative Main                  | d24.4.14      | 部分    | 开启、景深（DoF）开关与重复 Apply、维度切换、重载（2026-10-09 centerDepthSmooth 改写修复后用户实机确认） | 地形/实体/水/天空等完整场景清单与 Distant Horizons 组合未验证 | `fix/composite-center-depth-smooth`（`b40e8427`） |
 | SEUS PTGI HRR                      | Test 2.1      | 无法启用 | -                                                              | 光影包不能成功开启 | `f261611`   |
 
 ## 模组与环境
@@ -191,19 +247,25 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 | 组件               | 状态   | 接入方式                               | 备注               |
 |------------------|------|------------------------------------|------------------|
 | Cleanroom Loader | 必需   | Forge/Cleanroom 启动与 MixinBootstrap | 当前目标运行环境         |
+| Immersive Engineering | 部分（Solas V3.7b 场景已验证） | 无 Mixin（Iris `BlockTrans` 默认 blend 状态修正） | 0.12-98：Garden Cloche 玻璃不透明（issue #197）已由用户在 Solas V3.7b 下确认修复；ITT 3.2 与 Photon v1.3b 因各自 1.12.2 shader fallback 仍呈现泛白/发黑，详见 [docs/compat/immersiveengineering.md](compat/immersiveengineering.md) |
+| LittleTiles      | 部分（Photon v1.3b 实测通过） | 条件 Mixin（shader quad context + 独立 AO 顶点通道） | 1.5.87 + CreativeCore 1.10.71（issue #193）：放置的微型方块在光影下比相邻原版方块暗；已修复并经用户确认，Solas 与其他 shader pack 待回归，详见 [docs/compat/littletiles.md](compat/littletiles.md) |
+| ArchitectureCraft | 部分（Photon v1.3b 实测通过） | 条件 Mixin（`RenderTargetWorld#setLight` 的 AO / 方向着色拆分） | 1.12-3.108：用户发现放置 shape 有同类偏暗现象；与原版木板、LittleTiles 同场验证，其他 shader pack 待回归，详见 [docs/compat/architecturecraft.md](compat/architecturecraft.md) |
+| ReplayMod        | 已验证（视频渲染） | 高优先级 selection-box outline scope + GLSM PBO offset readback | 1.12.2-2.6.13 在 BSL_v10.1p1 视频导出时的 G-buffer 状态崩溃及 PBO `glReadPixels(..., long)` 缺失重载已修复；Cleanroom 0.6.13-alpha 整合包实测确认，详见 [docs/compat/replaymod.md](compat/replaymod.md) |
 | Celeritas        | 内嵌   | Gradle 子项目、最终 Jar 合并               | Actinium 的区块渲染器  |
 | GLSM             | 内嵌   | Gradle 子项目、service provider        | 管理 GL 状态和固定管线兼容  |
 | GTNHLib          | 内嵌   | Gradle 子项目、bridge API              | 提供底层渲染与内存工具      |
 | Distant Horizons | 部分   | DH 公开 API + Iris LOD override programs（不注入 DH）   | 版本变化敏感，必须按指定版本验证；`IIrisAccessor` 注册与延迟透明 LOD 开关均由 DH 持有（上游 `b15b57cf` 起），搭配更早版本的 DH 会缺失光影 LOD 集成；3.3.0-1.12.2 实机回归通过（2026-09-18，见 [docs/compat/dh.md](compat/dh.md)） |
-| Lumenized        | 已验证（启动） | 条件 Mixin（bloom 兼容层，类探测门控 `class:gregtech.client.utils.BloomEffectUtil`） | 1.0.3：bloom 兼容层使其泛光真实生效（depth 共享 + FBO 清理 + composite 深度测试 + GL 状态守护，取代已移除的 bloomStyle=0 safe mode）；第一人称手部/所持物品全黑已由 `BloomStateGuard` 修复并实机确认（真因为 Unreal 管线对 2..4 号纹理单元的 TEXTURE_2D 使能泄漏，守护覆盖全部纹理单元），详见 [docs/compat/lumenized.md](compat/lumenized.md) |
+| Lumenized        | 已验证（启动） | 条件 Mixin（bloom 兼容层，类探测门控 `class:gregtech.client.utils.BloomEffectUtil`） | 1.0.3：bloom 兼容层使其泛光真实生效（depth 共享 + FBO 清理 + composite 深度测试 + GL 状态守护，取代已移除的 bloomStyle=0 safe mode）；第一人称手部/所持物品全黑已由 `BloomStateGuard` 修复并实机确认（真因为 Unreal 管线对 2..4 号纹理单元的 TEXTURE_2D 使能泄漏，守护覆盖全部纹理单元）；空 ticket 组跳过后处理优化（`MixinBloomEmptyGroupPostProcess`，同配置同类探测门控）已加入，自动化测试覆盖、实机画面对比待验证，详见 [docs/compat/lumenized.md](compat/lumenized.md) |
 | StellarCore      | 已验证  | 无（不再需要配置规避） | HUD 缓存相关 GUI/HUD 症状实为 Draconic Evolution 引起（2026-08-12 实测归因修正）；DE 兼容桥修复后 HUD 正常，`HudCaching`/`HUDFramebuffer` 可恢复开启，详见 [docs/compat/stellarcore.md](compat/stellarcore.md) |
 | Draconic Evolution | 已验证 | 条件 Mixin（CCL GlStateTracker 兼容桥） | DE 2.3.28.354 在场时云异常/草方块侧面偏绿/主菜单消失；根因为 DE 每帧 HUD 经 CCL GlStateTracker 基于冻结的原版 GlStateManager 字段重置 GL 状态，已由 `mixins.actinium.ccl.json` 兼容桥修复（dev 回归通过，生产整合包全量回归待做），详见 [docs/compat/draconic-evolution.md](compat/draconic-evolution.md) |
+| ScalingGUIs | 待实机验证 | `Mods.SCALINGGUIS` 门控 + RSO 外部按钮 | 1.12.2-1.0.3.1：RSO 页的 GUI Scale 滑块替换为打开其配置 GUI 的无背景按钮；未加载时保留原滑块，详见 [docs/compat/scalingguis.md](compat/scalingguis.md) |
 | Fluidlogged API  | 代码支持 | compile-only API、条件调用              | 尚缺当前运行时验证记录      |
 | Gibbed           | 代码支持 | late Mixin、模型批处理路径                 | 尚缺当前运行时验证记录      |
 | Chunk Animator   | 部分 | 条件桥（ChunkAnimationProvider）+ 动画 section 单独绘制 | 1.12.2-1.2.1（236484:3850023）dev 运行通过（coremod 加载、兼容层启用、进世界无异常）；动画视觉确认待补，详见 [docs/compat/chunkanimator.md](compat/chunkanimator.md) |
 | VoxelMap         | 部分 | 条件 Mixin（CPU 纹理路径 + 线性过滤 + scissor 重路由 + HudCaching alpha 保护） | 1.9.25 小地图黑屏/黑块已修复（dev 验证圆内正常显示地图内容、HUD 不被缓存隐藏，见 [docs/compat/voxelmap.md](compat/voxelmap.md)）；已知缺口：与 StellarCore `HudCaching` 组合时小地图圆周仍可能残留黑块（VoxelMap 全屏清 alpha + DST_ALPHA 混合与 HUD 缓存 FBO 的第三方冲突，`HudCaching=false` 即消失，非本模组缺陷）；验证 VoxelMap 需停用 JourneyMap（二者频道冲突） |
 | ModernUI         | 代码支持 | GUI scale hook                     | 尚缺当前运行时验证记录      |
-| HBM's Nuclear Tech - Community Edition | 已验证 | 条件 Mixin（RenderUtil 状态栈 + Sedna 武器手部深度）+ early Mixin（TileEntityRendererDispatcher 世界 lightmap 同步，注入体按 `isHbmInstalled()` 门控） | 2.5.0.5（CurseForge 1312314:8330665）：FENSU 与其他 HBM 机器的 WaveFront raw VAO 模型在实际场景中正常显示；修复前的 stale lightmap、黑色剪影和 depth 恢复异常不再复现；第一人称手持 Sedna 系武器在光影下清空世界深度导致的深度崩坏已修复（2026-09-21，Complementary Reimagined r5.5.1 + Distant Horizons 实测确认，详见 [docs/compat/hbm.md](compat/hbm.md)）；Java 25.0.3、Cleanroom 0.6.12-alpha dev 回归通过 |
+| Mekanism-CE-Unofficial | 部分 | 条件 Mixin（Mekanism glow pass 的 deferred alpha blend 与 Iris blend lock 桥接） | 10.0.5.021（CurseForge `840735:8862568`）：MakeUp UltraFast 9.1f 下大型化学清洗机贴图已恢复，详见 [docs/compat/mekanism.md](compat/mekanism.md)；其他光影包及手持模型回归待验证 |
+| HBM's Nuclear Tech - Community Edition | 已验证 | 条件 Mixin（RenderUtil 状态栈 + Sedna 武器手部深度）+ early Mixin（TileEntityRendererDispatcher 世界 lightmap 同步，注入体按 `isHbmInstalled()` 门控） | 2.5.0.5（CurseForge 1312314:8330665）：FENSU 与其他 HBM 机器的 WaveFront raw VAO 模型在实际场景中正常显示；修复前的 stale lightmap、黑色剪影和 depth 恢复异常不再复现；第一人称手持 Sedna 系武器在光影下清空世界深度导致的深度崩坏已修复（2026-09-21，Complementary Reimagined r5.5.1 + Distant Horizons 实测确认，详见 [docs/compat/hbm.md](compat/hbm.md)）；Java 25.0.3、Cleanroom 0.6.12-alpha dev 回归通过；2.6.1.0 + NTM-Space 0.9.2：issue #170 的 Stardar GUI 未映射 attribute 位崩溃已修复，星图实机确认待补充（详见 [docs/compat/hbm.md](compat/hbm.md)） |
 | Depths Update    | 已验证 | 兼容门控（`compat/depthsupdate`：公开 API 推导 section 范围 + storage 索引映射） | 1.0.0-a10：扩展世界高度（默认 -64..320）下 Y<0 与 Y>255 的方块不再缺失（渲染器原先硬编码 0-255）；dev 实测正常；无 Depths 时回退 vanilla 行为 |
 | EnderIO CEu / EnderCore CEu | 已验证 | 无（核心渲染语义修复，非模组接入） | 5.4.2 + EnderCore 0.5.81：光影开启时流体罐内液体被罐体玻璃窗深度遮挡的问题已修复（`cb4feaa5`，translucent terrain pass 不再写深度）；MakeUp Ultra Fast 9.4c + Cleanroom 0.5.17-alpha 实测通过；2026-09-02 修复 #85（`da83c59`）引入的回潮——translucent pass 被错误翻转为写深度导致有无光影流体均被玻璃遮挡，已恢复 vanilla 深度语义，双路径实测通过 |
 | Snow! Real Magic! | 已验证 | 兼容门控（SRM 的 snow_layer 块退回 vanilla dispatcher 路径） | 0.7.4：带雪栅栏不渲染已修复（SRM 把被覆盖方块替换为带 SnowTile 的雪层、仅在 `BlockRendererDispatcher.renderBlock` 内重绘，快速区块路径已绕过）；`6aee395`，dev 运行验证通过（MakeUp Ultra Fast 下无光影 + 光影各验一次） |
@@ -218,7 +280,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 | Chocolate Quest Repoured | 已验证 | 无侵入（glsm compat shader 转换器修复：6 个 parse-breaking 旧式采样函数 pre-parse 改名 + 语法错误 Fail Fast 兜底） | 2.8.0B：共存启动 preinit 崩溃（`Failed to compile shader: 0`）已修复，根因为 glsl-transformation-lib 文法将 textureCube 等词法化为关键字 token 且 ANTLR 静默恢复产出畸形 GLSL（issue #123，见 [docs/compat/chocolate-quest-repoured.md](compat/chocolate-quest-repoured.md)）；dev 实机验证通过（CQR 2.8.0B + geckolib 3.0.31 + ReachFix 1.1.3 共存启动到标题界面，SphereRenderer 着色器编译正常；进世界时 CQR 在 Server thread 重载纹理集亦通过（调试命名注入无 GL 上下文时跳过，见同文档次生问题一节） |
 | Gnetum | 部分 | launchwrapper transformer（`GnetumHudCachingCompatTransformer` 镜像 `Gnetum.rendering` 窗口到 `GLSMConfig.hudCacheOverride`，复用 StellarCore HudCaching 的 GLSM 覆盖路径）+ revoui 渐变重定向在缓存窗口内改道（直接画入缓存 FBO） | 1.4.3（CurseForge 1220460 / Modrinth）：①HUD 分帧缓存致半透明 HUD 元素随 pass 轮转闪烁已修复并实机确认（根因同 StellarCore 模式 A：预乘覆盖钩子被 glsm 重定向架空），commit `5d820b0e`；②与 Revo UI 共存时 GUI 背景渐变随 pass 轮转闪烁已修复（缓存使渐变 defer 管线降为 1/3 帧率；修复为缓存窗口内直接画入缓存 FBO，commit `edf7c6f2`），build 全绿、生产实机回归待确认；已知缺口：手部缓存（`gnetum:minecraft_hand`，默认关）未适配、危险混合检测在 Actinium 下不生效、Gnetum 的 modid 解析在 Cleanroom 下整体失效（上游缺陷，见文档），详见 [docs/compat/gnetum.md](compat/gnetum.md) |
 | CubicChunks | 部分 | 注入共存（天空距离兜底改为 `ModifyExpressionValue` 链式组合，无模组类引用） | 0.0.1301（292243:3546640）：共存启动 `EntityRenderer` invalid classes 崩溃已修复——其 vertviewdist `MixinEntityRenderer` 的 @Redirect 与 `EntityRendererIrisMixin` 竞争同一批 `GameSettings.renderDistanceChunks` 读取，冲突跳过叠加 `defaultRequire=1` 校验失败使类变换整体失败；改为 MEV + `require=0` 后两种应用顺序均不崩溃（Actinium 先应用时与 CC 值链式生效，CC 先应用时天空距离兜底让位于其垂直视距）；进世界渲染回归未验证（未 runClient） |
-| GregTech CEu | 部分 | 注入容差（translucent 层 debug 标记放宽为 `require=0`）+ bloom 兼容层（与 Lumenized 共用 `mixins.actinium.lumenized.json`，类探测门控） | 2.8.10-beta（557242:5519022）：共存启动 `EntityRenderer` invalid classes 崩溃已修复并实机确认——`GregTechTransformer` 用 ASM 把 `renderWorldPass` 第 4 处 `renderBlockLayer`（TRANSLUCENT）替换为 `BloomEffectUtil.renderBloomBlockLayer`，ordinal=3 注入 0 命中触发 require 校验失败；bloom 兼容层对 GTCEu 生效（同包同名 bloom 类，`renderBloomInternal` 拆分结构已适配），泛光下第一人称手部/所持物品全黑已由 `BloomStateGuard` 修复并实机确认（真因为 Unreal 管线对 2..4 号纹理单元的 TEXTURE_2D 使能泄漏，守护覆盖全部纹理单元），详见 [docs/compat/lumenized.md](compat/lumenized.md)；其对 RenderChunk/RegionRenderCacheBuilder 等的其余 ASM 改写未审计 |
+| GregTech CEu | 部分 | 注入容差（translucent 层 debug 标记放宽为 `require=0`）+ bloom 兼容层（与 Lumenized 共用 `mixins.actinium.lumenized.json`，类探测门控） | 2.8.10-beta（557242:5519022）：共存启动 `EntityRenderer` invalid classes 崩溃已修复并实机确认——`GregTechTransformer` 用 ASM 把 `renderWorldPass` 第 4 处 `renderBlockLayer`（TRANSLUCENT）替换为 `BloomEffectUtil.renderBloomBlockLayer`，ordinal=3 注入 0 命中触发 require 校验失败；bloom 兼容层对 GTCEu 生效（同包同名 bloom 类，`renderBloomInternal` 拆分结构已适配），泛光下第一人称手部/所持物品全黑已由 `BloomStateGuard` 修复并实机确认（真因为 Unreal 管线对 2..4 号纹理单元的 TEXTURE_2D 使能泄漏，守护覆盖全部纹理单元）；空 ticket 组跳过后处理优化（`MixinBloomEmptyGroupPostProcess`，同配置同类探测门控，pass 注入按 `renderBloomInternal` 拆分结构容错）已加入，自动化测试覆盖、实机画面对比待验证，详见 [docs/compat/lumenized.md](compat/lumenized.md)；其对 RenderChunk/RegionRenderCacheBuilder 等的其余 ASM 改写未审计 |
 | Obscure Tooltips | 已验证 | 条件 Mixin（`mixins.actinium.obscuretooltips.json`：tooltip 盔甲预览的实体渲染包裹进 GUI entity surface，Iris 盔甲 item ID/glint 钩子在该 surface 内跳过） | 3.10.2（CurseForge 715660:8522661）：tooltip 内渲染盔甲架实体时 Iris 盔甲钩子把世界渲染 GBuffer/item ID 状态带进 GUI pass，可产生全屏黑罩（PR #142）；修复仅在该 surface 激活期间跳过盔甲钩子，世界盔甲渲染不变；dev 实机回归通过（光影下悬停盔甲 tooltip 无黑罩，世界盔甲渲染正常） |
 | CensoredASM / Chibi（LoliASM） | 已验证（dev） | 无侵入（提供 `org.taumc.celeritas.core.CeleritasLoadingPlugin` 探测标记类，触发 LoliASM 自带的 Celeritas 让位路径） | 5.33（CurseForge 460609:8225778，issue #159）：共存启动崩溃已修复——其 on-demand animated textures 与 Actinium 在 `TextureMap.updateAnimations` / `BufferBuilder.tex` 上双重 overwrite，`squashBakedQuads` 亦与 `MixinBakedQuad` 的 `@Shadow` 字段冲突；LoliASM 本就会在探测到 Celeritas 系时关闭两者，Actinium 移除 Celeritas 桥后该探测失效。dev 实机验证：LoliASM 两条让位日志出现、无 Mixin 失败、进世界正常；生产整合包回归待用户确认，详见 [docs/compat/censoredasm.md](compat/censoredasm.md) |
 | NeverEnoughAnimation | 已验证 | 顶点 alpha 覆写扩展点（`ItemVertexAlphaOverrides`：外部缩放激活时，快速物品路径跳过 raw append 与 display list 缓存，改走 `renderQuads`） | 1.0.7（CurseForge 1062347:7289408，issue #145）：GUI 开/关淡入的顶点 alpha 被 display list 缓存烘焙成永久透明（raw append 分支则整条丢弃该缩放），导致箱子／背包 GUI 物品不可见；dev 实机回归通过（物品随 GUI 淡入并最终完全可见，背包与世界物品无回归）。附带归因记录：NEA 的 dev-only `drawScreenDebug` 会在 `BackgroundDrawnEvent` 留下标准物品光照，使 `GuiChest` 面板变暗，属上游调试代码缺陷，详见 [docs/compat/neverenoughanimation.md](compat/neverenoughanimation.md) |

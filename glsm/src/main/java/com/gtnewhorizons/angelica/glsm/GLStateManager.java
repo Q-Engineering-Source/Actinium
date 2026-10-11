@@ -4992,6 +4992,15 @@ public class GLStateManager {
         RENDER_BACKEND.readPixels(x, y, width, height, format, type, pixels);
         restorePixelPackBuffer();
     }
+
+    /**
+     * Reads pixels into the currently bound pixel-pack buffer at a byte offset. This overload
+     * preserves that binding for PBO-backed capture paths that pass a raw OpenGL buffer offset.
+     */
+    public static void glReadPixels(int x, int y, int width, int height, int format, int type, long pixelBufferOffset) {
+        type = remapPixelTypeForGLES(format, type);
+        RENDER_BACKEND.readPixels(x, y, width, height, format, type, pixelBufferOffset);
+    }
     public static void glTexStorage2D(int target, int levels, int internalFormat, int width, int height) {
         int texture = getBoundTextureForGpuDiagnostics();
         recordGpuCommand(GpuCommandType.TEX_STORAGE_2D, GpuCommandPhase.BEGIN, texture, packDimensions(width, height));

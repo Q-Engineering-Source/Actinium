@@ -1,6 +1,7 @@
 package com.gtnewhorizons.angelica.glsm.streaming;
 
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
+import com.gtnewhorizons.angelica.glsm.backend.VSyncMode;
 
 import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
@@ -29,6 +30,8 @@ class StubRenderBackend extends RenderBackend {
     @Override public boolean isAvailable() { throw new UnsupportedOperationException(); }
     @Override public String getName() { throw new UnsupportedOperationException(); }
     @Override public boolean hasContext() { throw new UnsupportedOperationException(); }
+    @Override public boolean isCurrent() { throw new UnsupportedOperationException(); }
+    @Override protected VSyncMode applyVSyncMode(VSyncMode preferred) { throw new UnsupportedOperationException(); }
     @Override public int getMinGLSLVersion() { throw new UnsupportedOperationException(); }
     @Override public void flush() { throw new UnsupportedOperationException(); }
     @Override public void finish() { throw new UnsupportedOperationException(); }
@@ -152,6 +155,7 @@ class StubRenderBackend extends RenderBackend {
     @Override public void uniform3i(int location, int v0, int v1, int v2) { throw new UnsupportedOperationException(); }
     @Override public void uniform4f(int location, float v0, float v1, float v2, float v3) { throw new UnsupportedOperationException(); }
     @Override public void uniform4i(int location, int v0, int v1, int v2, int v3) { throw new UnsupportedOperationException(); }
+    @Override public void uniform2(int location, FloatBuffer value) { throw new UnsupportedOperationException(); }
     @Override public void uniform3(int location, FloatBuffer value) { throw new UnsupportedOperationException(); }
     @Override public void uniform4(int location, FloatBuffer value) { throw new UnsupportedOperationException(); }
     @Override public void uniformMatrix3(int location, boolean transpose, FloatBuffer value) { throw new UnsupportedOperationException(); }
@@ -187,6 +191,7 @@ class StubRenderBackend extends RenderBackend {
     @Override public void getBufferSubData(int target, long offset, DoubleBuffer data) { throw new UnsupportedOperationException(); }
     @Override public int getBufferParameteri(int target, int pname) { throw new UnsupportedOperationException(); }
     @Override public boolean isBuffer(int buffer) { throw new UnsupportedOperationException(); }
+    @Override public boolean isVertexArray(int array) { throw new UnsupportedOperationException(); }
     @Override public int genVertexArrays() { throw new UnsupportedOperationException(); }
     @Override public long getContextHandle() { return 0L; }
     @Override public void deleteVertexArrays(int array) { throw new UnsupportedOperationException(); }

@@ -72,6 +72,7 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
 
     public static class PerformanceSettings {
         public int chunkBuilderThreads = 0;
+        public boolean trimChunkBuildScratch = true;
         @SerializedName("always_defer_chunk_updates_v2") // this will reset the option in older configs
         public boolean alwaysDeferChunkUpdates = true;
 
@@ -114,6 +115,9 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         public GraphicsQuality leavesQuality = GraphicsQuality.DEFAULT;
 
         public boolean enableVignette = true;
+
+        /** Uses camera-radial distance for vanilla fog instead of distance along the view plane. */
+        public boolean circularFog = false;
 
         // Vanilla widens the field of view while sprinting/flying and narrows it while drawing a bow.
         // That factor only reaches the projection matrix when getFOVModifier is called with

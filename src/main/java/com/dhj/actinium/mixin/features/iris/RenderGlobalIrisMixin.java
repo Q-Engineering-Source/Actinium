@@ -1,7 +1,6 @@
 package com.dhj.actinium.mixin.features.iris;
 
 import net.coderbot.iris.Iris;
-import net.coderbot.iris.apiimpl.IrisApiV0Impl;
 import net.coderbot.iris.layer.GbufferPrograms;
 import net.coderbot.iris.pipeline.DeferredWorldRenderingPipeline;
 import net.coderbot.iris.pipeline.SkyRenderDistance;
@@ -211,28 +210,6 @@ public class RenderGlobalIrisMixin {
         boolean directive = pipeline == null || pipeline.shouldRenderStars();
         if (directive) {
             GlStateManager.callList(list);
-        }
-    }
-
-    @Inject(method = "drawSelectionBox", at = @At("HEAD"))
-    private void actinium$beginOutline(EntityPlayer player, RayTraceResult movingObjectPositionIn, int execute, float partialTicks, CallbackInfo ci) {
-        if (!Iris.enabled) {
-            return;
-        }
-
-        if (IrisApiV0Impl.INSTANCE.isShaderPackInUse()) {
-            GbufferPrograms.beginOutline();
-        }
-    }
-
-    @Inject(method = "drawSelectionBox", at = @At("RETURN"))
-    private void actinium$endOutline(EntityPlayer player, RayTraceResult movingObjectPositionIn, int execute, float partialTicks, CallbackInfo ci) {
-        if (!Iris.enabled) {
-            return;
-        }
-
-        if (IrisApiV0Impl.INSTANCE.isShaderPackInUse()) {
-            GbufferPrograms.endOutline();
         }
     }
 

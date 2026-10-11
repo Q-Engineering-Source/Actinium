@@ -61,12 +61,17 @@ final class ExternalButtonOptionRow extends AbstractOptionRow {
     }
 
     private Component buttonText() {
+        Component label = this.option.externalButtonLabel();
+        if (label == null) {
+            label = BASE_BUTTON_TEXT;
+        }
+
         if (!this.option.isEnabled()) {
-            return BASE_BUTTON_TEXT.copy().withStyle(TextFormatting.STRIKETHROUGH, TextFormatting.GRAY);
+            return label.copy().withStyle(TextFormatting.STRIKETHROUGH, TextFormatting.GRAY);
         }
 
         return Component.empty()
-                .append(BASE_BUTTON_TEXT.copy().withStyle(TextFormatting.UNDERLINE))
+                .append(label.copy().withStyle(TextFormatting.UNDERLINE))
                 .append(Component.literal(" >").withStyle(Style.EMPTY.withColor(this.theme.theme)));
     }
 

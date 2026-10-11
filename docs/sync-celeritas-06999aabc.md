@@ -375,6 +375,26 @@ patch 等价提交（例：`44711ceb7` ≡ `91ef370b8`、`be719b1d7` ≡ `a46579
   → `./gradlew :celeritas-common:compileJmhJava --no-daemon` 验证（编译不需要 GL context）。
   运行基准另开 Linux/CI job（ubuntu-latest 自带 Mesa llvmpipe），不要塞进现有 `build.yml`。
 
+#### Windows EGL 复测与运行方式（2026-09-25）
+
+- 用 JBR 自带的 `libEGL.dll` 实际启动 JMH 后，DLL 可以加载，但
+  `eglBindAPI(EGL_OPENGL_API)` 返回 `0x300c`，该实现不接受基准要求的 desktop OpenGL API；因此单纯把 DLL
+  放进搜索路径不能解决问题。
+- `HeadlessGl` 使用 EGL，不创建窗口。Windows x64 的 `:celeritas-common:jmh` 首次运行时会将
+  `src/jmh/natives/mesa-windows-x64.zip` 解压到 `celeritas-common/build/jmh/mesa-windows-x64`，自动把目录加入 JMH 进程和 fork
+  的 `PATH`/`java.library.path`，并选择 `llvmpipe`；其他平台继续使用系统 EGL。context 创建后会检查
+  OpenGL 4.4，因为 `MappedStagingBuffer` 需要该版本。
+- Mesa ZIP 为 23,849,118 bytes（低于 GitHub 50 MiB 提示线），解压后包含三 DLL 共 62,131,712 bytes；最大
+  DLL 61,716,480 bytes。仓库没有 Git LFS filter。来源、Mesa tag commit、发布包和仓库 ZIP 的 SHA256 与
+  许可证说明见 `THIRD_PARTY_NOTICES.md`。
+- 试跑时两个 GL 属性基准都通过普通 `:celeritas-common:jmh` 命令以 EGL、1 fork、`renderDistance=4`、100 ms
+  warmup/measurement 完成，没有设置运行环境变量。这些短跑只证明 EGL 与 fork runtime 可用，不是性能比较结果。
+- 独立 JMH runtime 还需显式提供游戏运行时原本提供的 Log4j API、fastutil 与 JOML。`:jmh` 使用 `-foe true`
+  使基准 setup/measurement 异常以非零退出码返回，避免只打印 `<failure>` 却显示 Gradle 成功。
+- 验证：`:celeritas-common:compileJmhJava` 通过；Windows 上 `OcclusionCullerBench.staticCameraCountingOnly`
+  与 `MultiDrawBench.emitSolid` 均以 1 fork、`renderDistance=4`、100 ms warmup/measurement 启动并完成。该参数只
+  验证运行链路，不是可用于性能比较的测量结果。
+
 ## 6. 批次与实施顺序（已完成）
 
 | 批次 | 内容 | 说明 |
@@ -440,5 +460,3 @@ ShaderChunkRenderer: There was an error creating a chunk program. Terrain will n
 `line 71: '#else' without an open conditional`）。**今后任何触碰 shader 的改动都要以该测试通过为准。**
 
 **实机确认**：2026-09-21 用户实机确认地形恢复正常（同一次会话中开关状态未变，故确认是修复本身生效）。
-
-

@@ -2,8 +2,11 @@ package dhj.embeddedt.embeddium.api.options.control;
 
 import dhj.embeddedt.embeddium.api.options.structure.Option;
 import dhj.embeddedt.embeddium.impl.gui.framework.InteractionContext;
+import dhj.embeddedt.embeddium.impl.gui.framework.TextComponent;
 import dhj.embeddedt.embeddium.impl.util.Dim2i;
 import net.minecraft.client.gui.GuiScreen;
+
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -17,10 +20,17 @@ import java.util.function.Consumer;
 public final class ExternalButtonControl implements Control<Void> {
     private final Option<Void> option;
     private final Consumer<GuiScreen> screenConsumer;
+    private final @Nullable TextComponent labelText;
 
     public ExternalButtonControl(Option<Void> option, Consumer<GuiScreen> screenConsumer) {
+        this(option, screenConsumer, null);
+    }
+
+    public ExternalButtonControl(Option<Void> option, Consumer<GuiScreen> screenConsumer,
+                                 @Nullable TextComponent labelText) {
         this.option = Objects.requireNonNull(option, "Option must not be null");
         this.screenConsumer = Objects.requireNonNull(screenConsumer, "Screen consumer must not be null");
+        this.labelText = labelText;
     }
 
     @Override
@@ -31,6 +41,11 @@ public final class ExternalButtonControl implements Control<Void> {
     /** Returns the screen-opening command owned by the integration layer. */
     public Consumer<GuiScreen> getScreenConsumer() {
         return this.screenConsumer;
+    }
+
+    @Nullable
+    public TextComponent getLabelText() {
+        return this.labelText;
     }
 
     @Override

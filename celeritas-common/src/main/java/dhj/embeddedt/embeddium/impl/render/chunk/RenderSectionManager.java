@@ -682,13 +682,15 @@ public abstract class RenderSectionManager {
             return;
         }
 
-        // Ensure occlusion threads are stopped at this point, as we're about to mutate render section data.
-        this.finishAllGraphUpdates();
-
-        this.processChunkBuildResults(results);
-
-        for (var result : results) {
-            result.output().delete();
+        try {
+            // Stop occlusion threads before mutating section data; failures still release collected meshes.
+            this.finishAllGraphUpdates();
+            this.processChunkBuildResults(results);
+        } finally {
+            // Upload/shader failures must not leave every collected native mesh for GC recovery.
+            for (var result : results) {
+                result.output().delete();
+            }
         }
 
         // Forcefully mark the graph as needing updates if the previous render list detected an overflow of the
@@ -702,7 +704,7 @@ public abstract class RenderSectionManager {
         this.getCurrentRenderListManager().tickVisibleRenders();
     }
 
-    private void processChunkBuildResults(ArrayList<ChunkJobResult.Success<? extends ChunkTaskOutput>> results) {
+    private void processChunkBuildResults(List<ChunkJobResult.Success<? extends ChunkTaskOutput>> results) {
         var filtered = filterChunkBuildResults(results);
 
         this.regions.uploadMeshes(RenderDevice.INSTANCE.createCommandList(), filtered, this::markGraphDirty);
@@ -815,17 +817,17 @@ public abstract class RenderSectionManager {
         boolean changed = render.setInfo(info);
 
         if (changed) {
-            if (!(info instanceof MinecraftBuiltRenderSectionData<?, ?> data)) {
-                this.sectionsWithGlobalEntities.remove(render);
-            } else if (!data.globalBlockEntities.isEmpty()) {
+            if (info instanceof MinecraftBuiltRenderSectionData<?, ?> data && !data.globalBlockEntities.isEmpty()) {
                 this.sectionsWithGlobalEntities.add(render);
+            } else {
+                this.sectionsWithGlobalEntities.remove(render);
             }
         }
 
         return changed;
     }
 
-    private static List<ChunkJobResult.Success<? extends ChunkTaskOutput>> filterChunkBuildResults(ArrayList<ChunkJobResult.Success<? extends ChunkTaskOutput>> outputs) {
+    private static Collection<ChunkJobResult.Success<? extends ChunkTaskOutput>> filterChunkBuildResults(List<ChunkJobResult.Success<? extends ChunkTaskOutput>> outputs) {
         var map = new Reference2ReferenceLinkedOpenHashMap<RenderSection, ChunkJobResult.Success<? extends ChunkTaskOutput>>();
 
         for (var holder : outputs) {
@@ -855,11 +857,11 @@ public abstract class RenderSectionManager {
             }
         }
 
-        return new ArrayList<>(map.values());
+        return map.values();
     }
 
-    private ArrayList<ChunkJobResult.Success<? extends ChunkTaskOutput>> collectChunkBuildResults() {
-        ArrayList<ChunkJobResult.Success<? extends ChunkTaskOutput>> results = new ArrayList<>();
+    private List<ChunkJobResult.Success<? extends ChunkTaskOutput>> collectChunkBuildResults() {
+        List<ChunkJobResult.Success<? extends ChunkTaskOutput>> results = new ObjectArrayList<>();
         ChunkJobResult<? extends ChunkTaskOutput> result;
 
         while ((result = this.buildResults.poll()) != null) {

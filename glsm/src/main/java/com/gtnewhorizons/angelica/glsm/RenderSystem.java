@@ -661,34 +661,4 @@ public class RenderSystem {
         if (bugfix == null || bugfix.isEmpty()) bugfix = "0";
         return major + minor + bugfix;
     }
-
-    private static volatile boolean isGLES;
-    private static volatile boolean glesDetected;
-
-    public static boolean isGLES() {
-        if (!glesDetected) detectGLES();
-        return isGLES;
-    }
-
-    /**
-     * Whether GL_EXT_clip_cull_distance is available. Desktop GL always supports clip cull
-     * distance; GLES contexts would need the extension (Actinium targets desktop GL only).
-     */
-    public static boolean hasClipCullDistance() {
-        return !isGLES();
-    }
-
-    private static synchronized void detectGLES() {
-        if (glesDetected) return;
-        try {
-            final String v = RENDER_BACKEND.getString(GL11.GL_VERSION);
-            if (v != null && v.startsWith("OpenGL ES ")) {
-                isGLES = true;
-                Integer.parseInt(parseGlVersionString(v));
-            }
-            glesDetected = true;
-        } catch (Throwable ignored) {
-            // No GL context on this thread yet (splash); retry on next call.
-        }
-    }
 }

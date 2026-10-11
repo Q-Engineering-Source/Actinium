@@ -61,6 +61,21 @@ CurseMaven. Their artifacts are governed by their own licenses. Dependencies pla
 `contain` configuration are packaged as nested jars and must keep their original metadata.
 See `gradle/scripts/dependencies.gradle` and `build.gradle` for the authoritative coordinates.
 
+- **Mesa3D EGL runtime (JMH only)**: `celeritas-common/src/jmh/natives/mesa-windows-x64.zip` contains
+  `libEGL.dll`, `libgallium_wgl.dll`, and `opengl32.dll`, copied unmodified from the Mesa3D
+  26.1.8 MSVC x64 release package and repacked without changes. The checked-in ZIP SHA256 is
+  `77ca424f81ecfe3ba3e9871692f4e0d87347ead46a992d28e9492b98ad89c0bfd`; the upstream package is published by
+  [mesa-dist-win](https://github.com/pal1000/mesa-dist-win/releases/expanded_assets/26.1.8)
+  (archive SHA256 `4c6d32e653e0ff9ad07796e40c0bcfabf2764d849e3ce4f3b1590112c87e42f9`).
+  The bundled Mesa source corresponds to tag `mesa-26.1.8`, commit
+  `0fadfea4f394211946f308458f614839ef253ee8`. Mesa has component-level licenses; the upstream
+  license text set is copied to `third-party/licenses/mesa-26.1.8/`. See the
+  [Mesa license and copyright information](https://docs.mesa3d.org/license.html) and the
+  corresponding source tag for file-level SPDX notices. These DLLs are used only by the JMH
+  task and are not included in the distributed mod jar. The `mesa-dist-win` packaging source
+  MIT notice from commit `53ce894` is retained at
+  `third-party/licenses/mesa-dist-win-MIT.txt`.
+
 ## Maintenance rule
 
 For any future imported code:

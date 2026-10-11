@@ -40,6 +40,9 @@ gradle-app.setting
 /assets/
 *.log
 
-# Mesa EGL/GLES DLLs for the (deferred) JMH GL benchmark harness; not committed.
+# JMH extracts its bundled Mesa EGL runtime here; keep the generated DLLs out of Git.
+celeritas-common/build/jmh/mesa-windows-x64/
+
+# Legacy location for locally unpacked Mesa EGL/GLES DLLs.
 celeritas-common/jmh-natives/
 /.tools/

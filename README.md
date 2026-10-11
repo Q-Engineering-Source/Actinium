@@ -1,11 +1,10 @@
 # Actinium
-
 [English](README.en.md)
 
 Actinium 是一个面向 Minecraft 1.12.2 / Cleanroom Loader 的实验性渲染与光影兼容模组。它尝试把更现代的渲染管线带回旧版本客户端，同时兼顾经典模组内容、光影包行为和性能导向的渲染路径。
 
 项目目前围绕 Celeritas、GLSM、GTNHLib 以及类似 Iris 的光影管线展开。重点不是单纯替换某一段渲染代码，而是让地形、实体、阴影、后处理、uniform、framebuffer 归属和 OpenGL 状态切换在旧版客户端中尽量稳定、可控。
-
+![actinium.png](docs/image/actinium.png)
 ## 项目目标
 
 - 重构 Minecraft 1.12.2 客户端的部分渲染路径，使其更接近现代渲染管线。
@@ -103,6 +102,3 @@ Actinium 的开发参考、整合并适配了多个项目中的思路、代码�
 Actinium 的许可证见 `LICENSE`。
 
 来自其他项目的代码，以及围绕这些代码所做的适配性修改，除非相关源文件中另有明确说明，否则继续遵循各自上游项目原本的许可证。
-
-## 广告
-[![Powered by OrcaRouter](https://img.shields.io/badge/Powered_by-OrcaRouter-2563eb)](https://www.orcarouter.ai/ref/ref_8346735b8e00bd6f51cf)

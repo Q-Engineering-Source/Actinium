@@ -764,6 +764,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void readPixels(int x, int y, int width, int height, int format, int type, long pixelBufferOffset) {
+        GL11C.glReadPixels(x, y, width, height, format, type, pixelBufferOffset);
+    }
+
+    @Override
     public void getTexImage(int target, int level, int format, int type, ByteBuffer pixels) {
         GL11C.glGetTexImage(target, level, format, type, pixels);
     }
@@ -1893,86 +1898,6 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     @Override
     public void debugMessageControl(int source, int type, int severity, IntBuffer ids, boolean enabled) {
         GL43C.glDebugMessageControl(source, type, severity, ids, enabled);
-    }
-
-    @Override
-    public void multiDrawArrays(int mode, IntBuffer firsts, IntBuffer counts) {
-        GL14C.glMultiDrawArrays(mode, firsts, counts);
-    }
-
-    @Override
-    public void primitiveRestartIndex(int index) {
-        GL31C.glPrimitiveRestartIndex(index);
-    }
-
-    @Override
-    public void pointParameterf(int pname, float param) {
-        GL14C.glPointParameterf(pname, param);
-    }
-
-    @Override
-    public void pointParameteri(int pname, int param) {
-        GL14C.glPointParameteri(pname, param);
-    }
-
-    @Override
-    public void getActiveAttrib(int program, int index, IntBuffer length, IntBuffer size, IntBuffer type, ByteBuffer name) {
-        final String nameStr = GL20C.glGetActiveAttrib(program, index, size, type);
-        if (name != null && nameStr != null) {
-            final byte[] bytes = nameStr.getBytes(StandardCharsets.UTF_8);
-            final int n = Math.min(bytes.length, name.remaining());
-            name.put(bytes, 0, n);
-            if (length != null && length.remaining() > 0) length.put(0, n);
-        }
-    }
-
-    @Override
-    public String getActiveAttrib(int program, int index, int maxLength, IntBuffer sizeType) {
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            final IntBuffer size = stack.callocInt(1);
-            final IntBuffer type = stack.callocInt(1);
-            final String name = GL20C.glGetActiveAttrib(program, index, size, type);
-            if (sizeType != null && sizeType.remaining() >= 2) {
-                sizeType.put(0, size.get(0));
-                sizeType.put(1, type.get(0));
-            }
-            return name;
-        }
-    }
-
-    @Override
-    public int genRenderbuffers() {
-        return GL30C.glGenRenderbuffers();
-    }
-
-    @Override
-    public void deleteRenderbuffers(int renderbuffer) {
-        GL30C.glDeleteRenderbuffers(renderbuffer);
-    }
-
-    @Override
-    public void bindRenderbuffer(int target, int renderbuffer) {
-        GL30C.glBindRenderbuffer(target, renderbuffer);
-    }
-
-    @Override
-    public void renderbufferStorage(int target, int internalformat, int width, int height) {
-        GL30C.glRenderbufferStorage(target, internalformat, width, height);
-    }
-
-    @Override
-    public void renderbufferStorageMultisample(int target, int samples, int internalformat, int width, int height) {
-        GL30C.glRenderbufferStorageMultisample(target, samples, internalformat, width, height);
-    }
-
-    @Override
-    public void framebufferRenderbuffer(int target, int attachment, int renderbuffertarget, int renderbuffer) {
-        GL30C.glFramebufferRenderbuffer(target, attachment, renderbuffertarget, renderbuffer);
-    }
-
-    @Override
-    public void clearBufferData(int target, int internalformat, int format, int type, ByteBuffer data) {
-        GL43C.glClearBufferData(target, internalformat, format, type, data);
     }
 
 }

@@ -12,8 +12,9 @@ class MixinLateTest {
         assertEquals(Set.of(), Set.copyOf(MixinLate.configsFor(modId -> false, className -> false)));
 
         // The lumenized config is gated on the embedded bloom class, not on a mod id:
-        // it loads when the class is present even with no matching mod, and stays off
-        // when only the mod id matches but the class is absent.
+        // it loads when the class is present even with no matching mod (GTCEu provides the
+        // same class without a "lumenized" mod id), and stays off when only the mod id matches
+        // but the class is absent.
         assertEquals(
             Set.of("mixins.actinium.lumenized.json"),
             Set.copyOf(MixinLate.configsFor(modId -> false, "gregtech.client.utils.BloomEffectUtil"::equals))
@@ -25,8 +26,24 @@ class MixinLateTest {
         );
 
         assertEquals(
-            Set.of("mixins.actinium.betterfoliage.json"),
+            Set.of(),
             Set.copyOf(MixinLate.configsFor("betterfoliage"::equals, className -> false))
+        );
+
+        assertEquals(
+            Set.of("mixins.actinium.betterfoliage.json"),
+            Set.copyOf(MixinLate.configsFor(
+                "betterfoliage"::equals,
+                "mods.betterfoliage.client.Hooks"::equals
+            ))
+        );
+
+        assertEquals(
+            Set.of("mixins.actinium.rlfoliage.json"),
+            Set.copyOf(MixinLate.configsFor(
+                "betterfoliage"::equals,
+                "betterfoliage.render.feature.RenderingHandler"::equals
+            ))
         );
 
         assertEquals(
@@ -46,6 +63,7 @@ class MixinLateTest {
                 "mixins.actinium.lumenized.json",
                 "mixins.actinium.revoui.json",
                 "mixins.actinium.betterfoliage.json",
+                "mixins.actinium.rlfoliage.json",
                 "mixins.actinium.ccl.json",
                 "mixins.actinium.voxelmap.json",
                 "mixins.actinium.extrautils2.json",
@@ -53,8 +71,10 @@ class MixinLateTest {
                 "mixins.actinium.oldresearch.json",
                 "mixins.actinium.botania.json",
                 "mixins.actinium.hbm.json",
+                "mixins.actinium.storagedrawers.json",
                 "mixins.actinium.scannable.json",
                 "mixins.actinium.littletiles.json",
+                "mixins.actinium.architecturecraft.json",
                 "mixins.actinium.obscuretooltips.json"
             ),
             Set.copyOf(MixinLate.configsFor(modId -> true, className -> true))

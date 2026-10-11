@@ -1,5 +1,6 @@
 package com.dhj.actinium.mixins;
 
+import com.dhj.actinium.loading.fml.transformers.BetterFoliageHbmCompatTransformer;
 import com.dhj.actinium.loading.fml.transformers.GnetumHudCachingCompatTransformer;
 import com.dhj.actinium.loading.fml.transformers.MacDisplayForwardCompatTransformer;
 import com.dhj.actinium.loading.fml.transformers.StellarCoreHudCachingCompatTransformer;
@@ -15,6 +16,8 @@ import java.util.Map;
 
 @IFMLLoadingPlugin.Name("Actinium")
 @IFMLLoadingPlugin.MCVersion("1.12.2")
+// Better Foliage sorts at 1400; this keeps the RenderChunk repair after its coremod transform.
+@IFMLLoadingPlugin.SortingIndex(1500)
 public class MixinEarly implements IFMLLoadingPlugin, IEarlyMixinLoader {
     private static final List<String> MIXIN_CONFIGS = List.of(
         "mixins.actinium.vintage.json",
@@ -34,7 +37,8 @@ public class MixinEarly implements IFMLLoadingPlugin, IEarlyMixinLoader {
             MacDisplayForwardCompatTransformer.class.getName(),
             StellarCoreHudCachingCompatTransformer.class.getName(),
             GnetumHudCachingCompatTransformer.class.getName(),
-            "com.gtnewhorizons.angelica.loading.fml.transformers.EarlyRedirectorTransformer"
+            "com.gtnewhorizons.angelica.loading.fml.transformers.EarlyRedirectorTransformer",
+            BetterFoliageHbmCompatTransformer.class.getName()
         };
     }
 

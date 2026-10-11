@@ -9,8 +9,8 @@ repositories {
     mavenCentral()
 }
 
-// The GL benchmarks (HeadlessGl et al.) open a real EGL/OpenGL context, so the jmh source set needs LWJGL 3.4.1
-// on its classpath and the matching natives on its runtime classpath. Same native-classifier logic as GTNHLib.
+// The GL benchmarks use surfaceless EGL. Windows x64 gets a Mesa runtime from src/jmh/natives so JMH needs no
+// separately installed EGL implementation there; other platforms use their system EGL runtime.
 def osName = System.getProperty('os.name').toLowerCase(Locale.ROOT)
 def osArchitecture = System.getProperty('os.arch').toLowerCase(Locale.ROOT)
 def osKey
@@ -64,6 +64,15 @@ if (lwjglNatives == null) {
 }
 
 def lwjglVersion = '3.4.1'
+def mesaEglArchive = layout.projectDirectory.file('src/jmh/natives/mesa-windows-x64.zip')
+def mesaEglDirectory = layout.buildDirectory.dir('jmh/mesa-windows-x64')
+
+def unpackMesaEglRuntime = tasks.register('unpackMesaEglRuntime', Copy) {
+    group = 'verification'
+    description = 'Extracts the bundled Mesa EGL runtime for Windows JMH benchmarks.'
+    from(zipTree(mesaEglArchive))
+    into(mesaEglDirectory)
+}
 
 sourceSets {
     jmh {
@@ -86,15 +95,18 @@ dependencies {
     jmhImplementation "org.openjdk.jmh:jmh-core:${jmh_version}"
     jmhAnnotationProcessor "org.openjdk.jmh:jmh-generator-annprocess:${jmh_version}"
 
-    // LWJGL 3.4.1 for the headless EGL/GL benchmark harness (HeadlessGl). API modules at compile time,
-    // platform natives at runtime. lwjgl-egl publishes no natives classifier (its native library is loaded from
-    // the system), so only lwjgl and lwjgl-opengl get natives — same split as upstream.
+    // LWJGL 3.4.1 bindings for the headless EGL benchmark context. EGL itself is supplied by the system or the
+    // JMH-only Mesa runtime; lwjgl-egl publishes no natives classifier.
     jmhImplementation platform("org.lwjgl:lwjgl-bom:${lwjglVersion}")
     jmhImplementation "org.lwjgl:lwjgl:${lwjglVersion}"
     jmhImplementation "org.lwjgl:lwjgl-opengl:${lwjglVersion}"
     jmhImplementation "org.lwjgl:lwjgl-egl:${lwjglVersion}"
     jmhRuntimeOnly "org.lwjgl:lwjgl:${lwjglVersion}:${lwjglNatives}"
     jmhRuntimeOnly "org.lwjgl:lwjgl-opengl:${lwjglVersion}:${lwjglNatives}"
+    // The game supplies these to production code; standalone JMH needs them on its own runtime classpath.
+    jmhRuntimeOnly 'org.apache.logging.log4j:log4j-api:2.0-beta9'
+    jmhRuntimeOnly 'it.unimi.dsi:fastutil:8.5.18'
+    jmhRuntimeOnly 'org.joml:joml:1.10.5'
 }
 
 // Run the benchmarks through Gradle. Any JMH argument can be passed through, e.g.
@@ -105,8 +117,31 @@ tasks.register('jmh', JavaExec) {
 
     classpath = sourceSets.jmh.runtimeClasspath
     mainClass = 'org.openjdk.jmh.Main'
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+    args '-foe', 'true'
+
+    def mesaEglRuntimePath
+    if (osKey == 'windows') {
+        if (!['amd64', 'x86_64', 'x64'].contains(osArchitecture)) {
+            throw new GradleException("Bundled Mesa EGL benchmark runtime supports Windows x64, not ${osArchitecture}")
+        }
+
+        dependsOn(unpackMesaEglRuntime)
+        mesaEglRuntimePath = mesaEglDirectory.get().asFile.absolutePath
+        environment 'PATH', "${mesaEglRuntimePath}${File.pathSeparator}${System.getenv('PATH')}"
+        environment 'GALLIUM_DRIVER', 'llvmpipe'
+        jvmArgs "-Djava.library.path=${mesaEglRuntimePath}"
+    }
 
     doFirst {
+        if (mesaEglRuntimePath != null) {
+            def requiredMesaFiles = ['libEGL.dll', 'libgallium_wgl.dll', 'opengl32.dll']
+            def missingMesaFiles = requiredMesaFiles.findAll { !new File(mesaEglRuntimePath, it).isFile() }
+            if (!missingMesaFiles.isEmpty()) {
+                throw new GradleException("Bundled Mesa EGL runtime is missing: ${missingMesaFiles.join(', ')}")
+            }
+        }
+
         if (project.hasProperty('jmhargs')) {
             args(project.property('jmhargs').toString().split('\\s+').findAll { !it.isEmpty() })
         }

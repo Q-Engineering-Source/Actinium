@@ -1,6 +1,7 @@
 package com.dhj.actinium.mixin.mod.betterfoliage;
 
-import betterfoliage.render.feature.RenderingHandler;
+import com.dhj.actinium.compat.betterfoliage.BetterFoliageCompat;
+import com.dhj.actinium.compat.betterfoliage.BetterFoliageCompatImpl;
 import com.dhj.actinium.render.terrain.compile.VintageChunkBuildContext;
 import com.dhj.actinium.render.terrain.compile.pipeline.VintageBlockRenderer;
 import com.dhj.actinium.render.terrain.compile.task.ChunkBuilderMeshingTask;
@@ -21,9 +22,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
 /**
- * Routes RLFoliage block features through Actinium's current chunk meshing task.
- * RLFoliage still ships a Celeritas Mixin against the legacy org.taumc task name,
- * so without this adapter only its particle effects are active.
+ * Routes original Better Foliage hooks through Actinium's replacement chunk mesher.
  */
 @Mixin(value = ChunkBuilderMeshingTask.class, remap = false)
 public abstract class MixinChunkBuilderMeshingTaskBetterFoliage {
@@ -32,6 +31,10 @@ public abstract class MixinChunkBuilderMeshingTaskBetterFoliage {
             "execute(Ldhj/embeddedt/embeddium/impl/render/chunk/compile/ChunkBuildContext;"
                     + "Ldhj/embeddedt/embeddium/impl/util/task/CancellationToken;"
                     + ")Ldhj/embeddedt/embeddium/impl/render/chunk/compile/ChunkBuildOutput;";
+
+    @Unique
+    private static final BetterFoliageCompat ACTINIUM$BETTER_FOLIAGE_COMPAT =
+            new BetterFoliageCompatImpl();
 
     @Redirect(
             method = EXECUTE_METHOD,
@@ -47,7 +50,7 @@ public abstract class MixinChunkBuilderMeshingTaskBetterFoliage {
             IBlockState state,
             BlockRenderLayer layer
     ) {
-        return RenderingHandler.canRenderBlockInLayer(block, state, layer);
+        return ACTINIUM$BETTER_FOLIAGE_COMPAT.canRenderBlockInLayer(block, state, layer);
     }
 
     @WrapOperation(
@@ -61,8 +64,8 @@ public abstract class MixinChunkBuilderMeshingTaskBetterFoliage {
                     remap = false
             )
     )
-    private void actinium$betterFoliageWrapNewRenderBlock(
-            VintageBlockRenderer dispatcher,
+    private void actinium$betterFoliageRenderFastBlock(
+            VintageBlockRenderer renderer,
             IBlockState state,
             BlockPos pos,
             ActiniumBlockAccess blockAccess,
@@ -70,19 +73,10 @@ public abstract class MixinChunkBuilderMeshingTaskBetterFoliage {
             Operation<Void> original,
             @Local(name = "buildContext") VintageChunkBuildContext buildContext
     ) {
-        Boolean result = RenderingHandler.wrapRenderBlock(
-                () -> {
-                    original.call(dispatcher, state, pos, blockAccess, layer);
-                    return Boolean.TRUE;
-                },
-                state,
-                pos,
-                blockAccess,
-                () -> buildContext.getBufferForLayer(layer),
-                layer
-        );
-        if (result == null) {
-            original.call(dispatcher, state, pos, blockAccess, layer);
+        if (!ACTINIUM$BETTER_FOLIAGE_COMPAT.tryRenderFastBlock(
+                state, pos, blockAccess, buildContext, layer
+        )) {
+            original.call(renderer, state, pos, blockAccess, layer);
         }
     }
 
@@ -97,8 +91,8 @@ public abstract class MixinChunkBuilderMeshingTaskBetterFoliage {
                     remap = false
             )
     )
-    private void actinium$betterFoliageWrapNewRenderBlockWithOptimization(
-            VintageBlockRenderer dispatcher,
+    private void actinium$betterFoliageRenderFastBlockWithOptimization(
+            VintageBlockRenderer renderer,
             IBlockState state,
             BlockPos pos,
             ActiniumBlockAccess blockAccess,
@@ -107,19 +101,10 @@ public abstract class MixinChunkBuilderMeshingTaskBetterFoliage {
             Operation<Void> original,
             @Local(name = "buildContext") VintageChunkBuildContext buildContext
     ) {
-        Boolean result = RenderingHandler.wrapRenderBlock(
-                () -> {
-                    original.call(dispatcher, state, pos, blockAccess, layer, allowRenderPassOptimization);
-                    return Boolean.TRUE;
-                },
-                state,
-                pos,
-                blockAccess,
-                () -> buildContext.getBufferForLayer(layer),
-                layer
-        );
-        if (result == null) {
-            original.call(dispatcher, state, pos, blockAccess, layer, allowRenderPassOptimization);
+        if (!ACTINIUM$BETTER_FOLIAGE_COMPAT.tryRenderFastBlock(
+                state, pos, blockAccess, buildContext, layer
+        )) {
+            original.call(renderer, state, pos, blockAccess, layer, allowRenderPassOptimization);
         }
     }
 
@@ -134,7 +119,7 @@ public abstract class MixinChunkBuilderMeshingTaskBetterFoliage {
                     remap = true
             )
     )
-    private boolean actinium$betterFoliageWrapVanillaRenderBlock(
+    private boolean actinium$betterFoliageRenderVanillaBlock(
             BlockRendererDispatcher dispatcher,
             IBlockState state,
             BlockPos pos,
@@ -143,17 +128,8 @@ public abstract class MixinChunkBuilderMeshingTaskBetterFoliage {
             Operation<Boolean> original,
             @Local(name = "layer") BlockRenderLayer layer
     ) {
-        Boolean result = RenderingHandler.wrapRenderBlock(
-                () -> original.call(dispatcher, state, pos, blockAccess, buffer),
-                state,
-                pos,
-                blockAccess,
-                () -> buffer,
-                layer
+        return ACTINIUM$BETTER_FOLIAGE_COMPAT.renderVanillaBlock(
+                dispatcher, state, pos, blockAccess, buffer, layer
         );
-        if (result == null) {
-            return original.call(dispatcher, state, pos, blockAccess, buffer);
-        }
-        return result;
     }
 }

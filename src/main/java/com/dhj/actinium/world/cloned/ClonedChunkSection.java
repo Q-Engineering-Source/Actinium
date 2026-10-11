@@ -115,10 +115,6 @@ public class ClonedChunkSection {
         return data.get(x, y, z);
     }
 
-    public Biome getBiomeForNoiseGen(int x, int z) {
-        return this.biomeData[x | z << 4];
-    }
-
     public Biome[] getBiomeData() {
         return this.biomeData;
     }

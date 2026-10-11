@@ -90,8 +90,9 @@ public class WorldSlice implements ActiniumBlockAccess {
     // the element references so no ClonedChunkSection outlives its task inside this pooled object.
     private final ClonedChunkSection[] sections = new ClonedChunkSection[SECTION_TABLE_ARRAY_SIZE];
 
-    // Biome caches for each chunk section
-    private final Biome[][] biomeCaches;
+    // Biome data of the captured chunk neighbourhood. Biome tables are per chunk, so this covers
+    // SECTION_LENGTH chunks per axis rather than one table per section (see BiomeLookup).
+    private final BiomeLookup biomeLookup = new BiomeLookup(SECTION_LENGTH);
 
     // The biome blend caches for each color resolver type
     private final BiomeColorCache biomeColorCache;
@@ -163,7 +164,6 @@ public class WorldSlice implements ActiniumBlockAccess {
         this.defaultSkyLightValue = this.hasSkyLight() ? EnumSkyBlock.SKY.defaultLightValue : 0;
 
         this.blockStatesArrays = new IBlockState[SECTION_TABLE_ARRAY_SIZE][];
-        this.biomeCaches = new Biome[SECTION_TABLE_ARRAY_SIZE][16 * 16];
         this.biomeColorCache = new BiomeColorCache(this, ActiniumRuntime.options().quality.legacyBiomeBlendRadius);
         // Only the outer table: each entry is aliased to the cloned section's shared unpacked fluid data, so no
         // per-slice copy of 4096 fluid states is needed.
@@ -206,14 +206,23 @@ public class WorldSlice implements ActiniumBlockAccess {
         this.baseY = (this.origin.y() - NEIGHBOR_CHUNK_RADIUS) << 4;
         this.baseZ = (this.origin.z() - NEIGHBOR_CHUNK_RADIUS) << 4;
 
+        // Biome tables are per chunk column, so the snapshot publishes one per captured chunk
+        // rather than one per section: every section of a chunk carries the same table. The
+        // y = 0 section is used as that column's carrier.
+        this.biomeLookup.beginSnapshot(this.baseX, this.baseZ);
+
+        for (int x = 0; x < SECTION_LENGTH; x++) {
+            for (int z = 0; z < SECTION_LENGTH; z++) {
+                this.biomeLookup.setChunk(x, z, this.sections[getLocalChunkIndex(x, z)].getBiomeData());
+            }
+        }
+
         for (int x = 0; x < SECTION_LENGTH; x++) {
             for (int y = 0; y < SECTION_LENGTH; y++) {
                 for (int z = 0; z < SECTION_LENGTH; z++) {
                     int idx = getLocalSectionIndex(x, y, z);
 
                     ClonedChunkSection section = this.sections[idx];
-
-                    this.biomeCaches[idx] = section.getBiomeData();
 
                     this.unpackBlockData(this.blockStatesArrays[idx], section, this.volumeBox);
 
@@ -227,6 +236,8 @@ public class WorldSlice implements ActiniumBlockAccess {
 
     public void reset() {
         Arrays.fill(this.sections, null);
+
+        this.biomeLookup.clearSnapshot();
 
         this.volumeBox.minX = 0;
         this.volumeBox.minY = 0;
@@ -432,16 +443,7 @@ public class WorldSlice implements ActiniumBlockAccess {
 
     @Override
     public Biome getBiome(BlockPos pos) {
-        int x2 = (pos.getX() - this.baseX) >> 4;
-        int z2 = (pos.getZ() - this.baseZ) >> 4;
-
-        ClonedChunkSection section = this.sections[getLocalChunkIndex(x2, z2)];
-
-        if (section != null) {
-            return section.getBiomeForNoiseGen(pos.getX() & 15, pos.getZ() & 15);
-        }
-
-        return Biomes.PLAINS;
+        return this.biomeLookup.getBiome(pos.getX(), pos.getZ());
     }
 
     @Override
@@ -473,20 +475,15 @@ public class WorldSlice implements ActiniumBlockAccess {
     }
 
     /**
-     * Gets or computes the biome at the given global coordinates.
+     * Gets the biome at the given global coordinates from the captured snapshot.
+     *
+     * <p>{@code y} is ignored: biome data is stored per chunk column, so every height of a column
+     * carries the same biome table. Positions outside the captured chunk neighbourhood resolve to
+     * the nearest captured position instead of failing, which is what biome-blending callers
+     * (Better Biome Blend, issue #162) rely on; see {@link BiomeLookup}.</p>
      */
     public Biome getBiome(int x, int y, int z) {
-        int relX = x - this.baseX;
-        int relY = y - this.baseY;
-        int relZ = z - this.baseZ;
-
-        int idx = getLocalSectionIndex(relX >> 4, relY >> 4, relZ >> 4);
-
-        if (idx < 0 || idx >= this.biomeCaches.length) {
-            return Biomes.PLAINS;
-        }
-
-        return this.biomeCaches[idx][((z & 15) << 4) | (x & 15)];
+        return this.biomeLookup.getBiome(x, z);
     }
 
     public SectionPos getOrigin() {
