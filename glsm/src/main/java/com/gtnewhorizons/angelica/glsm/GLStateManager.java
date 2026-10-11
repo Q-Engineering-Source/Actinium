@@ -116,6 +116,7 @@ import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -175,7 +176,7 @@ public class GLStateManager {
     private static volatile boolean workerContextsActive;
     private static int workerContextCount;
 
-    static GLContextState ctx() {
+    public static GLContextState ctx() {
         if (!workerContextsActive) return primaryContext();
         final GLContextState st = tlWorkerContext.get();
         return st != null ? st : primaryContext();
@@ -448,10 +449,42 @@ public class GLStateManager {
             }
         }
 
-        ctx().modelViewMatrix.clear();
-        ctx().projectionMatrix.clear();
+        final GLContextState glCtx = ctx();
+        Arrays.fill(glCtx.savedMvGen, 0);
+        Arrays.fill(glCtx.savedProjGen, 0);
+        Arrays.fill(glCtx.savedTexMatGen, 0);
+        Arrays.fill(glCtx.savedLightingGen, 0);
+        Arrays.fill(glCtx.savedFragmentGen, 0);
+        Arrays.fill(glCtx.savedColorGen, 0);
+        Arrays.fill(glCtx.savedNormalGen, 0);
+        Arrays.fill(glCtx.savedTexCoordGen, 0);
+
+        glCtx.modelViewMatrix.clear();
+        glCtx.projectionMatrix.clear();
+        glCtx.mvGeneration++;
+        glCtx.projGeneration++;
+        glCtx.texMatrixGeneration++;
+        glCtx.lightingGeneration++;
+        glCtx.colorGeneration++;
+        glCtx.texGenGeneration++;
+        glCtx.clipPlaneGeneration++;
+        glCtx.fragmentGeneration++;
+        glCtx.programGeneration++;
+        ShaderManager.bumpNormalGeneration();
+        ShaderManager.bumpTexCoordGeneration();
+
+        glCtx.drawFramebuffer = 0;
+        glCtx.readFramebuffer = 0;
+        glCtx.drawFramebufferGeneration++;
+
         vaoEboMap.clear();
         VertexAttribState.reset();
+        GLDebug.resetGroupStack();
+
+        if (RENDER_BACKEND != null) {
+            RENDER_BACKEND.invalidateStateMirror();
+            replayStateToBackend();
+        }
     }
 
     /**
@@ -7968,6 +8001,10 @@ public class GLStateManager {
                 glCtx.textures.getTextureUnitBindings(unit).getBinding());
         }
         RENDER_BACKEND.activeTexture(GL13.GL_TEXTURE0 + glCtx.activeTextureUnit.getValue());
+        RENDER_BACKEND.bindVertexArray(glCtx.boundVAO != 0 ? glCtx.boundVAO : defaultVAO);
+        RENDER_BACKEND.useProgram(glCtx.activeProgram);
+        RENDER_BACKEND.bindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, glCtx.drawFramebuffer);
+        RENDER_BACKEND.bindFramebuffer(GL30.GL_READ_FRAMEBUFFER, glCtx.readFramebuffer);
     }
 
     private static void applyPolygonOffset(GLContextState glCtx) {

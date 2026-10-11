@@ -253,6 +253,8 @@ public abstract class RenderBackend {
             GLStateManager.replayStateToBackend();
         }
     }
+    public void invalidateStateMirror() {}
+
     public void onFrameEnd() {}
 
     /** Fired by lwjgl3ify Display before a mutation that recreates the swapchain. */

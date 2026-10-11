@@ -45,7 +45,7 @@ import java.util.List;
  * {@code enterWorkerContext()}. After a display-context migration the cached values here are
  * replayed onto the new context via {@link GLStateManager#replayStateToBackend()}.
  */
-class GLContextState {
+public class GLContextState {
     /** Every BooleanStateStack owned by this context, for {@link GLStateManager#replayStateToBackend()}. */
     final List<BooleanStateStack> allBooleanStates = new ArrayList<>();
 

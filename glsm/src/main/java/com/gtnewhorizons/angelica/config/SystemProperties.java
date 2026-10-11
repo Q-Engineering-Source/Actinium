@@ -37,6 +37,7 @@ public final class SystemProperties {
     public static final boolean SDL_VERIFY_PER_FRAME_UNIFORM_BLOCK = Boolean.getBoolean("angelica.sdlgpu.verifyPerFrameUniformBlock");
     public static final int SDL_FRAMES_IN_FLIGHT = Integer.getInteger("angelica.sdlgpu.framesInFlight", 2);
     public static final boolean DISABLE_SDL_PRESENTER_THREAD = Boolean.getBoolean("angelica.sdlgpu.disablePresenterThread");
+    public static final boolean SDL_DISABLE_IN_PASS_CLEAR = Boolean.getBoolean("angelica.sdlgpu.disableInPassClear");
 
     // Tracy
     public static final boolean TRACY = Boolean.getBoolean("angelica.tracy");

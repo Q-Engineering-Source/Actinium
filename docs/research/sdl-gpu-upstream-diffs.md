@@ -8,7 +8,11 @@
 > sdl-gpu 端口（Phase 1）已于 2026-10-11 同步**（详见「上游同步状态
 > （2026-10-11，Phase 1）」）；**上游 #2095 / #2099 / #2096 / #2104
 > （`81b82748` / `a07cecb8` / `26c161f0` / `3876f7e6`，Phase 2）已于 2026-10-11
-> 同步**（详见「上游同步状态（2026-10-11，Phase 2）」）。本文档
+> 同步**（详见「上游同步状态（2026-10-11，Phase 2）」）；**上游 #2124 / #2133 /
+> #2138 / #2142（`9dd60f6a` / `1babfd96` / `44c930f4` / `a8c29fa3`，Phase 3）已于
+> 2026-10-11 同步 sdl-gpu 侧**（详见「上游同步状态（2026-10-11，Phase 3）」；
+> 该阶段的 glsm 状态栈 COW / per-drawable context 重构**未同步**，原因见同一节）。
+> 本文档
 > 逐条记录 Actinium 的 `sdl-gpu` 模块相对 Angelica 上游（`D:\Code\Angelica`，
 > 运行于 lwjgl3ify/GTNH 环境）的**代码差异及其理由**。多数差异源于运行环境不同
 > （lwjgl3ify vs Cleanroom/lwjglxx）；部分改动（如 persistent-buffer 同步）与
@@ -442,3 +446,147 @@ bypass fixes #2099）、`26c161f0`（texture filtering #2096，仅 sdl-gpu 侧�
   Cube/Particle mesh、TESR API、mixin、Flyby/Tracy 等 ~+9950 行）——Actinium
   无对应实现；rig 测试 `GlsmSdlDegenerateDrawTest` / `GlsmSdlFbo0ViewportTest` /
   `GlsmSdlFfpTest` / `GlsmSdlUnalignedAttribTest` 未同步。
+
+## 上游同步状态（2026-10-11，Phase 3）
+
+已同步上游四个提交的 **sdl-gpu 侧**：`9dd60f6a`（render pass / state stack
+optimizations #2124）、`1babfd96`（crash interceptor 状态重置 #2133）、
+`44c930f4`（scissor clear 修屏 #2138）、`a8c29fa3`（per-drawable GLSM context
+#2142），以及这些改动在 glsm 侧**必须**的少量成员。glsm 的状态栈 COW 重构与
+per-drawable context 重构**未同步**（见本节末尾的冲突说明）。
+
+**#2124（`9dd60f6a`）**
+
+- sdl-gpu 主源 17 个文件全部落地：新增 `pipeline/AttachmentClear`（独立
+  depth/stencil（含 color）附件 clear pass、按 layout/mask 缓存 pipeline）与
+  `resource/ByteRegionCopy`（绝对偏移拷贝，direct / array / 逐字节三条路径）；
+  `FrameManager` 新增 `PASS_END_*` 结束原因常量、`endRenderPassIfActive(cause)` /
+  `ensureCopyPass(cause)` 重载、`inPassClearsThisFrame` 与
+  `passEndCauseCountsThisFrame` 计数、`noteInPassClear()`；`SDLGPURenderBackend`
+  接入 in-pass clear 与 pass 结束原因、depth/stencil write-mask 抑制 clear 的告警、
+  UBO shadow 走 `ByteRegionCopy`；`PipelineCache`/`ShaderManager`/
+  `PipelineStore`/`VertexAttribs` 的输入哈希缓存（`VAOState.slotHash` 等）、
+  uniform location kind（`LOCATION_KIND_*`）与 `vertexInputSetId`；
+  `ContextState`/`SdlFramePlots`/`ComputeBinder`/`DrawDispatch`/`PipelineApplier`/
+  `FBOClearTracker`/`PersistentBufferSync`/`TextureOps`/`PixelOps` 同步更新。
+- `SDLGPUGate` 改用 `DependencyVerifier.firstMissing()` + `Check` 列表做依赖探测
+  （lwjgl3ify 最低版本、lwjgl-sdl/shaderc/spvc 缺失诊断）。
+- GLSL 资源按 Actinium 约定放到 `src/main/resources/assets/angelica/shaders/sdlgpu/`
+  （与 `clear_image3d.csh` 同处），并新增 `clear_attachment.{v,f}sh`。
+- glsm 侧必需项（已同步）：`SystemProperties.SDL_DISABLE_IN_PASS_CLEAR`、
+  `DependencyVerifier.firstMissing()`。同提交的 `SystemProperties.PROFILE_*` 与
+  `FLYBY_JFR` 未同步（其消费者是未同步的 `src/` profiling/flyby 代码）。
+- **未同步（冲突，见下）**：glsm 状态栈 COW 重构（`stacks/CowStateStack`、
+  `CowDepths`、`CowDispatch`、`StackIdAllocator`、`glsm/StateSet`、
+  `ClipPlaneBooleanState`、22 个 stack 的 `captureSlot`/`restoreSlot` 改写、
+  `GLStateManager`/`Feature`/`GLContextState`/`states/*`/`ffp/*` 的配套改动），
+  以及上游 `src/`（Angelica 核心：TESR、particles、BOB fog、profiling、flyby、
+  celeritas、sodium/iris GUI 等）的全部改动。
+- 测试：`UboShadowSubDataTest`、`AttachmentClearTest`、`BlendConstantsGuardTest`、
+  `PerFrameBlockDedupTest`、`PipelineCacheVertexInputTest`、
+  `AbsoluteCopyRegionTest`、`UniformLocationKindTest` 已同步；
+  4 个 `GLSM_*_GLTest`（需 GL core context 与 glsm test 源集）与
+  `GlsmSdl*` rig 测试未同步。
+
+**#2133（`1babfd96`）**
+
+- `RenderBackend.invalidateStateMirror()`（基类空实现）+ sdl-gpu 侧
+  `SDLGPURenderBackend.invalidateStateMirror()` 与
+  `ContextState.invalidateMirror()`（清空所有 lastApplied/lastPushed 镜像标志、
+  markInput/Output/ShaderDirty、`needsSeed = true`）已同步。
+- `GLDebug.resetGroupStack()` 与 `GLStateManager.reset()` 的「失效镜像 + 重放」
+  路径已按 Actinium 的字段移植：清零 `saved*Gen` 数组、递增 Actinium 拥有的
+  generation、重置 draw/read framebuffer、`GLDebug.resetGroupStack()`，最后
+  `RENDER_BACKEND.invalidateStateMirror()` + `replayStateToBackend()`。
+- `replayStateToBackend()` 补上游同一提交新增的 VAO / program / draw+read
+  framebuffer 重绑（`ShaderManager.invalidateBoundProgram()` 未同步：Actinium 的
+  ffp `ShaderManager` 没有 `lastBoundProgramId` 缓存，每次 `updateVariant` 都无条件
+  `useProgram`，无对应成员可失效）。
+- **未同步**：上游在 `lwjgl3-backend` 里并为 `invalidateStateMirror()` 提供实现
+  （核对上游 tip：只有 glsm 基类空实现与 SDL 后端覆写），因此
+  `Lwjgl3GLRenderBackend` 不添加空覆写；`src/` 侧的 crash interceptor
+  （`RenderRecovery`、`BetterCrashesCompat`、`AngelicaCommand`、TESR/HUD caching
+  作用域）未同步；`GLStateManager.reset()` 的 `runningSplash = true` 仍保留
+  Actinium 语义（未换成上游的 `DisplayListManager.abortCompilation()`，后者在
+  Actinium 不存在，且 `reset()` 在 Actinium 当前没有调用方）。
+
+**#2138（`44c930f4`）**
+
+- sdl-gpu 侧全部落地：`AttachmentClear` 的 scissor 感知 clear（`ScissorState`
+  语义走 `ContextState.scissor*` 镜像）、`PixelOps` 的 depth/stencil
+  texel 辅助、`SDLGPURenderBackend.clear` 的 `rasterizerDiscard` 早退、
+  `ContextState.rasterizerDiscard`、`AttachmentClearTest` 更新。
+- glsm 侧新增的 `states/ScissorState`、`stacks/ScissorStateStack`（以及
+  `Feature`/`StateSet`/`CowDispatch`/`GLContextState`/`FeedbackManager`/
+  `GLStateManager` 的配套改动）**未同步**：它们是 COW 状态栈体系的一部分。
+  实际修屏逻辑（in-pass clear 的 scissor 判定）在 sdl-gpu 侧，已同步。
+- rig 测试 `GlsmSdlAttachmentClearTest`（+212）与 `GlsmSdlFbo0ViewportTest`
+  的补充未同步。
+
+**#2142（`a8c29fa3`）**
+
+- sdl-gpu 侧全部落地：`SDLGPURenderBackend.handleMakeCurrent` 的
+  `enterContext(...)`（GLSM context 变化时失效镜像、splash 上下文用
+  `defaultFboId`、`needsSeed` 时 `replayStateToBackend()`）、`beginSplashFrame()`
+  抽取、`bindFramebuffer(0)` 重映射到 `defaultFboId`、
+  `deleteFramebuffers` 重新绑定、`framebufferTexture2D`/`drawBuffers`/
+  `readBuffer`/`getFramebufferAttachmentParameteri`/`glGetInteger` 的
+  `defaultFboId` 比较、`OffscreenTarget.isFor` 改用 `defaultFboId`、
+  `ContextState.defaultFboId` 与 `mirroredContext`。
+- 为让 sdl-gpu 能读到 GLSM 的 context 对象，`glsm/GLContextState` 改为
+  **public**、`GLStateManager.ctx()` 改为 **public**（上游同一提交的做法）。
+- **未同步**：per-drawable context 本体（`DrawableContexts`、`GLStateManager`
+  ~1022 行、`FeedbackManager`/`DisplayListManager`/`QuadConverter`/`VAOManager`/
+  `ShaderManager`/`CompatUniformManager`/`streaming/StreamingVaos` 等改动）。
+  Actinium 的 `GLContextState` 已是**每线程**（`ctx()`），每线程模型下
+  `st.mirroredContext != ctx` 仍能捕获线程级 context 切换；drawable 级切换
+  （同线程换 drawable）不会触发失效——属可接受的语义弱化，重接窗口路径时按上游
+  重做。
+- glsm 测试（`GLSM_SharedDrawableContext_GLTest`、`GLSM_SplashCompleteLatch_UnitTest`、
+  `DrawableContexts`、`TestThreads` 等）与 rig 测试未同步。
+
+**COW 状态栈重构的冲突说明（Phase 3 未同步的主因）**
+
+上游 `9dd60f6a` 把状态栈从「push 时整份拷贝」改成「按槽位 copy-on-write」
+（`CowStateStack` 接口 + `CowDepths` 槽位深度 + `CowDispatch` 类型分发 +
+`GLStateManager.registerModifiedState/attribSets` + `StateSet` 整状态集），
+`44c930f4`/`a8c29fa3` 都建立在其上。Actinium 的 glsm 走的是**另一条血缘**：
+`ctx().attribs`（IntStack 掩码）+ `Feature.maskToFeatures` + `IStateStack.pop()`
++ `modifiedAtDepth` + `VertexAttribState`（上游为 `ffp/VAOManager`），并带有
+Actinium 自己的扩展（worker context、glColor clamp #181、纹理镜像同步 #186、
+`replayStateToBackend`/`takeStateSeedPending`/`warnOnce`、
+`BooleanState.applyToBackend`、`GLESCaps`、Phase 2 的 `SamplerUnitArray`）。
+
+实测冲突面（把上游该提交的补丁对 Actinium 当前文件做 `patch --dry-run --fuzz=0`）：
+
+| 文件 | hunk 数 | 冲突 |
+|---|---|---|
+| `glsm/GLStateManager.java` | 82 | 66 |
+| `glsm/Feature.java` | 4 | 4 |
+| `glsm/GLContextState.java` | 12 | 10 |
+
+即 GLStateManager 的 save/restore/pushAttrib/popAttrib 区域几乎全被改写过。
+按用户约定「COW 重构与 Actinium 特有成员冲突且无法确信解决时停止并上报」，
+本阶段**不做**该重构：逐 hunk 手改等价于重写 Actinium 的状态机，且本环境没有
+GL context 测试台（glsm-sdl rig 暂缓）可验证语义。后续接入 glsm-sdl rig 后，
+应以「上游 COW 模型 + Actinium 扩展点」重做，而不是把两边拼贴。
+
+**Phase 3 的其它 Actinium 适配**
+
+- `AttachmentClear` 的 `ShaderLoader` 引用改为 Actinium 的 embedded 包
+  （`dhj.embeddedt.embeddium.impl.render.shader.ShaderLoader`，上游为
+  `org.embeddedt...`）。
+- `clear_attachment.fsh` 的 `main()` 内保留一个惰性语句（上游为空函数体）：
+  Actinium 固定的 `glsl-transformation-lib:0.2.0-32.g7dd88a4-GTNH` 在
+  `Transformer.appendMain` 追加 color 写入时对空 `main()` 抛 NPE（上游用
+  0.2.0-33）。这是**运行期**问题（颜色 clear 路径），不只是测试问题。
+- `sdl-gpu/build.gradle`：测试新增 `testImplementation project(':celeritas-common')`
+  （`AttachmentClear` 经 `ShaderLoader` 读 GLSL）与把根工程
+  `assets/angelica/shaders/**` 挂到测试资源（GLSL 按 Actinium 约定存放在根工程，
+  模块测试默认看不到）。
+- `AbsoluteCopyRegionTest.warmedCopiesDoNotAllocate` 的 direct→direct 组合（flags
+  3/11）不再断言零分配：LWJGL 3.4.1 上 `MemoryUtil.memCopy` 在此 JVM 每调用分配
+  数十字节（上游在 3.4.2 上测同一断言）；这些组合的内容正确性仍由
+  `copiesAbsoluteIndicesAcrossBufferKinds` 覆盖。
+- 测试里的 `VertexAttribState.init(0)`（Actinium 版 `VAOManager.init(0)`）保留：
+  上游 #2142 的 per-drawable VAO 重构未同步，init 仍是必需步骤。

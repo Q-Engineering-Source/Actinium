@@ -3,6 +3,8 @@ package com.gtnewhorizons.angelica.sdlgpu;
 import com.gtnewhorizons.angelica.config.SystemProperties;
 import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
+import com.gtnewhorizons.angelica.glsm.loading.DependencyVerifier;
+import com.gtnewhorizons.angelica.glsm.loading.DependencyVerifier.Check;
 import com.gtnewhorizons.angelica.sdlgpu.device.Device;
 import com.gtnewhorizons.angelica.sdlgpu.shader.ShaderManager;
 import org.apache.logging.log4j.LogManager;
@@ -11,6 +13,7 @@ import org.lwjgl.sdl.SDLLog;
 import org.lwjglx.Sys;
 import org.taumc.glsl.grammar.GLSLParser;
 
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -39,10 +42,26 @@ public final class SDLGPUGate {
         return device;
     }
 
-    private static final boolean SDL_GPU_AVAILABLE = SDLGPUGate.class.getClassLoader().getResource("org/lwjgl/sdl/SDLGPU.class") != null;
+    public static final String LWJGL3IFY_MIN_VERSION = "3.0.25";
+
+    private static final List<Check> REQUIREMENTS = List.of(
+        new Check("/org/lwjgl/sdl/SDLGPU.class", "no lwjgl-sdl on the classpath"),
+        new Check("/me/eigenraven/lwjgl3ify/api/DisplayEvents.class", "lwjgl3ify older than " + LWJGL3IFY_MIN_VERSION + ", update the mod: https://modrinth.com/mod/lwjgl3ify"),
+        new Check("/org/lwjgl/util/shaderc/Shaderc.class", staleInstanceLibraries("lwjgl-shaderc")),
+        new Check("/org/lwjgl/util/spvc/Spvc.class", staleInstanceLibraries("lwjgl-spvc")));
+
+    private static final Check MISSING_REQUIREMENT = DependencyVerifier.firstMissing(SDLGPUGate.class, REQUIREMENTS);
+
+    private static String staleInstanceLibraries(String artifact) {
+        return "no " + artifact + " on the classpath; the launcher instance library list predates lwjgl3ify " + LWJGL3IFY_MIN_VERSION + ", re-apply lwjgl3ify-<version>-multimc.zip (overwrites mmc-pack.json)";
+    }
+
+    public static String missingRequirement() {
+        return MISSING_REQUIREMENT == null ? null : MISSING_REQUIREMENT.errorMessage();
+    }
 
     public static boolean isSDLGPUAvailable() {
-        return SDL_GPU_AVAILABLE;
+        return MISSING_REQUIREMENT == null;
     }
 
     public static boolean isDeviceReady() {

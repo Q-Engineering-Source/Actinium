@@ -11,6 +11,17 @@ repositories {
     mavenLocal()
 }
 
+// The SDL GPU shaders live in the root project resources (they ship with the mod jar), so the
+// module's tests need that subtree on their runtime classpath to compile them.
+sourceSets {
+    test {
+        resources {
+            srcDir '../src/main/resources'
+            include 'assets/angelica/shaders/**'
+        }
+    }
+}
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(25)
@@ -49,6 +60,8 @@ dependencies {
     testImplementation 'com.google.guava:guava:21.0'
     testImplementation 'org.lwjgl:lwjgl-opengl:3.4.1'
     testImplementation(testFixtures(project(':glsm')))
+    // Main code only compiles against celeritas-common, but the shader-carrying tests load ShaderLoader at runtime.
+    testImplementation project(':celeritas-common')
     // GLSL parse/transform library (same artifact the mod contains; needed at test compile time)
     testImplementation('org.taumc:glsl-transformation-lib:0.2.0-32.g7dd88a4-GTNH') {
         transitive = false

@@ -21,6 +21,7 @@ import org.lwjgl.opengl.GL43;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.util.Arrays;
 
 public final class GLDebug {
     private static final Logger LOGGER = LogManager.getLogger("GLSM/GLDebug");
@@ -633,6 +634,13 @@ public final class GLDebug {
     public static void popGroup() {
         if (debugState != null && Thread.currentThread() == GLStateManager.getMainThread()) {
             debugState.popGroup();
+        }
+    }
+
+    public static void resetGroupStack() {
+        if (debugState instanceof KHRDebugState khr) {
+            khr.depth = 0;
+            Arrays.fill(khr.groupStack, null);
         }
     }
 

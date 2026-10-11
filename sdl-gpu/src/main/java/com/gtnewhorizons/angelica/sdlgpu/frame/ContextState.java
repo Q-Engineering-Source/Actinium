@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.sdlgpu.frame;
 
+import com.gtnewhorizons.angelica.glsm.GLContextState;
 import com.gtnewhorizons.angelica.sdlgpu.SDLGPURenderBackend;
 import com.gtnewhorizons.angelica.sdlgpu.pipeline.PipelineCache;
 import com.gtnewhorizons.angelica.sdlgpu.shader.ShaderManager;
@@ -26,6 +27,7 @@ import org.lwjgl.system.MemoryUtil;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
+import java.util.Arrays;
 
 /**
  * Per-thread (per-GL-context) client state for {@link SDLGPURenderBackend}.
@@ -93,6 +95,16 @@ public final class ContextState {
         public final int[] bindingStride = new int[MAX_VERTEX_ATTRIBS];
         public final int[] bindingDivisor = new int[MAX_VERTEX_ATTRIBS];
         public int elementBuffer;
+
+        public static final int INPUT_HASH_SLOTS = 8;
+        public final int[] slotInputSetId = new int[INPUT_HASH_SLOTS];
+        public final int[] slotEnabledMask = new int[INPUT_HASH_SLOTS];
+        public final int[] slotMaxAttribs = new int[INPUT_HASH_SLOTS];
+        public final long[] slotHash = new long[INPUT_HASH_SLOTS];
+        public int slotsLivenessGen;
+        public int slotCursor;
+        public void invalidateInputHash() { Arrays.fill(slotInputSetId, 0); }
+
         public VAOState() { for (int i = 0; i < MAX_VERTEX_ATTRIBS; i++) attribBinding[i] = i; }
     }
 
@@ -102,6 +114,7 @@ public final class ContextState {
     public float viewportDepthFar = 1.0f;
     public int scissorX, scissorY, scissorW, scissorH;
     public boolean scissorEnabled;
+    public boolean rasterizerDiscard;
     public int activeTextureUnit;
     public int boundProgram;
     public int autoPushedProgram;
@@ -316,6 +329,8 @@ public final class ContextState {
 
     public int boundFboId;
     public int boundReadFboId;
+    public int defaultFboId;
+    public GLContextState mirroredContext;
 
     public final LongOpenHashSet clearedTexturesThisFrame = new LongOpenHashSet();
     public final LongOpenHashSet clearedStencilTexturesThisFrame = new LongOpenHashSet();
@@ -386,5 +401,51 @@ public final class ContextState {
         cachedViewport = SDL_GPUViewport.calloc();
         cachedScissor = SDL_Rect.calloc();
         cachedBlendColor = SDL_FColor.calloc();
+    }
+
+    public void invalidateMirror() {
+        boundFboId = -1;
+        boundReadFboId = -1;
+        viewportDirty = true;
+        scissorDirty = true;
+        blendColorDirty = true;
+        lastBoundPipeline = 0;
+        lastAppliedRenderPassGen = 0;
+        lastAppliedStencilRef = Integer.MIN_VALUE;
+        lastBoundEboHandle = 0;
+        lastBoundEboIndexSize = -1;
+        lastBoundEboOffset = 0;
+        lastAppliedSamplerBindGen = -1;
+        lastAppliedSamplerProgram = 0;
+        lastAppliedSamplerCb = 0;
+        lastFragSamplerProgram = 0;
+        lastVertSamplerProgram = 0;
+        lastAppliedStorageTexBindGen = -1;
+        lastAppliedStorageTexProgram = 0;
+        lastAppliedStorageTexCb = 0;
+        lastFragStorageTexProgram = 0;
+        lastVertStorageTexProgram = 0;
+        lastAppliedStorageBufBindGen = -1;
+        lastAppliedStorageBufProgram = 0;
+        lastAppliedStorageBufCb = 0;
+        lastFragStorageBufProgram = 0;
+        lastVertStorageBufProgram = 0;
+        lastAppliedVboBindGen = -1;
+        lastAppliedVboBindProgram = 0;
+        lastAppliedVboBindCb = 0;
+        lastFlushedSamplerBindGen = -1;
+        lastFlushedProgram = -1;
+        lastFlushedPendingMutationGen = -1;
+        lastPushedCbVs = 0;
+        lastPushedCbFs = 0;
+        lastPushedProgramVs = -1;
+        lastPushedProgramFs = -1;
+        lastPushedUboGenVs = -1;
+        lastPushedUboGenFs = -1;
+        pipeline.markInputDirty();
+        pipeline.markOutputDirty();
+        pipeline.markShaderDirty();
+        currentVao.invalidateInputHash();
+        needsSeed = true;
     }
 }
