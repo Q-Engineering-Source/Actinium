@@ -14,7 +14,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -46,23 +45,18 @@ public class MixinSplashProgress {
      * Disables the FML splash on the SDL backend.
      *
      * <p>Forge's splash renders through a GL shared context, which does not exist once the SDL
-     * backend owns the window; the first {@code getBool} in {@code start()} reads the "enabled"
-     * flag, and forcing it false leaves Forge's own early return in charge of the rest of the
-     * method. The SDL backend presents its own startup screen.</p>
+     * backend owns the window. Cancelling {@code start()} at HEAD leaves {@code enabled} at its
+     * false default, so {@code finish()}, {@code drawVanillaScreen()} and friends all take
+     * Forge's own {@code !enabled} early returns. A HEAD inject is used instead of redirecting
+     * the {@code getBool("enabled")} read because splash replacers like ModernSplash swap the
+     * whole class body (their {@code CustomSplash.start()} has no such call), and a HEAD inject
+     * has no instruction target to miss. The SDL backend presents its own startup screen.</p>
      */
-    @Redirect(
-        method = "start",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraftforge/fml/client/SplashProgress;getBool(Ljava/lang/String;Z)Z",
-            ordinal = 0
-        )
-    )
-    private static boolean celeritas$sdlDisableSplash(String key, boolean def) {
-        if (SDLGPUGate.isEngaged() && "enabled".equals(key)) {
-            return false;
+    @Inject(method = "start", at = @At("HEAD"), cancellable = true)
+    private static void celeritas$sdlDisableSplash(CallbackInfo ci) {
+        if (SDLGPUGate.isEngaged()) {
+            ci.cancel();
         }
-        return def;
     }
 
     @Inject(method = "finish", at = @At("RETURN"))
