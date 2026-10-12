@@ -10,6 +10,7 @@ import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
 import com.gtnewhorizons.angelica.glsm.backend.GLDebugMessageListener;
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
+import com.gtnewhorizons.angelica.glsm.backend.VSyncMode;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GpuCheckpointTracker;
@@ -3151,6 +3152,51 @@ public class GLStateManager {
 
     public static String getRenderBackendName() {
         return RENDER_BACKEND.getName();
+    }
+
+    /**
+     * Applies a vsync state in the two-valued form vanilla speaks, resolving it against the tear-free
+     * mode the backend was last asked to prefer.
+     */
+    public static void setVSyncEnabled(boolean enabled) {
+        RENDER_BACKEND.setVSyncEnabled(enabled);
+    }
+
+    /** Applies a vsync mode, remembering it when it is tear-free so the boolean form can restore it. */
+    public static void setVSyncMode(VSyncMode mode) {
+        RENDER_BACKEND.setVSyncMode(mode);
+    }
+
+    /**
+     * Records the tear-free mode the player picked without touching the driver, for a mode chosen
+     * before the window exists.
+     */
+    public static void setVSyncPreference(VSyncMode mode) {
+        RENDER_BACKEND.setVSyncPreference(mode);
+    }
+
+    /** Whether the backend can actually deliver the mode the driver was asked for. */
+    public static boolean supportsVSyncMode(VSyncMode mode) {
+        return RENDER_BACKEND.supportsVSyncMode(mode);
+    }
+
+    /** The tear-free mode the player last asked for, or the backend's best tear-free mode. */
+    public static VSyncMode preferredTearFreeMode() {
+        return RENDER_BACKEND.preferredTearFreeMode();
+    }
+
+    /** The mode the driver was actually asked for, as opposed to the one that was requested. */
+    public static VSyncMode getEffectiveVSyncMode() {
+        return RENDER_BACKEND.getEffectiveVSyncMode();
+    }
+
+    public static boolean hasSwapchainBackpressure() {
+        return RENDER_BACKEND.hasSwapchainBackpressure();
+    }
+
+    /** Drains the window's event queue and refreshes the keyboard and mouse state. */
+    public static void pumpDisplayMessages() {
+        RENDER_BACKEND.pumpDisplayMessages();
     }
 
     /** Full pre-draw preparation for an indexed/unprepared draw of the given GL primitive mode. */

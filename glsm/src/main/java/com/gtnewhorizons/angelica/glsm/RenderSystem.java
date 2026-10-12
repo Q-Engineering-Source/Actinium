@@ -10,6 +10,7 @@ import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandPhase;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandType;
 import com.gtnewhorizons.angelica.glsm.texture.TextureInfoCache;
+import com.mitchej123.lwjgl.LWJGLServiceProvider;
 import lombok.Getter;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
@@ -102,6 +103,16 @@ public class RenderSystem {
         }
 
         BackendManager.init();
+
+        // The service is a lazily built singleton whose construction picks its implementation from the
+        // backend, and it is first touched by whichever thread reaches it. Resolving it here pins the
+        // construction to the thread that owns the context, so a later call from a worker cannot race
+        // the initialization.
+        try {
+            GLStateManager.LOGGER.info("Celeritas LWJGL service: {}", LWJGLServiceProvider.LWJGL.getClass().getName());
+        } catch (Throwable t) {
+            GLStateManager.LOGGER.debug("Could not resolve the celeritas LWJGL service: {}", t.toString());
+        }
 
         supportsCompute = supportsCompute();
         supportsTesselation = GLStateManager.capabilities.GL_ARB_tessellation_shader || GLStateManager.capabilities.OpenGL40;

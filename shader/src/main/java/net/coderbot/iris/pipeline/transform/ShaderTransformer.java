@@ -6,8 +6,6 @@ import com.gtnewhorizons.angelica.glsm.GlslTransformUtils;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
 import net.coderbot.iris.celeritas.vertices.ExtendedChunkVertexType;
-import it.unimi.dsi.fastutil.objects.Object2IntMap;
-import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.gl.shader.ShaderType;
 import net.coderbot.iris.pipeline.transform.parameter.AttributeParameters;
@@ -15,10 +13,16 @@ import net.coderbot.iris.pipeline.transform.parameter.Parameters;
 import net.coderbot.iris.pipeline.AdaptiveShadowBoundsStats;
 import dhj.embeddedt.embeddium.impl.gl.shader.ShaderConstants;
 import dhj.embeddedt.embeddium.impl.render.shader.ShaderLoader;
+import org.antlr.v4.runtime.CharStreams;
+import org.antlr.v4.runtime.Token;
+import org.antlr.v4.runtime.tree.ParseTree;
+import org.antlr.v4.runtime.tree.TerminalNode;
 import org.taumc.glsl.ShaderParser;
 import org.taumc.glsl.Transformer;
 import org.taumc.glsl.grammar.GLSLLexer;
+import org.taumc.glsl.grammar.GLSLParser;
 
+import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -39,14 +43,24 @@ public class ShaderTransformer {
     }
 
 
-    private record VersionRequirement(String keyword, int minVersion, BooleanSupplier supported) {}
+    /**
+     * A language feature that forces the stage's GLSL version up to {@code minVersion}.
+     *
+     * <p>{@code prefix} marks features that only ever appear as the start of a longer identifier,
+     * such as {@code iimage2D}, where the whole token is not the keyword.</p>
+     */
+    private record VersionRequirement(String keyword, int minVersion, boolean prefix, BooleanSupplier supported) {
+        VersionRequirement(String keyword, int minVersion, BooleanSupplier supported) {
+            this(keyword, minVersion, false, supported);
+        }
+    }
 
     // Sorted descending by minVersion for early exit in getRequiredVersion
 
     private static final VersionRequirement[] VERSION_REQUIREMENTS = {
         new VersionRequirement("std430", 430, RenderSystem::supportsSSBO),
-        new VersionRequirement("iimage", 420, RenderSystem::supportsImageLoadStore),
-        new VersionRequirement("uimage", 420, RenderSystem::supportsImageLoadStore),
+        new VersionRequirement("iimage", 420, true, RenderSystem::supportsImageLoadStore),
+        new VersionRequirement("uimage", 420, true, RenderSystem::supportsImageLoadStore),
         new VersionRequirement("imageLoad", 420, RenderSystem::supportsImageLoadStore),
         new VersionRequirement("imageStore", 420, RenderSystem::supportsImageLoadStore),
 
@@ -94,52 +108,116 @@ public class ShaderTransformer {
         return NegotiationResult.error("Shader requires GLSL " + effectiveVersion + " but hardware max is " + maxGlsl);
     }
 
-    private static Pattern hoistPattern;
-    private static Object2IntMap<String> keywordToVersion;
+    private static VersionRequirement[] enabledRequirements;
     private static int maxSupportedHoistVersion;
 
     public static void init() {
-        final StringBuilder patternBuilder = new StringBuilder();
-        final Object2IntOpenHashMap<String> versionMap = new Object2IntOpenHashMap<>();
+        enabledRequirements = Arrays.stream(VERSION_REQUIREMENTS)
+            .filter(req -> req.supported.getAsBoolean())
+            .toArray(VersionRequirement[]::new);
         int maxVersion = 0;
-
-        for (VersionRequirement req : VERSION_REQUIREMENTS) {
-            if (req.supported.getAsBoolean()) {
-                if (!patternBuilder.isEmpty()) patternBuilder.append('|');
-
-                patternBuilder.append("\\b").append(Pattern.quote(req.keyword)).append("\\b");
-                versionMap.put(req.keyword, req.minVersion);
-                maxVersion = Math.max(maxVersion, req.minVersion);
-            }
-        }
-
-        if (!patternBuilder.isEmpty()) {
-            hoistPattern = Pattern.compile(patternBuilder.toString());
-            keywordToVersion = versionMap;
+        for (VersionRequirement req : enabledRequirements) {
+            maxVersion = Math.max(maxVersion, req.minVersion);
         }
         maxSupportedHoistVersion = maxVersion;
 
-        Iris.logger.info("Shader version hoisting: {} feature(s) GLSL {}", versionMap.size(), maxVersion > 0 ? maxVersion : "N/A");
+        Iris.logger.info("Shader version hoisting: {} feature(s) GLSL {}", enabledRequirements.length, maxVersion > 0 ? maxVersion : "N/A");
     }
 
+    /**
+     * The version the source needs, scanned as tokens rather than as text.
+     *
+     * <p>A lexer pass sees identifiers, not substrings, so a keyword inside a comment, a string or a
+     * longer identifier no longer hoists the version; the regex this replaced had to be built so that
+     * every alternative was its own capture group for exactly that reason.</p>
+     */
     private static int getRequiredVersion(String shaderSource, int declaredVersion) {
-        if (hoistPattern == null || declaredVersion >= maxSupportedHoistVersion) {
+        if (enabledRequirements == null || enabledRequirements.length == 0 || declaredVersion >= maxSupportedHoistVersion) {
             return declaredVersion;
         }
 
-        final Matcher m = hoistPattern.matcher(shaderSource);
+        final GLSLLexer lexer = new GLSLLexer(CharStreams.fromString(shaderSource));
         int required = declaredVersion;
-        while (m.find()) {
-            final int ver = keywordToVersion.getInt(m.group());
-            if (ver > required) {
-                required = ver;
-                if (required >= maxSupportedHoistVersion) break;
-            }
+        for (Token t = lexer.nextToken(); t.getType() != Token.EOF; t = lexer.nextToken()) {
+            final int channel = t.getChannel();
+            if (channel == GLSLLexer.COMMENTS || channel == Token.HIDDEN_CHANNEL) continue;
+            if (t.getStopIndex() - t.getStartIndex() < 3) continue;
+            required = matchRequirement(t.getText(), required);
+            if (required >= maxSupportedHoistVersion) break;
         }
         return required;
     }
 
+    /**
+     * The version the transformed body needs. The header is scanned as text — it holds directives and
+     * injected declarations rather than the parsed body — and everything the transform injected into
+     * the body is announced by the tree the printer already walked, so the second pass costs a walk
+     * instead of a re-lex.
+     */
+    private static int getRequiredVersion(GLSLParser.Translation_unitContext tree, String headerTail, int declaredVersion) {
+        if (enabledRequirements == null || enabledRequirements.length == 0 || declaredVersion >= maxSupportedHoistVersion) {
+            return declaredVersion;
+        }
+        int required = headerTail.isEmpty() ? declaredVersion : getRequiredVersion(headerTail, declaredVersion);
+        if (required >= maxSupportedHoistVersion) return required;
+        return scanTree(tree, required);
+    }
+
+    private static int scanTree(ParseTree tree, int required) {
+        if (tree instanceof TerminalNode terminal) {
+            final String text = terminal.getSymbol().getText();
+            return (text == null || text.length() < 4) ? required : matchRequirement(text, required);
+        }
+        for (int i = 0; i < tree.getChildCount() && required < maxSupportedHoistVersion; i++) {
+            required = scanTree(tree.getChild(i), required);
+        }
+        return required;
+    }
+
+    private static int matchRequirement(String text, int required) {
+        for (VersionRequirement req : enabledRequirements) {
+            if (req.minVersion <= required) break;
+            if (req.prefix ? text.startsWith(req.keyword) : text.equals(req.keyword)) return req.minVersion;
+        }
+        return required;
+    }
+
+    private record StageHeader(int version, String extensions) {}
+
+    /**
+     * Assembles a stage's final source: the version header the stage negotiated, the tail of
+     * directives the pack declared, and the printed body.
+     *
+     * <p>The version is re-checked here because a transform can inject a feature the pack's own source
+     * did not use, and the check runs last so it sees what was actually emitted.</p>
+     *
+     * @param body the printed body, whose tokens the tree's offsets were rebased to match
+     * @param tree the tree {@code body} was printed from
+     */
+    private static String finalizeStage(int version, String headerTail, String body, GLSLParser.Translation_unitContext tree, PatchShaderType stage) {
+        final int required = getRequiredVersion(tree, headerTail, version);
+        if (required > version) {
+            final NegotiationResult negotiation = negotiateVersion(required, stage);
+            if (negotiation.isError()) {
+                throw new RuntimeException("Shader version negotiation failed for " + stage.name() + " after transformation: " + negotiation.error());
+            }
+            Iris.logger.debug("Transformed {} requires GLSL {} for injected features, hoisting from {}", stage.name(), required, version);
+            version = required;
+        }
+        return "#version " + version + " core\n" + headerTail + body;
+    }
+
+    /**
+     * What the shader backend needs to pre-process a stage without parsing it again: the tree the
+     * printed body came from and how long the header in front of that body is.
+     */
+    record StageArtifact(GLSLParser.Translation_unitContext tree, int headerLen) {}
+
     public static <P extends Parameters> Map<PatchShaderType, String> transform(String vertex, String geometry, String tessControl, String tessEval, String fragment, P parameters) {
+        return transform(vertex, geometry, tessControl, tessEval, fragment, parameters, null);
+    }
+
+    public static <P extends Parameters> Map<PatchShaderType, String> transform(String vertex, String geometry, String tessControl, String tessEval, String fragment, P parameters, EnumMap<PatchShaderType, StageArtifact> artifactsOut) {
         if (vertex == null && geometry == null && tessControl == null && tessEval == null && fragment == null) {
             return null;
         }
@@ -151,25 +229,29 @@ public class ShaderTransformer {
         inputs.put(PatchShaderType.TESS_EVAL, tessEval);
         inputs.put(PatchShaderType.FRAGMENT, fragment);
         try {
-            return transformInternal(inputs, parameters.patch, parameters);
+            return transformInternal(inputs, parameters.patch, parameters, artifactsOut);
         } finally {
             parameters.type = null;
         }
     }
 
     public static <P extends Parameters> Map<PatchShaderType, String> transformCompute(String compute, P parameters) {
+        return transformCompute(compute, parameters, null);
+    }
+
+    public static <P extends Parameters> Map<PatchShaderType, String> transformCompute(String compute, P parameters, EnumMap<PatchShaderType, StageArtifact> artifactsOut) {
         if (compute == null) {
             return null;
         }
 
         try {
-            return transformComputeInternal(compute, parameters.patch, parameters);
+            return transformComputeInternal(compute, parameters.patch, parameters, artifactsOut);
         } finally {
             parameters.type = null;
         }
     }
 
-    private static <P extends Parameters> Map<PatchShaderType, String> transformComputeInternal(String compute, Patch patchType, P parameters) {
+    private static <P extends Parameters> Map<PatchShaderType, String> transformComputeInternal(String compute, Patch patchType, P parameters, EnumMap<PatchShaderType, StageArtifact> artifactsOut) {
         final EnumMap<PatchShaderType, String> result = new EnumMap<>(PatchShaderType.class);
 
         final Stopwatch watch = Stopwatch.createStarted();
@@ -181,7 +263,7 @@ public class ShaderTransformer {
             throw new IllegalArgumentException("No #version directive found in compute shader source code!");
         }
 
-        String versionString = matcher.group(1);
+        final String versionString = matcher.group(1);
         int versionInt = Integer.parseInt(versionString);
 
         // Check if shader uses features requiring a higher GLSL version
@@ -189,12 +271,10 @@ public class ShaderTransformer {
         if (requiredVersion > versionInt) {
             Iris.logger.debug("Compute shader requires GLSL {} for detected features, hoisting from {}", requiredVersion, versionInt);
             versionInt = requiredVersion;
-            versionString = String.valueOf(versionInt);
         }
 
         // Compute shaders always use core profile, minimum 330
         if (versionInt < 330) {
-            versionString = "330";
             versionInt = 330;
         }
 
@@ -206,10 +286,7 @@ public class ShaderTransformer {
         if (negotiation.targetVersion() != versionInt) {
             Iris.logger.debug("Negotiated compute shader from GLSL {} to {}", versionInt, negotiation.targetVersion());
             versionInt = negotiation.targetVersion();
-            versionString = String.valueOf(versionInt);
         }
-
-        final String profileString = "#version " + versionString + " core\n";
 
         // Pre-parse reserved word renaming
         String input = GlslTransformUtils.replaceTexture(compute);
@@ -223,24 +300,36 @@ public class ShaderTransformer {
         // Extract extensions
         final var extensions = versionPattern.matcher(GlslTransformUtils.getFormattedShader(parsedShader.pre(), "")).replaceFirst("").trim();
 
-        final String finalHeader = profileString + (extensions.isEmpty() ? "" : "\n" + extensions);
+        final String headerTail = extensions.isEmpty() ? "" : "\n" + extensions;
         final StringBuilder formattedShaderBuilder = new StringBuilder();
+        final GLSLParser.Translation_unitContext[] treeHolder = new GLSLParser.Translation_unitContext[1];
 
-        transformer.mutateTree(tree -> formattedShaderBuilder.append(GlslTransformUtils.getFormattedShader(tree, finalHeader)));
+        // The body is printed without its header, and the tokens it was printed from are rebased to
+        // the offsets they end up at, so the tree can be handed to the backend alongside the source
+        // instead of it parsing the source back into an equivalent tree.
+        transformer.mutateTree(tree -> {
+            GlslTransformUtils.restoreReservedWordsInTree(tree);
+            treeHolder[0] = tree;
+            formattedShaderBuilder.append(GlslTransformUtils.getFormattedShaderRebased(tree, ""));
+        });
 
-        String formattedShader = GlslTransformUtils.restoreReservedWords(formattedShaderBuilder.toString());
+        final String printedBody = formattedShaderBuilder.toString();
+        final String formattedShader = finalizeStage(versionInt, headerTail, printedBody, treeHolder[0], PatchShaderType.COMPUTE);
 
         result.put(PatchShaderType.COMPUTE, formattedShader);
+        if (artifactsOut != null) {
+            artifactsOut.put(PatchShaderType.COMPUTE, new StageArtifact(treeHolder[0], formattedShader.length() - printedBody.length()));
+        }
 
         watch.stop();
         Iris.logger.info("[Load #{}] Transformed compute shader for {} in {}", Iris.getShaderPackLoadId(), patchType.name(), watch);
         return result;
     }
 
-    private static <P extends Parameters> Map<PatchShaderType, String> transformInternal(EnumMap<PatchShaderType, String> inputs, Patch patchType, P parameters) {
+    private static <P extends Parameters> Map<PatchShaderType, String> transformInternal(EnumMap<PatchShaderType, String> inputs, Patch patchType, P parameters, EnumMap<PatchShaderType, StageArtifact> artifactsOut) {
          final EnumMap<PatchShaderType, String> result = new EnumMap<>(PatchShaderType.class);
          final EnumMap<PatchShaderType, Transformer> types = new EnumMap<>(PatchShaderType.class);
-         final EnumMap<PatchShaderType, String> prepatched = new EnumMap<>(PatchShaderType.class);
+         final EnumMap<PatchShaderType, StageHeader> prepatched = new EnumMap<>(PatchShaderType.class);
 
         final Stopwatch watch = Stopwatch.createStarted();
 
@@ -257,7 +346,7 @@ public class ShaderTransformer {
                 throw new IllegalArgumentException("No #version directive found in source code!");
             }
 
-            String versionString = matcher.group(1);
+            final String versionString = matcher.group(1);
             if (versionString == null) {
                 continue;
             }
@@ -275,14 +364,12 @@ public class ShaderTransformer {
             if (requiredVersion > versionInt) {
                 Iris.logger.debug("Shader requires GLSL {} for detected features, hoisting from {}", requiredVersion, versionInt);
                 versionInt = requiredVersion;
-                versionString = String.valueOf(versionInt);
             }
 
             // Ensure minimum version for this stage (330 for most, 400 for tessellation)
             final int stageMin = getStageMinimumVersion(type);
             if (versionInt < stageMin) {
                 versionInt = stageMin;
-                versionString = String.valueOf(versionInt);
             }
 
             // Negotiate version if needed (error if hardware can't support)
@@ -290,10 +377,6 @@ public class ShaderTransformer {
             if (negotiation.isError()) {
                 throw new RuntimeException("Shader version negotiation failed for " + type.name() + ": " + negotiation.error());
             }
-
-            // All stages >= 330 use core profile
-            final String profile = "core";
-            final String profileString = "#version " + versionString + " " + profile + "\n";
 
             // Pre-parse reserved word renaming — prevents ANTLR parse failures
             input = GlslTransformUtils.replaceTexture(input);
@@ -317,38 +400,49 @@ public class ShaderTransformer {
             final var extensions = versionPattern.matcher(GlslTransformUtils.getFormattedShader(parsedShader.pre(), "")).replaceFirst("").trim();
 
             types.put(type, transformer);
-            prepatched.put(type, profileString + (extensions.isEmpty() ? "" : "\n" + extensions));
+            prepatched.put(type, new StageHeader(versionInt, extensions.isEmpty() ? "" : "\n" + extensions));
         }
         CompatibilityTransformer.transformGrouped(types, parameters);
         for (var entry : types.entrySet()) {
             final PatchShaderType shaderType = entry.getKey();
             final Transformer transformer = entry.getValue();
-            String header = prepatched.get(shaderType);
+            final StageHeader stageHeader = prepatched.get(shaderType);
 
+            String headerTail = stageHeader.extensions();
             // For Celeritas terrain vertex shaders, inject chunk_vertex.glsl header
             if (patchType == Patch.CELERITAS_TERRAIN && shaderType == PatchShaderType.VERTEX) {
-                header += computeCeleritasHeader();
+                headerTail += computeCeleritasHeader();
             }
 
-            final String finalHeader = header;
             final StringBuilder formattedShaderBuilder = new StringBuilder();
+            final GLSLParser.Translation_unitContext[] treeHolder = new GLSLParser.Translation_unitContext[1];
 
-            transformer.mutateTree(tree -> formattedShaderBuilder.append(GlslTransformUtils.getFormattedShader(tree, finalHeader)));
+            transformer.mutateTree(tree -> {
+                GlslTransformUtils.restoreReservedWordsInTree(tree);
+                treeHolder[0] = tree;
+                formattedShaderBuilder.append(GlslTransformUtils.getFormattedShaderRebased(tree, ""));
+            });
 
-            String formattedShader = GlslTransformUtils.restoreReservedWords(formattedShaderBuilder.toString());
+            final String printedBody = formattedShaderBuilder.toString();
+            final String formattedShader = finalizeStage(stageHeader.version(), headerTail, printedBody, treeHolder[0], shaderType);
 
             result.put(shaderType, formattedShader);
+            // The terrain vertex stage prints a header the tree cannot describe (the injected chunk
+            // vertex include), so its body offsets cannot be handed over; the backend re-parses there.
+            if (artifactsOut != null && !(patchType == Patch.CELERITAS_TERRAIN && shaderType == PatchShaderType.VERTEX)) {
+                artifactsOut.put(shaderType, new StageArtifact(treeHolder[0], formattedShader.length() - printedBody.length()));
+            }
         }
-        if (BackendManager.RENDER_BACKEND.isSDLGPU()) extractRwImageStores(result, patchType, RwImageStoreExtractor::supportsAtomics);
+        if (BackendManager.RENDER_BACKEND.isSDLGPU()) extractRwImageStores(result, patchType, artifactsOut, RwImageStoreExtractor::supportsAtomics);
         watch.stop();
         Iris.logger.info("[Load #{}] Transformed shader for {} in {}", Iris.getShaderPackLoadId(), patchType.name(), watch);
         return result;
     }
 
-    static void extractRwImageStores(EnumMap<PatchShaderType, String> result, Patch patchType, Predicate<String> imageAtomics) {
+    static void extractRwImageStores(EnumMap<PatchShaderType, String> result, Patch patchType, EnumMap<PatchShaderType, StageArtifact> artifactsOut, Predicate<String> imageAtomics) {
         if (result.containsKey(PatchShaderType.COMPUTE)) return;
         if (patchType == Patch.ATTRIBUTES) {
-            extractVertexReplay(result, imageAtomics);
+            extractVertexReplay(result, artifactsOut, imageAtomics);
             return;
         }
 
@@ -365,6 +459,8 @@ public class ShaderTransformer {
         if (extracted == null) return;
         final PatchShaderType stage = vshResult != null ? PatchShaderType.VERTEX : PatchShaderType.FRAGMENT;
         result.put(stage, extracted.strippedSource());
+        // The stripped source is no longer what the tree prints, so the tree must not be handed over.
+        if (artifactsOut != null) artifactsOut.remove(stage);
         if (patchType != Patch.COMPOSITE && patchType != Patch.CELERITAS_TERRAIN) {
             Iris.logger.info("[RwImageStoreExtractor] Dropped image writes from {} (written={})", patchType.name(), extracted.writtenImages());
         } else if (needsUnsupportedAtomics(extracted, imageAtomics)) {
@@ -379,11 +475,12 @@ public class ShaderTransformer {
         return !extracted.atomicImages().stream().allMatch(imageAtomics);
     }
 
-    private static void extractVertexReplay(EnumMap<PatchShaderType, String> result, Predicate<String> imageAtomics) {
+    private static void extractVertexReplay(EnumMap<PatchShaderType, String> result, EnumMap<PatchShaderType, StageArtifact> artifactsOut, Predicate<String> imageAtomics) {
         final String fsh = result.get(PatchShaderType.FRAGMENT);
         final RwImageStoreExtractor.Result fshResult = (fsh != null) ? RwImageStoreExtractor.tryExtract(fsh, PatchShaderType.FRAGMENT, Patch.ATTRIBUTES.name()) : null;
         if (fshResult != null) {
             result.put(PatchShaderType.FRAGMENT, fshResult.strippedSource());
+            if (artifactsOut != null) artifactsOut.remove(PatchShaderType.FRAGMENT);
             Iris.logger.info("[RwImageStoreExtractor] Dropped fragment image writes from ATTRIBUTES (written={})", fshResult.writtenImages());
         }
 
@@ -391,6 +488,7 @@ public class ShaderTransformer {
         final RwImageStoreExtractor.Result vshResult = (vsh != null) ? RwImageStoreExtractor.tryExtractVertexReplay(vsh) : null;
         if (vshResult == null) return;
         result.put(PatchShaderType.VERTEX, vshResult.strippedSource());
+        if (artifactsOut != null) artifactsOut.remove(PatchShaderType.VERTEX);
         if (vshResult.computeSource() == null) {
             Iris.logger.info("[RwImageStoreExtractor] Dropped vertex image writes from ATTRIBUTES, an input cannot be replayed (written={})", vshResult.writtenImages());
             return;

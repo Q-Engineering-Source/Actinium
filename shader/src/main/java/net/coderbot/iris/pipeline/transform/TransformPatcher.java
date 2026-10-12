@@ -128,14 +128,15 @@ public class TransformPatcher {
         if (useCache) {
             final Map<PatchShaderType, String> cached = getCached(key, CacheDomain.GRAPHICS, logCacheEvents);
             if (cached != null) {
-                notifyPostTransform(cached);
+                notifyPostTransform(cached, null);
                 return cached;
             }
         }
 
         final long transformStart = logCacheEvents ? System.nanoTime() : 0L;
-        final Map<PatchShaderType, String> transformed = ShaderTransformer.transform(vertex, geometry, tessControl, tessEval, fragment, parameters);
-        notifyPostTransform(transformed);
+        final EnumMap<PatchShaderType, ShaderTransformer.StageArtifact> artifacts = new EnumMap<>(PatchShaderType.class);
+        final Map<PatchShaderType, String> transformed = ShaderTransformer.transform(vertex, geometry, tessControl, tessEval, fragment, parameters, artifacts);
+        notifyPostTransform(transformed, artifacts);
         if (!useCache) {
             return finishWithoutCache(transformed, CacheDomain.GRAPHICS, transformStart, logCacheEvents);
         }
@@ -153,14 +154,15 @@ public class TransformPatcher {
         if (useCache) {
             final Map<PatchShaderType, String> cached = getCached(key, CacheDomain.COMPUTE, logCacheEvents);
             if (cached != null) {
-                notifyPostTransform(cached);
+                notifyPostTransform(cached, null);
                 return cached;
             }
         }
 
         final long transformStart = logCacheEvents ? System.nanoTime() : 0L;
-        final Map<PatchShaderType, String> transformed = ShaderTransformer.transformCompute(compute, parameters);
-        notifyPostTransform(transformed);
+        final EnumMap<PatchShaderType, ShaderTransformer.StageArtifact> artifacts = new EnumMap<>(PatchShaderType.class);
+        final Map<PatchShaderType, String> transformed = ShaderTransformer.transformCompute(compute, parameters, artifacts);
+        notifyPostTransform(transformed, artifacts);
         if (!useCache) {
             return finishWithoutCache(transformed, CacheDomain.COMPUTE, transformStart, logCacheEvents);
         }
@@ -174,8 +176,14 @@ public class TransformPatcher {
      * that first draws with the stage is exactly the stall the warmup exists to remove. Results are
      * handed over on cache hits too, because the backend's own prewarm cache can outlive or
      * predecease this one.
+     *
+     * <p>When the transform reported the tree its printed body came from, that tree goes with the
+     * source so the backend does not have to parse it back; a cache hit has no tree, and the backend
+     * then parses the source itself.</p>
+     *
+     * @param artifacts the trees the transform printed from, keyed by stage, or null for a cache hit
      */
-    private static void notifyPostTransform(Map<PatchShaderType, String> transformed) {
+    private static void notifyPostTransform(Map<PatchShaderType, String> transformed, EnumMap<PatchShaderType, ShaderTransformer.StageArtifact> artifacts) {
         if (transformed == null || !BackendManager.RENDER_BACKEND.isSDLGPU()) {
             return;
         }
@@ -188,7 +196,12 @@ public class TransformPatcher {
             if (source == null) {
                 continue;
             }
-            processor.onTransformed(source, toBackendShaderType(entry.getKey()));
+            final ShaderTransformer.StageArtifact artifact = artifacts != null ? artifacts.get(entry.getKey()) : null;
+            if (artifact != null) {
+                processor.onTransformed(source, artifact.tree(), artifact.headerLen(), toBackendShaderType(entry.getKey()));
+            } else {
+                processor.onTransformed(source, toBackendShaderType(entry.getKey()));
+            }
         }
     }
 

@@ -5,6 +5,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.JsonSyntaxException;
+import com.gtnewhorizons.angelica.glsm.backend.VSyncMode;
 import com.gtnewhorizons.angelica.glsm.streaming.StreamingUploader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -127,6 +128,12 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
     }
 
     public static class AdvancedSettings {
+        /**
+         * The vsync mode the player picked. Null until the first launch writes one, because the
+         * mode a fresh install should use depends on the display and on the backend's own support,
+         * neither of which is known while the config is parsed.
+         */
+        public VSyncMode vsyncMode;
         public boolean enableMemoryTracing = false;
         public boolean useAdvancedStagingBuffers = true;
         public boolean disableIncompatibleModWarnings = false;

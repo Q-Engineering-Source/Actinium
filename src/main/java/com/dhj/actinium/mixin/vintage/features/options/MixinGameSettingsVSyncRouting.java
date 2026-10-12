@@ -1,8 +1,7 @@
 package com.dhj.actinium.mixin.vintage.features.options;
 
-import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
+import com.gtnewhorizons.angelica.proxy.ClientProxy;
 import net.minecraft.client.settings.GameSettings;
-import org.lwjgl.opengl.Display;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
@@ -14,7 +13,8 @@ import org.spongepowered.asm.mixin.injection.Redirect;
  * mode, and only the backend knows what it actually asked the driver for. Vanilla's own switch
  * would change the swap interval behind the backend's back, leaving the pacer believing a tearing
  * interval is a tear-free one; it would then pace every frame onto the panel's cadence with vsync
- * off. The backend's entry point performs exactly the call vanilla would have made.</p>
+ * off. The backend's entry point performs exactly the call vanilla would have made, and records
+ * which tear-free mode the toggle resolved to so the three-state option shows the same thing.</p>
  */
 @Mixin(GameSettings.class)
 public class MixinGameSettingsVSyncRouting {
@@ -24,6 +24,6 @@ public class MixinGameSettingsVSyncRouting {
             at = @At(value = "INVOKE", target = "Lorg/lwjgl/opengl/Display;setVSyncEnabled(Z)V", remap = false)
     )
     private void actinium$routeVSync(boolean sync) {
-        BackendManager.RENDER_BACKEND.setVSyncEnabled(sync);
+        ClientProxy.toggleVSync(sync);
     }
 }

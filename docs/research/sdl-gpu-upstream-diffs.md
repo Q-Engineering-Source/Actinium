@@ -1729,3 +1729,142 @@ compileJava compileTestJava`、`./gradlew :glsm:test :sdl-gpu:test`、`./gradlew
   上游用的 `resetProgresAndWorkingMessage`，且该路径在首个世界帧里执行，画加载屏会中途换帧），
   改为按目录打 INFO 日志；`prepareSelectedShaderPack` 去掉了上游的 `areShadersEnabled()` 前置条件
   （Actinium 在进世界前不加载包，保留该条件会让预热永远不生效）。
+
+## 上游同步状态（2026-10-12，Phase 10：vsync 三态 + Windows 输入延迟 + GLSL 单次解析 `b17bb42c`）
+
+上游 `b17bb42c`「vsync adjustments: on/mailbox/off + windows input lag fix + glsl parsing
+optimizations (#2009)」（67 文件 +2919/-734）。本轮**不是整提交照搬**：本分支此前已从更晚的
+上游状态落过其中两块，因此逐文件对账后只补剩余面。对账结论与 reconcile 见下。
+
+### 1. 已在树内（本轮不动）
+
+| 上游文件 | 处置依据 |
+|---|---|
+| `VSyncMode`（枚举删 `AUTO`、留 `tearFree()`） | 本树已是 `OFF/ON/MAILBOX` 三态，与上游 master 逐字节相同 |
+| `RenderBackend`（vsync 门控、gate 记录、`hasSwapchainBackpressure`） | 本树走的是 **#2086 之后的形态**（`refreshPeriodNanos`/`vsyncHonored`/`displayGeneration`/`GateSample`/`recordGate`/`parkNanos`），`b17bb42c` 的 `frameGateNanos`/`gateAnchorsNextFrameStart`/`queryDisplayRefreshRateHz` 是 #2086 之前的旧 gate 模型，**不取**，否则会覆盖已落地的 pacer 面 |
+| `Lwjgl3GLRenderBackend.applyVSyncMode` | 已有（本仓库 GL 路径走 GLFW swap interval，不是上游的 `SDLVideo.SDL_GL_SetSwapInterval`） |
+| sdl-gpu `Device`/`FrameManager`/`Presenter`/`OffscreenTarget`/`SdlFramePlots`/`SplashDispatcher`/`ThreadRegistry`/`UscaledRetype`/`PerFrameBlockInjector`/`ShaderManager`/`TextureOps`/`PipelineApplier`/`FboState`/`GlslVulkanPreprocess`/`ShaderTransformPostProcessor` | 与上游 master 逐字节相同（SDL-GPU 后端整体按更晚的上游状态移植过），`b17bb42c` 的改动被后续提交包含 |
+| iris `Iris.warmupShaderTransforms`、`DeferredWorldRenderingPipeline.warmupTransforms` | `6d338faf` 已落 |
+| `FramePacer`/`PacerSleeper`/`FpsReducer` | `c5f54409` 已按 #2086+#2197 落地；本提交里的旧形态不覆盖 |
+| `MixinMinecraft` 的 render-ahead 等待搬迁、`getPresentDebugInfo` 从 F3 移除 | pacer 移植时已随之落地（Actinium 的 F3 行由 `FpsReducer.onDebugText` 提供，`RenderGameOverlayEvent.Text` 只在 `showDebugInfo` 时派发，故 `MixinMinecraft_FPSCap` 的 `showDebugInfo` 守卫无对象） |
+
+### 2. 本轮新落
+
+**vsync 三态（主题 1）**
+
+- `glsm/GLStateManager`：新增 `setVSyncEnabled(boolean)` / `setVSyncMode(VSyncMode)` /
+  `setVSyncPreference(VSyncMode)` / `supportsVSyncMode(VSyncMode)` / `preferredTearFreeMode()` /
+  `getEffectiveVSyncMode()` / `hasSwapchainBackpressure()` / `pumpDisplayMessages()`。只补三态模型
+  需要的面；`getDisplayRefreshRateHz` 与帧门 API 仍走本树的新形态，不引入旧面。
+- `celeritas-common` `SodiumGameOptions.AdvancedSettings.vsyncMode`：**可空**，无默认值——新装的
+  正确默认取决于显示器与后端能力，配置解析时两者都不知道。
+- 新增 `com.dhj.actinium.gui.VSyncOptions`：可选模式（显示序 `OFF,ON,MAILBOX`，按后端过滤，空集
+  回落 `{ON}`）、`cyclingControl`、`defaultMode()`（跟随 vanilla `enableVsync`）、`storedMode()`
+  （后端做不到的模式读作 `ON` 而不是 `OFF`，因为玩家要的是"不撕裂"）；`selectableModes`/
+  `supportedMode` 以 predicate 为内核，便于不碰后端地陈述规则。
+- `ActiniumGameOptionPages`：vsync 由布尔勾选框改为 `CyclingControl<VSyncMode>`，绑定写模式、把
+  `enableVsync` 作为两值影子、存 `options.txt` 并把模式下发给后端；Max Framerate 滑条步长
+  `10 → 1`（与上游一致，便于对齐刷新率）。
+- `ClientProxy.toggleVSync(boolean)`（vanilla 两值侧：解析成当前偏好的 tear-free 模式并落盘），
+  `MixinGameSettingsVSyncRouting` 改调它；`MixinMinecraft.actinium$routeVSync` 改走
+  `GLStateManager.setVSyncEnabled`（行为不变，收拢到 glsm 缝）。
+- `Actinium.onInit → initVSync()`：补默认模式、同步 `enableVsync`、`setVSyncPreference`（**只记
+  偏好，不碰驱动**——此时还没有窗口，模式由 vanilla 启动开关经后端下发）。
+- `FramePacer.setIdleWork(...)` 接上 `ActiniumWorldRenderer.runFrameIdleWork(long)`（新）：
+  用 EWMA 估算 `runAsyncTasks()` / `uploadChunks()` 的耗时，超出 pacer 给的 deadline 就跳过该阶段，
+  shadow pass 期间不做。
+- lang：`assets/celeritas/lang/{en_us,zh_cn,ru_ru}.lang` 新增
+  `sodium.options.vsync_mode.{off,on,mailbox}`，并按三态语义改写 `v_sync` / `fps_limit` 的提示。
+
+**Windows 输入延迟（主题 2）**
+
+- `MixinMinecraft.actinium$freshenMouseInput`：在 `runGameLoop` 调
+  `EntityRenderer.updateCameraAndRender(FJ)V` 之前再泵一次窗口消息。帧末的 `updateDisplay` 会泵
+  一次，于是相机用的是上一帧的鼠标增量；在算相机前补泵一次消掉这一帧延迟。`ThreadRegistry`
+  （本提交新增的那个类）本树已在，且已被 `FrameManager`/`SDLGPURenderBackend` 使用。
+
+**GLSL 单次解析（主题 3）**
+
+- `shader/ShaderTransformer`：版本提升扫描由正则改为 lexer token 扫描（注释/字符串里的关键词不再
+  误提升），补 `iimage`/`uimage` 的 `prefix` 匹配（`iimage2D` 这类整词之外的前缀形式原先匹配不到）；
+  新增 `finalizeStage(version, headerTail, body, tree, stage)`，在打印后**用树**再查一次所需版本；
+  打印走 `getFormattedShaderRebased(tree, "")`（body 不带 header、token 偏移重定位到 body）+
+  `restoreReservedWordsInTree`，产出 `StageArtifact(tree, headerLen)`；`extractRwImageStores`/
+  `extractVertexReplay` 在替换某阶段源码时**丢弃该阶段的 artifact**（剥掉 image 写之后的源码已经
+  不是那棵树打印出来的东西）。
+- `shader/TransformPatcher`：承接 artifact 并转交；缓存命中没有树，回落到 2 参回调。
+- `src/main` `IrisGLSMBridge.installPostTransformHook`：实现 4 参 `onTransformed`，把树与 headerLen
+  传给 `SDLGPUGate.prewarmSpirv(src, tree, headerLen, id)`（SDL 侧 `ShaderManager` 的树入路径早已
+  在树内，这一步补的是生产者）。
+- `shader/DeferredWorldRenderingPipeline`：`CustomTextureManager` 提前到 transform futures 提交
+  **之前**构建，并恢复进入时的活动纹理单元——它要占 `GL_TEXTURE2`，而随后启动的 transform 线程也会
+  碰纹理单元。
+- `glsm/RenderSystem`：在 `BackendManager.init()` 之后显式解析一次
+  `com.mitchej123.lwjgl.LWJGLServiceProvider.LWJGL`，把服务的构造固定到持有上下文的线程上。
+
+### 3. 跳过项与理由
+
+- **`SDLGPULWJGLService` 的查询模拟 + `getPriority()/isOfferedAsAvailable()` + `SDLGPUGate.fallBackToGL`
+  守卫**：Actinium 的 `LWJGLService` 是自建接口，服务选择按 `BackendManager.RENDER_BACKEND.isSDLGPU()`
+  判定（见 `sdl-gpu-enable-path.md` §5），且 `RenderBackend` 有**真实**的
+  `queryCounter`/`getQueryObjectui64`；Actinium 也没有 `fallBackToGL`（门控只有"入选/不入选"），
+  上游那套"已把服务交出去就不能回退"的守卫无对象。
+- **`Lwjgl2GLRenderBackend`**：本仓库没有 LWJGL2 后端实现（只有 LWJGL3 + SDL 两个）。
+- **instancing 相关 hunk**（`mvBuiltinsMemo`、instanced transform 的 `null` 容忍）：Actinium 的
+  `DeferredWorldRenderingPipeline` 没有 `INSTANCED_PROGRAM_IDS` 变体路径。
+- **`.gitignore` 的 `tracy-client/angelica/`、`gradle/libs.versions.toml`、`sdl-gpu/build.gradle.kts`**：
+  本仓库没有 `tracy-client` 子项目、没有 `libs.versions.toml`/`celeritas` 依赖（兼容桥已移除）、
+  sdl-gpu 用 `build.gradle` 且不引 `retrofuturabootstrap`。
+- **GPU/rig 测试**（`ReadbackSubmitOrderGpuTest`、`SdlTestRig` 增量）需要真 SDL 设备，按惯例跳过。
+- **`HeadlessTestLWJGLService`（上游 +695）**：上游用它替换 lwjgl3ify 的 GL 绑定做无头测试；本仓库的
+  `LWJGLService` 是自建接口、测试用 `LWJGL3Service`/`glsm` 的 `testFixtures`，没有对象。
+
+### 4. 偏差
+
+- 本树的 `GlslTransformUtils.restoreReservedWords(String)` 会把 `new` 也还原（上游不会）。iris 路径
+  改走树内还原之后，树内还原按上游语义**保持 `new` 处于重命名状态**（`new` 在所有 GLSL 版本里都是保留
+  字，还原回去反而危险），而 compat 路径（`CompatShaderTransformer`）仍用字符串还原。两种语义的差异由
+  新增的 `ReservedWordRestoreTest` 明确钉住，避免以后有人"顺手统一"。
+- `iimage`/`uimage` 的 `prefix` 匹配是本轮随 lexer 扫描一起补的（上游在 `b17bb42c` 之前就有，本树的
+  旧正则实体没有）；它们由 `RenderSystem::supportsImageLoadStore` 门控，硬件不支持时不会提升版本。
+
+### 5. 验证
+
+```
+./gradlew compileJava :glsm:compileJava :celeritas-common:compileJava :shader:compileJava :sdl-gpu:compileJava
+./gradlew compileTestJava
+./gradlew test --tests "*VSyncOptionsTest" --tests "*ShaderTransformArtifactTest" --tests "*ReservedWordRestoreTest" ...
+./gradlew check --no-daemon
+```
+
+新增测试：
+
+- `src/test/.../com/dhj/actinium/gui/VSyncOptionsTest`：可选模式顺序与空集回落、`storedMode` 的降级
+  规则、`modeKey` 与枚举一一对应（都经 predicate 内核，不依赖后端）。
+- `src/test/.../net/coderbot/iris/pipeline/transform/ShaderTransformArtifactTest`：真跑
+  `ShaderTransformer.transform(..., artifactsOut)`（含"未用 sampler 被剥离 + per-frame uniform 进块
+  + 顶点 clip-Z 重映射"这些会产生 Edit 的场景），断言每个阶段都有 artifact、`headerLen` 正好切在
+  header 末尾，并把 artifact 喂给消费者 `ShaderManager.applyPrewarmTransformsFull(source, tree,
+  headerLen, ...)`，与重新解析源码的路径**逐字节比对**产出的 source 与 bool uniform 集合——偏移错一个
+  字节这里就会红。
+- `src/test/.../com/gtnewhorizons/angelica/glsm/ReservedWordRestoreTest`：树内还原与字符串还原在两者
+  都能处理的词上一致；`new` 保持重命名。
+- `src/test/.../com/gtnewhorizons/angelica/glsm/redirect/GLSMRedirectorTest`：新增 EXTTimerQuery 用例
+  （本提交为该重定向补的测试；`METHOD_REDIRECTS` 里的 EXT 映射本树已有，此前无覆盖）。
+- 既有 `BackendPolicyTest`（vsync 解析/周期换算）与 `PrewarmSingleParseEquivalenceTest`/
+  `PrewarmTreeHandoffEquivalenceTest`（SDL 侧单次解析等价）继续覆盖 pacer/预热面，未改语义。
+- `VertexReplayExtractionTest`/`CompositeVertexWriteExtractionTest` 的 `extractRwImageStores` 调用点
+  跟着签名补 `null`（不收集 artifact 的调用方语义不变）。
+
+实机验证建议（需用户执行）：
+
+1. **三态**：OpenGL 路径下视频设置里应只有 `Off/On`（GL 后端 `supportsVSyncMode(MAILBOX)` 为假），
+   SDL 路径下应为 `Off/On/Mailbox`；切换后 F3 行的 ` [vsync 60 ]` / ` [mailbox 60 ]` / ` [cap N]`
+   应随之变化，`options.txt` 的 `enableVsync` 与 `actinium-options.json` 的 `vsyncMode` 应同步。
+2. **mailbox 输入延迟**：SDL + Mailbox 下鼠标手感应接近 Off，且无撕裂；日志出现
+   `Frame pacing: mailbox 60Hz`。
+3. **pacer 在 mailbox 下的门控识别**：Mailbox 下 pacer 不应把驱动当成阻塞
+   （`locked=false`），F3 不应出现 `, wall clock`；On 下驱动不阻塞时才应出现
+   `Frame pacing: vsync ... driver not blocking, paced by wall clock` 警告。
+4. **输入延迟修复**：Windows 上"帧率被 pacer 限到 60"时，视角转动应比改动前少一帧延迟
+   （主观验证，可与 `-Dangelica.sdlgpu.enable=false` 的 GL 路径对照）。

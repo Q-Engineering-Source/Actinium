@@ -14,6 +14,7 @@ import net.minecraftforge.client.MinecraftForgeClient;
 import com.gtnewhorizons.angelica.rendering.RenderingState;
 import com.dhj.actinium.compat.ichunutil.PortalChunkRenderMatrices;
 import dhj.embeddedt.embeddium.impl.gl.device.CommandList;
+import dhj.embeddedt.embeddium.impl.gl.device.RenderDevice;
 import dhj.embeddedt.embeddium.impl.render.chunk.ChunkRenderMatrices;
 import dhj.embeddedt.embeddium.impl.render.chunk.data.MinecraftBuiltRenderSectionData;
 import dhj.embeddedt.embeddium.impl.render.chunk.lists.ChunkRenderList;
@@ -59,6 +60,52 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
      */
     public static ActiniumWorldRenderer instanceNullable() {
         return SimpleWorldRenderer.Provider.getWorldRendererNullable(Minecraft.getMinecraft().renderGlobal);
+    }
+
+    private long asyncEwmaNanos;
+    private long uploadEwmaNanos;
+
+    private static long blendEwma(long ewmaNanos, long tookNanos) {
+        return ewmaNanos == 0L ? tookNanos : (ewmaNanos * 3 + tookNanos) / 4;
+    }
+
+    /**
+     * Runs the chunk pipeline's deferred work in the slack the pacer found before the next frame has
+     * to start, instead of sleeping through it.
+     *
+     * <p>Chunk searches and the uploads they produce are normally done inside the frame, so a frame
+     * that finishes a build pays for it and falls off the panel's cadence. Each phase's cost is
+     * tracked with an EWMA and a phase is skipped when its recent cost no longer fits before the
+     * deadline, so a slow build degrades into "no idle work this frame" rather than into a missed
+     * present. The shadow pass owns the pipeline's state while it runs, so nothing is done then.</p>
+     *
+     * @param deadlineNanos the wall-clock instant the next frame must begin at
+     */
+    public void runFrameIdleWork(long deadlineNanos) {
+        final VintageRenderSectionManager rsm = this.renderSectionManager;
+        if (rsm == null || this.world == null || rsm.isInShadowPass()) {
+            return;
+        }
+        RenderDevice.enterManagedCode();
+        try {
+            long start = System.nanoTime();
+            if (start + asyncEwmaNanos > deadlineNanos) {
+                return;
+            }
+            rsm.runAsyncTasks();
+            long now = System.nanoTime();
+            asyncEwmaNanos = blendEwma(asyncEwmaNanos, now - start);
+
+            start = now;
+            if (start + uploadEwmaNanos > deadlineNanos) {
+                return;
+            }
+            rsm.uploadChunks();
+            now = System.nanoTime();
+            uploadEwmaNanos = blendEwma(uploadEwmaNanos, now - start);
+        } finally {
+            RenderDevice.exitManagedCode();
+        }
     }
 
     @Override

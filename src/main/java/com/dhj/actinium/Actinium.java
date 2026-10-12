@@ -10,6 +10,7 @@ import com.dhj.actinium.command.TogglePassCommand;
 import com.dhj.actinium.config.ActiniumConfig;
 import com.dhj.actinium.config.ActiniumRuntimeOptions;
 import com.dhj.actinium.debug.ActiniumDiagnostics;
+import com.dhj.actinium.gui.VSyncOptions;
 import com.dhj.actinium.mixin.vintage.core.terrain.AccessorEntityRenderer;
 import com.dhj.actinium.render.FastLitItemDisplayListCache;
 import com.dhj.actinium.render.pacing.FpsReducer;
@@ -21,6 +22,7 @@ import com.gtnewhorizon.gtnhlib.compat.Mods;
 import net.coderbot.iris.debug.IrisDebugOptions;
 import com.gtnewhorizon.gtnhlib.client.renderer.RuntimeOptionsBridge;
 import com.gtnewhorizon.gtnhlib.client.renderer.postprocessing.PostProcessingBridge;
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
 import com.gtnewhorizons.angelica.glsm.compat.FogDistanceModeBridge;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
@@ -181,6 +183,7 @@ public class Actinium {
         KirinoCompat.install();
         NeverEnoughAnimationsAlphaOverride.install();
         FpsReducer.init();
+        initVSync();
 
         ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
                 .registerReloadListener(resourceManager -> MissingModelCompat.onResourceManagerReload());
@@ -204,6 +207,33 @@ public class Actinium {
         }
 
         ActiniumDiagnostics.logInitialization(ActiniumRuntime.version());
+    }
+
+    /**
+     * Adopts the stored vsync mode and hands the pacer the work it can do while it waits.
+     *
+     * <p>The mode is written here for a config that holds none, because the right default depends on
+     * the display and on what the backend can deliver, neither of which is known while the config is
+     * parsed. Only the preference is recorded — the driver is not touched, because no window exists
+     * yet; the mode reaches the driver from vanilla's own startup switch, which is routed through the
+     * backend.</p>
+     *
+     * <p>The idle work is the chunk pipeline's deferred work, which the pacer would otherwise sleep
+     * through.</p>
+     */
+    private static void initVSync() {
+        final SodiumGameOptions opts = ActiniumRuntime.options();
+        if (opts.advanced.vsyncMode == null) {
+            opts.advanced.vsyncMode = VSyncOptions.defaultMode();
+        }
+        Minecraft.getMinecraft().gameSettings.enableVsync = opts.advanced.vsyncMode.tearFree();
+        GLStateManager.setVSyncPreference(opts.advanced.vsyncMode);
+        FramePacer.setIdleWork(deadlineNanos -> {
+            final ActiniumWorldRenderer renderer = ActiniumWorldRenderer.instanceNullable();
+            if (renderer != null) {
+                renderer.runFrameIdleWork(deadlineNanos);
+            }
+        });
     }
 
     /**

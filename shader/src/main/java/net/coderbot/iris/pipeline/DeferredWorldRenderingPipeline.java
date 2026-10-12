@@ -234,6 +234,14 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			this.adaptiveShadowBoundsStats = AdaptiveShadowBoundsStats.create(programs.getPack().getBufferObjects());
 			AdaptiveShadowBoundsStats.activate(this.adaptiveShadowBoundsStats);
 
+			// The custom textures are loaded onto a unit of their own and the transform threads this
+			// method is about to start also touch texture units, so the manager is built first, while
+			// the thread that owns the context is still the only one running.
+			final int entryTextureUnit = GLStateManager.getActiveTextureUnit();
+			GLStateManager.glActiveTexture(GL13.GL_TEXTURE2);
+			customTextureManager = new CustomTextureManager(programs.getPackDirectives(), programs.getPack().getCustomTextureDataMap(), programs.getPack().getIrisCustomTextureDataMap(), programs.getPack().getCustomNoiseTexture());
+			GLStateManager.glActiveTexture(GL13.GL_TEXTURE0 + entryTextureUnit);
+
 			final Map<Integer, CompletableFuture<Map<PatchShaderType, String>>> prepareTransformFutures =
 				submitCompositeTransforms(programs.getPrepare(), TextureStage.PREPARE, programs.getPackDirectives().getTextureMap());
 			final Map<Integer, CompletableFuture<Map<PatchShaderType, String>>> deferredTransformFutures =
@@ -340,8 +348,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 			// Don't clobber anything in texture unit 0. It probably won't cause issues, but we're just being cautious here.
 			GLStateManager.glActiveTexture(GL13.GL_TEXTURE2);
-
-			customTextureManager = new CustomTextureManager(programs.getPackDirectives(), programs.getPack().getCustomTextureDataMap(), programs.getPack().getIrisCustomTextureDataMap(), programs.getPack().getCustomNoiseTexture());
 
 			whitePixel = new NativeImageBackedSingleColorTexture(255, 255, 255, 255);
 

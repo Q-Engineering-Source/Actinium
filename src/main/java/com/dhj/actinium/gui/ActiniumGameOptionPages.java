@@ -7,7 +7,8 @@ import com.dhj.actinium.render.pacing.FpsReducer;
 import com.dhj.actinium.render.terrain.TerrainTextureFiltering;
 import com.gtnewhorizon.gtnhlib.compat.Mods;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
-import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.backend.VSyncMode;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.client.settings.GameSettings;
@@ -73,6 +74,21 @@ public class ActiniumGameOptionPages {
             opts.advanced.useFastLitItemDisplayLists = value;
             FastLitItemDisplayListCache.clear();
         }
+    }
+
+    /**
+     * Applies a vsync mode picked in the three-state option.
+     *
+     * <p>Vanilla's {@code enableVsync} is kept as the two-valued shadow of the mode so the vanilla
+     * video settings screen and the next launch agree with what is on screen here, and both files are
+     * saved because the two settings live in different ones.</p>
+     */
+    private static void setVSyncMode(SodiumGameOptions opts, VSyncMode mode) {
+        opts.advanced.vsyncMode = mode;
+        final Minecraft minecraft = Minecraft.getMinecraft();
+        minecraft.gameSettings.enableVsync = mode.tearFree();
+        minecraft.gameSettings.saveOptions();
+        GLStateManager.setVSyncMode(mode);
     }
 
     private static OptionImpl<GameSettings, Integer> createGuiScaleSliderOption() {
@@ -181,22 +197,19 @@ public class ActiniumGameOptionPages {
                         .setBinding((opts, value) -> ActiniumWindowModeController.applyMode(Minecraft.getMinecraft(), opts, value),
                                 ActiniumWindowModeController::resolveConfiguredMode)
                         .build())
-                .add(OptionImpl.createBuilder(boolean.class, vanillaOpts)
+                .add(OptionImpl.createBuilder(VSyncMode.class, sodiumOpts)
                         .setId(StandardOptions.Option.VSYNC.cast())
                         .setName(TextComponent.translatable("options.vsync"))
                         .setTooltip(TextComponent.translatable("sodium.options.v_sync.tooltip"))
-                        .setControl(TickBoxControl::new)
-                        .setBinding((opts, value) -> {
-                            opts.enableVsync = value;
-                            BackendManager.RENDER_BACKEND.setVSyncEnabled(value);
-                        }, opts -> opts.enableVsync)
+                        .setControl(VSyncOptions::cyclingControl)
+                        .setBinding(ActiniumGameOptionPages::setVSyncMode, VSyncOptions::storedMode)
                         .setImpact(OptionImpact.VARIES)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, vanillaOpts)
                         .setId(StandardOptions.Option.MAX_FRAMERATE.cast())
                         .setName(TextComponent.translatable("options.framerateLimit"))
                         .setTooltip(TextComponent.translatable("sodium.options.fps_limit.tooltip"))
-                        .setControl(option -> new SliderControl(option, 10, 260, 10, ControlValueFormatter.fpsLimit()))
+                        .setControl(option -> new SliderControl(option, 10, 260, 1, ControlValueFormatter.fpsLimit()))
                         .setBinding((opts, value) -> opts.limitFramerate = value, opts -> opts.limitFramerate)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)

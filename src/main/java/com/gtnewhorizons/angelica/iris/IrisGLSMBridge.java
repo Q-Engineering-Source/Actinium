@@ -26,6 +26,7 @@ import net.coderbot.iris.pipeline.WorldRenderingPipeline;
 import net.coderbot.iris.samplers.IrisSamplers;
 import net.coderbot.iris.texture.pbr.PBRTextureManager;
 import net.coderbot.iris.vertices.ImmediateState;
+import org.taumc.glsl.grammar.GLSLParser;
 
 public final class IrisGLSMBridge {
     private static Runnable alphaFuncListener;
@@ -103,6 +104,10 @@ public final class IrisGLSMBridge {
      * Installs the callback the shader transformer reports every finished stage to, which the SDL
      * backend turns into an off-thread SPIR-V compilation. Idempotent, and only meaningful on the
      * SDL backend: an OpenGL backend compiles the GLSL itself and has nothing to prewarm.
+     *
+     * <p>The transformer also hands over the tree its printed body came from. Passing it on lets the
+     * backend's pre-processing walk that tree instead of parsing the same source again, which is one
+     * full ANTLR parse per stage saved on the pack-load path.</p>
      */
     public static void installPostTransformHook() {
         if (GLSMHooks.postTransformProcessor != null) {
@@ -111,10 +116,15 @@ public final class IrisGLSMBridge {
         GLSMHooks.postTransformProcessor = new ShaderTransformPostProcessor() {
             @Override
             public void onTransformed(String transformedSource, ShaderType shaderType) {
+                onTransformed(transformedSource, null, 0, shaderType);
+            }
+
+            @Override
+            public void onTransformed(String transformedSource, GLSLParser.Translation_unitContext bodyTree, int headerLen, ShaderType shaderType) {
                 if (Iris.ShaderTransformExecutor.isOnWorker()) {
-                    SDLGPUGate.prewarmSpirv(transformedSource, shaderType.id);
+                    SDLGPUGate.prewarmSpirv(transformedSource, bodyTree, headerLen, shaderType.id);
                 } else {
-                    Iris.ShaderTransformExecutor.submitTracked(() -> SDLGPUGate.prewarmSpirv(transformedSource, shaderType.id));
+                    Iris.ShaderTransformExecutor.submitTracked(() -> SDLGPUGate.prewarmSpirv(transformedSource, bodyTree, headerLen, shaderType.id));
                 }
             }
         };

@@ -65,7 +65,7 @@ public class MixinMinecraft {
             at = @At(value = "INVOKE", target = "Lorg/lwjgl/opengl/Display;setVSyncEnabled(Z)V", remap = false)
     )
     private void actinium$routeVSync(boolean sync) {
-        BackendManager.RENDER_BACKEND.setVSyncEnabled(sync);
+        GLStateManager.setVSyncEnabled(sync);
     }
 
     @Inject(method = "runTick", at = @At("HEAD"))
@@ -97,6 +97,26 @@ public class MixinMinecraft {
             actinium$gameLoopStarted = true;
             BackendManager.RENDER_BACKEND.onFrameBegin();
         }
+    }
+
+    /**
+     * Refreshes the input state right before the world is rendered.
+     *
+     * <p>The swap at the end of the frame also drains the window's event queue, so the mouse delta
+     * the camera is built from is the one the previous frame polled: everything the player moved
+     * during this frame's own work is applied a frame late. Draining the queue again here — the last
+     * point before the camera is computed — removes that frame of latency. It costs a message pump,
+     * and the pump is idempotent, so the swap's own call still happens.</p>
+     */
+    @Inject(
+            method = "runGameLoop",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/renderer/EntityRenderer;updateCameraAndRender(FJ)V"
+            )
+    )
+    private void actinium$freshenMouseInput(CallbackInfo ci) {
+        GLStateManager.pumpDisplayMessages();
     }
 
     @Inject(

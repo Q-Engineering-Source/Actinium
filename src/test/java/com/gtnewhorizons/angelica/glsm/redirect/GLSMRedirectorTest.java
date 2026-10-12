@@ -24,6 +24,7 @@ class GLSMRedirectorTest {
 
     private static final String VANILLA_GL_STATE_MANAGER = "net/minecraft/client/renderer/GlStateManager";
     private static final String GLSM_GL_STATE_MANAGER = "com/gtnewhorizons/angelica/glsm/GLStateManager";
+    private static final String EXT_TIMER_QUERY = "org/lwjgl/opengl/EXTTimerQuery";
 
     @Test
     void rewritesVanillaGlStateManagerColorToGlsmCache() {
@@ -165,6 +166,40 @@ class GLSMRedirectorTest {
         }
     }
 
+    /**
+     * The EXT form of the 64-bit timer query is what 1.12.2 mods reach for when they time GPU work
+     * through the extension entry point; it has to land on the same GLSM entry point as the ARB form.
+     */
+    @Test
+    void rewritesExtTimerQueryToTheGlsmQueryEntryPoint() {
+        byte[] classBytes = generateClassCallingExtTimerQuery();
+        GLSMRedirector redirector = new GLSMRedirector();
+
+        assertTrue(redirector.shouldTransform(classBytes), "class referencing EXTTimerQuery must be a redirect candidate");
+
+        ClassNode cn = new ClassNode();
+        new ClassReader(classBytes).accept(cn, 0);
+        assertTrue(redirector.transformClassNode("sample/TimerQuery", cn), "EXTTimerQuery.glGetQueryObjectuEXT must be rewritten");
+
+        MethodNode render = cn.methods.stream()
+            .filter(m -> m.name.equals("render"))
+            .findFirst()
+            .orElseThrow();
+        boolean redirected = false;
+        boolean driverCallSurvived = false;
+        for (AbstractInsnNode node : render.instructions) {
+            if (node instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESTATIC) {
+                if (call.owner.equals(GLSM_GL_STATE_MANAGER) && call.name.equals("glGetQueryObjectui64")) {
+                    redirected = true;
+                } else if (call.owner.equals(EXT_TIMER_QUERY)) {
+                    driverCallSurvived = true;
+                }
+            }
+        }
+        assertTrue(redirected, "EXTTimerQuery.glGetQueryObjectuEXT must be redirected to GLSM GLStateManager.glGetQueryObjectui64");
+        assertEquals(false, driverCallSurvived, "no driver-side EXTTimerQuery call may survive the rewrite");
+    }
+
     @Test
     void untouchedClassWithoutGlReferencesIsNotTransformed() {
         ClassWriter cw = new ClassWriter(0);
@@ -222,6 +257,22 @@ class GLSMRedirectorTest {
         mv.visitMethodInsn(Opcodes.INVOKESTATIC, VANILLA_GL_STATE_MANAGER, "disableOutlineMode", "()V", false);
         mv.visitInsn(Opcodes.RETURN);
         mv.visitMaxs(1, 1);
+        mv.visitEnd();
+        cw.visitEnd();
+        return cw.toByteArray();
+    }
+
+    private static byte[] generateClassCallingExtTimerQuery() {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "sample/TimerQuery", null, "java/lang/Object", null);
+        MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "render", "()V", null, null);
+        mv.visitCode();
+        mv.visitInsn(Opcodes.ICONST_0);
+        mv.visitInsn(Opcodes.ICONST_0);
+        mv.visitMethodInsn(Opcodes.INVOKESTATIC, EXT_TIMER_QUERY, "glGetQueryObjectuEXT", "(II)J", false);
+        mv.visitInsn(Opcodes.POP2);
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(2, 1);
         mv.visitEnd();
         cw.visitEnd();
         return cw.toByteArray();
