@@ -21,6 +21,16 @@
 追加在这一行里；**事件摘要**在各自的 logger 下按事件输出。两者都不按条数限流：周期段在
 游戏运行期间每秒一行，事件摘要每次事件一行。
 
+两级日志对开关的依赖不同：
+
+| 级别 | 需要 `Render Timing Debug` | 内容 |
+| --- | --- | --- |
+| **周期段** | **是** | `pacer`、`reducer`、`progCache`、`transform`、`glslRename`、`pbr`、`uniformPrevious`、`entityId` 八段，以及已有的 `[ShaderTransformCache] <domain> hit/miss/raceReuse ...` 与 `cleared entries=N` 逐事件行 |
+| **事件摘要** | **否**（默认就会输出） | `Shaderpack load:`、`Program binary cache:`、`Atlas build:`、`Terrain texture filtering:`、`VSync mode:`、`PBR resource index: scanned ...`、`Shader warmup:`、`[ShaderTransformCache] warmup submitted/done/failed`、`FPS reducer: A -> B`、`Warming the transforms of the shaderpack read ahead of time` |
+
+也就是说：只想知道「包加载快了多少、图集是不是走了并行、过滤模式是什么」可以不开开关；
+想持续观察「命中率、被 pace 的帧、降帧状态、uniform 缓存」才需要开。
+
 ### 周期段的注册顺序（= 日志里段的出现顺序）
 
 `GLSM perf:` 行的结构是：glsm 自带的 stage 段（`chunk.upload[...]` 等）+ 各模块注册的统计段。
