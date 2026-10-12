@@ -262,6 +262,11 @@ public final class MipmapGenerator {
      * texels are repainted first - <b>in place</b>, which is deliberate: the caller keeps that array as the
      * sprite's level 0, and the repaint is part of the level's final content.
      *
+     * <p>The chain is always complete, even for a sprite a mod shipped at a size that cannot support the
+     * requested level count: a level whose width or height collapses to zero is a zero-filled array a quarter
+     * of the level above, and it gets neither a downsample pass nor the cutout rescale. Vanilla allocates and
+     * skips the same way, and the atlas upload stops at the first collapsed level.
+     *
      * @param mipLevel             the highest level index to produce
      * @param width                width of the base level, in texels
      * @param currentMips          levels the caller already has; index 0 is the base image
@@ -304,22 +309,32 @@ public final class MipmapGenerator {
             } else {
                 final int[] input = result[level - 1];
                 final int prevWidth = width >> (level - 1);
-                final int prevHeight = input.length / prevWidth;
+                final int prevHeight = prevWidth > 0 ? input.length / prevWidth : 0;
                 final int levelHeight = prevHeight >> 1;
-                final int[] output = new int[levelWidth * levelHeight];
 
-                for (int y = 0; y < levelHeight; y++) {
-                    for (int x = 0; x < levelWidth; x++) {
-                        final int i = x * 2 + y * 2 * prevWidth;
-                        output[x + y * levelWidth] = MipmapHelper.weightedAverageColor(
-                            MipmapHelper.weightedAverageColor(input[i], input[i + 1]),
-                            MipmapHelper.weightedAverageColor(input[i + prevWidth], input[i + prevWidth + 1]));
+                if (levelWidth <= 0 || levelHeight <= 0) {
+                    // The sprite is smaller than this level: the atlas keeps its configured level count for a
+                    // sprite a mod shipped at a size that cannot support it, so the chain still has to be
+                    // complete. Vanilla allocates such a level as a quarter of the level above and leaves it
+                    // zero-filled, which is what the upload path expects to find.
+                    result[level] = new int[input.length >> 2];
+                } else {
+                    final int[] output = new int[levelWidth * levelHeight];
+
+                    for (int y = 0; y < levelHeight; y++) {
+                        for (int x = 0; x < levelWidth; x++) {
+                            final int i = x * 2 + y * 2 * prevWidth;
+                            output[x + y * levelWidth] = MipmapHelper.weightedAverageColor(
+                                MipmapHelper.weightedAverageColor(input[i], input[i + 1]),
+                                MipmapHelper.weightedAverageColor(input[i + prevWidth], input[i + prevWidth + 1]));
+                        }
                     }
+                    result[level] = output;
                 }
-                result[level] = output;
             }
 
-            if (isCutout) {
+            // A level that collapsed to zero texels has no coverage to measure, and no texel to measure it on.
+            if (isCutout && levelWidth > 0 && result[level].length >= levelWidth) {
                 scaleAlphaToCoverage(result[level], levelWidth, originalCoverage, cutoutRef);
             }
         }

@@ -5,6 +5,7 @@ import dhj.embeddedt.embeddium.impl.texture.MipmapHelper;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -17,6 +18,9 @@ class MipmapGeneratorTest {
     private static final int OPAQUE_BLUE = ColorARGB.pack(0, 0, 255, 255);
     private static final int OPAQUE_WHITE = ColorARGB.pack(255, 255, 255, 255);
     private static final int TRANSPARENT = ColorARGB.pack(0, 0, 0, 0);
+
+    /** Colours of the solid 2x2 texel blocks the sprite-sized tests are built from. */
+    private static final int[] BLOCK_PALETTE = {OPAQUE_RED, OPAQUE_GREEN, OPAQUE_BLUE, OPAQUE_WHITE};
 
     @Test
     void mipLevelZeroReturnsTheInputBase() {
@@ -148,6 +152,80 @@ class MipmapGeneratorTest {
     }
 
     /**
+     * A sprite a mod shipped at a size that cannot support the configured level count keeps the whole chain:
+     * 12x12 asked for four levels gives 12 &gt;&gt; 4 = 0, and the atlas upload stops at the first such level.
+     * Vanilla allocates it as a quarter of the level above and leaves it zero-filled, which is what the
+     * uploader and the per-frame accessors expect to find there.
+     */
+    @Test
+    void levelsPastTheSpriteSizeCollapseToAQuarterOfTheLevelAbove() {
+        assertCollapsedChainIsSafe(12, 12, 4);
+        assertCollapsedChainIsSafe(8, 8, 4);
+        assertCollapsedChainIsSafe(32, 8, 4);
+        assertCollapsedChainIsSafe(1, 1, 4);
+    }
+
+    /**
+     * The cutout pass measures the base level's coverage and then rescales every level against it, so the
+     * sprite has to walk the whole chain without measuring a level that has no texels left. A small sprite
+     * with transparent texels is the shape the dev client crashed on, and level 3 here is the 1x1 level whose
+     * coverage falls back to its single texel.
+     */
+    @Test
+    void cutoutSpritesWithTransparencySurviveCollapsedLevels() {
+        final int[] base = solidBlocks(12, 12);
+        base[0] = TRANSPARENT;
+        base[1] = TRANSPARENT;
+        base[12] = TRANSPARENT;
+        base[13] = TRANSPARENT;
+
+        final int[][] levels = assertDoesNotThrow(() -> MipmapGenerator.generateMipLevels(4, 12,
+            new int[][] {base}, MipmapStrategy.CUTOUT, true));
+
+        assertEquals(5, levels.length);
+        assertEquals(36, levels[1].length);
+        assertEquals(9, levels[2].length);
+        assertEquals(1, levels[3].length);
+        assertEquals(0, levels[4].length);
+    }
+
+    /**
+     * The levels a non power of two sprite can support have to keep the box filter of the level below: level 1
+     * shows each solid 2x2 block's own colour, level 2 the average of the four blocks of its 4x4 region.
+     */
+    @Test
+    void theLevelsOfA12x12SpriteStayTheBoxFilterOfTheLevelBelow() {
+        final int[][] levels = MipmapGenerator.generateMipLevels(4, 12, new int[][] {solidBlocks(12, 12)},
+            MipmapStrategy.MEAN, false);
+
+        assertEquals(5, levels.length);
+        assertEquals(36, levels[1].length);
+        assertEquals(9, levels[2].length);
+        assertEquals(1, levels[3].length);
+        assertEquals(0, levels[4].length);
+
+        assertEquals(levelOneBlock(1, 1), levels[1][1 + 6]);
+        assertEquals(levelOneBlock(5, 5), levels[1][5 + 5 * 6]);
+        assertEquals(
+            MipmapHelper.weightedAverageColor(
+                MipmapHelper.weightedAverageColor(levelOneBlock(0, 0), levelOneBlock(1, 0)),
+                MipmapHelper.weightedAverageColor(levelOneBlock(0, 1), levelOneBlock(1, 1))),
+            levels[2][0]);
+        assertEquals(
+            MipmapHelper.weightedAverageColor(
+                MipmapHelper.weightedAverageColor(levelOneBlock(2, 2), levelOneBlock(3, 2)),
+                MipmapHelper.weightedAverageColor(levelOneBlock(2, 3), levelOneBlock(3, 3))),
+            levels[2][1 + 3]);
+    }
+
+    /** Every level 1 texel of a solid-block sprite is the box filter of the one block it covers. */
+    @Test
+    void levelOneOfASolidBlockSpriteShowsEachBlocksOwnColour() {
+        assertLevelOneBlocks(12, 12);
+        assertLevelOneBlocks(32, 8);
+    }
+
+    /**
      * The coverage model decides which fraction of a level survives the alpha test, with bilinear filtering
      * approximated by supersampling each texel quad on an interior 4x4 grid.
      */
@@ -205,6 +283,66 @@ class MipmapGeneratorTest {
         assertEquals(expected.length, actual.length);
         for (int level = 0; level < expected.length; level++) {
             assertArrayEquals(expected[level], actual[level], "level " + level);
+        }
+    }
+
+    /** A sprite whose every 2x2 texel block is one solid palette colour. */
+    private static int[] solidBlocks(int width, int height) {
+        final int[] base = new int[width * height];
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                base[x + y * width] = blockColorAt(x / 2, y / 2);
+            }
+        }
+        return base;
+    }
+
+    private static int blockColorAt(int blockX, int blockY) {
+        return BLOCK_PALETTE[(blockX + blockY * 3) & 3];
+    }
+
+    /** What one solid block comes out as at level 1, folded exactly the way the generator folds its texels. */
+    private static int levelOneBlock(int blockX, int blockY) {
+        final int color = blockColorAt(blockX, blockY);
+        return MipmapHelper.weightedAverageColor(
+            MipmapHelper.weightedAverageColor(color, color),
+            MipmapHelper.weightedAverageColor(color, color));
+    }
+
+    /**
+     * Walks one sprite size through the whole chain with a filtering and a cutout mode, and checks every level:
+     * the levels the sprite supports are its box filter size, and the ones past it are a quarter of the level
+     * above and all zero.
+     */
+    private static void assertCollapsedChainIsSafe(int width, int height, int mipLevel) {
+        for (final MipmapStrategy strategy : new MipmapStrategy[] {MipmapStrategy.MEAN, MipmapStrategy.CUTOUT}) {
+            final int[][] levels = assertDoesNotThrow(() -> MipmapGenerator.generateMipLevels(mipLevel, width,
+                new int[][] {solidBlocks(width, height)}, strategy, true),
+                strategy + " on a " + width + "x" + height + " sprite");
+
+            assertEquals(mipLevel + 1, levels.length);
+            for (int level = 1; level <= mipLevel; level++) {
+                final int levelWidth = width >> level;
+                final int levelHeight = height >> level;
+                if (levelWidth > 0 && levelHeight > 0) {
+                    assertEquals(levelWidth * levelHeight, levels[level].length, "level " + level);
+                    continue;
+                }
+                assertEquals(levels[level - 1].length >> 2, levels[level].length, "level " + level);
+                assertArrayEquals(new int[levels[level].length], levels[level], "level " + level);
+            }
+        }
+    }
+
+    private static void assertLevelOneBlocks(int width, int height) {
+        final int[][] levels = MipmapGenerator.generateMipLevels(4, width, new int[][] {solidBlocks(width, height)},
+            MipmapStrategy.MEAN, false);
+
+        final int levelWidth = width >> 1;
+        for (int y = 0; y < height >> 1; y++) {
+            for (int x = 0; x < levelWidth; x++) {
+                assertEquals(levelOneBlock(x, y), levels[1][x + y * levelWidth], "block " + x + "," + y);
+            }
         }
     }
 }
