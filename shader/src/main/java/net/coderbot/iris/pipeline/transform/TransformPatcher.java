@@ -24,6 +24,8 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class TransformPatcher {
 
@@ -36,6 +38,13 @@ public class TransformPatcher {
     };
 
     private static final boolean useCache = true;
+
+    /** Cache events since the last periodic report; transforms run on the transform pool, so these are shared. */
+    private static final AtomicLong cacheHits = new AtomicLong();
+    private static final AtomicLong cacheMisses = new AtomicLong();
+    private static final AtomicLong cacheRaceReuses = new AtomicLong();
+    private static final AtomicLong transformNanos = new AtomicLong();
+    private static final AtomicInteger reportedCacheSize = new AtomicInteger();
 
     private enum CacheDomain {
         GRAPHICS("graphics"),
@@ -225,6 +234,11 @@ public class TransformPatcher {
         synchronized (cache) {
             cached = cache.get(key);
         }
+        if (cached == null) {
+            cacheMisses.incrementAndGet();
+        } else {
+            cacheHits.incrementAndGet();
+        }
         if (cached != null && logCacheEvents) {
             Iris.logger.info("[ShaderTransformCache] {} hit cacheSize={}", domain.logLabel, cacheSize());
         }
@@ -255,6 +269,12 @@ public class TransformPatcher {
             Iris.logger.info("[ShaderTransformCache] {} {} transformMs={} cacheSize={}",
                 domain.logLabel, reused ? "raceReuse" : "miss", transformNanos / 1_000_000.0, size);
         }
+        if (transformStart != 0L) {
+            transformNanos.addAndGet(System.nanoTime() - transformStart);
+        }
+        if (reused) {
+            cacheRaceReuses.incrementAndGet();
+        }
         return result;
     }
 
@@ -269,10 +289,36 @@ public class TransformPatcher {
         return immutable;
     }
 
-    private static int cacheSize() {
+    /** {@return the number of source sets currently cached} */
+    public static int cacheSize() {
         synchronized (cache) {
             return cache.size();
         }
+    }
+
+    /**
+     * The periodic report's transform-cache segment: what the interval hit, missed and transformed, plus
+     * the cache's size. Empty while nothing happened and the size is unchanged, so an idle game does not
+     * repeat the same numbers every second. {@code raceReuse} is a subset of {@code miss}: a transform
+     * that another caller had already cached while this one was parsing GLSL.
+     */
+    public static String statsSummary() {
+        final long hits = cacheHits.getAndSet(0L);
+        final long misses = cacheMisses.getAndSet(0L);
+        final long raceReuses = cacheRaceReuses.getAndSet(0L);
+        final long nanos = transformNanos.getAndSet(0L);
+        final int size = cacheSize();
+        if (hits == 0L && misses == 0L && raceReuses == 0L && size == reportedCacheSize.getAndSet(size)) {
+            return "";
+        }
+        reportedCacheSize.set(size);
+        return "transform[hit=" + hits
+            + ",miss=" + misses
+            + ",raceReuse=" + raceReuses
+            + ",transformMs=" + String.format("%.3f", nanos / 1_000_000.0)
+            + ",cacheSize=" + size
+            + ",capacity=" + MAX_CACHE_ENTRIES
+            + ']';
     }
 
     private static Map<PatchShaderType, String> immutableResult(Map<PatchShaderType, String> transformed) {

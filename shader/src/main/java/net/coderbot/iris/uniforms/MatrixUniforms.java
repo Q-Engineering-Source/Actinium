@@ -13,6 +13,7 @@ import org.joml.Matrix4fc;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 import static net.coderbot.iris.gl.uniform.UniformUpdateFrequency.PER_FRAME;
@@ -96,6 +97,8 @@ public final class MatrixUniforms {
 	static final class Previous implements Supplier<Matrix4fc> {
 		/** Trackers by uniform name; programs register the same name from several threads. */
 		private static final Map<String, Previous> INSTANCES = new ConcurrentHashMap<>();
+		private static final AtomicLong reads = new AtomicLong();
+		private static int reportedInstances;
 
 		private final Supplier<Matrix4fc> parent;
 		private final Matrix4f previous = new Matrix4f();
@@ -117,6 +120,7 @@ public final class MatrixUniforms {
 
 		@Override
 		public Matrix4fc get() {
+			reads.incrementAndGet();
 			final int frame = SystemTimeUniforms.COUNTER.getAsInt();
 
 			if (frame != lastFrame) {
@@ -127,5 +131,28 @@ public final class MatrixUniforms {
 
 			return previous;
 		}
+
+		/**
+		 * The periodic report's segment for these trackers, or an empty string while the instance count is
+		 * unchanged and no read happened. {@code instances} is the sharing made visible: it counts uniform
+		 * names, not the (program, uniform) pairs that would have their own tracker without it.
+		 */
+		static String statsSummary() {
+			final long readCount = reads.getAndSet(0L);
+			final int instances = INSTANCES.size();
+			if (readCount == 0L && instances == reportedInstances) {
+				return "";
+			}
+			reportedInstances = instances;
+			return "uniformPrevious[instances=" + instances + ",reads=" + readCount + ']';
+		}
+	}
+
+	/**
+	 * The periodic report's segment for the shared previous-frame matrix trackers; see
+	 * {@link Previous#statsSummary()}.
+	 */
+	public static String previousStatsSummary() {
+		return Previous.statsSummary();
 	}
 }

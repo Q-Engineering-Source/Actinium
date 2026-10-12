@@ -47,12 +47,27 @@ public final class ShaderWarmup {
     }
 
     private static void warmUp(@Nullable Supplier<ProgramSet> readSelectedPack) {
+        final long startNanos = System.nanoTime();
+        LOGGER.info("Shader warmup: preloading shader classes");
         preloadClasses();
-        if (readSelectedPack == null) return;
-        final ProgramSet programs = readSelectedPack.get();
-        if (programs != null) {
-            Iris.warmupPreparedTransforms(programs);
+        if (readSelectedPack == null) {
+            LOGGER.info("Shader warmup: no shaderpack selected to read ahead, done in {}ms",
+                elapsedMillis(startNanos));
+            return;
         }
+        LOGGER.info("Shader warmup: reading the selected shaderpack ahead of time");
+        final ProgramSet programs = readSelectedPack.get();
+        if (programs == null) {
+            LOGGER.info("Shader warmup: nothing was read ahead, done in {}ms", elapsedMillis(startNanos));
+            return;
+        }
+        Iris.warmupPreparedTransforms(programs);
+        LOGGER.info("Shader warmup: read the selected pack ahead and submitted its transform warmup in {}ms",
+            elapsedMillis(startNanos));
+    }
+
+    private static String elapsedMillis(long startNanos) {
+        return String.format("%.1f", (System.nanoTime() - startNanos) / 1_000_000.0);
     }
 
     private static void preloadClasses() {

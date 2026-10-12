@@ -127,6 +127,11 @@ public class MixinTextureAtlas implements TextureMapExtension {
         return this.celeritas$height;
     }
 
+    @Override
+    public int celeritas$getAtlasGutter() {
+        return this.celeritas$atlasGutter;
+    }
+
     @ModifyExpressionValue(method = "updateAnimations", at = @At(value = "INVOKE", target = "Ljava/util/List;iterator()Ljava/util/Iterator;"))
     private Iterator<TextureAtlasSprite> getFilteredIterator(Iterator<TextureAtlasSprite> iterator) {
         if (ActiniumRuntime.options().performance.animateOnlyVisibleTextures) {

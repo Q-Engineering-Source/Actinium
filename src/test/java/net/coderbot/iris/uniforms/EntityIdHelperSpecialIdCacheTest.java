@@ -72,6 +72,31 @@ class EntityIdHelperSpecialIdCacheTest {
         assertEquals(1, entityIds.lookups(CURRENT_PLAYER), "an undefined name is resolved once as well");
     }
 
+    /**
+     * The resolution count is the optimisation's evidence: it advances once per entity id map, not once per
+     * matching entity, so the periodic report can show the per-entity work is gone.
+     */
+    @Test
+    void reportsOneResolvePerEntityIdMap() {
+        EntityIdHelper.statsSummary();
+
+        final EntityIdHelper.SpecialIds specialIds = new EntityIdHelper.SpecialIds();
+        final CountingEntityIdMap firstPack = new CountingEntityIdMap();
+        firstPack.put(CURRENT_PLAYER, 99);
+        firstPack.put(CONVERTING_VILLAGER, 98);
+        specialIds.refresh(firstPack);
+        specialIds.refresh(firstPack);
+
+        final CountingEntityIdMap secondPack = new CountingEntityIdMap();
+        secondPack.put(CURRENT_PLAYER, 7);
+        secondPack.put(CONVERTING_VILLAGER, 6);
+        specialIds.refresh(secondPack);
+
+        assertEquals("entityId[specialQueries=0,specialResolves=2,specialHits=0,idCacheHits=0,idCacheMisses=0]",
+            EntityIdHelper.statsSummary());
+        assertEquals("", EntityIdHelper.statsSummary(), "the report must clear what it reported");
+    }
+
     /** Entity id map that records how often each name is resolved, to observe the caching. */
     private static final class CountingEntityIdMap extends Object2IntOpenHashMap<NamespacedId> {
         private final Object2IntOpenHashMap<NamespacedId> lookups = new Object2IntOpenHashMap<>();

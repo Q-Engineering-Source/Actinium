@@ -2218,3 +2218,16 @@ celeritas / compute 变换，键按值相等，因此进世界建管线时命中
 - **③**：主菜单启动后应出现 `Warming the transforms of the shaderpack read ahead of time`（INFO，来自
   `Iris.warmupPreparedTransforms`）。随后进世界，对比「关掉该预读」的启动卡顿；`GLSMPerfDebug`（游戏内 GUI
   开关）打开时 `[ShaderTransformCache] ... hit cacheSize=` 应显示构造体提交时大量命中。世界内切包路径不受影响。
+
+## 统计日志对照表（2026-10-12）
+
+Phase 1–14 移植的各项优化原先只能靠外部 profiler 判断是否生效。本次为其中的
+程序落盘缓存、变换缓存与预热链、包加载提速（PBR 索引 / 保留字改写）、图集并行加载、
+纹理过滤与 mipmap 策略、pacer 与 FpsReducer、vsync 三模式、B5 uniform 热路径
+补齐了统计日志：**周期段**追加在 `GLSM perf:` 行内（`Render Timing Debug` 打开时每秒一行），
+**事件摘要**在各自 logger 下按事件输出，两者都不按条数限流。
+
+- 每条日志的确切文本格式、字段含义、落点文件与开启路径，见
+  `docs/research/sdl-gpu-port-stats-logging.md`；
+- 该文档末尾另附「日志行 → 判断生效」总对照表，直接用于读 `run/client/logs/latest.log` 判读；
+- 本次改动只加观测：不改任何优化的行为语义，除正则改写与计数器外不进入热路径。

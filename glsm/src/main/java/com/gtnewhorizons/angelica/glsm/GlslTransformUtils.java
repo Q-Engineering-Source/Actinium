@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.glsm;
 
+import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import org.antlr.v4.runtime.BufferedTokenStream;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CommonToken;
@@ -16,6 +17,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -81,6 +83,11 @@ public class GlslTransformUtils {
         )
     );
 
+    /** Rename work since the last report, so the periodic segment can price what this optimisation removed. */
+    private static final AtomicLong renameCalls = new AtomicLong();
+    private static final AtomicLong renameInputChars = new AtomicLong();
+    private static final AtomicLong renameNanos = new AtomicLong();
+
     public static String replaceTexture(String input) {
         final Matcher matcher = TEXTURE_PATTERN.matcher(input);
         final StringBuilder builder = new StringBuilder();
@@ -112,6 +119,9 @@ public class GlslTransformUtils {
             && (targetVersion < 400 || !containsWholeWord(source, "sampler"))) {
             return source;
         }
+        final boolean timing = GLSMPerfDebug.isEnabled();
+        final long startNanos = timing ? System.nanoTime() : 0L;
+        final int inputChars = source.length();
         for (var entry : VERSIONED_RESERVED_WORDS.entrySet()) {
             // Rename identifiers that become reserved words at or above this GLSL version
             if (targetVersion >= entry.getKey()) {
@@ -120,7 +130,33 @@ public class GlslTransformUtils {
                 }
             }
         }
+        if (timing) {
+            renameCalls.incrementAndGet();
+            renameInputChars.addAndGet(inputChars);
+            renameNanos.addAndGet(System.nanoTime() - startNanos);
+        }
         return source;
+    }
+
+    /**
+     * The periodic report's reserved-word rename segment, or an empty string while no source needed
+     * renaming. Only the sources that really contain a later GLSL version's reserved word are timed:
+     * the ones the pre-scan rejects return before any pattern runs.
+     */
+    public static String renameStatsSummary() {
+        final long calls = renameCalls.getAndSet(0L);
+        if (calls == 0L) {
+            renameInputChars.set(0L);
+            renameNanos.set(0L);
+            return "";
+        }
+        final long chars = renameInputChars.getAndSet(0L);
+        final long nanos = renameNanos.getAndSet(0L);
+        return "glslRename[calls=" + calls
+            + ",chars=" + chars
+            + ",ms=" + String.format("%.3f", nanos / 1_000_000.0)
+            + ",avgUs=" + String.format("%.2f", nanos / 1_000.0 / calls)
+            + ']';
     }
 
     static boolean containsWholeWord(String source, String word) {

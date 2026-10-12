@@ -70,6 +70,9 @@ public class ProgramBuilder extends ProgramUniforms.Builder implements SamplerHo
 			}
 		}
 
+		// Everything from here to the link is the work a restored binary replaces, the stage compilations
+		// included, so this is what the program cache reports it saved.
+		final long buildStartNanos = cacheKey != null ? System.nanoTime() : 0L;
 		GlShader vertex = buildShader(ShaderType.VERTEX, name + ".vsh", vertexSource);
 		GlShader geometry = geometrySource != null ? buildShader(ShaderType.GEOMETRY, name + ".gsh", geometrySource) : null;
 		GlShader tessControl = tessControlSource != null ? buildShader(ShaderType.TESSELATION_CONTROL, name + ".tcs", tessControlSource) : null;
@@ -87,6 +90,10 @@ public class ProgramBuilder extends ProgramUniforms.Builder implements SamplerHo
 
 		for (GlShader shader : shaders) {
 			shader.destroy();
+		}
+
+		if (buildStartNanos != 0L) {
+			ProgramBinaryCache.recordMissBuild(System.nanoTime() - buildStartNanos);
 		}
 
 		return new ProgramBuilder(name, programId, reservedTextureUnits).retainAs(sources);
@@ -117,11 +124,17 @@ public class ProgramBuilder extends ProgramUniforms.Builder implements SamplerHo
 			}
 		}
 
+		// See begin(): the stage compilation and the link are what a restored binary replaces.
+		final long buildStartNanos = cacheKey != null ? System.nanoTime() : 0L;
 		GlShader compute = buildShader(ShaderType.COMPUTE, name + ".csh", source);
 
 		int programId = ProgramCreator.create(name, cacheKey, compute);
 
 		compute.destroy();
+
+		if (buildStartNanos != 0L) {
+			ProgramBinaryCache.recordMissBuild(System.nanoTime() - buildStartNanos);
+		}
 
 		return new ProgramBuilder(name, programId, reservedTextureUnits).retainAs(sources);
 	}

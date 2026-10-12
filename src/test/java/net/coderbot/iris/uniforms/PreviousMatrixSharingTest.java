@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The {@code gbufferPrevious*} / {@code dhPrevious*} uniforms share one tracker per uniform name:
@@ -71,5 +72,26 @@ class PreviousMatrixSharingTest {
         SystemTimeUniforms.COUNTER.beginFrame();
         assertEquals(new Matrix4f().translation(5f, 0f, 0f), new Matrix4f(firstProgram.get()),
             "the next frame reports the value captured by the shared tracker's first read, not the later change");
+    }
+
+    /**
+     * The report's instance count is the sharing made visible: it counts uniform names, where a per-program
+     * tracker would count every (program, uniform) pair. The count is compared against its previous value
+     * here because the registry is shared by the whole test class.
+     */
+    @Test
+    void reportsTheSharedInstancesAndTheReadsOfThePeriod() {
+        MatrixUniforms.previousStatsSummary();
+
+        final MatrixUniforms.Previous tracker = MatrixUniforms.Previous.shared("gbufferPreviousStatsTest", () -> source);
+        tracker.get();
+        tracker.get();
+
+        final String summary = MatrixUniforms.previousStatsSummary();
+
+        assertTrue(summary.startsWith("uniformPrevious[instances="), summary);
+        assertTrue(summary.endsWith(",reads=2]"), summary);
+        assertEquals("", MatrixUniforms.previousStatsSummary(),
+            "an unchanged instance count and no reads leave nothing to report");
     }
 }

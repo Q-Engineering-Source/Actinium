@@ -5,6 +5,8 @@ import com.gtnewhorizons.angelica.glsm.GLESFormatRemap;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.texture.TextureStaging;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
@@ -24,6 +26,8 @@ import java.util.function.Predicate;
  * Abstract rendering backend.
  */
 public abstract class RenderBackend {
+
+    private static final Logger LOGGER = LogManager.getLogger("GLSMBackend");
 
     public void onPostWindowCreate(long window) {}
 
@@ -89,10 +93,14 @@ public abstract class RenderBackend {
     }
 
     public final void setVSyncMode(VSyncMode preferred) {
+        final VSyncMode previous = effectiveVSyncMode;
         setVSyncPreference(preferred);
         final VSyncMode mode = applyVSyncMode(preferred);
         vsyncHonored = applyHonored();
         publishVSyncMode(mode);
+        // The mode the option asked for and the mode the backend could really apply are not always the
+        // same - the GL backend has no mailbox present mode - so both are logged.
+        LOGGER.info("VSync mode: requested={} applied={} honored={} previous={}", preferred, mode, vsyncHonored, previous);
     }
 
     public final void setVSyncPreference(VSyncMode preferred) {

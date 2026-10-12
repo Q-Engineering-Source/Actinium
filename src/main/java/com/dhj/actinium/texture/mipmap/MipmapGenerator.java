@@ -32,6 +32,15 @@ public final class MipmapGenerator {
         return strategy;
     }
 
+    /**
+     * The mode a sprite's levels are really generated with. {@link #resolve} is what the generator uses; this
+     * exposes the same answer for the atlas build report, which otherwise could not tell a per-sprite
+     * {@code AUTO} from the mode it resolved to.
+     */
+    public static MipmapStrategy effectiveStrategy(MipmapStrategy strategy, boolean hasTransparentPixel) {
+        return resolve(strategy, hasTransparentPixel);
+    }
+
     static boolean isCutoutStrategy(MipmapStrategy strategy, boolean hasTransparentPixel) {
         final MipmapStrategy resolved = resolve(strategy, hasTransparentPixel);
         return resolved == MipmapStrategy.CUTOUT

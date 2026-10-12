@@ -8,6 +8,7 @@ import com.gtnewhorizons.angelica.glsm.backend.RenderBackend.GateSample;
 import com.gtnewhorizons.angelica.glsm.backend.VSyncMode;
 import com.gtnewhorizons.angelica.glsm.profiling.Tracy;
 
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongConsumer;
 
 /**
@@ -88,6 +89,10 @@ public final class FramePacer {
     private static boolean warnedUncapped;
     private static int lastDisplayGeneration;
 
+    /** Frames since the last periodic report, and how many of them the pacer held on its cadence. */
+    private static final AtomicInteger framesSinceReport = new AtomicInteger();
+    private static final AtomicInteger pacedFramesSinceReport = new AtomicInteger();
+
     private static Pacing current = UNPACED;
     private static Pacing logged;
 
@@ -123,13 +128,17 @@ public final class FramePacer {
 
     /**
      * The pacer's line for the periodic perf report: the wait quality over the interval just
-     * reported, followed by what the last frame achieved. The two belong together — a report that
-     * shows the pacer waiting badly also has to show whether the gate was locked and how much lead
-     * the present carried. Resets the interval, matching the report's dump-and-reset contract.
+     * reported, followed by what the last frame achieved and how many of the interval's frames the
+     * pacer held on its cadence. The parts belong together — a report that shows the pacer waiting
+     * badly also has to show whether the gate was locked, how much lead the present carried and
+     * whether the frames were paced at all. Resets the interval, matching the report's dump-and-reset
+     * contract.
      */
     public static String statsSummary() {
         final String summary = endStats();
         beginStats();
+        final int frames = framesSinceReport.getAndSet(0);
+        final int paced = pacedFramesSinceReport.getAndSet(0);
         return summary + " last=[gateUs=" + gateDurationNanos() / 1000L
             + " gpuWaitUs=" + gpuWaitNanos() / 1000L
             + " slackUs=" + slackNanos() / 1000L
@@ -137,7 +146,9 @@ public final class FramePacer {
             + " marginUs=" + marginNanos() / 1000L
             + " presentUs=" + presentIntervalNanos() / 1000L
             + " idleOvershootUs=" + idleOvershootNanos() / 1000L
-            + " locked=" + locked() + " probing=" + probing() + "]";
+            + " locked=" + locked() + " probing=" + probing() + "]"
+            + " paced=[frames=" + frames + ",paced=" + paced
+            + ",ratio=" + (frames == 0 ? "n/a" : String.format("%.1f%%", 100.0 * paced / frames)) + ']';
     }
 
     private static String configLine(Pacing pacing) {
@@ -206,6 +217,8 @@ public final class FramePacer {
 
         current = new Pacing(mode, refreshHz, cap, core.effectiveCapHz(), core.locked(), core.probing());
         maybeLog(current);
+        framesSinceReport.incrementAndGet();
+        if (core.paced()) pacedFramesSinceReport.incrementAndGet();
 
         return core.lastPresentIntervalNanos();
     }

@@ -225,4 +225,40 @@ class FramePacerTest {
             assertTrue(FramePacer.core.probing(), "a display change must re-arm the probe");
         });
     }
+
+    @Test
+    void reportsTheFramesItPacedInThePeriod() {
+        final FakeBackend backend = new FakeBackend();
+        backend.mode = VSyncMode.ON;
+        backend.vsyncHonored = true;
+        backend.refreshPeriodNanos = 16_666_666L;
+        withBackend(backend, () -> {
+            FramePacer.statsSummary();
+
+            FramePacer.endFrame(0, null);
+            FramePacer.endFrame(0, null);
+            final String summary = FramePacer.statsSummary();
+            assertTrue(summary.endsWith("paced=[frames=2,paced=2,ratio=100.0%]"), summary);
+
+            FramePacer.endFrame(0, null);
+            assertTrue(FramePacer.statsSummary().endsWith("paced=[frames=1,paced=1,ratio=100.0%]"),
+                "the report must clear the frames it counted");
+        });
+    }
+
+    @Test
+    void reportsFramesThatWereNotPacedWhenNothingBoundsTheFrameRate() {
+        final FakeBackend backend = new FakeBackend();
+        backend.mode = VSyncMode.OFF;
+        backend.vsyncHonored = false;
+        withBackend(backend, () -> {
+            FramePacer.statsSummary();
+
+            FramePacer.endFrame(0, null);
+            FramePacer.endFrame(0, null);
+
+            assertTrue(FramePacer.statsSummary().endsWith("paced=[frames=2,paced=0,ratio=0.0%]"),
+                "an unbounded frame rate has no cadence to hold the frame on");
+        });
+    }
 }

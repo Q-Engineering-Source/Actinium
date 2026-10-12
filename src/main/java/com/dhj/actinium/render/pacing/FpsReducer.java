@@ -171,6 +171,21 @@ public final class FpsReducer {
         return applied == null ? null : applied.debugTag();
     }
 
+    /**
+     * The reducer's state as the pacer's periodic segment reports it: which state the reducer last
+     * derived, the cap that state asks for, and the frame rate the player asked for, so a frame rate
+     * below the player's own limit can be attributed without the F3 screen.
+     */
+    public static String stateSummary() {
+        final SodiumGameOptions.ReducerSettings s = ActiniumRuntime.options().reducer;
+        final State state = MACHINE.state();
+        final Minecraft mc = Minecraft.getMinecraft();
+        final int userLimit = mc != null && mc.gameSettings != null ? mc.gameSettings.limitFramerate : 0;
+        return ReducerStats.line(state, s.enabled,
+            ReducerStateMachine.stateCap(state, s.unfocusedFpsLimit, s.idleFpsLimit), userLimit, volumePercent,
+            benchmarkActive);
+    }
+
     /** Records player input so the idle timer restarts. */
     public static void onInput() {
         MACHINE.onInput();

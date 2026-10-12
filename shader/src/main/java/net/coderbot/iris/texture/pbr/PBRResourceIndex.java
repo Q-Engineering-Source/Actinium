@@ -34,6 +34,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -63,6 +64,12 @@ public final class PBRResourceIndex {
 	private static boolean disabled;
 	private static boolean warned;
 
+	/** Lookups the index answered, since the last report. The indexing itself runs on a worker, so these are shared. */
+	private static final LongAdder lookups = new LongAdder();
+	private static final LongAdder memoHits = new LongAdder();
+	private static final LongAdder answeredAbsent = new LongAdder();
+	private static final LongAdder passedThrough = new LongAdder();
+
 	private PBRResourceIndex() {
 	}
 
@@ -81,10 +88,28 @@ public final class PBRResourceIndex {
 		}
 		try {
 			final List<ScanTarget> targets = collectTargets(manager);
-			pending = AngelicaWorkers.submit(() -> scan(targets));
+			final long scanStartNanos = System.nanoTime();
+			pending = AngelicaWorkers.submit(() -> {
+				final Map<IResourcePack, PackIndex> scanned = scan(targets);
+				logScan(scanned, System.nanoTime() - scanStartNanos);
+				return scanned;
+			});
 		} catch (RuntimeException e) {
 			disable(e);
 		}
+	}
+
+	/**
+	 * Reports the index build: this one scan is what replaces the per-sprite failed lookups the atlas
+	 * stitch used to pay for a pack without PBR textures.
+	 */
+	private static void logScan(Map<IResourcePack, PackIndex> scanned, long nanos) {
+		int names = 0;
+		for (PackIndex index : scanned.values()) {
+			names += index.names().size();
+		}
+		Iris.logger.info("PBR resource index: scanned {} packs, {} PBR names in {}ms", scanned.size(), names,
+			String.format("%.1f", nanos / 1_000_000.0));
 	}
 
 	/** Drops the current index; the next lookup rebuilds it lazily. */
@@ -107,8 +132,10 @@ public final class PBRResourceIndex {
 		}
 		final String path = location.getPath();
 		if (!path.endsWith(NORMAL_NAME) && !path.endsWith(SPECULAR_NAME)) {
+			passedThrough.increment();
 			return true;
 		}
+		lookups.increment();
 		if (owner != resourceManager) {
 			start(resourceManager);
 		}
@@ -125,11 +152,46 @@ public final class PBRResourceIndex {
 		}
 		final Boolean known = answers.get(location);
 		if (known != null) {
+			memoHits.increment();
 			return known;
 		}
 		final boolean present = lookUp(manager, location, path);
 		answers.put(location, present);
+		if (!present) {
+			answeredAbsent.increment();
+		}
 		return present;
+	}
+
+	/**
+	 * The periodic report's index segment, or an empty string while no PBR lookup went through it. The
+	 * {@code absent} count is the failed resource lookups (and the exceptions the loaders would have
+	 * thrown) the index answered without touching a pack.
+	 */
+	public static String statsSummary() {
+		final long queries = lookups.sumThenReset();
+		final long memo = memoHits.sumThenReset();
+		final long absent = answeredAbsent.sumThenReset();
+		final long passed = passedThrough.sumThenReset();
+		if (queries == 0L && passed == 0L) {
+			return "";
+		}
+		return "pbr[lookups=" + queries
+			+ ",memoHits=" + memo
+			+ ",answeredAbsent=" + absent
+			+ ",notPbr=" + passed
+			+ ",state=" + state()
+			+ ']';
+	}
+
+	private static synchronized String state() {
+		if (disabled) return "disabled";
+		if (built == null) return pending == null ? "idle" : "scanning";
+		int names = 0;
+		for (PackIndex index : built.values()) {
+			names += index.names().size();
+		}
+		return "ready(packs=" + built.size() + ",names=" + names + ')';
 	}
 
 	private static boolean lookUp(SimpleReloadableResourceManager manager, ResourceLocation location, String path) {

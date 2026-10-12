@@ -4,6 +4,8 @@ import net.coderbot.iris.debug.IrisDebugOptions;
 import com.google.common.base.Throwables;
 import dhj.embeddedt.embeddium.api.shader.ShaderProviderHolder;
 import com.gtnewhorizons.angelica.Tags;
+import com.gtnewhorizons.angelica.glsm.GlslTransformUtils;
+import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import com.gtnewhorizons.angelica.glsm.threading.AngelicaWorkers;
@@ -37,6 +39,7 @@ import net.coderbot.iris.shaderpack.option.OptionSet;
 import net.coderbot.iris.shaderpack.option.Profile;
 import net.coderbot.iris.shaderpack.option.values.MutableOptionValues;
 import net.coderbot.iris.shaderpack.option.values.OptionValues;
+import net.coderbot.iris.texture.pbr.PBRResourceIndex;
 import net.coderbot.iris.texture.pbr.PBRTextureManager;
 import net.coderbot.iris.uniforms.PerFrameUniformBlockHarvester;
 import net.minecraft.block.Block;
@@ -628,15 +631,26 @@ public class Iris {
         }
         resetShaderPackOptions = false;
 
+        final long loadStartNanos = System.nanoTime();
+        final long parseNanos;
+        final long activateNanos;
+        final long fingerprintNanos;
+        final boolean reused;
         try {
             final Iterable<StringPair> environmentDefines = StandardMacros.createStandardEnvironmentDefines();
+            final long parseStartNanos = System.nanoTime();
             final String packState = describeSettings(name, shaderPackRoot, toProperties(changedConfigs), environmentDefines, false);
             final ShaderPack prepared = takePreparedPack(name, packState);
-            currentPack = prepared != null ? prepared : new ShaderPack(shaderPackPath, changedConfigs, environmentDefines);
+            reused = prepared != null;
+            currentPack = reused ? prepared : new ShaderPack(shaderPackPath, changedConfigs, environmentDefines);
+            parseNanos = System.nanoTime() - parseStartNanos;
             currentPackState = packState;
             RetainedPrograms.useConfiguration(packState);
+            final long activateStartNanos = System.nanoTime();
             currentPack.activate();
+            activateNanos = System.nanoTime() - activateStartNanos;
 
+            final long fingerprintStartNanos = System.nanoTime();
             final MutableOptionValues changedConfigsValues = currentPack.getShaderPackOptions().getOptionValues().mutableCopy();
 
             // Store changed values from those currently in use by the shader pack
@@ -647,6 +661,7 @@ public class Iris {
             tryUpdateConfigPropertiesFile(shaderPackConfigTxt, configsToSave);
             currentPackSettings = irisConfig.shouldSaveCompiledShaders()
                 ? describeSettings(name, shaderPackRoot, configsToSave, environmentDefines, true) : null;
+            fingerprintNanos = System.nanoTime() - fingerprintStartNanos;
         } catch (Exception e) {
             logger.error("Failed to load the shaderpack \"{}\"!", name);
             logger.error("", e);
@@ -660,10 +675,48 @@ public class Iris {
 
         logger.info("Using shaderpack: " + name);
 
+        final long compileStartNanos = System.nanoTime();
         compileEveryShaderFolder();
+        final long compileNanos = System.nanoTime() - compileStartNanos;
+
+        final long warmupStartNanos = System.nanoTime();
         warmupShaderTransforms();
+        final long warmupNanos = System.nanoTime() - warmupStartNanos;
+
+        logLoadSummary(name, loadStartNanos, parseNanos, reused, activateNanos, fingerprintNanos, compileNanos, warmupNanos);
 
         return true;
+    }
+
+    /**
+     * Reports where a shaderpack load spent its time, and the state of the two lookups the load's
+     * optimisations removed work from: the reserved-word rename pass the transforms run, and the PBR
+     * resource index the atlas stitch consults.
+     */
+    private static void logLoadSummary(String name, long loadStartNanos, long parseNanos, boolean reused,
+                                       long activateNanos, long fingerprintNanos, long compileNanos, long warmupNanos) {
+        final StringBuilder sb = new StringBuilder(256);
+        sb.append("Shaderpack load: pack=").append(name)
+            .append(" totalMs=").append(millis(System.nanoTime() - loadStartNanos))
+            .append(" parseMs=").append(millis(parseNanos))
+            .append(" reused=").append(reused)
+            .append(" activateMs=").append(millis(activateNanos))
+            .append(" fingerprintMs=").append(millis(fingerprintNanos))
+            .append(" compileMs=").append(millis(compileNanos))
+            .append(" warmupSubmitMs=").append(millis(warmupNanos));
+        appendSegment(sb, GLSMPerfDebug.isEnabled() ? GlslTransformUtils.renameStatsSummary() : "");
+        appendSegment(sb, PBRResourceIndex.statsSummary());
+        logger.info(sb.toString());
+    }
+
+    private static void appendSegment(StringBuilder sb, String segment) {
+        if (segment != null && !segment.isEmpty()) {
+            sb.append(' ').append(segment);
+        }
+    }
+
+    private static String millis(long nanos) {
+        return String.format("%.3f", nanos / 1_000_000.0);
     }
 
     /**
@@ -681,14 +734,28 @@ public class Iris {
         try {
             final String dimensionName = lastDimensionName != null ? lastDimensionName : DimensionId.OVERWORLD.getCanonicalId();
             GLSMHooks.uniformBlockBarrier = Iris::awaitProgramSetWarmup;
+            logger.info("[ShaderTransformCache] warmup submitted source=loadedPack dimension={}", dimensionName);
             programSetWarmup = ShaderTransformExecutor.submitTracked(() -> {
                 final ProgramSet programs = pack.getProgramSet(dimensionName);
                 PerFrameUniformBlockHarvester.harvest(programs);
                 DeferredWorldRenderingPipeline.warmupTransforms(programs);
-            });
+            }).whenComplete((ignored, failure) -> logWarmupCompletion("loadedPack", failure));
         } catch (Throwable t) {
             logger.warn("Early shader transform warmup failed; transforms will run at pipeline creation", t);
         }
+    }
+
+    /**
+     * Reports how a transform warmup ended, so the periodic {@code transform[...]} segment showing no
+     * misses at pipeline creation can be traced back to a warmup that really did run to completion.
+     */
+    private static void logWarmupCompletion(String source, @Nullable Throwable failure) {
+        if (failure != null) {
+            logger.warn("[ShaderTransformCache] warmup failed source=" + source
+                + "; transforms will run at pipeline creation", failure);
+            return;
+        }
+        logger.info("[ShaderTransformCache] warmup done source={} cacheSize={}", source, TransformPatcher.cacheSize());
     }
 
     /**
@@ -702,10 +769,7 @@ public class Iris {
     public static void warmupPreparedTransforms(ProgramSet programs) {
         logger.info("Warming the transforms of the shaderpack read ahead of time");
         ShaderTransformExecutor.submitTracked(() -> DeferredWorldRenderingPipeline.warmupTransforms(programs))
-            .exceptionally(e -> {
-                logger.warn("Transform warmup for the pack read ahead of time failed; transforms will run at pipeline creation", e);
-                return null;
-            });
+            .whenComplete((ignored, failure) -> logWarmupCompletion("readAheadPack", failure));
     }
 
     /**
@@ -1095,8 +1159,15 @@ public class Iris {
      * swap buffers in the middle of the frame.</p>
      */
     private static void compileEveryShaderFolder() {
-        if (currentPack == null || !irisConfig.shouldSaveCompiledShaders()) return;
-        if (currentPackSettings != null && ProgramBinaryCache.wasCompiledFor(currentPackSettings)) return;
+        if (currentPack == null) return;
+        if (!irisConfig.shouldSaveCompiledShaders()) {
+            logger.info("Program binary cache: not compiling every shader folder, saving compiled shaders is off");
+            return;
+        }
+        if (currentPackSettings != null && ProgramBinaryCache.wasCompiledFor(currentPackSettings)) {
+            logger.info("Program binary cache: every folder of this pack was compiled in a previous run, nothing to compile");
+            return;
+        }
         awaitProgramSetWarmup();
 
         final Map<String, ProgramSet> programSets = currentPack.getEveryProgramSet();
@@ -1134,6 +1205,10 @@ public class Iris {
         } finally {
             ProgramBinaryCache.finishFullCompile(loopFinished && everyFolderCompiled ? currentPackSettings : null);
             PerFrameUniformBlockHarvester.clear();
+            // The batch that fills the cache for this pack is over: report what it restored, compiled and
+            // saved, and what the restores saved in compile time.
+            logger.info("Program binary cache: folders={} complete={} {}",
+                programSets.size(), loopFinished && everyFolderCompiled, ProgramBinaryCache.dumpEventSummary());
         }
     }
 

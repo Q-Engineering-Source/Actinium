@@ -2,6 +2,7 @@ package com.dhj.actinium.mixin.vintage.features.mipmaps;
 
 import com.dhj.actinium.mixin.vintage.features.mipmaps.mixinterface.TextureMetadataExtension;
 import com.dhj.actinium.texture.SpriteExtension;
+import com.dhj.actinium.texture.atlas.AtlasLoadStats;
 import com.dhj.actinium.texture.mipmap.MipmapGenerator;
 import com.dhj.actinium.texture.mipmap.MipmapStrategies;
 import com.dhj.actinium.texture.mipmap.MipmapStrategy;
@@ -58,6 +59,10 @@ public abstract class MixinTextureAtlasSprite implements SpriteExtension, Sprite
         final SpriteMipmaps.Transparency transparency = SpriteMipmaps.scan(this.framesTextureData);
         this.embeddium$transparencyLevel = transparency.level();
         this.celeritas$hasTransparentTexels = transparency.hasTransparentTexels();
+        // The atlas build report counts the mode each sprite's levels were really generated with, which is
+        // what makes the ported strategies visible as "these sprites got CUTOUT, those got MEAN".
+        AtlasLoadStats.recordStrategy(
+            MipmapGenerator.effectiveStrategy(celeritas$resolvedStrategy(), this.celeritas$hasTransparentTexels));
     }
 
     /**

@@ -77,6 +77,7 @@ public final class AtlasLoadSession {
     private final Map<TextureAtlasSprite, Boolean> generated = new IdentityHashMap<>();
     private final Set<int[][]> uploaded = Collections.newSetFromMap(new IdentityHashMap<>());
     private int mipmapsOffloaded;
+    private int batchedUploads;
 
     private boolean closed;
 
@@ -284,6 +285,7 @@ public final class AtlasLoadSession {
         final int[][] frame = sprite.getFrameCount() > 0 ? sprite.getFrameTextureData(0) : null;
         if (frame != null) {
             this.uploaded.add(frame);
+            this.batchedUploads++;
         }
     }
 
@@ -307,11 +309,13 @@ public final class AtlasLoadSession {
         releasePending();
         joinMipmaps();
 
-        LOGGER.debug("Parallel atlas load {}: {} eligible domains, {} decodes submitted, {} substituted, {} decode failures (first: {}), decode desync {}, {} mipmaps offloaded",
-            this.map.getBasePath(), this.eligibleDomains.size(),
-            lane == null ? 0 : lane.submitted(), this.substituted,
-            lane == null ? 0 : lane.failures(), lane == null ? null : lane.firstFailure(),
-            lane != null && lane.isDesynced(), this.mipmapsOffloaded);
+        // The parallel path's own numbers go into the build report, which the atlas map logs once the load
+        // is over and the mip level count and gutter are final.
+        AtlasLoadStats.recordDecode(lane == null ? 0 : lane.submitted(), this.substituted,
+            lane == null ? 0 : lane.failures(), lane != null && lane.isDesynced());
+        AtlasLoadStats.recordMipmapsOffloaded(this.mipmapsOffloaded);
+        AtlasLoadStats.recordBatchedUploads(this.batchedUploads);
+        AtlasLoadStats.recordPrepared(this.generated.size());
     }
 
     private void releasePending() {

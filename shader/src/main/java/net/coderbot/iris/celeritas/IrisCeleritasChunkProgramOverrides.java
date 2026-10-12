@@ -112,6 +112,9 @@ public class IrisCeleritasChunkProgramOverrides {
             }
         }
 
+        // Only reached with a cache key once the saved blob missed, so this build is priced as what the hits
+        // saved: everything from here to the link, the stage compilations included.
+        final long buildStart = cacheKey != null ? System.nanoTime() : 0L;
         final GlShader vertShader = createVertexShader(pass, pipeline);
         final GlShader geomShader = createGeometryShader(pass, pipeline);
         final GlShader fragShader = createFragmentShader(pass, pipeline);
@@ -141,6 +144,7 @@ public class IrisCeleritasChunkProgramOverrides {
             final GlProgram<IrisCeleritasChunkShaderInterface> program = builder.link(factory);
             if (cacheKey != null) {
                 ProgramBinaryCache.save(cacheKey, program.handle());
+                ProgramBinaryCache.recordMissBuild(System.nanoTime() - buildStart);
             }
             return program;
         } finally {

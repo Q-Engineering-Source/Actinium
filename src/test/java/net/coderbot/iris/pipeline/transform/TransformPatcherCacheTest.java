@@ -134,6 +134,20 @@ class TransformPatcherCacheTest {
     }
 
     @Test
+    void reportsTheIntervalsHitsMissesAndCacheSize() {
+        TransformPatcher.statsSummary();
+
+        TransformPatcher.patchComposite(VERTEX, null, FRAGMENT);
+        TransformPatcher.patchComposite(VERTEX, null, FRAGMENT);
+
+        final String summary = TransformPatcher.statsSummary();
+
+        assertTrue(summary.startsWith("transform[hit=1,miss=1,raceReuse=0,transformMs="), summary);
+        assertTrue(summary.endsWith(",cacheSize=1,capacity=400]"), summary);
+        assertEquals("", TransformPatcher.statsSummary(), "the report must clear what it reported");
+    }
+
+    @Test
     void failedComputeTransformResetsParameterType() {
         ComputeParameters parameters = new ComputeParameters(Patch.COMPUTE, TextureStage.SHADOWCOMP, null);
 

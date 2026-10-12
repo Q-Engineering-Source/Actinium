@@ -11,4 +11,11 @@ public interface TextureMapExtension {
     int celeritas$getAtlasWidth();
 
     int celeritas$getAtlasHeight();
+
+    /**
+     * The border every sprite of the loaded atlas was padded with, in texels. Zero when padding is off.
+     * Sizing a buffer from it is what lets a sampler tap the replicated edge it needs without crossing
+     * into the neighbouring sprite.
+     */
+    int celeritas$getAtlasGutter();
 }

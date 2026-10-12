@@ -23,6 +23,7 @@ import net.coderbot.iris.debug.IrisDebugOptions;
 import com.gtnewhorizon.gtnhlib.client.renderer.RuntimeOptionsBridge;
 import com.gtnewhorizon.gtnhlib.client.renderer.postprocessing.PostProcessingBridge;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.GlslTransformUtils;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
 import com.gtnewhorizons.angelica.glsm.compat.FogDistanceModeBridge;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
@@ -32,7 +33,11 @@ import com.gtnewhorizons.angelica.iris.IrisGLSMBridge;
 import com.mojang.realmsclient.gui.ChatFormatting;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.pipeline.AdaptiveShadowBoundsStats;
+import net.coderbot.iris.pipeline.transform.TransformPatcher;
+import net.coderbot.iris.texture.pbr.PBRResourceIndex;
 import net.coderbot.iris.texture.pbr.PBRTextureManager;
+import net.coderbot.iris.uniforms.EntityIdHelper;
+import net.coderbot.iris.uniforms.MatrixUniforms;
 import net.coderbot.iris.compat.dh.DHCompat;
 import net.coderbot.iris.rendertarget.IRenderTargetExt;
 import net.minecraft.client.Minecraft;
@@ -164,6 +169,8 @@ public class Actinium {
         });
         GLSMPerfDebugHooks.addStatsProvider(Actinium::dumpExtraPerfStats);
         GLSMPerfDebugHooks.addStatsProvider(FramePacer::statsSummary);
+        GLSMPerfDebugHooks.addStatsProvider(ProgramBinaryCache::statsSummary);
+        GLSMPerfDebugHooks.addStatsProvider(GlslTransformUtils::renameStatsSummary);
         GLSMPerfDebugHooks.setConfiguredEnabled(
             ActiniumRuntimeOptions.resolvePerfDebugEnabled(ActiniumRuntime.options().debug.enableActiniumPerfDebug)
         );
@@ -188,6 +195,9 @@ public class Actinium {
         KirinoCompat.install();
         NeverEnoughAnimationsAlphaOverride.install();
         FpsReducer.init();
+        // Registered with the reducer rather than at construction: this is where the class is first loaded,
+        // and its static state reads the game clock.
+        GLSMPerfDebugHooks.addStatsProvider(FpsReducer::stateSummary);
         initVSync();
 
         ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
@@ -207,6 +217,12 @@ public class Actinium {
             final Path actiniumJar = AngelicaJar.location();
             AngelicaJar.configureShaderDiskCache(actiniumJar != null ? actiniumJar.toFile() : null);
             IrisGLSMBridge.register();
+            // The shader side's stats only have anything to report while Iris is running, and registering
+            // them here keeps their classes out of the way of a client that has shaders disabled.
+            GLSMPerfDebugHooks.addStatsProvider(TransformPatcher::statsSummary);
+            GLSMPerfDebugHooks.addStatsProvider(PBRResourceIndex::statsSummary);
+            GLSMPerfDebugHooks.addStatsProvider(MatrixUniforms::previousStatsSummary);
+            GLSMPerfDebugHooks.addStatsProvider(EntityIdHelper::statsSummary);
             Iris.INSTANCE.fmlInitEvent();
             MinecraftForge.EVENT_BUS.register(Iris.INSTANCE);
         }

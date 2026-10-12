@@ -451,7 +451,9 @@ public class SDLGPURenderBackend extends RenderBackend {
         final VSyncMode preferred = pendingVSync.getAndSet(null);
         if (preferred != null) {
             if (presenter != null) presenter.drain();
-            publishVSyncMode(device.applyVSync(preferred));
+            final VSyncMode applied = device.applyVSync(preferred);
+            LOG.info("VSync mode: requested={} applied={} (SDL GPU swapchain)", preferred, applied);
+            publishVSyncMode(applied);
         }
     }
 

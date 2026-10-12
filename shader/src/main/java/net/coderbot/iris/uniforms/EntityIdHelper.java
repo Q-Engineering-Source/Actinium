@@ -19,6 +19,7 @@ import net.minecraft.util.ResourceLocation;
 
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Resolves shader entity IDs with legacy-name, special-case and NBT support.
@@ -37,6 +38,13 @@ public final class EntityIdHelper {
     private static final Int2LongLinkedOpenHashMap ENTITY_NBT_CACHE = new Int2LongLinkedOpenHashMap();
     private static final int NBT_CACHE_INTERVAL_TICKS = 20;
     private static final int ENTITY_NBT_CACHE_MAX = 256;
+
+    /** Resolutions since the last report, for the periodic segment that shows which caches carry the work. */
+    private static final AtomicLong specialQueries = new AtomicLong();
+    private static final AtomicLong specialResolves = new AtomicLong();
+    private static final AtomicLong specialHits = new AtomicLong();
+    private static final AtomicLong idCacheHits = new AtomicLong();
+    private static final AtomicLong idCacheMisses = new AtomicLong();
 
     static {
         ENTITY_ID_CACHE.defaultReturnValue(Integer.MIN_VALUE);
@@ -103,14 +111,20 @@ public final class EntityIdHelper {
     }
 
     private static int getSpecialEntityId(Entity entity) {
+        specialQueries.incrementAndGet();
         final int currentPlayerId = SPECIAL_IDS.currentPlayer();
         if (currentPlayerId != -1 && entity instanceof EntityPlayer && entity == Minecraft.getMinecraft().getRenderViewEntity()) {
+            specialHits.incrementAndGet();
             return currentPlayerId;
         }
 
         if (entity instanceof EntityZombieVillager zombieVillager) {
             if (zombieVillager.isConverting()) {
-                return SPECIAL_IDS.convertingVillager();
+                final int convertingVillagerId = SPECIAL_IDS.convertingVillager();
+                if (convertingVillagerId != -1) {
+                    specialHits.incrementAndGet();
+                }
+                return convertingVillagerId;
             }
         }
 
@@ -121,12 +135,37 @@ public final class EntityIdHelper {
         Class<?> entityClass = entity.getClass();
         int cached = ENTITY_ID_CACHE.getInt(entityClass);
         if (cached != Integer.MIN_VALUE) {
+            idCacheHits.incrementAndGet();
             return cached;
         }
 
+        idCacheMisses.incrementAndGet();
         int resolvedId = resolveEntityId(entity, entityClass, entityIdMap);
         ENTITY_ID_CACHE.put(entityClass, resolvedId);
         return resolvedId;
+    }
+
+    /**
+     * The periodic report's entity-id segment, or an empty string while nothing was resolved. The
+     * {@code specialResolves} count is the ported optimisation made visible: the two hardcoded names are
+     * resolved once per entity id map rather than once per entity that matches them, so it stays at one
+     * per pack load however many players and converting villagers are drawn.
+     */
+    public static String statsSummary() {
+        final long queries = specialQueries.getAndSet(0L);
+        final long resolves = specialResolves.getAndSet(0L);
+        final long hits = specialHits.getAndSet(0L);
+        final long cacheHits = idCacheHits.getAndSet(0L);
+        final long cacheMisses = idCacheMisses.getAndSet(0L);
+        if (queries == 0L && resolves == 0L && cacheHits == 0L && cacheMisses == 0L) {
+            return "";
+        }
+        return "entityId[specialQueries=" + queries
+            + ",specialResolves=" + resolves
+            + ",specialHits=" + hits
+            + ",idCacheHits=" + cacheHits
+            + ",idCacheMisses=" + cacheMisses
+            + ']';
     }
 
     private static int resolveEntityId(Entity entity, Class<?> entityClass, Object2IntFunction<NamespacedId> entityIdMap) {
@@ -228,6 +267,7 @@ public final class EntityIdHelper {
             this.source = entityIdMap;
             this.currentPlayer = entityIdMap.getInt(CURRENT_PLAYER);
             this.convertingVillager = entityIdMap.getInt(CONVERTING_VILLAGER);
+            specialResolves.incrementAndGet();
         }
 
         /**

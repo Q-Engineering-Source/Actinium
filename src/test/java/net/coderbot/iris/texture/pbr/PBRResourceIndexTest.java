@@ -249,6 +249,26 @@ class PBRResourceIndexTest {
         assertFalse(PBRResourceIndex.mayExist(manager, new ResourceLocation("ghost", "textures/blocks/lowzip_n.png")));
     }
 
+    /**
+     * The periodic segment is what says whether the index really answered the atlas stitch's lookups and how
+     * many failed lookups it saved; every counter is driven through the public lookup here.
+     */
+    @Test
+    void reportsTheLookupsItAnswered() throws Exception {
+        final SimpleReloadableResourceManager manager = build(new MetadataSerializer());
+        PBRResourceIndex.start(manager);
+        PBRResourceIndex.statsSummary();
+
+        assertFalse(PBRResourceIndex.mayExist(manager, new ResourceLocation("minecraft", "textures/blocks/absent_n.png")));
+        assertTrue(PBRResourceIndex.mayExist(manager, new ResourceLocation("minecraft", "textures/blocks/both_n.png")));
+        assertTrue(PBRResourceIndex.mayExist(manager, new ResourceLocation("minecraft", "textures/blocks/both_n.png")));
+        assertTrue(PBRResourceIndex.mayExist(manager, new ResourceLocation("minecraft", "textures/blocks/plain.png")));
+
+        final String summary = PBRResourceIndex.statsSummary();
+        assertTrue(summary.startsWith("pbr[lookups=3,memoHits=1,answeredAbsent=1,notPbr=1,state=ready(packs="), summary);
+        assertTrue(summary.endsWith(")]"), summary);
+    }
+
     @Test
     void nonPbrLocationsAreNeverRuledOut() throws Exception {
         final SimpleReloadableResourceManager manager = build(new MetadataSerializer());

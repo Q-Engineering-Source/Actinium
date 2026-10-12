@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
 
@@ -51,6 +52,18 @@ public final class ProgramBinaryCache {
     private static final Map<String, Object> compileGenerations = new HashMap<>();
     private static int deleteCount;
 
+    /**
+     * What the cache did, as an interval (the periodic report's segment) and as an epoch (the summary
+     * logged once a pack's programs have been loaded). The writes happen wherever a program is loaded or
+     * linked - the render thread for the pipeline's own programs, a worker for the ones the full compile
+     * builds - so every field is atomic, and a read takes the value and clears it in the same step so
+     * neither report can lose an event to the other one.
+     */
+    private static final Counters intervalCounters = new Counters();
+    private static final Counters epochCounters = new Counters();
+    private static final AtomicLong totalBuildNanos = new AtomicLong();
+    private static final AtomicLong totalBuildCount = new AtomicLong();
+
     private ProgramBinaryCache() {}
 
     public static void setEnabled(boolean value) {
@@ -63,6 +76,7 @@ public final class ProgramBinaryCache {
 
     /** Selects the layer holding the given pack's programs; {@code null} turns the cache off. */
     public static void usePack(String packName) {
+        epochCounters.clear();
         if (packName == null) {
             packLayer = null;
             return;
@@ -93,15 +107,16 @@ public final class ProgramBinaryCache {
 
     /** {@return the restored program, or 0 when nothing usable was stored under {@code key}} */
     public static int load(Key key) {
+        final long startNanos = System.nanoTime();
         final ShaderDiskCache.Key diskKey = key.diskKey;
         final ShaderDiskCache.Blob blob = ShaderDiskCache.getBlob(diskKey);
-        if (blob == null) return 0;
+        if (blob == null) return recordMiss();
         final int format;
         try {
             format = Integer.parseInt(blob.tag());
         } catch (NumberFormatException e) {
             ShaderDiskCache.remove(diskKey);
-            return 0;
+            return recordMiss();
         }
         final int program = GLStateManager.glCreateProgram();
         final ByteBuffer data = MemoryUtilities.memAlloc(blob.data().length);
@@ -114,11 +129,133 @@ public final class ProgramBinaryCache {
         if (GLStateManager.glGetProgrami(program, GL20.GL_LINK_STATUS) != GL11.GL_TRUE) {
             GLStateManager.glDeleteProgram(program);
             ShaderDiskCache.remove(diskKey);
+            intervalCounters.reject();
+            epochCounters.reject();
             if (rejectWarned.compareAndSet(false, true)) LOGGER.error("Driver rejected a saved shader program!! Recompiling rejected programs from source");
-            return 0;
+            return recordMiss();
         }
         keep(diskKey);
+        final long elapsed = System.nanoTime() - startNanos;
+        intervalCounters.hit(elapsed);
+        epochCounters.hit(elapsed);
         return program;
+    }
+
+    /**
+     * Records the compile-and-link that a cache miss led into. Timed by the caller, because only it knows
+     * where its own build starts and ends: the link call on its own does not bracket the source
+     * compilation that precedes it.
+     */
+    public static void recordMissBuild(long nanos) {
+        intervalCounters.build(nanos);
+        epochCounters.build(nanos);
+        totalBuildNanos.addAndGet(nanos);
+        totalBuildCount.incrementAndGet();
+    }
+
+    /**
+     * The periodic report's cache segment, or an empty string while the cache was not touched: what
+     * this interval restored instead of compiling, and what it compiled and saved.
+     */
+    public static String statsSummary() {
+        final Snapshot snapshot = intervalCounters.take();
+        return snapshot.idle() ? "" : "progCache[" + describe(snapshot) + ']';
+    }
+
+    /**
+     * The summary of one pack's program loading, logged once the batch that fills the cache has
+     * finished. The compile time the hits saved is priced with the session's average miss build: a
+     * batch that only hits has no build of its own to price them with.
+     */
+    public static String dumpEventSummary() {
+        final Snapshot snapshot = epochCounters.take();
+        return "progCache[" + describeEpoch(snapshot, totalBuildCount.get(), totalBuildNanos.get()) + ']';
+    }
+
+    private static int recordMiss() {
+        intervalCounters.miss();
+        epochCounters.miss();
+        return 0;
+    }
+
+    static String describe(Snapshot snapshot) {
+        final long lookups = snapshot.hits() + snapshot.misses();
+        final String hitRate = lookups == 0L ? "n/a" : String.format("%.1f%%", 100.0 * snapshot.hits() / lookups);
+        return "hit=" + snapshot.hits()
+            + ",miss=" + snapshot.misses()
+            + ",hitRate=" + hitRate
+            + ",save=" + snapshot.saves()
+            + ",reject=" + snapshot.rejects()
+            + ",builds=" + snapshot.builds()
+            + ",restoreMs=" + formatMillis(snapshot.restoreNanos())
+            + ",missBuildMs=" + formatMillis(snapshot.buildNanos());
+    }
+
+    /**
+     * Adds what only the whole session knows: the average cost of the compile a miss pays, and the compile
+     * time this epoch's hits did not pay. Both need a timed build to be priced, hence the {@code n/a}.
+     */
+    static String describeEpoch(Snapshot snapshot, long sessionBuilds, long sessionBuildNanos) {
+        final long average = sessionBuilds == 0L ? 0L : sessionBuildNanos / sessionBuilds;
+        return describe(snapshot)
+            + ",avgMissBuildMs=" + (sessionBuilds == 0L ? "n/a" : formatMillis(average))
+            + ",estSavedCompileMs=" + (sessionBuilds == 0L ? "n/a" : formatMillis(snapshot.hits() * average))
+            + ",sessionMissBuilds=" + sessionBuilds;
+    }
+
+    private static String formatMillis(long nanos) {
+        return String.format("%.3f", nanos / 1_000_000.0);
+    }
+
+    /** One period's or one epoch's cache events, taken as a consistent set so a report can clear it. */
+    record Snapshot(long hits, long misses, long saves, long rejects, long builds,
+                    long restoreNanos, long buildNanos) {
+        private boolean idle() {
+            return hits == 0L && misses == 0L && saves == 0L && rejects == 0L && builds == 0L;
+        }
+    }
+
+    /** The mutable counter set behind a {@link Snapshot}. */
+    private static final class Counters {
+        private final AtomicLong hits = new AtomicLong();
+        private final AtomicLong misses = new AtomicLong();
+        private final AtomicLong saves = new AtomicLong();
+        private final AtomicLong rejects = new AtomicLong();
+        private final AtomicLong builds = new AtomicLong();
+        private final AtomicLong restoreNanos = new AtomicLong();
+        private final AtomicLong buildNanos = new AtomicLong();
+
+        private void hit(long nanos) {
+            this.hits.incrementAndGet();
+            this.restoreNanos.addAndGet(nanos);
+        }
+
+        private void miss() {
+            this.misses.incrementAndGet();
+        }
+
+        private void save() {
+            this.saves.incrementAndGet();
+        }
+
+        private void reject() {
+            this.rejects.incrementAndGet();
+        }
+
+        private void build(long nanos) {
+            this.builds.incrementAndGet();
+            this.buildNanos.addAndGet(nanos);
+        }
+
+        private Snapshot take() {
+            return new Snapshot(this.hits.getAndSet(0L), this.misses.getAndSet(0L), this.saves.getAndSet(0L),
+                this.rejects.getAndSet(0L), this.builds.getAndSet(0L), this.restoreNanos.getAndSet(0L),
+                this.buildNanos.getAndSet(0L));
+        }
+
+        private void clear() {
+            take();
+        }
     }
 
     public static void save(Key key, int program) {
@@ -152,6 +289,8 @@ public final class ProgramBinaryCache {
             });
             final List<CompletableFuture<Boolean>> writes = fullCompileWrites;
             if (writes != null) writes.add(write);
+            intervalCounters.save();
+            epochCounters.save();
             return true;
         } finally {
             MemoryUtilities.memFree(data);
@@ -228,6 +367,10 @@ public final class ProgramBinaryCache {
             compileGenerations.clear();
             ShaderDiskCache.deleteLayer(LAYER);
         }
+        intervalCounters.clear();
+        epochCounters.clear();
+        totalBuildNanos.set(0L);
+        totalBuildCount.set(0L);
     }
 
     public static boolean wasCompiledFor(String settings) {

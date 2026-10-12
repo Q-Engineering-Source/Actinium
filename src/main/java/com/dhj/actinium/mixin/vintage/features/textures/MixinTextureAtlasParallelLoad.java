@@ -1,8 +1,10 @@
 package com.dhj.actinium.mixin.vintage.features.textures;
 
 import com.dhj.actinium.mixin.vintage.features.textures.mixinterface.AtlasSessionHolder;
+import com.dhj.actinium.texture.TextureMapExtension;
 import com.dhj.actinium.texture.atlas.AtlasAssembler;
 import com.dhj.actinium.texture.atlas.AtlasLoadSession;
+import com.dhj.actinium.texture.atlas.AtlasLoadStats;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
@@ -67,6 +69,12 @@ public abstract class MixinTextureAtlasParallelLoad implements AtlasSessionHolde
         this.angelica$atlasSession = AtlasLoadSession.begin((TextureMap) (Object) this, manager);
     }
 
+    /** Starts the build report, so its total covers the whole load including the stitching. */
+    @Inject(method = "loadTextureAtlas", at = @At("HEAD"))
+    private void angelica$beginAtlasReport(IResourceManager manager, CallbackInfo ci) {
+        AtlasLoadStats.begin();
+    }
+
     /**
      * Hands the prefetched resource of this sprite to the atlas loop instead of letting it open the pack
      * again on the main thread.
@@ -118,13 +126,22 @@ public abstract class MixinTextureAtlasParallelLoad implements AtlasSessionHolde
         at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/texture/Stitcher;getStichSlots()Ljava/util/List;"))
     private List<TextureAtlasSprite> angelica$assembleAtlas(Stitcher stitcher, Operation<List<TextureAtlasSprite>> original,
         @Local(argsOnly = true) IResourceManager manager) {
+        final long stitchStart = System.nanoTime();
         final List<TextureAtlasSprite> sprites = original.call(stitcher);
+        AtlasLoadStats.recordStitch(System.nanoTime() - stitchStart);
+        AtlasLoadStats.recordSprites(sprites.size());
+
         final AtlasLoadSession session = this.angelica$atlasSession;
         if (session != null) {
+            final long prepareStart = System.nanoTime();
             session.prepare(sprites, this.missingImage, this::angelica$resourceLocationOf,
                 sprite -> this.angelica$generateMipmaps(manager, sprite));
+            AtlasLoadStats.recordPrepare(System.nanoTime() - prepareStart);
+
+            final long assembleStart = System.nanoTime();
             AtlasAssembler.upload(sprites, this.mipmapLevels, stitcher.getCurrentWidth(), stitcher.getCurrentHeight(),
                 session::markUploaded);
+            AtlasLoadStats.recordAssemble(System.nanoTime() - assembleStart);
         }
         return sprites;
     }
@@ -157,5 +174,7 @@ public abstract class MixinTextureAtlasParallelLoad implements AtlasSessionHolde
             this.angelica$atlasSession = null;
             session.close();
         }
+        AtlasLoadStats.finish(((TextureMap) (Object) this).getBasePath(), this.mipmapLevels,
+            ((TextureMapExtension) this).celeritas$getAtlasGutter());
     }
 }

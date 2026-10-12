@@ -189,12 +189,28 @@ public class VintageRenderPassConfigurationBuilder {
 
         var vanillaRenderStageMap = vanillaRenderStages.build();
 
+        logFiltering(mipEnabled);
+
         return new RenderPassConfiguration<>(renderTypeToMaterialMap,
                 vanillaRenderStageMap.asMap(),
                 solidMaterial,
                 cutoutMippedMaterial,
                 translucentMaterial,
                 fluidMaterial);
+    }
+
+    /**
+     * Reports the terrain filtering this build applied. The configuration is rebuilt on every resource
+     * reload and on entering a world, which is exactly when a changed filtering or mipmap option - or a
+     * different driver's anisotropy support - takes effect, so this line is the filtering mode's switch log.
+     */
+    private static void logFiltering(boolean mipEnabled) {
+        final TextureFilterMode mode = TerrainTextureFiltering.effectiveTextureFilterMode();
+        final int mipmapLevels = TerrainTextureFiltering.terrainMipmapLevels();
+        ActiniumRuntime.logger().info(
+            "Terrain texture filtering: mode={} anisotropy={}x texelSnap={} rgss={} mipmaps={} atlasMipLevels={} gutter={} mipEnabled={}",
+            mode, TerrainTextureFiltering.resolvedAnisotropicFiltering(), TerrainTextureFiltering.usesTerrainTexelSnap(),
+            mode.usesRgss(), mipmapLevels > 0, mipmapLevels, SpritePadding.gutterFor(mipmapLevels, true), mipEnabled);
     }
 }
 
