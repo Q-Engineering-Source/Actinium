@@ -2227,6 +2227,9 @@ public class GLStateManager {
                 return;
             }
         }
+        // The clear value is clamped like glClearDepth does: callers use wider ranges for depth
+        // testing, and a backend that carries the raw value past 1 can clear a depth buffer with it.
+        depth = Math.min(1.0, Math.max(0.0, depth));
         if (isCachingEnabled()) mod(ctx().depthState).setClearValue(depth);
         RENDER_BACKEND.clearDepth(depth);
     }
