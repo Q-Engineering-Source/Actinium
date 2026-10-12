@@ -32,6 +32,7 @@ public final class EntityIdHelper {
     private static final Object2IntMap<Class<?>> ENTITY_ID_CACHE = new Object2IntOpenHashMap<>();
     private static final Map<Class<?>, NamespacedId> ENTITY_NAME_CACHE = new IdentityHashMap<>();
     private static Object2IntFunction<NamespacedId> cachedEntityIdMap;
+    private static final SpecialIds SPECIAL_IDS = new SpecialIds();
 
     private static final Int2LongLinkedOpenHashMap ENTITY_NBT_CACHE = new Int2LongLinkedOpenHashMap();
     private static final int NBT_CACHE_INTERVAL_TICKS = 20;
@@ -54,6 +55,8 @@ public final class EntityIdHelper {
         if (entityIdMap == null) {
             return -1;
         }
+
+        SPECIAL_IDS.refresh(entityIdMap);
 
         if (entityIdMap != cachedEntityIdMap) {
             ENTITY_ID_CACHE.clear();
@@ -91,7 +94,7 @@ public final class EntityIdHelper {
         }
 
         int normalId = getNormalEntityId(entity, entityIdMap);
-        int specialId = getSpecialEntityId(entity, entityIdMap);
+        int specialId = getSpecialEntityId(entity);
         if (specialId != -1) {
             return specialId;
         }
@@ -99,18 +102,15 @@ public final class EntityIdHelper {
         return normalId;
     }
 
-    private static int getSpecialEntityId(Entity entity, Object2IntFunction<NamespacedId> entityIdMap) {
-        Entity cameraEntity = Minecraft.getMinecraft().getRenderViewEntity();
-        if (entity == cameraEntity && entity instanceof EntityPlayer) {
-            int currentPlayerId = entityIdMap.getInt(CURRENT_PLAYER);
-            if (currentPlayerId != -1) {
-                return currentPlayerId;
-            }
+    private static int getSpecialEntityId(Entity entity) {
+        final int currentPlayerId = SPECIAL_IDS.currentPlayer();
+        if (currentPlayerId != -1 && entity instanceof EntityPlayer && entity == Minecraft.getMinecraft().getRenderViewEntity()) {
+            return currentPlayerId;
         }
 
         if (entity instanceof EntityZombieVillager zombieVillager) {
             if (zombieVillager.isConverting()) {
-                return entityIdMap.getInt(CONVERTING_VILLAGER);
+                return SPECIAL_IDS.convertingVillager();
             }
         }
 
@@ -202,5 +202,46 @@ public final class EntityIdHelper {
         }
 
         return new NamespacedId(key.getNamespace(), key.getPath());
+    }
+
+    /**
+     * The hardcoded entity names as resolved by the entity id map in use.
+     * <p>
+     * A shaderpack either defines these names or it does not, so they are resolved once per map
+     * rather than once per matching entity: a miss repeated for every player and every converting
+     * villager, on every frame, is pure overhead. A reloaded pack installs a new map, which is what
+     * makes the values resolve again.
+     */
+    static final class SpecialIds {
+        private Object2IntFunction<NamespacedId> source;
+        private int currentPlayer = -1;
+        private int convertingVillager = -1;
+
+        /**
+         * Re-resolves both names when the given map is not the one already resolved.
+         */
+        void refresh(Object2IntFunction<NamespacedId> entityIdMap) {
+            if (entityIdMap == this.source) {
+                return;
+            }
+
+            this.source = entityIdMap;
+            this.currentPlayer = entityIdMap.getInt(CURRENT_PLAYER);
+            this.convertingVillager = entityIdMap.getInt(CONVERTING_VILLAGER);
+        }
+
+        /**
+         * The id the current player is drawn with, or -1 when the pack does not define it.
+         */
+        int currentPlayer() {
+            return this.currentPlayer;
+        }
+
+        /**
+         * The id a converting zombie villager is drawn with, or -1 when the pack does not define it.
+         */
+        int convertingVillager() {
+            return this.convertingVillager;
+        }
     }
 }
