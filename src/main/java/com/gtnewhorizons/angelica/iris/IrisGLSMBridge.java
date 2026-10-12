@@ -2,12 +2,16 @@ package com.gtnewhorizons.angelica.iris;
 
 import com.gtnewhorizons.angelica.client.rendering.TextureTracker;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredAlphaHandler;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredBlendHandler;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredDepthColorHandler;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
+import com.gtnewhorizons.angelica.glsm.hooks.ShaderTransformPostProcessor;
 import com.gtnewhorizons.angelica.glsm.hooks.VanillaBooleanLayer;
 import com.gtnewhorizons.angelica.glsm.hooks.VanillaStateLayer;
+import com.gtnewhorizons.angelica.glsm.shader.ShaderType;
+import com.gtnewhorizons.angelica.sdlgpu.SDLGPUGate;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.debug.IrisGlDebug;
@@ -95,6 +99,27 @@ public final class IrisGLSMBridge {
         }
     }
 
+    /**
+     * Installs the callback the shader transformer reports every finished stage to, which the SDL
+     * backend turns into an off-thread SPIR-V compilation. Idempotent, and only meaningful on the
+     * SDL backend: an OpenGL backend compiles the GLSL itself and has nothing to prewarm.
+     */
+    public static void installPostTransformHook() {
+        if (GLSMHooks.postTransformProcessor != null) {
+            return;
+        }
+        GLSMHooks.postTransformProcessor = new ShaderTransformPostProcessor() {
+            @Override
+            public void onTransformed(String transformedSource, ShaderType shaderType) {
+                if (Iris.ShaderTransformExecutor.isOnWorker()) {
+                    SDLGPUGate.prewarmSpirv(transformedSource, shaderType.id);
+                } else {
+                    Iris.ShaderTransformExecutor.submitTracked(() -> SDLGPUGate.prewarmSpirv(transformedSource, shaderType.id));
+                }
+            }
+        };
+    }
+
     public static void register() {
         if (registered) {
             return;
@@ -104,6 +129,10 @@ public final class IrisGLSMBridge {
         IrisGlDebug.logDebugInfo("glsm-bridge register defaultTexUnit={} lightmapTexUnit={}", OpenGlHelper.defaultTexUnit, OpenGlHelper.lightmapTexUnit);
 
         IrisSamplers.initRenderer();
+
+        if (BackendManager.RENDER_BACKEND.isSDLGPU()) {
+            installPostTransformHook();
+        }
 
         GLSMHooks.blendHandler = new DeferredBlendHandler() {
             @Override

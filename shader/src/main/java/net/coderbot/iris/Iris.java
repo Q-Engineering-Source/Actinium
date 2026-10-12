@@ -4,6 +4,7 @@ import net.coderbot.iris.debug.IrisDebugOptions;
 import com.google.common.base.Throwables;
 import dhj.embeddedt.embeddium.api.shader.ShaderProviderHolder;
 import com.gtnewhorizons.angelica.Tags;
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import com.gtnewhorizons.angelica.glsm.threading.AngelicaWorkers;
 import it.unimi.dsi.fastutil.ints.Int2IntMap;
@@ -37,6 +38,7 @@ import net.coderbot.iris.shaderpack.option.Profile;
 import net.coderbot.iris.shaderpack.option.values.MutableOptionValues;
 import net.coderbot.iris.shaderpack.option.values.OptionValues;
 import net.coderbot.iris.texture.pbr.PBRTextureManager;
+import net.coderbot.iris.uniforms.PerFrameUniformBlockHarvester;
 import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiScreen;
@@ -114,6 +116,11 @@ public class Iris {
     private static ShaderpackDirectoryManager shaderpacksDirectoryManager;
 
     private static ShaderPack currentPack;
+    /**
+     * The transform warmup that is running for the pack just loaded, or null once every waiter has
+     * joined it. Pipeline creation joins it before reading any transform result.
+     */
+    static CompletableFuture<Void> programSetWarmup;
     @Getter
     private static String currentPackName;
     /**
@@ -186,6 +193,22 @@ public class Iris {
 
         private ShaderTransformExecutor() {}
 
+        /**
+         * Marks the pool's own threads, so a task can tell whether it is already running a
+         * transformation without being sent back to the pool.
+         */
+        private static final class Worker extends ForkJoinWorkerThread {
+            Worker(ForkJoinPool pool) {
+                super(pool);
+                setDaemon(true);
+            }
+        }
+
+        /** {@return whether the calling thread runs this executor's transformations} */
+        public static boolean isOnWorker() {
+            return Thread.currentThread() instanceof Worker;
+        }
+
         private static void noteActivity() {
             lastActivityTime = System.nanoTime();
         }
@@ -201,9 +224,8 @@ public class Iris {
                 executor = new ForkJoinPool(
                     THREAD_COUNT,
                     pool -> {
-                        ForkJoinWorkerThread t = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool);
+                        Worker t = new Worker(pool);
                         t.setName("Shader-Transform-" + t.getPoolIndex());
-                        t.setDaemon(true);
                         return t;
                     },
                     null,  // UncaughtExceptionHandler
@@ -250,18 +272,20 @@ public class Iris {
 
         /**
          * Warm up the threadpool by running a representative shader transformation.
+         *
+         * <p>Deliberately does not wait: the caller is loading a pack, and a transformation that
+         * arrives before this one finishes only queues behind it.</p>
          */
         public static void warmup() {
             final String vertexShader = "#version 120\nvoid main() { gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex; }";
             final String fragmentShader = "#version 120\nvoid main() { gl_FragColor = vec4(1.0); }";
-            try {
-                submitTracked(() -> {
-                    TransformPatcher.patchComposite(vertexShader, null, fragmentShader);
-                    TransformPatcher.patchAttributes(vertexShader, null, fragmentShader, new InputAvailability(true, true));
-                }).get();
-            } catch (Exception e) {
+            submitTracked(() -> {
+                TransformPatcher.patchComposite(vertexShader, null, fragmentShader);
+                TransformPatcher.patchAttributes(vertexShader, null, fragmentShader, new InputAvailability(true, true));
+            }).exceptionally(e -> {
                 logger.warn("Warmup failed", e);
-            }
+                return null;
+            });
         }
 
         public static <T> CompletableFuture<T> submitTracked(Supplier<T> supplier) {
@@ -637,8 +661,49 @@ public class Iris {
         logger.info("Using shaderpack: " + name);
 
         compileEveryShaderFolder();
+        warmupShaderTransforms();
 
         return true;
+    }
+
+    /**
+     * Starts transforming the loaded pack's shaders on the worker pool, so the pipeline built next
+     * hits {@link TransformPatcher}'s cache instead of transforming on the frame that opens the
+     * world. The uniform blocks the SDL backend declares are harvested from the same program set.
+     *
+     * <p>Also arms {@link GLSMHooks#uniformBlockBarrier}: the SDL shader backend reads the harvested
+     * blocks off the main thread, and it has to wait for this warmup (which owns them) to finish
+     * before it does.</p>
+     */
+    public static void warmupShaderTransforms() {
+        final ShaderPack pack = currentPack;
+        if (pack == null) return;
+        try {
+            final String dimensionName = lastDimensionName != null ? lastDimensionName : DimensionId.OVERWORLD.getCanonicalId();
+            GLSMHooks.uniformBlockBarrier = Iris::awaitProgramSetWarmup;
+            programSetWarmup = ShaderTransformExecutor.submitTracked(() -> {
+                final ProgramSet programs = pack.getProgramSet(dimensionName);
+                PerFrameUniformBlockHarvester.harvest(programs);
+                DeferredWorldRenderingPipeline.warmupTransforms(programs);
+            });
+        } catch (Throwable t) {
+            logger.warn("Early shader transform warmup failed; transforms will run at pipeline creation", t);
+        }
+    }
+
+    /**
+     * Waits for the running transform warmup, if any. A warmup failure is logged and swallowed: the
+     * transforms it was going to cache run again at pipeline creation, which is correct, just slower.
+     */
+    static void awaitProgramSetWarmup() {
+        final CompletableFuture<Void> warmup = programSetWarmup;
+        if (warmup == null) return;
+        programSetWarmup = null;
+        try {
+            warmup.join();
+        } catch (RuntimeException e) {
+            logger.warn("Early shader transform warmup failed; transforms will run at pipeline creation", e);
+        }
     }
 
     /** A pack read ahead of time, kept alongside the fingerprint it was read with. */
@@ -928,6 +993,7 @@ public class Iris {
      * Destroys and deallocates all created OpenGL resources. Useful as part of a reload.
      */
     private static void destroyEverything() {
+        awaitProgramSetWarmup();
         if (currentPack != null && currentPackState != null) {
             // The pack itself is still valid: only its programs are being rebuilt
             preparedPack = new SoftReference<>(new PreparedPack(currentPackState, currentPack));
@@ -1008,6 +1074,7 @@ public class Iris {
     private static void compileEveryShaderFolder() {
         if (currentPack == null || !irisConfig.shouldSaveCompiledShaders()) return;
         if (currentPackSettings != null && ProgramBinaryCache.wasCompiledFor(currentPackSettings)) return;
+        awaitProgramSetWarmup();
 
         final Map<String, ProgramSet> programSets = currentPack.getEveryProgramSet();
         boolean everyFolderCompiled = true;
@@ -1023,6 +1090,7 @@ public class Iris {
                     shaderPackLoadId++;
                     logger.info("[Load #{}] Compiling shader folder {}/{}: {}", shaderPackLoadId, i, programSets.size(), folder);
                     ShaderTransformExecutor.prepare();
+                    PerFrameUniformBlockHarvester.harvest(programs);
                     final DeferredWorldRenderingPipeline pipeline = new DeferredWorldRenderingPipeline(programs);
                     try {
                         // Built lazily on the first draw otherwise, after this pipeline is gone
@@ -1042,6 +1110,7 @@ public class Iris {
             loopFinished = true;
         } finally {
             ProgramBinaryCache.finishFullCompile(loopFinished && everyFolderCompiled ? currentPackSettings : null);
+            PerFrameUniformBlockHarvester.clear();
         }
     }
 
@@ -1144,8 +1213,10 @@ public class Iris {
      * Program selection supports exact dimension.properties mappings and wildcard fallback.
      */
     private static WorldRenderingPipeline createPipeline(String dimensionName) {
+        awaitProgramSetWarmup();
         if (currentPack == null) {
             // Completely disables shader-based rendering
+            PerFrameUniformBlockHarvester.clear();
             return new FixedFunctionWorldRenderingPipeline();
         }
 
@@ -1153,6 +1224,8 @@ public class Iris {
 
         try {
             shaderPackLoadId++;
+            ShaderTransformExecutor.prepare();
+            PerFrameUniformBlockHarvester.harvest(programs);
             long startTime = System.nanoTime();
             final WorldRenderingPipeline pipeline;
             try {
@@ -1169,6 +1242,7 @@ public class Iris {
             // TODO: This should be reverted if a dimension change causes shaders to compile again
             fallback = true;
             notifyPlayer(I18n.format("iris.shaders.pipelineFailed", Throwables.getRootCause(e).getMessage()));
+            PerFrameUniformBlockHarvester.clear();
 
             return new FixedFunctionWorldRenderingPipeline();
         }

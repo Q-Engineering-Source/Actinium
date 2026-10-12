@@ -2254,6 +2254,52 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		return Optional.empty();
 	}
 
+	/**
+	 * Runs the transformations this pipeline would otherwise run while it is being constructed, so
+	 * construction reads them back from {@link TransformPatcher}'s cache.
+	 *
+	 * <p>Called ahead of the pipeline, for the dimension a world is about to render with: the work
+	 * then overlaps with the rest of pack loading instead of sitting on the frame that opens the
+	 * world. Nothing is awaited here - the futures are the same ones the constructor submits and
+	 * joins, so a warmup that is still running only means the constructor waits for it.</p>
+	 */
+	public static void warmupTransforms(ProgramSet programs) {
+		final Object2ObjectMap<Tri<String, TextureType, TextureStage>, String> textureMap = programs.getPackDirectives().getTextureMap();
+		submitCompositeTransforms(programs.getPrepare(), TextureStage.PREPARE, textureMap);
+		submitCompositeTransforms(programs.getDeferred(), TextureStage.DEFERRED, textureMap);
+		submitCompositeTransforms(programs.getComposite(), TextureStage.COMPOSITE_AND_FINAL, textureMap);
+		programs.getCompositeFinal().filter(ProgramSource::isValid)
+			.ifPresent(source -> submitCompositeTransform(source, TextureStage.COMPOSITE_AND_FINAL, textureMap));
+
+		submitAttributeTransforms(new ProgramFallbackResolver(programs));
+
+		final Optional<ProgramSource> terrainSource = first(programs.getGbuffersTerrain(), programs.getGbuffersTexturedLit(), programs.getGbuffersTextured(), programs.getGbuffersBasic());
+		final Optional<ProgramSource> translucentSource = first(programs.getGbuffersWater(), terrainSource);
+		final Optional<ProgramSource> shadowSource = programs.getShadow();
+		final Optional<ProgramSource> shadowTranslucentSource = first(programs.getShadowWater(), shadowSource);
+		terrainSource.ifPresent(DeferredWorldRenderingPipeline::submitCeleritasTerrainTransform);
+		translucentSource.ifPresent(DeferredWorldRenderingPipeline::submitCeleritasTerrainTransform);
+		shadowSource.ifPresent(DeferredWorldRenderingPipeline::submitCeleritasTerrainTransform);
+		shadowTranslucentSource.ifPresent(DeferredWorldRenderingPipeline::submitCeleritasTerrainTransform);
+
+		for (ComputeSource source : programs.getSetup()) {
+			submitComputeTransform(source, TextureStage.SETUP, textureMap);
+		}
+		for (ComputeSource source : programs.getShadowCompute()) {
+			submitComputeTransform(source, TextureStage.GBUFFERS_AND_SHADOW, textureMap);
+		}
+	}
+
+	private static void submitComputeTransform(ComputeSource source, TextureStage stage,
+		Object2ObjectMap<Tri<String, TextureType, TextureStage>, String> textureMap) {
+		if (source == null || !source.getSource().isPresent()) {
+			return;
+		}
+		final String name = source.getName();
+		final String compute = source.getSource().get();
+		Iris.ShaderTransformExecutor.submitTracked(() -> TransformPatcher.patchCompute(name, compute, stage, textureMap));
+	}
+
 	private static void logBlockMappingSummary() {
 		if (!ShaderRegressionDebug.isEnabled()) {
 			return;

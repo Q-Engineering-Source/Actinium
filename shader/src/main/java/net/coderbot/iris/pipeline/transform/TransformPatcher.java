@@ -1,6 +1,10 @@
 package net.coderbot.iris.pipeline.transform;
 
+import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
+import com.gtnewhorizons.angelica.glsm.hooks.ShaderTransformPostProcessor;
+import com.gtnewhorizons.angelica.glsm.shader.ShaderType;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.gbuffer_overrides.matching.InputAvailability;
@@ -124,12 +128,14 @@ public class TransformPatcher {
         if (useCache) {
             final Map<PatchShaderType, String> cached = getCached(key, CacheDomain.GRAPHICS, logCacheEvents);
             if (cached != null) {
+                notifyPostTransform(cached);
                 return cached;
             }
         }
 
         final long transformStart = logCacheEvents ? System.nanoTime() : 0L;
         final Map<PatchShaderType, String> transformed = ShaderTransformer.transform(vertex, geometry, tessControl, tessEval, fragment, parameters);
+        notifyPostTransform(transformed);
         if (!useCache) {
             return finishWithoutCache(transformed, CacheDomain.GRAPHICS, transformStart, logCacheEvents);
         }
@@ -147,17 +153,58 @@ public class TransformPatcher {
         if (useCache) {
             final Map<PatchShaderType, String> cached = getCached(key, CacheDomain.COMPUTE, logCacheEvents);
             if (cached != null) {
+                notifyPostTransform(cached);
                 return cached;
             }
         }
 
         final long transformStart = logCacheEvents ? System.nanoTime() : 0L;
         final Map<PatchShaderType, String> transformed = ShaderTransformer.transformCompute(compute, parameters);
+        notifyPostTransform(transformed);
         if (!useCache) {
             return finishWithoutCache(transformed, CacheDomain.COMPUTE, transformStart, logCacheEvents);
         }
 
         return cacheResult(key, transformed, CacheDomain.COMPUTE, transformStart, logCacheEvents);
+    }
+
+    /**
+     * Hands every transformed stage to the shader backend, which pre-compiles it off the main thread.
+     * Only the SDL backend consumes this: it compiles GLSL to SPIR-V, and doing that on the frame
+     * that first draws with the stage is exactly the stall the warmup exists to remove. Results are
+     * handed over on cache hits too, because the backend's own prewarm cache can outlive or
+     * predecease this one.
+     */
+    private static void notifyPostTransform(Map<PatchShaderType, String> transformed) {
+        if (transformed == null || !BackendManager.RENDER_BACKEND.isSDLGPU()) {
+            return;
+        }
+        final ShaderTransformPostProcessor processor = GLSMHooks.postTransformProcessor;
+        if (processor == null) {
+            return;
+        }
+        for (Map.Entry<PatchShaderType, String> entry : transformed.entrySet()) {
+            final String source = entry.getValue();
+            if (source == null) {
+                continue;
+            }
+            processor.onTransformed(source, toBackendShaderType(entry.getKey()));
+        }
+    }
+
+    /**
+     * The hook lives in glsm and speaks glsm's copy of the GL shader-type enum, while the transformer
+     * uses {@link PatchShaderType}. Both name the same GL constants, so the mapping is total.
+     */
+    private static ShaderType toBackendShaderType(PatchShaderType type) {
+        return switch (type) {
+            case VERTEX -> ShaderType.VERTEX;
+            case GEOMETRY -> ShaderType.GEOMETRY;
+            case TESS_CONTROL -> ShaderType.TESSELATION_CONTROL;
+            case TESS_EVAL -> ShaderType.TESSELATION_EVAL;
+            case FRAGMENT -> ShaderType.FRAGMENT;
+            case COMPUTE -> ShaderType.COMPUTE;
+        };
     }
 
     private static Map<PatchShaderType, String> getCached(CacheKey key, CacheDomain domain, boolean logCacheEvents) {

@@ -1,5 +1,7 @@
 package net.coderbot.iris.gl.uniform;
 
+import com.gtnewhorizons.angelica.glsm.shader.UniformType;
+
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4fc;
 import org.joml.Vector2f;

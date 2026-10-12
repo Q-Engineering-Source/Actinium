@@ -103,6 +103,9 @@
 - Actinium 没有 `PerFrameUniformBlockHarvester`（属未移植的 #1993/#2009 链路）、没有
   `awaitProgramSetWarmup`，`compileEveryShaderFolder` 里相应行去掉；
   `ShaderTransformExecutor.prepare()`（Actinium 的线程池预热）保留。
+  ⚠️ **后续（2026-10-12）**：那条链路已补齐，`compileEveryShaderFolder` 重新接上
+  `awaitProgramSetWarmup()` / `PerFrameUniformBlockHarvester.harvest(programs)` / `clear()`，
+  见 `sdl-gpu-shader-loading.md` §6。
 - 上游 `AngelicaJar.configureShaderDiskCache` 在 `Iris.onRenderSystemInit` 里调用，Actinium
   已在 `Actinium.onInit` 调用（上一环落地），本次不改。
 

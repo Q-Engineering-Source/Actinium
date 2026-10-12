@@ -17,7 +17,7 @@ import net.coderbot.iris.gl.state.ValueUpdateNotifier;
 import net.coderbot.iris.gl.uniform.DynamicLocationalUniformHolder;
 import net.coderbot.iris.gl.uniform.Uniform;
 import net.coderbot.iris.gl.uniform.UniformHolder;
-import net.coderbot.iris.gl.uniform.UniformType;
+import com.gtnewhorizons.angelica.glsm.shader.UniformType;
 import net.coderbot.iris.gl.uniform.UniformUpdateFrequency;
 import net.coderbot.iris.uniforms.SystemTimeUniforms;
 import net.coderbot.iris.uniforms.WorldTimeUniforms;

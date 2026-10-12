@@ -1637,6 +1637,9 @@ compileJava compileTestJava`、`./gradlew :glsm:test :sdl-gpu:test`、`./gradlew
   早期变换预热链路（`warmupShaderTransforms`/`PerFrameUniformBlockHarvester`/
   `DeferredWorldRenderingPipeline.warmupTransforms`，来自上游 #1993/#2009），
   因此 barrier 目前只有消费侧、无人设置（已在文档中标注）。
+  ⚠️ **后续（2026-10-12）**：上述整条预热链已补齐，`#2190` 这部分随之落地，
+  barrier 的消费侧终于有生产端。逐文件对账与偏差见
+  `sdl-gpu-shader-loading.md` §6。
 - **`38af64f1`「Initial commit for shader-loading-optimizations (#2213)」**：对账后确认
   glsm 侧（`containsWholeWord`、`AngelicaWorkers.invokeAll`、`ShaderDiskCache.configure` 幂等）
   与 sdlgpu 侧（`QueuedCompile`、`registerSamplerLocations`、顶点变体落盘、`ShaderStageSerializer`
