@@ -72,6 +72,7 @@ public class CompositeRenderer {
 	@Nullable private final Object2ObjectMap<String, TextureAccess> irisCustomTextures;
 	@Nullable private final WorldRenderingPipeline pipeline;
 	private final TextureStage textureStage;
+	private final PreRasterComputeStages preRasterComputes = new PreRasterComputeStages();
 	@Getter
     private final ImmutableSet<Integer> flippedAtLeastOnceFinal;
 
@@ -130,6 +131,8 @@ public class CompositeRenderer {
 			Map<PatchShaderType, String> transformed = getTransformed(source, transformFutures, i, stageName);
 			pass.sourceName = source.getName();
 			pass.program = createProgramFromTransformed(source, transformed, flipped, flippedAtLeastOnceSnapshot, context.shadowTargetsSupplier());
+			pass.preRasterSlot = preRasterComputes.register(source.getName(), transformed.get(PatchShaderType.COMPUTE),
+				(name, computeSource) -> buildPreRasterCompute(name, computeSource, flipped, flippedAtLeastOnceSnapshot, context.shadowTargetsSupplier()));
 			pass.computes = createComputes(computes[i], flipped, flippedAtLeastOnceSnapshot, context.shadowTargetsSupplier());
 			pass.blendModeOverride = directives.getBlendModeOverride().orElse(null);
 			final int[] drawBuffers = directives.getDrawBuffers();
@@ -230,6 +233,7 @@ public class CompositeRenderer {
 		String sourceName;
 		Program program;
 		ComputeProgram[] computes;
+		int preRasterSlot = PreRasterComputeStages.NONE;
 		GlFramebuffer framebuffer;
 		ImmutableSet<Integer> stageReadsFromAlt;
 		ImmutableSet<Integer> mipmappedBuffers;
@@ -332,6 +336,10 @@ public class CompositeRenderer {
 			final float viewportX = renderPass.viewWidth * renderPass.viewportScale.viewportX();
 			final float viewportY = renderPass.viewHeight * renderPass.viewportScale.viewportY();
 			GLStateManager.glViewport((int) viewportX, (int) viewportY, (int) scaledWidth, (int) scaledHeight);
+
+			if (renderPass.preRasterSlot != PreRasterComputeStages.NONE) {
+				preRasterComputes.dispatch(renderPass.preRasterSlot, renderPass.viewWidth, renderPass.viewHeight);
+			}
 
             IrisGlDebug.markStage("composite:draw");
 			renderPass.framebuffer.bind();
@@ -461,6 +469,41 @@ public class CompositeRenderer {
         return build;
     }
 
+	private PreRasterComputeProgram buildPreRasterCompute(String name, String computeSource, ImmutableSet<Integer> flipped,
+														  ImmutableSet<Integer> flippedAtLeastOnceSnapshot,
+														  Supplier<ShadowRenderTargets> shadowTargetsSupplier) {
+		PatchedShaderPrinter.debugPatchedShaders(name + "_pre_compute", null, null, null, computeSource);
+		final ProgramBuilder builder;
+		try {
+			builder = ProgramBuilder.beginCompute(name + "_pre", computeSource, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
+		} catch (RuntimeException e) {
+			throw new RuntimeException("Pre-raster compute compilation failed for " + name, e);
+		}
+		final ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor = ProgramSamplers.customTextureSamplerInterceptor(builder, customTextureIds, flippedAtLeastOnceSnapshot);
+
+		CommonUniforms.addDynamicUniforms(builder, FogMode.OFF);
+		this.customUniforms.assignTo(builder);
+
+		IrisSamplers.addRenderTargetSamplers(customTextureSamplerInterceptor, () -> flipped, renderTargets, true, pipeline);
+		IrisSamplers.addCustomImages(customTextureSamplerInterceptor, customImages);
+		IrisSamplers.addCustomTextures(customTextureSamplerInterceptor, irisCustomTextures);
+
+		IrisImages.addRenderTargetImages(builder, () -> flipped, renderTargets);
+		IrisImages.addCustomImages(builder, customImages);
+
+		IrisSamplers.addNoiseSampler(customTextureSamplerInterceptor, noiseTexture);
+		IrisSamplers.addCompositeSamplers(customTextureSamplerInterceptor, renderTargets);
+
+		if (IrisSamplers.hasShadowSamplers(customTextureSamplerInterceptor)) {
+			IrisSamplers.addShadowSamplers(customTextureSamplerInterceptor, shadowTargetsSupplier.get(), null, pipeline != null && pipeline.hasFeature(FeatureFlags.SEPARATE_HARDWARE_SAMPLERS));
+			IrisImages.addShadowColorImages(builder, shadowTargetsSupplier.get(), null);
+		}
+
+		final ComputeProgram compute = builder.buildCompute();
+		this.customUniforms.mapholderToPass(builder, compute);
+		return PreRasterComputeProgram.of(compute, this.customUniforms);
+	}
+
 	private ComputeProgram[] createComputes(ComputeSource[] compute, ImmutableSet<Integer> flipped, ImmutableSet<Integer> flippedAtLeastOnceSnapshot, Supplier<ShadowRenderTargets> shadowTargetsSupplier) {
 		ComputeProgram[] programs = new ComputeProgram[compute.length];
 		for (int i = 0; i < programs.length; i++) {
@@ -521,5 +564,6 @@ public class CompositeRenderer {
 		for (Pass renderPass : passes) {
 			renderPass.destroy();
 		}
+		preRasterComputes.destroy();
 	}
 }

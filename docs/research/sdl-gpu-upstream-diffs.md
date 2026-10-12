@@ -1230,15 +1230,16 @@ CloudRenderer 的 `src/` 修复，见本节末尾的跳过清单）。本节是 
     `beginBuilder`/`wireGbufferProgram` 拆分，改为把 `createPassInner` 里原有的内联
     接线原样搬进新方法 `wireGbufferResources(...)` 并复用，`createPassInner` 只多带
     `name`/`transformed` 两个参数。重放程序需要的 sampler/image 与 gbuffer 程序一致。
-  - **已知缺口（未同步，导致 COMPOSITE/CELERITAS_TERRAIN 的抽取结果无人消费）**：
-    上游把非 ATTRIBUTES 分支抽出的 compute 做成 pre-raster 前置通道——消费方是
-    `CompositeRenderer`/`ShadowCompositeRenderer` 的 `preRasterCompute`
-    （`PreRasterComputeDispatcher.dispatch`），这套机制来自更早的 #1993（`8da561d3`），
-    Actinium 的 shader 模块**完全没有** `preRaster*`。因此：
-    `PreRasterComputeDispatcher` 已按上游整文件移植但**当前无调用方**；
-    COMPOSITE/CELERITAS_TERRAIN 的 image 写入会被剥离而不会被重放（其它补丁类型
-    的「剥离并丢弃」就是上游行为）。SDL 后端当前不可达，故对用户无影响；将来接线
-    SDL 后端或继续同步 pre-raster 机制时必须一并补上。
+  - **已知缺口（已接线，2026-10-12）**：上游把非 ATTRIBUTES 分支抽出的 compute 做成 pre-raster
+    前置通道——消费方是 `CompositeRenderer`/`ShadowCompositeRenderer` 的 `preRasterCompute`
+    （`PreRasterComputeDispatcher.dispatch`），这套机制来自更早的 #1993（`8da561d3`）。本阶段
+    移植时 Actinium 的 shader 模块还没有 `preRaster*`，`PreRasterComputeDispatcher` 因此
+    **无调用方**，COMPOSITE/CELERITAS_TERRAIN 的 image 写入被剥离而不重放（其它补丁类型的
+    「剥离并丢弃」就是上游行为）。该缺口已由 `feat(shader): wire pre-raster compute dispatch
+    for extracted image stores` 补齐：消费方接在 `PreRasterComputeStages`（注册/dispatch/清理），
+    `CompositeRenderer` 与 `ShadowCompositeRenderer` 各自持有，细节见本文档 Phase 11 一节。
+    CELERITAS_TERRAIN 的抽取结果仍由 `CeleritasTerrainPipeline` 消费（Phase 8 随该提交一并移植，
+    非本缺口）。
   - **跳过**：上游 gbuffer **variant** 程序的接线（`sourceName + kind.variantSuffix`）
     ——Actinium 的 `DeferredWorldRenderingPipeline` 没有这套变体程序。
   - **跳过**：`InstancedAttribs`/`Instancing`（上游 glsm 的 FFP 实例化）与
@@ -1868,3 +1869,106 @@ optimizations (#2009)」（67 文件 +2919/-734）。本轮**不是整提交照�
    `Frame pacing: vsync ... driver not blocking, paced by wall clock` 警告。
 4. **输入延迟修复**：Windows 上"帧率被 pacer 限到 60"时，视角转动应比改动前少一帧延迟
    （主观验证，可与 `-Dangelica.sdlgpu.enable=false` 的 GL 路径对照）。
+
+## 上游同步状态（2026-10-12，Phase 11：pre-raster compute 消费方接线）
+
+**背景**：Phase 8 把 `PreRasterComputeDispatcher` 整文件移植进来却**没有调用方**（见上文 Phase 8
+的「已知缺口」）：SDL 后端下 COMPOSITE 的 image 写入会被抽取成 compute 并从光栅阶段剥离，剥离后
+无人重放。本阶段补上消费方，形态以上游 master tip `21a054a4` 为准——该机制来自 `8da561d3`
+（#1993），`5ed1c925`（#2224）之后没有改过消费方；上游 `CompositeRenderer` /
+`ShadowCompositeRenderer` 的 `preRasterCompute` / `preRasterMode` / `preRasterTargetSizeLoc`
+与 `dispatchPreRasterCompute(...)` 即目标形态。
+
+**接线设计**
+
+- 新增 `shader/.../postprocess/PreRasterComputeProgram`（接口）、`GlPreRasterComputeProgram`
+  （包私有实现，经 `PreRasterComputeProgram.of(...)` 静态工厂取得）、
+  `shader/.../postprocess/PreRasterComputeStages`（注册 / dispatch / 清理）。
+- `PreRasterComputeStages` 持有每个已注册预通道的 `PreRasterComputeProgram`、抽取模式与
+  `_vg_target_size` 位置缓存，`register` 返回 slot（无预通道时返回 `NONE`），`dispatch(slot, w, h)`
+  把上一次解析到的位置回传并缓存，`destroy()` 逐个释放并清空。GL 交互全部经由
+  `PreRasterComputeProgram`，因此注册 / dispatch / 清理可以无上下文地真实驱动（见下）。
+- `CompositeRenderer` 与 `ShadowCompositeRenderer` 各持一个 `PreRasterComputeStages` 实例：
+  建程序时把 `transformed.get(PatchShaderType.COMPUTE)` 交给 `register`（`Factory` 回调里做各自的
+  sampler / image 接线，即上游 `buildPreRasterCompute` 的内容），Pass 上只留 `preRasterSlot`；
+  `renderAll()` 在设好 pass viewport 之后、`framebuffer.bind()` 之前 dispatch；`destroy()` 里
+  `preRasterComputes.destroy()`。world composite 用 `pass.viewWidth/viewHeight`，
+  shadow composite 用缩放后的 shadow 分辨率，与上游两处一致。
+- `ShadowCompositeRenderer` 的 `TransformPatcher.patchComposite(...)` 从 `createProgram` 内部提到
+  构造体，方法随之更名 `createProgramFromTransformed`——上游自 #1993 起就是这个形状，抽取结果与
+  建程序共用同一张 transformed 图。
+
+**与上游的差异（reconcile）**
+
+- 上游把 `preRasterCompute` / `preRasterMode` / `preRasterTargetSizeLoc` 三个字段放在 `Pass` 上；
+  本树把三者收进 `PreRasterComputeStages`，`Pass` 只留 slot。语义一致：每 pass 一套、位置缓存按
+  pass 独立（`keepsTheTargetSizeLocationOfEachSlotApart` 钉住这一点），且两个 renderer 共用一份
+  实现。
+- 上游 `register` 的判据是 `parseSentinel(...) != null`；本树收紧为只接受 `COMPOSITE_VSH` 与
+  `COMPOSITE_FSH`。`CHUNK`（celeritas 地形体素化，消费方 `CeleritasTerrainPipeline`）与
+  `VERTEX_REPLAY`（逐绘制顶点重放，消费方 `VertexWriteReplays`）另有驱动者，落到 composite pass 上
+  只会按 1×1×1 错跑，故显式不注册（`registersNothingForTheExtractionsOtherStagesDrive`）。
+- `DeferredWorldRenderingPipeline` **无需改动**：composite 的抽取结果本来就在
+  `submitCompositeTransforms` 产出的 future 里——`extractRwImageStores` 在 `transformInternal`
+  末尾按上游位置执行，`result.put(PatchShaderType.COMPUTE, ...)` 与其它阶段同图，缓存
+  （`TransformPatcher` 的 `immutableResult` 复制整张 EnumMap）与预热（`notifyPostTransform` 遍历
+  `entrySet`，COMPUTE 也在内）都原样覆盖它。`CompositeRenderer.getTransformed` 取到的就是这张图。
+  #2206 重写的 RetainedPrograms / SharedProgramKey / `wireGbufferResources` 只涉及 gbuffer 与
+  ATTRIBUTES 路径，与本接线无交集。
+
+**与 voxelization 的边界**
+
+- 两者不共享对象、不共享生命周期：pre-raster 是**包级 image 写入重放**（每个 composite pass 前
+  一次 dispatch，由 pass 的调用序驱动，程序归 renderer 的 `PreRasterComputeStages`）；voxelization
+  是**shadow 几何体素化**（`SdlShadowVoxelizationSink` / `ShadowVoxelizer` / `VoxelRangeTable`，
+  由 chunk render list 驱动，`shadowVoxelizationCompute` 由 DWRP 建/销毁并经
+  `bindVoxelizationMatrixUniforms` / `prepareShadowVoxelizationCompute` 供给）。
+- image binding 纪律各自遵循各自那一侧：pre-raster 沿用 composite 程序的 sampler / image 装配
+  序列（`IrisSamplers.addRenderTargetSamplers` / `IrisImages.addRenderTargetImages` /
+  `IrisImages.addCustomImages` ...，与同一 renderer 的光栅程序逐调用对齐）；voxelization 的
+  custom images 显式按名字排序。两者是相互独立的 program id，各自绑定自己的 image set，不会互相
+  覆盖。
+
+**门控**
+
+- 门控在抽取侧：`ShaderTransformer.transformInternal` 末尾 `if (BackendManager.RENDER_BACKEND.isSDLGPU()) extractRwImageStores(...)`。
+  GL 后端下没有 `PatchShaderType.COMPUTE`，`register` 收到 null 返回 `NONE`，`renderAll` 的 dispatch
+  分支不会进入，GL 路径行为与接线前逐条相同。`theGlBackendHasNoPrePassToRegister` 用真实
+  `TransformPatcher.patchComposite` 在非 SDL 后端下断言这一点。
+
+**缓存失效与生命周期**
+
+- 抽取 artifact 的失效路径已接（Phase 8）：`RwImageStoreExtractor.setActiveCustomImages` 在
+  atomic 可用集合变化时 `TransformPatcher.clearCache()` + `ShaderTransformer.clearSessionState()`。
+- 程序生命周期由 pipeline 管理：`CompositeRenderer.destroy()`（DWRP 的 `destroy()` 调用
+  `beginRenderer` / `prepareRenderer` / `deferredRenderer` / `compositeRenderer` 的 destroy）与
+  `ShadowCompositeRenderer.destroy()` 各自释放自己注册的预通道；`recalculateSizes()` 只重建
+  framebuffer，预通道与尺寸无关（`_vg_target_size` 每帧按 pass 尺寸写入）。
+
+**测试**
+
+- 新增 `src/test/.../net/coderbot/iris/postprocess/PreRasterComputeStagesTest`（9 例）：用
+  `RwImageStoreExtractor.tryExtract` 真实抽取出的 compute 源做输入、用替身
+  `PreRasterComputeProgram` 记录 GL 侧调用，覆盖注册（mode 与命名、null / 非 composite sentinel
+  不注册）、dispatch（mode 与尺寸透传、`_vg_target_size` 位置跨帧缓存且 slot 之间隔离）、清理
+  （每个程序只释放一次、二次 destroy 无副作用、释放后 dispatch 抛 `IllegalStateException`）、
+  以及 GL 后端无预通道可注册。不涉及反射去驱动被测代码（仅沿用既有
+  `Reflect.setStatic(RenderSystem.class, "maxGlslVersion", ...)` 夹具）。
+
+**验证**
+
+```
+./gradlew :test --tests 'net.coderbot.iris.postprocess.PreRasterComputeStagesTest' --rerun
+./gradlew check --no-daemon
+```
+
+实机验证建议（需用户执行，SDL 后端 + 写 image 的光影包，如 Euphoria Patches 的 End prepare
+/imageStore 路径）：
+
+1. composite / shadowcomposite 阶段自身写 image 的包（writeonly image + imageStore）在 SDL 后端下
+   应看到此前丢失的 image 效果（计数器 / 状态图类前值），GL 后端（`-Dangelica.sdlgpu.enable=false`
+   等价开关）结果应与改动前一致。
+2. 日志出现 `[RwImageStoreExtractor] Extracted compute pre-pass for COMPOSITE (mode=composite-vsh|composite-fsh, written=[...])`，
+   且该 pass 的 `_vg_target_size` 只在首帧解析一次（无每帧 `glGetUniformLocation` 抖动）。
+3. 与 voxelization（写 `voxel_img` 的 shadow 地形）同时开启时，两者的 image 写入互不串扰：体素化
+   结果与 composite 前置重放结果都正确。
