@@ -1974,3 +1974,93 @@ optimizations (#2009)」（67 文件 +2919/-734）。本轮**不是整提交照�
    且该 pass 的 `_vg_target_size` 只在首帧解析一次（无每帧 `glGetUniformLocation` 抖动）。
 3. 与 voxelization（写 `voxel_img` 的 shadow 地形）同时开启时，两者的 image 写入互不串扰：体素化
    结果与 composite 前置重放结果都正确。
+
+## 上游同步状态（2026-10-12，Phase 12：#1993 的三项 uniform 热路径优化）
+
+**提交**：`0bd51b55`（`perf(shader): share previous matrices and reuse uniform update listeners`）。
+
+**背景**：`8da561d3`（#1993）除 SDL 后端、Tracy、TESR batching 三大块之外，还夹着三处与预热链、
+落盘缓存都无关的 uniform 热路径优化。Phase 8/9 的预热移植把它们显式记成「跳过：与预热无关的性能
+改动」（见 `sdl-gpu-shader-loading.md` §3 与 §6.2 的对账表），本阶段补齐。
+
+**逐项对账**
+
+| 上游项 | 上游位置与规模 | 上游改法 | 本树落地 |
+|---|---|---|---|
+| previous 矩阵共享 | `net/coderbot/iris/uniforms/MatrixUniforms.java`（+35/−13） | `Previous` 从「每 program 一个实例」改为按 uniform 名共享：静态 `INSTANCES`（`ConcurrentHashMap`）+ `Previous.shared(name, supplier)`；实例持有 `previous`/`current` 两个 `Matrix4f` 与 `lastFrame`，`get()` 每帧只推进一次并返回共享快照 | 语义照搬（含 `static final` 可见性与 `shared` 工厂） |
+| entity id 特殊名缓存 | `net/coderbot/iris/uniforms/EntityIdHelper.java`（+18/−16） | `minecraft:current_player` / `minecraft:zombie_villager_converting` 在 id map 换新时解析一次，`getSpecialEntityId` 去掉 map 参数；判断顺序改为先比 `!= -1`，使未定义 `current_player` 的包不再走到 `Minecraft.getMinecraft()` | 缓存规则与判断顺序照搬，载体改为包内 `SpecialIds`（偏差见下） |
+| 更新监听器复用 | `gl/uniform/{Float,Int,Vector2IntegerJoml,Vector3IntegerJoml,Vector4,Vector4Array,Vector4IntegerJoml}Uniform.java`（各 +3/−3）、`gl/sampler/SamplerBinding.java`（+5/−2） | `notifier.setListener(this::updateX)` 改为持有 `private final Runnable updateListener = this::updateX` | 逐文件照搬（8 个类） |
+
+**为什么值得拿**（本树的消费路径）
+
+- `ProgramUniforms.update()` 每帧都会 `updateStage(dynamic)`：每个 program 的每个 dynamic uniform
+  每帧调用一次 `update()`，而 `update()` 每次都用 `this::updateValue` 重新注册监听器，于是每帧每
+  uniform 分配一个方法引用对象。全屏 pass 多、dynamic uniform 密集（自定义 uniform、colortex 密集）
+  的包下这是纯垃圾。
+- `Previous.get()` 原先每次调用 new 两个 `Matrix4f`（`gbufferPrevious*` 每个 program 各一份），共享后
+  每帧只读一次源矩阵、零分配，并且所有 program 读到的上一帧矩阵一致。
+- 两个特殊实体名的查询在**不定义**它们的包上也是纯 miss：每个第三人称玩家实体、每只转化中的僵尸
+  村民、每帧各一次 hash 查表。缓存后每张 id map 只查一次。
+
+**reconcile 明细**
+
+- **与 #2206 的边界**：#1993 同一批 uniform 改动里的 `ManifestCollectingHolder`、`UniformManifest`、
+  `ProgramUniforms`/`ProgramBuilder` 的 manifest 接线（含 `addDynamicUniform(Uniform, ValueUpdateNotifier)`
+  签名）已被 #2206（`d45f3b13`）以自身形态落地，本阶段一律不动；`ProgramUniforms` 中
+  `for (int i = 0, n = ...)` 的索引循环重写同属该批、也与落盘缓存无关，未取。
+- **`CommonUniforms`**：上游此处只有 `AngelicaConfig.enableHardcodedCustomUniforms` →
+  `Iris.hardcodedCustomUniforms` 的重命名；本树门控是 `IrisDebugOptions.enableHardcodedCustomUniforms()`，
+  语义相同，不改。
+- **`GbufferPrograms`**：上游 +24 行的 `beginEntityLoop` / `endEntityLoop` / `onEntityRenderBoundary`
+  属 TESR batching（本阶段不移植）；本树已有 `enterEntityPhase`/`PhaseOperations` 等价机制并由
+  `GbufferProgramsEntityPhaseTest` 锁定，不重复实现。
+- **`StateUpdateNotifiers` / `ValueUpdateNotifier` / `FogMode` / `FogUniforms` / `IrisInternalUniforms`**：
+  `git show 8da561d3 -- 'src/main/java/net/coderbot/iris/gl/state/*'` 为空——这些文件在 #1993 中**没有
+  任何改动**，监听器复用只发生在 uniform 类与 `SamplerBinding` 内部，上述调用点无需配合改动。
+- **偏差：`EntityIdHelper` 的缓存载体**。上游把两个 id 放成 `EntityIdHelper` 的静态字段，在
+  `if (entityIdMap != cachedEntityIdMap)` 块里解析。本树抽成包内 `EntityIdHelper.SpecialIds`
+  （`refresh(map)` 内部做同一性判断，配 `currentPlayer()` / `convertingVillager()` 两个访问器），
+  `getEntityId` 每次调用 `SPECIAL_IDS.refresh(entityIdMap)`。动机是可测：任何
+  `net.minecraft.entity.Entity` 的构造都要过 game Bootstrap（`Entity.<init>` → `DataSerializers` →
+  `ForgeHooks` → `Items`，dev 测试 JVM 直接失败于 `Accessed Items before Bootstrap!`），`getEntityId`
+  在单测里无法驱动；把「每张 map 只解析一次」收进一个可实例化的小类型后，缓存与失效都能被真实驱动。
+  运行时成本不变：原来那次引用比较搬进了 `refresh`，没有变成两次判断。
+- **未取（同属 #1993，但不在这三项内）**：`MatrixUniform` 的 `cachedValue` 预分配 + `hasValue` 守卫
+  （+9/−9；`Previous` 共享已拿走其中大部分每帧分配）、`MatrixFromFloatArrayUniform`（本树无此类）、
+  `custom/CustomUniforms` + `cached/CachedUniform` 的 valueGen 推送去重（+76/+19；不是监听器复用，
+  且耦合 Tracy，而 Tracy 整体不移植）。
+
+**测试**
+
+- `src/test/java/net/coderbot/iris/uniforms/PreviousMatrixSharingTest`（3 例）：同名 `shared` 返回同一
+  实例、异名各自独立；首帧报 identity、第二帧报第一帧读到的值、帧内后续读重复同一快照、帧内改动源
+  矩阵不会提前进入 previous；两个「program」共读同一 tracker 时不会二次推进。
+- `src/test/java/net/coderbot/iris/gl/uniform/UniformUpdateListenerReuseTest`（9 例）：9 条动态注册路径
+  （`uniform1f` 的 Float/Int/Double 重载、`uniform1i`、`uniform2i`、`uniform3i`、`uniform4f`、
+  `uniform4fArray`、`uniform4i`）经真实的 `DynamicLocationalUniformHolder` 默认方法建出 uniform，
+  `update()` 两次后断言 notifier 收到的是同一个 listener 对象，并 `run()` 它证明它确实驱动同一条取值
+  路径（取值计数 2 → 3）。所有取值保持不变，因此不会触发 GL 调用。
+- `src/test/java/net/coderbot/iris/uniforms/EntityIdHelperSpecialIdCacheTest`（3 例）：用计数型 id map
+  断言两个名字在换 map 时各解析一次、重复 `refresh` 不再解析、换 map 后重新解析、map 未定义时保持 −1。
+- **未覆盖**：`SamplerBinding` 的同一个改动（`updateSampler()` 一进来就调 `RenderSystem`，单测无法
+  驱动）；`EntityIdHelper.getEntityId` 的实体级集成路径（同上，需要 Bootstrap）。
+
+**验证**
+
+```
+./gradlew :test --tests 'net.coderbot.iris.uniforms.PreviousMatrixSharingTest' \
+  --tests 'net.coderbot.iris.uniforms.EntityIdHelperSpecialIdCacheTest' \
+  --tests 'net.coderbot.iris.gl.uniform.UniformUpdateListenerReuseTest' --rerun
+./gradlew check --no-daemon      # 1141 例全绿
+```
+
+实机验证建议（需用户执行）：
+
+1. **TAA / 运动模糊类效果**（`gbufferPreviousModelView` / `gbufferPreviousProjection` 是它们的输入）：
+   用带 TAA 或运动模糊的包（如 Bliss、Complementary Reimagined 打开 TAA），进世界后转动视角与移动，
+   拖影方向与强度应与改动前一致，不应出现「上一帧矩阵卡住」（拖影不跟随、或永不消失）。同一帧内既有
+   shadow pass 又有 gbuffer pass 的包尤其要看。
+2. **DH 场景**：开 Distant Horizons 观察 `dhPreviousProjection` 相关效果无异常。
+3. **实体 id**：装定义了 `minecraft:current_player` 的包（第三人称看自己）并触发一次僵尸村民转化，
+   实体着色应与改动前一致；连续换包两次以上（覆盖 `SpecialIds` 的失效路径）后仍正确。
+4. **性能**：帧时间不应有回归；`-Xlog:gc` 粗看分配速率（方法引用对象与矩阵分配减少）。

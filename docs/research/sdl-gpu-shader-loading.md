@@ -136,7 +136,7 @@
 | `TracyFramePlots`、RFB 相关 | 无对应物 |
 | `IdMap.detectLegacySection` 快扫 | Actinium 的 `IdMap.hasLegacySection` 是重写实现，方法不存在 |
 | `#2190` 的 Iris 预热重构、`IrisProgramSetWarmupTest` | ~~依赖未移植的预热链路（#1993/#2009）~~ → 2026-10-12 已随预热链一起接上（见 §6） |
-| `#1993` 的 `Previous` 矩阵共享、`EntityIdHelper` 缓存、uniform 更新监听器复用 | 与预热无关的性能改动，不属于本次移植范围 |
+| `#1993` 的 `Previous` 矩阵共享、`EntityIdHelper` 缓存、uniform 更新监听器复用 | 与预热无关的性能改动，不属于本次移植范围 → **2026-10-12 已由 Phase 12（`0bd51b55`）补齐**，见 `sdl-gpu-upstream-diffs.md` |
 | `#1993` 的 GLES 预热（`CompatShaderTransformer.prewarm`） | 本仓库的 `CompatShaderTransformer` 没有该方法；它服务于 GLES 路径，SDL/GL 桌面路径用不到 |
 | `#2009` 的 vsync on/mailbox/off、GLSL 解析优化（`StageArtifact` 单次解析交接） | 不属于预热链（详见 §6.4） |
 | `#2213` 的程序落盘缓存与预热接线（见 §2.3） | ~~依赖未移植的 #2206~~ → 2026-10-12 已随 #2206 一起接上 |
@@ -212,7 +212,7 @@
 | `TransformPatcher` 的 `GLSMHooks.postTransformProcessor` 调用点（+25） | `shader/.../pipeline/transform/TransformPatcher.java` | **移植**（`transform`/`transformCompute` 各一处）；见 §6.4 的两点适配 |
 | `UniformType` 归并（把 `net/coderbot/iris/gl/uniform/UniformType.java` 移到 glsm） | 删除该文件，8 个引用点改 import `com.gtnewhorizons.angelica.glsm.shader.UniformType` | **采纳**：`PerFrameUniformBlock.Member` 用的是 glsm 的枚举，不归并就只能在 harvester 里写一份 11 分支的翻译表 |
 | `Iris.ShaderTransformExecutor.warmup()` 的 `.exceptionally` 非阻塞化 | `shader/.../Iris.java` | **采纳** |
-| `Previous` 矩阵共享、`EntityIdHelper` 缓存、`FloatUniform`/`IntUniform` 的 `updateListener` 复用 | — | **跳过**：与预热无关的性能改动 |
+| `Previous` 矩阵共享、`EntityIdHelper` 缓存、`FloatUniform`/`IntUniform` 的 `updateListener` 复用 | — | **当时跳过**：与预热无关的性能改动 → **2026-10-12 已补齐**（`0bd51b55`，`sdl-gpu-upstream-diffs.md` Phase 12；监听器复用实际覆盖 7 个 uniform 类 + `SamplerBinding`） |
 
 **来源二：`b17bb42c`「vsync adjustments ... (#2009)」的预热相关 hunk**
 
