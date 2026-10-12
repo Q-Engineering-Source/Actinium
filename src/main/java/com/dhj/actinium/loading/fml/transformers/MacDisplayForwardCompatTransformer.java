@@ -22,6 +22,10 @@ import java.util.List;
  * <p>Cleanroom's lwjglxx shim reads its OpenGL version and profile from ForgeEarlyConfig but never sets
  * {@code GLFW_OPENGL_FORWARD_COMPAT}. GLFW requires that hint on macOS for OpenGL 3.2+ core contexts,
  * so without it a requested 3.3/4.1 context can fall back to a legacy 2.1 context.</p>
+ *
+ * <p>On a host running LWJGLY this transformer finds no GLFW call at all: there
+ * {@code org.lwjgl.opengl.Display.create} only adopts and validates the context the host already
+ * created, so the hint belongs to the host's window/context creation.</p>
  */
 public final class MacDisplayForwardCompatTransformer implements IClassTransformer {
     private static final List<String> TARGET_CLASSES = List.of(

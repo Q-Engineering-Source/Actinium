@@ -60,8 +60,9 @@ public abstract class MixinMinecraftCoreProfileDisplay {
     private void celeritas$createSdlDisplay(CallbackInfo ci) throws LWJGLException {
         Display.setResizable(true);
         Display.setTitle("Cleanroom");
-        // The pixel format and context attribs are ignored by the bridge, which owns window and
-        // context creation; they are passed so the bridge can hook one single lwjglx signature.
+        // The window and its context belong to the host, so these only describe what the engine
+        // wants: LWJGLY turns them into a WindowBridge.ContextRequest and validates them against the
+        // context the host already created, and a host without that model ignores them as before.
         Display.create(new PixelFormat().withDepthBits(24).withStencilBits(8), new ContextAttribs(4, 6));
         SDLGPUGate.handOverWindow();
         celeritas$LOGGER.info("SDL GPU display is up; the OpenGL engine paths are replaced by the backend");

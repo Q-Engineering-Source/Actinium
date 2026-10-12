@@ -124,7 +124,8 @@ public final class Device {
         installLogCallback();
 
         // The upstream environment has SDL's video subsystem initialized by lwjgl3ify's window
-        // backend; the Cleanroom/lwjglxx bridge uses GLFW for the window, so initialize SDL here.
+        // backend; the window here belongs to the host, whose GL stack never initializes SDL, so
+        // initialize it here.
         if (!SDLInit.SDL_InitSubSystem(SDLInit.SDL_INIT_VIDEO)) {
             LOG.error("Failed to initialize SDL video subsystem: {}", SDLError.SDL_GetError());
             return false;
@@ -218,10 +219,11 @@ public final class Device {
     /**
      * Claims an external platform window handle (HWND / X11 window) for the SDL GPU device.
      *
-     * <p>The Cleanroom/lwjglxx bridge creates the window with GLFW and hands over the raw
-     * platform handle; SDL wraps it into an {@code SDL_Window} via
-     * {@code SDL_CreateWindowWithProperties} with the external-window properties and claims it
-     * for the GPU device. (The official lwjgl-sdl binding has no {@code SDL_CreateWindowFrom}.)</p>
+     * <p>For a host whose window is not an SDL window this wraps the raw platform handle into an
+     * {@code SDL_Window} via {@code SDL_CreateWindowWithProperties} with the external-window
+     * properties and claims it for the GPU device. (The official lwjgl-sdl binding has no
+     * {@code SDL_CreateWindowFrom}.) A host running LWJGLY already hands out an SDL window through
+     * its bridge, so the SDL activation path does not go through here.</p>
      *
      * @param platformHandle HWND on Windows, X11 window on Linux
      * @return the wrapped SDL window handle

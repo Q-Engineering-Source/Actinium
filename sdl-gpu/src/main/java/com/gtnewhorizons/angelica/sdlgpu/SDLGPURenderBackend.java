@@ -323,7 +323,8 @@ public class SDLGPURenderBackend extends RenderBackend {
             }
         });
         // TODO(sdl-gpu): upstream registers a swapchain-invalidating listener via lwjgl3ify's
-        // DisplayEvents; the Cleanroom/lwjglxx bridge has no such event bus yet.
+        // DisplayEvents; neither the older Cleanroom layer nor LWJGLY's WindowBridge has such an
+        // event bus yet.
         GLSMConfig.expandVertexFormats = true;
         resourceManager.cachePreferredDepthFormats();
         cachedSwapchainFormatArray = new int[]{
@@ -341,8 +342,8 @@ public class SDLGPURenderBackend extends RenderBackend {
         frameManager.setMainThread(GLStateManager.getMainThread());
         if (!SystemProperties.DISABLE_SDL_PRESENTER_THREAD) {
             // Upstream passes retrofuturabootstrap's MainStartOnFirstThread (an Executor that runs
-            // tasks on the window/main thread); the lwjglxx environment has no such helper, so run
-            // presenter dispatch inline on the calling thread.
+            // tasks on the window/main thread); the Cleanroom host offers no such helper through
+            // either compat layer, so run presenter dispatch inline on the calling thread.
             presenter = new Presenter(frameManager, Runnable::run, Pump.INSTANCE);
             frameManager.setPresenter(presenter);
             LOG.info("SDL presenter thread enabled: presents run on '{}'", device.getWindowThread() != null ? device.getWindowThread().getName() : "window thread");
