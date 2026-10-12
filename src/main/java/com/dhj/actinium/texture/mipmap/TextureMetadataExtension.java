@@ -1,6 +1,4 @@
-package com.dhj.actinium.mixin.vintage.features.mipmaps.mixinterface;
-
-import com.dhj.actinium.texture.mipmap.MipmapStrategy;
+package com.dhj.actinium.texture.mipmap;
 
 /**
  * The mipmap strategy declared by a sprite's {@code .mcmeta} {@code texture} section.

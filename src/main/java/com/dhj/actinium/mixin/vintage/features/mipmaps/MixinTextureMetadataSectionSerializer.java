@@ -3,7 +3,7 @@ package com.dhj.actinium.mixin.vintage.features.mipmaps;
 import com.google.gson.JsonDeserializationContext;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.dhj.actinium.mixin.vintage.features.mipmaps.mixinterface.TextureMetadataExtension;
+import com.dhj.actinium.texture.mipmap.TextureMetadataExtension;
 import com.dhj.actinium.texture.mipmap.MipmapStrategy;
 import net.minecraft.client.resources.data.TextureMetadataSection;
 import net.minecraft.client.resources.data.TextureMetadataSectionSerializer;

@@ -1,6 +1,6 @@
 package com.dhj.actinium.mixin.vintage.features.textures;
 
-import com.dhj.actinium.mixin.vintage.features.textures.mixinterface.AtlasSessionHolder;
+import com.dhj.actinium.texture.atlas.AtlasSessionHolder;
 import com.dhj.actinium.render.terrain.sprite.VisibleTextureIterator;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.texture.SpriteExtension;

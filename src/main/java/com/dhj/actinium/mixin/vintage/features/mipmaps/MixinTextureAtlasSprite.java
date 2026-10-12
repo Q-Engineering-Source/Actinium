@@ -1,6 +1,6 @@
 package com.dhj.actinium.mixin.vintage.features.mipmaps;
 
-import com.dhj.actinium.mixin.vintage.features.mipmaps.mixinterface.TextureMetadataExtension;
+import com.dhj.actinium.texture.mipmap.TextureMetadataExtension;
 import com.dhj.actinium.texture.SpriteExtension;
 import com.dhj.actinium.texture.atlas.AtlasLoadStats;
 import com.dhj.actinium.texture.mipmap.MipmapGenerator;

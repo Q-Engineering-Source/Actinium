@@ -1,4 +1,4 @@
-package com.dhj.actinium.mixin.vintage.features.textures.mixinterface;
+package com.dhj.actinium.texture.atlas;
 
 import com.dhj.actinium.texture.atlas.AtlasLoadSession;
 
