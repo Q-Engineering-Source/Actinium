@@ -21,11 +21,42 @@ import java.util.function.IntFunction;
 public class GlProgram<T> extends GlObject implements ShaderBindingContext {
     private static final Logger LOGGER = LogManager.getLogger(GlProgram.class);
 
+    /**
+     * Receives every program this class is about to link. Link-time program parameters have to be set
+     * before the link happens: {@code GL_PROGRAM_BINARY_RETRIEVABLE_HINT} decides whether the linked
+     * binary can be read back at all, so a driver that honours it answers with a length of 0 when the
+     * hint was set too late.
+     *
+     * <p>Installed by the host, because this linker is the one path that does not go through
+     * {@code GLStateManager.glLinkProgram} and therefore misses the parameters it sets.</p>
+     */
+    public interface LinkHook {
+        void beforeLink(int program);
+    }
+
+    private static volatile LinkHook linkHook;
+
     private final T shaderInterface;
 
     protected GlProgram(int program, Function<ShaderBindingContext, T> interfaceFactory) {
         this.setHandle(program);
         this.shaderInterface = interfaceFactory.apply(this);
+    }
+
+    /** Installs the hook every link runs through; {@code null} leaves the links untouched. */
+    public static void setLinkHook(@Nullable LinkHook hook) {
+        linkHook = hook;
+    }
+
+    /**
+     * Hands a program that is about to be linked to the installed hook. Kept apart from the linker so
+     * the order it runs in can be asserted without a GL context.
+     */
+    static void applyLinkHook(int program) {
+        final LinkHook hook = linkHook;
+        if (hook != null) {
+            hook.beforeLink(program);
+        }
     }
 
     public T getInterface() {
@@ -98,6 +129,8 @@ public class GlProgram<T> extends GlObject implements ShaderBindingContext {
          * @return An instantiated shader container as provided by the factory
          */
         public <U> GlProgram<U> link(Function<ShaderBindingContext, U> factory) {
+            applyLinkHook(this.program);
+
             LWJGL.glLinkProgram(this.program);
 
             String log = LWJGL.glGetProgramInfoLog(this.program, 4096);

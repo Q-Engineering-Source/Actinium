@@ -79,10 +79,15 @@ public final class ProgramBinaryCache {
     }
 
     /**
-     * Asks the driver to keep this program's binary readable after linking. A hint, so a driver that
-     * ignores it only costs a failed {@code glGetProgramBinary} later.
+     * Asks the driver to keep this program's binary readable after linking, while the cache is on. A
+     * hint, so a driver that ignores it only costs a failed {@code glGetProgramBinary} later.
+     *
+     * <p>The link-time home of this call is {@link GLStateManager#glLinkProgram(int)}. Programs that
+     * celeritas links itself reach it through that linker's hook instead, so both kinds of program are
+     * still on disk when the pack is loaded again.</p>
      */
     public static void markRetrievable(int program) {
+        if (!isEnabled()) return;
         GLStateManager.glProgramParameteri(program, GL41.GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL11.GL_TRUE);
     }
 

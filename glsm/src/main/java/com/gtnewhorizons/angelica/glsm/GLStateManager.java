@@ -7921,9 +7921,7 @@ public class GLStateManager {
         if (ShaderManager.getInstance().isEnabled()) {
             generateVertexShaderIfNeeded(program);
         }
-        if (ProgramBinaryCache.isEnabled()) {
-            ProgramBinaryCache.markRetrievable(program);
-        }
+        ProgramBinaryCache.markRetrievable(program);
         long linkEpoch = CompatUniformManager.beforeLinkProgram(program);
         RENDER_BACKEND.linkProgram(program);
         CompatUniformManager.onLinkProgram(program, linkEpoch);

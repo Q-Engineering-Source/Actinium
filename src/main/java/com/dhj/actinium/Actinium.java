@@ -26,6 +26,7 @@ import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
 import com.gtnewhorizons.angelica.glsm.compat.FogDistanceModeBridge;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
+import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import com.gtnewhorizons.angelica.utils.AngelicaJar;
 import com.gtnewhorizons.angelica.iris.IrisGLSMBridge;
 import com.mojang.realmsclient.gui.ChatFormatting;
@@ -50,6 +51,7 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import dhj.embeddedt.embeddium.impl.common.util.MathUtil;
 import dhj.embeddedt.embeddium.impl.common.util.NativeBuffer;
 import dhj.embeddedt.embeddium.impl.gl.device.GLRenderDevice;
+import dhj.embeddedt.embeddium.impl.gl.shader.GlProgram;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
 import dhj.embeddedt.embeddium.impl.runtime.EmbeddiumRuntimeOptions;
 import java.io.IOException;
@@ -168,6 +170,9 @@ public class Actinium {
         GLSMPerfDebugHooks.setEnabledChangeListener(Actinium::reloadShaderPipelineForPerfDebug);
 
         GLSMHooks.textureBindSyncCallback = VanillaTextureMirrorCompat.createCallback();
+        // Celeritas links its terrain programs itself, so the link-time hint that makes a program's
+        // binary readable back (and with it the saved-program cache) never reaches that linker otherwise.
+        GlProgram.setLinkHook(ProgramBinaryCache::markRetrievable);
 
         ActiniumDiagnostics.logConstruction();
         initializeDistantHorizonsCompat();
