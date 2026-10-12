@@ -5432,8 +5432,8 @@ public class GLStateManager {
             return RENDER_BACKEND.getTexLevelParameteri(target, level, pname);
         }
         return switch (pname) {
-            case GL11.GL_TEXTURE_WIDTH -> info.getWidth();
-            case GL11.GL_TEXTURE_HEIGHT -> info.getHeight();
+            case GL11.GL_TEXTURE_WIDTH -> Math.max(info.getWidth() >> level, 1);
+            case GL11.GL_TEXTURE_HEIGHT -> Math.max(info.getHeight() >> level, 1);
             case GL11.GL_TEXTURE_INTERNAL_FORMAT -> info.getInternalFormat();
             default -> {
                 if (isRecordingDisplayList()) {

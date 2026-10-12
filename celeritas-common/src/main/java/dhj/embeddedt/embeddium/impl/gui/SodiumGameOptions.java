@@ -39,6 +39,15 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
      */
     public boolean enableDebugTab = false;
 
+    /**
+     * Mip level count the last loaded block atlas ended up with, or {@code -1} before the first load.
+     *
+     * <p>The atlas drops levels when the loaded sprites are too small for the configured count, and everything
+     * that sizes a per-level buffer - the sprite gutter, the shader's mip handling, the terrain sampler - has
+     * to use what the atlas really has rather than what the setting asks for.
+     */
+    private static int atlasMipmapLevels = -1;
+
     public final QualitySettings quality = new QualitySettings();
     public final AdvancedSettings advanced = new AdvancedSettings();
     public final PerformanceSettings performance = new PerformanceSettings();
@@ -50,6 +59,16 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
     private boolean readOnly;
 
     private Path configPath;
+
+    /** Records the mip level count of the atlas that was just loaded. */
+    public static void recordAtlasMipmapLevels(int mipmapLevels) {
+        atlasMipmapLevels = mipmapLevels;
+    }
+
+    /** The recorded atlas mip level count, or {@code -1} when no block atlas has been loaded yet. */
+    public static int getAtlasMipmapLevels() {
+        return atlasMipmapLevels;
+    }
 
     public static SodiumGameOptions defaults() {
         var options = new SodiumGameOptions();
@@ -179,7 +198,7 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         public float biomeColorNoiseFoliageIntensity = 0.08F;
         public float biomeColorNoiseWaterIntensity = 0.08F;
 
-        public TextureFilterMode textureFilterMode = TextureFilterMode.ANISOTROPIC;
+        public TextureFilterMode textureFilterMode = TextureFilterMode.RGSS_ANISOTROPIC;
         public TexelSampling texelSampling = TexelSampling.LINEAR;
 
         /**
@@ -307,7 +326,7 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         }
 
         if (config.quality.textureFilterMode == null) {
-            config.quality.textureFilterMode = TextureFilterMode.ANISOTROPIC;
+            config.quality.textureFilterMode = TextureFilterMode.RGSS_ANISOTROPIC;
         }
 
         if (config.quality.texelSampling == null) {

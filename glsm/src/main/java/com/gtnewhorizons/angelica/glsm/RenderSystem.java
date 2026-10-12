@@ -626,6 +626,16 @@ public class RenderSystem {
         GLStateManager.glSamplerParameteri(sampler, pname, param);
     }
 
+    /**
+     * The anisotropic-filtering limit is a floating-point sampler parameter. Submitting it through
+     * {@link #samplerParameteri(int, int, int)} makes the driver raise GL_INVALID_ENUM and ignore the call,
+     * which reads back as "anisotropy is off" and shows up as mipmap bleeding at grazing angles.
+     */
+    public static void samplerParameterf(int sampler, int pname, float param) {
+        if (!supportsSamplerObjects || sampler == 0) return;
+        GLStateManager.glSamplerParameterf(sampler, pname, param);
+    }
+
     public static void bindSamplerToUnit(int unit, int sampler) {
         if (!supportsSamplerObjects) return;
         GLStateManager.glBindSampler(unit, sampler);

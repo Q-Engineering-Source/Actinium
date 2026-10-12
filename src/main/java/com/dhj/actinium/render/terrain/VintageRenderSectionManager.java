@@ -376,6 +376,12 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         /**
          * Min/mag filtering comes from the Texel Sampling option and anisotropic filtering from the Texture
          * Filtering mode, so the sampler is rebuilt whenever either of them changes.
+         *
+         * <p>Upstream stops binding this sampler once the shader no longer snaps its own sample points, because
+         * their sampler always asks for a mipmap filter and that would read an incomplete texture on a
+         * single-level atlas. Actinium's sampler tracks the atlas mip state, so the hazard does not apply here
+         * and the sampler stays bound for every mode - dropping it would silently turn the Texel Sampling
+         * option back into the atlas texture's own linear filter.
          */
         private void bindTerrainSampler() {
             final int anisotropy = TerrainTextureFiltering.resolvedAnisotropicFiltering();
@@ -454,7 +460,8 @@ public class VintageRenderSectionManager extends RenderSectionManager {
             RenderSystem.samplerParameteri(sampler, GL11.GL_TEXTURE_MAG_FILTER,
                 nearest ? GL11.GL_NEAREST : GL11.GL_LINEAR);
             if (TerrainTextureFiltering.anisotropySupported()) {
-                RenderSystem.samplerParameteri(sampler,
+                // A floating-point sampler parameter: the integer entry point makes the driver drop it.
+                RenderSystem.samplerParameterf(sampler,
                     EXTTextureFilterAnisotropic.GL_TEXTURE_MAX_ANISOTROPY_EXT, anisotropy);
             }
         }

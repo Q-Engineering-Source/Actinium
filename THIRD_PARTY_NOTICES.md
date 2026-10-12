@@ -43,6 +43,11 @@ next bulk upstream refresh.
   `844542b8440f1ce6479d2914c212d099ff9d264c`, LGPL-3.0).
 - Shader compatibility behavior is informed by OptiFine/ShadersMod conventions; shader packs
   themselves are not distributed by this repository.
+- The rotated-grid supersampling branch of the terrain fragment shader
+  (`assets/actinium/shaders/blocks/block_layer_opaque.fsh`) follows Indiesoft's
+  [defold-sharp-sprite](https://github.com/indiesoftby/defold-sharp-sprite) as the reference
+  implementation, under the MIT license. The branch was taken from Angelica (upstream `56d7568f`),
+  which records the same attribution in its README.
 - The public Sodium maintainer comment at
   https://github.com/CaffeineMC/sodium/issues/2400#issuecomment-2038560656 states that ports to very
   old Minecraft versions do not compete with Sodium. Actinium records this as public context for

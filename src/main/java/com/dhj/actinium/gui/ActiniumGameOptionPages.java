@@ -39,6 +39,7 @@ import com.mitchej123.lwjgl.GLExtension;
 import static com.mitchej123.lwjgl.LWJGLServiceProvider.LWJGL;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.function.BiConsumer;
 
@@ -425,6 +426,7 @@ public class ActiniumGameOptionPages {
                         .setBinding((opts, value) -> opts.quality.textureFilterMode = value,
                                 opts -> TerrainTextureFiltering.resolveFilterMode(opts.quality.textureFilterMode))
                         .setImpact(OptionImpact.LOW)
+                        .setFlags(OptionFlag.REQUIRES_ASSET_RELOAD, OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .build();
 
         groups.add(OptionGroup.createBuilder()
@@ -458,6 +460,12 @@ public class ActiniumGameOptionPages {
                         .setControl(option -> new CyclingControl<>(option, TexelSampling.class))
                         .setBinding((opts, value) -> opts.quality.texelSampling = value, opts -> opts.quality.texelSampling)
                         .setImpact(OptionImpact.LOW)
+                        // The shader only lets the texture's own filter state pick the mip level while no filter
+                        // mode asks for the snapped path and nearest texels are wanted, so this choice changes a
+                        // shader define - and needs a rerender - exactly when filtering is off.
+                        .setFlags(() -> textureFilterMode.getValue() == TextureFilterMode.NONE
+                                ? EnumSet.of(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                                : EnumSet.noneOf(OptionFlag.class))
                         .build())
                 .build());
 

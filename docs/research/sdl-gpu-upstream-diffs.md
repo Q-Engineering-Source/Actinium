@@ -2064,3 +2064,49 @@ optimizations (#2009)」（67 文件 +2919/-734）。本轮**不是整提交照�
 3. **实体 id**：装定义了 `minecraft:current_player` 的包（第三人称看自己）并触发一次僵尸村民转化，
    实体着色应与改动前一致；连续换包两次以上（覆盖 `SpecialIds` 的失效路径）后仍正确。
 4. **性能**：帧时间不应有回归；`-Xlog:gc` 粗看分配速率（方法引用对象与矩阵分配减少）。
+
+## 上游同步状态（2026-10-12，Phase 13：#1952 + #2112 + #2115 的 mipmap 策略 / RGSS / 材质 mip-bias）
+
+**提交**：`56d7568f`（*Attempt at making mipmaps better*，PR #1952）、`02f0b0fc`（*Fix mipmaps bleeding*，
+PR #2112）、`ef68af58`（*Fix texture filtering sampling regression*，PR #2115）。三者叠加后才是最终形态，
+移植以 `ef68af58` 为准。详细记录见 `docs/research/mipmap-strategy-port.md`，与 #2096 的对账也写在那里。
+
+**背景**：`docs/research/texture-filtering-port.md` 记录了 #2096 的移植，当时因为「RGSS 片元路径需要
+`v_MaterialMipBias`，而本树没有这条材质管道」只保留了 `ANISOTROPIC` / `NONE` 两档，
+`MipmapGenerator` / `MipmapStrategies` / `MixinTextureMetadataSection(Serializer)` 与
+`block_layer_opaque.fsh` 的 texel-snap 改写整段跳过。本阶段补齐该前置管道与随之而来的三个提交，
+并回填那份文档中因此过时的结论。
+
+**逐项对账**
+
+| 上游项 | 上游位置与规模 | 上游改法 | 本树落地 |
+|---|---|---|---|
+| 降采样策略系统 | `utils/{MipmapGenerator,MipmapStrategies,MipmapStrategy}.java`（新增 411 行） | 策略枚举 + 方块类归因表 + 层级生成器（solidify / 最暗色填充 / 覆盖率标定 / 逐层下采样） | 三个类全部落在 `com.dhj.actinium.texture.mipmap`，下采样复用既有的 `MipmapHelper.weightedAverageColor`；归因改为按精灵路径命名族（1.12.2 无 `Block.registerBlockIcons`） |
+| 每张贴图的策略声明 | `MixinTextureMetadataSection(Serializer)` + `TextureMetadataExtension` | mcmeta `texture` 段读 `mipmap_strategy`；在 `loadTextureAtlas` 的 `loadSprite` 调用点赋值 | 三个文件同构移植；赋值点改挂精灵自己的 `loadSpriteFrames`（1.12.2 的 `loadTextureAtlas` 不调那个签名） |
+| 精灵侧接线 | `MixinTextureAtlasSprite`（+170/−71） | `generateMipmaps` HEAD 分类 + `@Redirect generateMipmapData` | 同构；分类与策略判定抽到 `SpriteMipmaps`（`SpriteMipmapsTest` 6 例），mixin 只转发 |
+| 删除 `MixinTextureUtil` | `MixinTextureUtil`（−21） | `blendColors` 随 `generateMipmapData` 的接管而不可达 | 同样删除，并复核「`TextureUtil.generateMipmapData` 全树只有 `TextureAtlasSprite.generateMipmaps` 一个调用点」（已用 MC 1.12.2 源码确认） |
+| 图集侧记录 | `MixinTextureMap`（+141/−9，含归因/补边/上限） | 归因栈、`needsForcedSpritePadding`、`recordAtlasMipmapClamp`、未命中贴图补边 | 只取「记录图集实际 mip 层数」一项（`MixinTextureAtlas`）；归因与补边在本树已有等价物（`MipmapStrategies` / `SpritePadding`），上限记录按上文理由删去 |
+| 材质 mip-bias 管道 | `MaterialParameters` 位 + `chunk_material.glsl` + `.vsh`/`.fsh` | `useMipmaps` → `_material_mip_bias()` → `v_MaterialMipBias` → 折进采样 | 同构（本树 `MaterialParameters` 已有该位，`.vsh` 只差输出、`.fsh` 只差消费） |
+| RGSS 片元路径 | `block_layer_opaque.fsh`（+139） | RGSS 4 tap + texel-snap + `USE_TEXEL_SNAP`/`TERRAIN_NO_MIPS` 分支 | 同构，defines 由 `VintageRenderPassConfigurationBuilder` 按同一套解析注入（不是上游的 `AngelicaRenderPassConfiguration`） |
+| GUI 过滤档位 | `SodiumGameOptionPages` / `TextureFilterMode` / lang | 4 档 + 各向异性滑块 | 4 档落在本树自己的选项页；各向异性倍数沿用本树的 `quality.anisotropicLevel`（1.12.2 无 `gameSettings.anisotropicFiltering`） |
+| #2112 出血修复 | `RenderSystem.samplerParameterf` + `AngelicaChunkRenderer` + fsh + `SpritePadding` | 各向异性改用浮点入口；RGSS/tap 的 footprint 受 gutter 约束；`padFrame` 重写 | 浮点入口照搬；fsh 的 footprint 约束照搬；`padFrame` 经核实本树实现（`writeLevel`）已无上游所修缺陷，未改 |
+| #2115 采样回归修复 | `GLErrorReporter` + `GitStateManager` + `AngelicaChunkRenderer` + `OptionImpl` + `SodiumGameOptions` + fsh | sampler 绑定条件；`usesTerrainTexelSnap()`；`OptionImpl` 的 flags 改为可重算；fsh 的 `TERRAIN_NO_MIPS` 分支 | `usesTerrainTexelSnap()`、`OptionImpl` 动态 flags、fsh 分支照搬；sampler 提前返回**不取**（本树 sampler 已按图集 mip 状态选 min filter，照搬会让纹素混合选项失效，理由见详细文档）；`GLErrorReporter` 属 SDL 后端的异常上报重构，与本次无关，不动 |
+| `glGetTexLevelParameteri` 的按层尺寸 | `glsm/GLStateManager.java`（+2/−2） | 宽高按 level 右移 | 照搬（`TextureManipulationUtil` 按 level 清 mip 层需要它） |
+
+**过程中修正的半成品**
+
+- `SpriteExtension.celeritas$setMipmapStrategy`：前一阶段按上游形态加了这个接口方法，但本树的赋值发生在
+  精灵自己的 `loadSpriteFrames` 里，**没有任何调用者**，属死接口；已删除（接口文件因此回到改动前状态）。
+- 精灵帧的透明分类与策略判定原本写在 mixin 里（违反「mixin 类只做注入」），抽到
+  `com.dhj.actinium.texture.mipmap.SpriteMipmaps` 并补 6 例测试。
+- 图集的「资源包 mip 上限」与「实际 mip 层数」双记录（上游两套机制的混合）合并为单一实际层数记录。
+
+**验证**
+
+```
+./gradlew check --no-daemon        # 全绿（含 MixinConfigurationTest / DependencyDirectionTest / 单测）
+./gradlew build --no-daemon        # 全绿（含 verifyDistributedJar / remap 结构校验）
+```
+
+实机验证建议见 `docs/research/mipmap-strategy-port.md` 末节（RGSS 远景质量、gutter 显存、mipmap 边界出血、
+`mipmap_strategy` 键、各向异性是否真的生效、资源/渲染器重载组合路径）。

@@ -12,6 +12,8 @@ import dhj.embeddedt.embeddium.impl.render.chunk.terrain.TerrainRenderPass;
 import dhj.embeddedt.embeddium.impl.render.chunk.terrain.material.Material;
 import dhj.embeddedt.embeddium.impl.render.chunk.terrain.material.parameters.AlphaCutoffParameter;
 import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.ChunkVertexType;
+import dhj.embeddedt.embeddium.impl.texture.SpritePadding;
+import dhj.embeddedt.embeddium.impl.texture.TextureFilterMode;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 
 import java.util.HashMap;
@@ -47,7 +49,37 @@ public class VintageRenderPassConfigurationBuilder {
             extraDefines.put("CHUNK_FADE_IN_DURATION_MS", String.valueOf(ActiniumRuntime.options().quality.chunkFadeInDuration));
         }
 
+        addFilteringDefines(extraDefines);
+
         return TerrainRenderPass.builder().extraDefines(extraDefines).pipelineState(blocksTextureState(mipped)).vertexType(vertexType).primitiveType(QuadPrimitiveType.TRIANGULATED);
+    }
+
+    /**
+     * Adds the texture-filtering defines every terrain pass shares.
+     *
+     * <p>{@code USE_TEXEL_SNAP} is what selects between the shader picking the level itself and the texture's
+     * own filter state doing it, so it has to be set from the same resolution the terrain sampler uses.
+     * {@code TERRAIN_GUTTER} is the width of the replicated border the anisotropic taps have to stay inside,
+     * and {@code TERRAIN_NO_MIPS} tells the shader there is no mip chain to select from. All of them are sized
+     * from the mip level count the block atlas really ended up with, not from the configured one.
+     */
+    private static void addFilteringDefines(Map<String, String> extraDefines) {
+        final int mipmapLevels = TerrainTextureFiltering.terrainMipmapLevels();
+        final TextureFilterMode mode = TerrainTextureFiltering.effectiveTextureFilterMode();
+
+        if (mode.usesRgss()) {
+            extraDefines.put("USE_RGSS", "");
+        }
+        if (TerrainTextureFiltering.usesTerrainTexelSnap()) {
+            extraDefines.put("USE_TEXEL_SNAP", "");
+        }
+        if (mode.usesAnisotropy()) {
+            extraDefines.put("USE_ANISOTROPIC", "");
+            extraDefines.put("TERRAIN_GUTTER", SpritePadding.gutterFor(mipmapLevels, true) + ".0");
+        }
+        if (mipmapLevels <= 0) {
+            extraDefines.put("TERRAIN_NO_MIPS", "");
+        }
     }
 
     public static RenderPassConfiguration<BlockRenderLayer> build(ChunkVertexType vertexType) {
@@ -105,14 +137,19 @@ public class VintageRenderPassConfigurationBuilder {
         solidMaterial = new Material(solidPass, AlphaCutoffParameter.ZERO, mipEnabled);
         translucentMaterial = new Material(translucentPass, AlphaCutoffParameter.ZERO, mipEnabled);
         fluidMaterial = new Material(fluidPass, AlphaCutoffParameter.ZERO, mipEnabled);
-        cutoutMippedMaterial = new Material(cutoutMippedPass, AlphaCutoffParameter.ONE_TENTH, mipEnabled);
+        // The mip levels of a cutout sprite are alpha-rescaled to keep the base level's tested coverage, and
+        // that calibration is done against a half-alpha reference, so the cutoff has to match it. The plain
+        // cutout layer has no such rescaling and keeps vanilla's tenth.
+        cutoutMippedMaterial = new Material(cutoutMippedPass, AlphaCutoffParameter.HALF, mipEnabled);
 
         vanillaRenderStages.put(BlockRenderLayer.SOLID, solidPass);
         vanillaRenderStages.put(BlockRenderLayer.TRANSLUCENT, fluidPass);
         vanillaRenderStages.put(BlockRenderLayer.TRANSLUCENT, translucentPass);
 
         if (ActiniumRuntime.options().performance.useRenderPassConsolidation) {
-            cutoutMaterial = new Material(cutoutMippedPass, AlphaCutoffParameter.ONE_TENTH, mipEnabled);
+            // The cutout layer does not use the mip chain in vanilla, so it carries a large negative mip bias
+            // and lands on level 0.
+            cutoutMaterial = new Material(cutoutMippedPass, AlphaCutoffParameter.ONE_TENTH, false);
             vanillaRenderStages.put(BlockRenderLayer.CUTOUT, cutoutMippedPass);
             vanillaRenderStages.put(BlockRenderLayer.CUTOUT_MIPPED, cutoutMippedPass);
         } else {
@@ -126,7 +163,7 @@ public class VintageRenderPassConfigurationBuilder {
                     .writesDepth(true)
                     .build();
 
-            cutoutMaterial = new Material(cutoutPass, AlphaCutoffParameter.ONE_TENTH, mipEnabled);
+            cutoutMaterial = new Material(cutoutPass, AlphaCutoffParameter.ONE_TENTH, false);
             vanillaRenderStages.put(BlockRenderLayer.CUTOUT, cutoutPass);
             vanillaRenderStages.put(BlockRenderLayer.CUTOUT_MIPPED, cutoutMippedPass);
         }

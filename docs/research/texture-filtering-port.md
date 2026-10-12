@@ -4,7 +4,12 @@
 
 移植上游 Angelica 提交 `26c161f0`（*Improve upon Texture Filtering Work*，PR #2096）。
 上游那一版建立在更早的 `56d7568f`（*Attempt at making mipmaps better*，PR #1952）之上，
-而 #1952 **没有**移植进 Actinium，所以本文件除了记录移植内容，也记录由此产生的取舍。
+当时 #1952 未移植，所以本文件除了记录移植内容，也记录了由此产生的取舍。
+
+**后续更新（2026-10-12）**：#1952 连同两个回归修复（#2112、#2115）已移植，见
+`docs/research/mipmap-strategy-port.md`。本文件中因「#1952 不在树里」而做的取舍已被那次移植回填
+（`TextureFilterMode` 现在是 4 档、`block_layer_opaque.fsh` 已换成 texel-snap + RGSS 版），下文相关段落
+已就地标注。
 
 ## 特性实质
 
@@ -29,7 +34,9 @@
   这样 shader 侧的 PBR 代码也能读取 gutter。
 - `impl/texture/TexelSampling.java`（新增）：地形采样器 min/mag 过滤（Linear / Nearest）。
 - `impl/texture/TextureFilterMode.java`（新增）：纹理过滤模式。上游有 4 个取值
-  （`RGSS` / `ANISOTROPIC` / `RGSS_ANISOTROPIC` / `NONE`），这里只有 `ANISOTROPIC` / `NONE`（理由见下）。
+  （`RGSS` / `ANISOTROPIC` / `RGSS_ANISOTROPIC` / `NONE`），本次移植时只落地了
+  `ANISOTROPIC` / `NONE`（当时没有 RGSS 需要的材质 mip-bias 管道）；
+  2026-10-12 的 B2 移植已补齐为 4 档。
 - `impl/gui/SodiumGameOptions.java`：`QualitySettings` 新增 `textureFilterMode`、`texelSampling`、
   `anisotropicLevel`，并在 `load()` 里补旧配置的缺省值。
 
@@ -79,12 +86,15 @@ anisotropy 采样参数追踪，调用侧一直缺失）：
   上游的 `MipmapGenerator` 是它**上层**的策略层（`MipmapStrategy` 决定 blend/cutout/dark-cutout，
   内部调用 `MipmapHelper.weightedAverageColor`），两者职责不重叠，不构成双套逻辑。
   上游 #2096 对 `MipmapGenerator` 的改动（去掉 `border` 参数、`STRICT_CUTOUT_ALPHA_REF` 调整）
-  只对那一套策略系统有意义，Actinium 没有它，故不移植（见下）。
-- **`TextureFilterMode` 只有两个取值**：上游的 `RGSS` / `RGSS_ANISOTROPIC` 依赖
+  只对那一套策略系统有意义，当时 Actinium 没有它，故未移植；
+  2026-10-12 的 B2 移植补齐策略系统时一并取了这个形态（`MipmapGenerator` 无 `border` 参数、
+  `STRICT_CUTOUT_ALPHA_REF = 0.3`）。
+- **`TextureFilterMode` 只有两个取值（已被 B2 回填）**：上游的 `RGSS` / `RGSS_ANISOTROPIC` 依赖
   `block_layer_opaque.fsh` 的 RGSS 分支，而该分支读 `v_MaterialMipBias`——这个 varying 由
   #1952 引入的材质 mip-bias 管道产生。Actinium 的 `block_layer_opaque.vsh` 与
   `MaterialParameters` 都没有它（`Material` 只有 `mipped` 布尔），移植 RGSS 等于把 #1952 的
   材质管道也搬过来，超出本提交范围。因此**只保留 Actinium 真能兑现的模式**，不保留空分支。
+  **（2026-10-12 的 B2 移植已补上：材质 mip-bias 管道落地，4 档全部启用。）**
 - **各向异性倍数的存储位置**：上游读 `mc.gameSettings.anisotropicFiltering`（1.7.10 的原版滑块）。
   **1.12.2 原版已无该设置**（`GameSettings` 里没有该字段，全局搜不到 anisotropic），
   所以倍数由 Actinium 自己的选项 `quality.anisotropicLevel`（log2，1..4 → 2x..16x）持有，
@@ -123,12 +133,14 @@ anisotropy 采样参数追踪，调用侧一直缺失）：
 - **`utils/MipmapGenerator` / `MipmapStrategies` / `MipmapStrategy`、`MixinTextureMetadataSection(Serializer)`**：
   #1952 的策略系统整体不在 Actinium。移植 #2096 的两处常量/签名调整需要连同 #1952 一起搬，
   属于另一个提交的范围；Actinium 当前走原版 `TextureUtil.generateMipmapData` + 我们覆写的
-  `blendColors`。
+  `blendColors`。**（2026-10-12 的 B2 移植已补上：策略系统整体落地，`MixinTextureUtil` 随之删除。）**
 - **`block_layer_opaque.fsh` 的 RGSS / texel-snap 改写**：文件在 Actinium 是存在的
   （`assets/actinium/shaders/blocks/`），但上游版本的新 `sampleTexelSnapped` 与 `sampleRGSS`
   都用 `textureGrad` + `v_MaterialMipBias`（同上：该 varying 不存在）。另外 Actinium 的这个 fsh
   刻意用两参数 `texture()` 采样（注释说明：避免 alpha test 在 mip 边界被导数选择的层级丢掉），
   改成显式梯度会推翻那个决定。故整段跳过。
+  **（2026-10-12 的 B2 移植已补上：`v_MaterialMipBias` 管道落地，fsh 换成 texel-snap + RGSS 版；
+  「两参数采样」仍是过滤模式为 `NONE` 且纹素混合为 Nearest 时的分支，由 `USE_TEXEL_SNAP` 选择。）**
 - **`MixinMinecraft` 的 grassQuality（fancyGraphics 覆写）**：1.7.10 的注入点是
   `Minecraft.runGameLoop` 里读 `GameSettings.fancyGraphics`；1.12.2 的 `runGameLoop` 根本不读它
   （只有 `Minecraft.isFancyGraphicsEnabled()` 方法），草方块走模型管线，注入点无对象。
@@ -137,7 +149,9 @@ anisotropy 采样参数追踪，调用侧一直缺失）：
   直接算 `selectMaterial`），没有可优化的对象。该位掩码本身是按 facing 记忆「保持基础材质」，
   对同一 facing 上精灵不同的模型会把 quad 分错 pass，故不新造一套。
 - **README / 第三方署名**：上游在 README 增加了 RGSS 的参考实现署名（Indiesoft 的
-  defold-sharp-sprite，MIT）。本次没有移植 RGSS，故不添加该署名，也不动 `THIRD_PARTY_NOTICES.md`。
+  defold-sharp-sprite，MIT）。本次没有移植 RGSS，故不添加该署名。
+  **（2026-10-12 的 B2 移植补齐后，署名已加入 `THIRD_PARTY_NOTICES.md` 的
+  「Additional incorporated work」。）**
 
 ## 验证
 

@@ -8,6 +8,7 @@ import com.dhj.actinium.texture.TextureMapExtension;
 import com.dhj.actinium.texture.atlas.AtlasLoadSession;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.sugar.Local;
+import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
 import dhj.embeddedt.embeddium.impl.texture.SpritePadding;
 import dhj.embeddedt.embeddium.impl.util.collections.quadtree.QuadTree;
 import dhj.embeddedt.embeddium.impl.util.collections.quadtree.Rect2i;
@@ -90,6 +91,13 @@ public class MixinTextureAtlas implements TextureMapExtension {
 
     @Inject(method = "loadTextureAtlas", at = @At("RETURN"))
     private void generateQuadTree(CallbackInfo ci, @Local(ordinal = 0) Stitcher stitcher) {
+        if ((Object) this == Minecraft.getMinecraft().getTextureMapBlocks()) {
+            // The sprite gutter, the pass defines and the terrain sampler's mip filter are all sized from the
+            // mip level count this atlas really ended up with, and loadTextureAtlas has just lowered its own
+            // count wherever the stitched sprites could not support the configured one.
+            SodiumGameOptions.recordAtlasMipmapLevels(this.mipmapLevels);
+        }
+
         this.celeritas$width = stitcher.getCurrentWidth();
         this.celeritas$height = stitcher.getCurrentHeight();
         Rect2i treeRect = new Rect2i(0, 0, celeritas$width, celeritas$height);

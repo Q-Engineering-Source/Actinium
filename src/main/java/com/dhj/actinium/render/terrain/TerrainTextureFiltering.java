@@ -3,12 +3,15 @@ package com.dhj.actinium.render.terrain;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
 import com.dhj.actinium.runtime.ActiniumRuntime;
+import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
 import dhj.embeddedt.embeddium.impl.texture.TextureFilterMode;
+import net.minecraft.client.Minecraft;
 import net.minecraft.util.math.MathHelper;
 import org.lwjgl.opengl.EXTTextureFilterAnisotropic;
 
 /**
- * Resolves the terrain texture filtering settings that the block atlas sampler is configured from.
+ * Resolves the terrain texture filtering settings that the block atlas sampler and the terrain shader
+ * are configured from.
  *
  * <p>Upstream keeps this logic on its sodium options class and reads the vanilla anisotropic-filtering
  * setting for the amount. Vanilla dropped that setting after 1.7.10, so the amount lives in Actinium's
@@ -58,6 +61,28 @@ public final class TerrainTextureFiltering {
         return resolveFilterMode(ActiniumRuntime.options().quality.textureFilterMode);
     }
 
+    /**
+     * Whether the terrain fragment shader should pick the mip level itself instead of letting the texture's
+     * own filter state choose it. Plain two-argument sampling is the vanilla behaviour and stays in effect
+     * only when no filter mode asks for the shader path and the texel-sampling option already wants nearest,
+     * because the snapped path reproduces that blend in the shader.
+     */
+    public static boolean usesTerrainTexelSnap() {
+        return effectiveTextureFilterMode() != TextureFilterMode.NONE
+            || !ActiniumRuntime.options().quality.texelSampling.isNearest();
+    }
+
+    /**
+     * The mip level count the block atlas really has, which is what every per-level buffer and shader define
+     * has to be sized from. {@code TextureMap.loadTextureAtlas} lowers its own count when a stitched sprite
+     * cannot support the configured one, so until the atlas has been loaded once the requested setting is the
+     * only thing there is to go on.
+     */
+    public static int terrainMipmapLevels() {
+        final int loaded = SodiumGameOptions.getAtlasMipmapLevels();
+        return loaded >= 0 ? loaded : Minecraft.getMinecraft().gameSettings.mipmapLevels;
+    }
+
     public static TextureFilterMode resolveFilterMode(TextureFilterMode mode) {
         return resolveFilterMode(mode, anisotropySupported());
     }
@@ -65,9 +90,13 @@ public final class TerrainTextureFiltering {
     /** Policy half of {@link #resolveFilterMode(TextureFilterMode)}, split out so it can be verified without a GL context. */
     static TextureFilterMode resolveFilterMode(TextureFilterMode mode, boolean anisotropySupported) {
         if (mode == null) {
-            mode = TextureFilterMode.ANISOTROPIC;
+            mode = TextureFilterMode.RGSS_ANISOTROPIC;
         }
-        return mode.usesAnisotropy() && !anisotropySupported ? TextureFilterMode.NONE : mode;
+        if (mode.usesAnisotropy() && !anisotropySupported) {
+            // Keep the part of the mode the driver can still honour.
+            return mode.usesRgss() ? TextureFilterMode.RGSS : TextureFilterMode.NONE;
+        }
+        return mode;
     }
 
     /** The anisotropy amount for the terrain sampler, or 1 when the selected mode does not filter at all. */
