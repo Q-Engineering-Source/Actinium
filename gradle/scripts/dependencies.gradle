@@ -18,6 +18,12 @@ repositories {
         name = 'CleanroomMaven'
         url = 'https://maven.cleanroommc.com'
     }
+    // LWJGLY (com.cleanroommc:lwjgly, com.cleanroommc:lwjgly-spi) is published here, not on
+    // maven.cleanroommc.com.
+    maven {
+        name = 'CleanroomReleases'
+        url = 'https://repo.cleanroommc.com/releases'
+    }
     mavenCentral()
     mavenLocal()
 }
@@ -51,8 +57,16 @@ dependencies {
 
     compileOnly "org.lwjgl:lwjgl:${lwjglVersion}"
     compileOnly "org.lwjgl:lwjgl-opengl:${lwjglVersion}"
-    if (propertyBool('enable_lwjglx')) {
+    if (propertyBool('enable_lwjgl_compat')) {
+        // Older-Cleanroom LWJGL2 layer plus its lwjgl3ify-style shims: this one artifact carries
+        // both org.lwjgl.** (LWJGL 2's API in LWJGL 2's own package) and org.lwjglx.**, so it
+        // compiles code for either Cleanroom generation. At runtime the host supplies the real
+        // implementation (lwjglx + lwjglxx, or LWJGLY) and nothing of it is shipped by the mod.
         compileOnly 'com.cleanroommc:lwjglx:1.0.0'
+        // LWJGLY's SPI (com.cleanroommc.lwjgly.LWJGLY, .spi.WindowBridge). Compile-only: LWJGLY
+        // itself only ever ships with the host, and its org.lwjgl.** classes would collide with
+        // lwjglx's on the compile classpath.
+        compileOnly 'com.cleanroommc:lwjgly-spi:1.0.0'
     }
     if (propertyBool('enable_junit_testing')) {
         testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'

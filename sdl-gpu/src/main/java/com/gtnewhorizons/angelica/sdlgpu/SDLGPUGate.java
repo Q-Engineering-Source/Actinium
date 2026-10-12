@@ -5,12 +5,14 @@ import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
 import com.gtnewhorizons.angelica.glsm.loading.DependencyVerifier;
 import com.gtnewhorizons.angelica.glsm.loading.DependencyVerifier.Check;
+import com.gtnewhorizons.angelica.sdlgpu.compat.LwjglyLayer;
+import com.gtnewhorizons.angelica.sdlgpu.compat.lwjgly.LwjglyWindowHost;
 import com.gtnewhorizons.angelica.sdlgpu.device.Device;
 import com.gtnewhorizons.angelica.sdlgpu.shader.ShaderManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.sdl.SDLLog;
-import org.lwjglx.Sys;
+import org.lwjgl.Sys;
 import org.taumc.glsl.grammar.GLSLParser;
 
 import java.util.List;
@@ -21,15 +23,16 @@ import java.util.function.Consumer;
  *
  * <p>Availability is the conjunction of four things: the SDL GPU backend was requested
  * ({@link BackendOptions#sdlGpuRequested()}), its runtime dependencies are on the classpath, the
- * {@link SDLGPUWindowHandover bridge coremod} will supply a native SDL window (a GPU device cannot
- * claim the GLFW window with a GL context Cleanroom's lwjglx shim would create), and the GPU device
- * itself could be created. When any of them is missing the backend is not selected and the OpenGL
- * path runs unchanged.</p>
+ * host runs LWJGLY and has installed the window bridge a GPU device can claim its window from
+ * ({@link LwjglyWindowHost} - a GPU device cannot render into a window created for a GL context,
+ * which is why the older Cleanroom generation has no SDL route at all), and the GPU device itself
+ * could be created. When any of them is missing the backend is not selected and the OpenGL path
+ * runs unchanged.</p>
  *
  * <p>When all four hold, {@link #handOverWindow()} is called from the display creation path: it
- * reads the window the bridge published, claims it for the GPU device, installs the SDL drawable
- * and notifies the backend. From that point the process is "engaged" and every GL-specific engine
- * path in Actinium is replaced by the backend's own (see {@code docs/research/sdl-gpu-enable-path.md}).</p>
+ * reads the window the host published, claims it for the GPU device and notifies the backend. From
+ * that point the process is "engaged" and every GL-specific engine path in Actinium is replaced by
+ * the backend's own (see {@code docs/research/sdl-gpu-enable-path.md}).</p>
  */
 public final class SDLGPUGate {
 
@@ -45,10 +48,6 @@ public final class SDLGPUGate {
 
     private static volatile boolean unavailableLogged;
 
-    /** Whether the bridge coremod that supplies the SDL window is installed. */
-    private static final boolean BRIDGE_PRESENT =
-        SDLGPUWindowHandover.isBridgePresent(SDLGPUGate.class.getClassLoader());
-
     public static synchronized Device device() {
         if (device == null) device = new Device();
         return device;
@@ -58,9 +57,9 @@ public final class SDLGPUGate {
      * Runtime prerequisites for the SDL GPU backend.
      *
      * <p>Upstream also requires lwjgl3ify's {@code DisplayEvents}, which is how it suppresses GL
-     * context creation. Actinium does not use that API at all - the window comes from the
-     * {@link SDLGPUWindowHandover bridge} - and lwjgl3ify is not installed in a Cleanroom instance,
-     * so requiring it would keep the backend permanently unselectable.</p>
+     * context creation. Actinium does not use that API at all - the window comes from the host's
+     * LWJGLY window bridge - and lwjgl3ify is not installed in a Cleanroom instance, so requiring it
+     * would keep the backend permanently unselectable.</p>
      */
     private static final List<Check> REQUIREMENTS = List.of(
         new Check("/org/lwjgl/sdl/SDLGPU.class", "no lwjgl-sdl on the classpath"),
@@ -107,9 +106,16 @@ public final class SDLGPUGate {
         return ok;
     }
 
-    /** Whether the Vintage-SDL-Bridge coremod that supplies the SDL window is installed. */
-    public static boolean isBridgePresent() {
-        return BRIDGE_PRESENT;
+    /**
+     * Whether the host runs LWJGLY and has a window the SDL GPU device can claim.
+     *
+     * <p>The layer check comes first on purpose: on a host without LWJGLY the SDL backend is
+     * unavailable no matter what else is present, and short-circuiting there keeps every
+     * {@code com.cleanroommc.lwjgly.*} class unloaded on such a run. The actual handle is read at
+     * {@link #handOverWindow()} time, not here.</p>
+     */
+    public static boolean isWindowSupplierPresent() {
+        return LwjglyLayer.present() && LwjglyWindowHost.available();
     }
 
     /**
@@ -143,10 +149,12 @@ public final class SDLGPUGate {
     private static String unavailableReason() {
         if (!BackendOptions.sdlGpuRequested()) return "the SDL GPU backend was not requested";
         if (!isSDLGPUAvailable()) return missingRequirement();
-        if (!BRIDGE_PRESENT) {
-            return "the " + SDLGPUWindowHandover.BRIDGE_CLASS + " coremod is not installed; it must create "
-                + "the SDL window and publish its pointer on Launch.blackboard['"
-                + SDLGPUWindowHandover.WINDOW_KEY + "']";
+        if (!LwjglyLayer.present()) {
+            return "the host is not running LWJGLY, so it has no window a GPU device can claim; the SDL"
+                + " backend does not use the older Cleanroom generation's GL window";
+        }
+        if (!LwjglyWindowHost.available()) {
+            return "LWJGLY is installed but its window bridge is not: " + LwjglyWindowHost.requirement();
         }
         if (!isDeviceReady()) return "no SDL GPU device could be created";
         return null;
@@ -171,32 +179,26 @@ public final class SDLGPUGate {
     }
 
     /**
-     * Takes the window the bridge created for the SDL GPU device.
+     * Takes the window the host supplies for the SDL GPU device.
      *
-     * <p>Called from the display creation path right after the bridge-instrumented display create
-     * returns. An unusable handover is fatal: there is no GL context to fall back to at this point,
-     * and the window handle is the one piece of state only the bridge can supply.</p>
+     * <p>Called from the display creation path right after the display create returns. An unusable
+     * handover is fatal: there is no GL context to fall back to at this point, and the window handle
+     * is the one piece of state only the host can supply. Nothing is installed for the engine's
+     * display-context resolution either: LWJGLY's {@code Display} owns no LWJGL2 drawable, and its
+     * single window context is what a null drawable already denotes.</p>
      *
-     * @throws IllegalStateException when the bridge did not publish a window, or the claim failed
+     * @throws IllegalStateException when the host has no window to hand over, or the claim failed
      */
     public static void handOverWindow() {
         if (!isHandoverAvailable()) {
             throw new IllegalStateException(
                 "The SDL GPU backend was selected but can no longer be engaged: " + unavailableReason());
         }
-        final long window = SDLGPUWindowHandover.readWindow();
+        final long window = LwjglyWindowHost.window();
         device().claimWindow(window);
-        // SplashProgress builds a SharedDrawable from Display.getDrawable() right after the window
-        // is created; install the SDL drawable so that path does not see the GL one.
-        SDLGPUDisplayBridge.ensureDrawableInstalled();
         engaged = true;
-        LOG.info("SDL GPU engaged on window 0x{}", Long.toHexString(window));
+        LOG.info("SDL GPU engaged on the LWJGLY host window 0x{}", Long.toHexString(window));
         BackendManager.RENDER_BACKEND.onPostWindowCreate(window);
-    }
-
-    public static void ensureDrawableInstalled() {
-        if (!isActive()) return;
-        SDLGPUDisplayBridge.ensureDrawableInstalled();
     }
 
     public static void prewarmSpirv(String transformedSource, int glShaderType) {

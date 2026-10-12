@@ -4,6 +4,7 @@ import com.gtnewhorizons.angelica.config.SystemProperties;
 import com.gtnewhorizons.angelica.glsm.backend.BackendOptions;
 import com.gtnewhorizons.angelica.glsm.backend.VSyncMode;
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
+import com.gtnewhorizons.angelica.sdlgpu.compat.lwjgly.LwjglyWindowHost;
 import com.gtnewhorizons.angelica.sdlgpu.compute.ImageAtomicsProbe;
 import com.gtnewhorizons.angelica.sdlgpu.util.DebugMessageRelay;
 import it.unimi.dsi.fastutil.longs.Long2BooleanOpenHashMap;
@@ -21,7 +22,6 @@ import org.lwjgl.sdl.SDLVulkan;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.system.Platform;
-import org.lwjglx.opengl.Display;
 
 import java.nio.IntBuffer;
 import java.util.ArrayList;
@@ -261,6 +261,15 @@ public final class Device {
             throw new RuntimeException("SDL window not available for GPU device claim");
         }
 
+        // A window the host created for its GL context cannot carry a Vulkan or Direct3D 12
+        // swapchain, and the claim below is where SDL says so. Report the flag up front so the SDL
+        // error that follows has a stated cause: the host has to publish a window created for the
+        // GPU backend (see LwjglyWindowHost, which reports the same requirement).
+        if ((SDL_GetWindowFlags(window) & SDL_WINDOW_OPENGL) != 0) {
+            LOG.warn("The window handed over was created as an OpenGL window (SDL_WINDOW_OPENGL); a GPU "
+                + "device needs a window created for the SDL GPU backend, so the claim below is expected to fail");
+        }
+
         if (!SDL_ClaimWindowForGPUDevice(device, window)) {
             throw new RuntimeException("Failed to claim window for SDL GPU device: " + SDLError.SDL_GetError());
         }
@@ -490,7 +499,7 @@ public final class Device {
     }
 
     public boolean wasWindowResized() {
-        return getClaimedWindow() != 0L && Display.wasResized();
+        return getClaimedWindow() != 0L && LwjglyWindowHost.consumeResized();
     }
 
     public long getWindowSizeInPixels() {

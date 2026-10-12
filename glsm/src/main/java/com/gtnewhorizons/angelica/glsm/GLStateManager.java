@@ -290,6 +290,13 @@ public class GLStateManager {
         c.stencilState.setWriteMaskBack(mask);
     }
 
+    /**
+     * Whether a drawable request names the display's own context.
+     *
+     * <p>Compared by identity against what Display hands out, which also covers the hosts without the
+     * LWJGL2 drawable model: there {@code Display.getDrawable()} is null, so a request that carries no
+     * drawable is the display context and binds the primary context state below.</p>
+     */
     private static boolean isDisplayDrawable(Drawable d) {
         return d == Display.getDrawable();
     }
@@ -4155,11 +4162,20 @@ public class GLStateManager {
     /**
      * Releases a drawable context binding. Called by the window layer when a non-display drawable is
      * unbound, so the next makeCurrent on this thread starts from the display context again.
+     *
+     * <p>A request carrying no drawable releases the window's own context, which is the only context
+     * a host without the LWJGL2 drawable model has: {@code Display} carries that operation there.</p>
      */
     public static void releaseContext(Drawable drawable) throws LWJGLException {
         final boolean handled = RENDER_BACKEND.handleReleaseContext(drawable);
         if (!handled) {
-            drawable.releaseContext();
+            if (drawable != null) {
+                drawable.releaseContext();
+            } else if (Display.isCreated()) {
+                Display.releaseContext();
+            } else {
+                LOGGER.debug("Ignoring releaseContext() without a drawable: no display exists yet");
+            }
         }
         bindThreadContext(null);
         if (drawableGLHolder == Thread.currentThread()) {
@@ -4173,7 +4189,20 @@ public class GLStateManager {
         final boolean handled;
         try {
             handled = RENDER_BACKEND.handleMakeCurrent(drawable);
-            if (!handled) drawable.makeCurrent();
+            if (!handled) {
+                // A request carrying no drawable names the window's own context: a host without the
+                // LWJGL2 drawable model hands out null for its one ctx, and Display carries that
+                // operation everywhere. Before a display exists there is no such context to make
+                // current, and asking the driver anyway reaches a native call with no window behind
+                // it.
+                if (drawable != null) {
+                    drawable.makeCurrent();
+                } else if (Display.isCreated()) {
+                    Display.makeCurrent();
+                } else {
+                    LOGGER.debug("Ignoring makeCurrent() without a drawable: no display exists yet");
+                }
+            }
         } catch (Exception | Error failure) {
             if (changed) bindThreadContext(previous);
             throw failure;
@@ -4183,6 +4212,13 @@ public class GLStateManager {
 
         // Post-splash: single context, always cache
         if (splashComplete) return;
+
+        if (drawable == null) {
+            // Nothing to identify: the request names the window's context, so this thread holds the
+            // display context and there is no other drawable it could be switching away from.
+            drawableGLHolder = CurrentThread;
+            return;
+        }
 
         if (drawableGL == null) {
             // Lazy-capture DrawableGL reference (Display.getDrawable()) on first opportunity

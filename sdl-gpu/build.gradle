@@ -5,8 +5,9 @@ plugins {
 repositories {
     mavenCentral()
     maven { url = 'https://maven.cleanroommc.com' }
+    // LWJGLY's SPI (com.cleanroommc:lwjgly-spi) is published here, not on maven.cleanroommc.com.
+    maven { url = 'https://repo.cleanroommc.com/releases' }
     maven { url = 'https://nexus.gtnewhorizons.com/repository/public/' }
-    // com.cleanroommc:lwjglx:1.0.0 (LWJGL2 compatibility layer used by tests)
     maven { url = 'https://maven.arcseekers.com/releases' }
     mavenLocal()
 }
@@ -38,6 +39,15 @@ dependencies {
 
     // GL enum constants (compileOnly -- no runtime GL dependency)
     compileOnly 'org.lwjgl:lwjgl-opengl:3.4.1'
+
+    // LWJGL2 compatibility layer for the older Cleanroom generation: this module's resident code
+    // uses org.lwjgl.** (LWJGL 2's API), which lwjglx and LWJGLY both provide. It carries the
+    // org.lwjglx.** shims as well, but nothing here uses them.
+    compileOnly 'com.cleanroommc:lwjglx:1.0.0'
+    // LWJGLY's SPI: com.cleanroommc.lwjgly.LWJGLY and its WindowBridge, which a newer Cleanroom
+    // installs. Referenced by one class (compat/lwjgly/LwjglyWindowHost) that is loaded only after
+    // a class-presence check says LWJGLY is installed.
+    compileOnly 'com.cleanroommc:lwjgly-spi:1.0.0'
 
     // LWJGL3 core + SDL3 GPU + SPIRV-Cross + shaderc
     implementation 'org.lwjgl:lwjgl-sdl:3.4.1'

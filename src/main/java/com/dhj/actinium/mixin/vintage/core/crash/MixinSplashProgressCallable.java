@@ -12,7 +12,11 @@ public class MixinSplashProgressCallable {
     private void checkContext(CallbackInfoReturnable<String> cir) {
         boolean isContextAvailable;
         try {
-            isContextAvailable = Display.isCreated() && Display.getDrawable().isCurrent();
+            // Asks Display whether this thread has a live GL context. Reading it off a drawable
+            // (Display.getDrawable().isCurrent()) is not portable: a host running LWJGLY owns the
+            // context itself and hands out no LWJGL2 drawable, so that call would NPE and report
+            // "no context" even in a working game, hiding the GL info in every crash report.
+            isContextAvailable = Display.isCreated() && Display.isCurrent();
         } catch (Exception e) {
             isContextAvailable = false;
         }

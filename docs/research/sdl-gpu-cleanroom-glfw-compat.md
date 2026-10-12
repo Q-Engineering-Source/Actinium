@@ -5,6 +5,12 @@
 > Cleanroom 的 lwjglxx 窗口创建而写的**临时适配**，**未必符合上游 Angelica 的
 > 代码规范**（大量反射、事件队列节流、handleInput 接管等）。全文保留作为历史
 > 记录与未来重接（Cleanroom 提供原生 SDL 窗口后）的参考。
+>
+> **2026-10-12 追记**：SDL 路线此后改为只走新 CRL 的 LWJGLY + 宿主 `WindowBridge`，老 CRL
+> 的 coremod 接管路线作废（老 CRL 窗口恒带 GL context，`SDL_ClaimWindowForGPUDevice` 必失败）。
+> 本文档里提到的 `SDLGPUDisplayBridge`、`SDLDrawable`、`SDL` 版 `SDLGPUWindowHandover`
+> 等文件也已在 2026-10-12 一并删除；当前形态见 `sdl-gpu-enable-path.md` 与
+> `lwjgl2-compat-dual-runtime.md`。
 
 ## 撤除结果（2026-08-31）
 

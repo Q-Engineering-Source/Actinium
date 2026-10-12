@@ -32,8 +32,34 @@
 > （lwjgl3ify vs Cleanroom/lwjglxx）；部分改动（如 persistent-buffer 同步）与
 > 窗口无关，是后端本身的修复，应长期保留。
 >
-> **当前状态**：SDL GPU 后端未注册进 `RenderBackend` service 文件（启用路径断开），
-> 模块源码与测试保留。
+> **当前状态**：SDL GPU 后端已注册进 `RenderBackend` service 文件（Phase 1 起），
+> 但在两种运行时上都不会入选：老 CRL 没有可被 GPU 设备认领的窗口，新 CRL 需要宿主安装
+> LWJGLY 的 WindowBridge（见 2026-10-12 更正）。
+
+## 2026-10-12 更正：SDL 只有 LWJGLY 一条路线
+
+本节取代本文档里所有以「Cleanroom/lwjglxx 下用 coremod 换窗口、用 VarHandle 装
+drawable」为前提的记述。变更原因（用户与 L1 决议）：老 CRL（lwjglx + lwjglxx）的窗口
+恒带 GL context，SDL 无法为 `SDL_WINDOW_OPENGL` 窗口创建 Vulkan/Direct3D 12 swapchain，
+`SDL_ClaimWindowForGPUDevice` 必然失败；**Vintage-SDL-Bridge coremod 路线不再追求**。
+SDL 改为只走新 CRL 的 LWJGLY + 宿主 `WindowBridge`。
+
+由此删除与重指：
+
+| 原条目 | 处置 | 理由 |
+|---|---|---|
+| `SDLGPUWindowHandover`（读 `Launch.blackboard` 的 coremod 交接契约） | **删除**，连同 `com.dhj.vintagesdlbridge` 测试替身与 `SDLGPUWindowHandoverTest` | coremod 路线作废；窗口改由 `WindowBridge` 提供 |
+| `SDLGPUDisplayBridge` | **删除** | 它的全部职责是往 lwjglxx 的 `Display.drawable` 装 drawable、并识别 `SharedDrawable` 包装；LWJGLY 无 drawable 模型可装（`Display.getDrawable()` 恒 null） |
+| `SDLDrawable`（`device/SDLDrawable.java`） | **删除** | 同上：LWJGLY 下没有消费者；顺带说明它此前的 `createSharedContext()` 契约（返回 null）在 LWJGLY 上由「null drawable 即唯一上下文」表达 |
+| `Device` / `SDLGPUGate` / `SDLGPURenderBackend` 里的 `org.lwjglx.*` 引用（`Display`、`Sys`） | **重指 `org.lwjgl.**`** | `org.lwjgl.**`（LWJGL2 空间）在两种运行时都存在，是常驻代码唯一安全的 LWJGL2 API 面 |
+| 「bridge 在位」门控 | 改为 `LwjglyLayer.present()`（`Class.forName("com.cleanroommc.lwjgly.LWJGLY")`，结果缓存）+ `LwjglyWindowHost.available()` | 老 CRL 上 `isAvailable()` 必须为 false 且全程不加载 `com.cleanroommc.lwjgly.*` 类 |
+
+`Lwjgl3GLRenderBackend`（默认 GL 后端，两种运行时都会加载）里那个未被使用的
+`org.lwjglx.opengl.Display` import 也已移除。
+
+新的启停/交接契约、宿主侧要求与 null-drawable 退化见
+`docs/research/sdl-gpu-enable-path.md`；双运行时规则与对账见
+`docs/research/lwjgl2-compat-dual-runtime.md`。
 
 ## 环境差异总览
 
@@ -68,7 +94,15 @@
   窗口会导致画面只占左上角（852×480 vs 2560×1600 的典型错位）。
 - macOS 未接线（TODO 注释：Metal layer property）。
 
-### 2. `SDLGPUDisplayBridge`（新增文件）—— lwjglxx 兼容桥
+### 2. `SDLGPUDisplayBridge`（新增文件）—— lwjglxx 兼容桥（**2026-10-12 删除**）
+
+> **2026-10-12**：文件已删除，理由见上文「2026-10-12 更正」。另外，撤除前的实现实际上
+> 从来没能初始化过：它用 `MethodHandles.findVarHandle(SharedDrawable.class, "drawable",
+> Drawable.class)` 读包装对象，而 lwjglxx（1.1.17 / 1.1.22 均验证）的
+> `org.lwjglx.opengl.SharedDrawable` **没有任何字段**——它的构造器只是把
+> `wrapped.createSharedContext()` 的结果存进继承来的 `DrawableGL.context`。因此
+> `SDLGPUDisplayBridge` 的静态初始化必然抛 `ExceptionInInitializerError`，旧的
+> drawable 安装路径从未真正运行。以下为历史记述。
 
 > **2026-08-31：lwjglxx 适配部分已撤除**，文件收缩回上游形态（VarHandle 安装
 > `Display.drawable` 为 `SDLDrawable`、`present()` / `releaseRenderThread()` /
@@ -99,7 +133,11 @@
   3.4.1 绑定缺失）。**2026-08-31：实现保留，但其唯一调用方（Gate 自建窗口路径）
   已随适配撤除，重接窗口路径时复用。**
 
-### 4. `SDLDrawable` —— 无 GL context 的 drawable
+### 4. `SDLDrawable` —— 无 GL context 的 drawable（**2026-10-12 删除**）
+
+> **2026-10-12**：该类连同 `SDLGPUDisplayBridge` 一并删除。它是给 lwjglxx 的
+> `Display.drawable` 用的容器，而 LWJGLY 没有可安装的 drawable 模型；SDL 模式下
+> 「唯一上下文」由 null drawable 表达（见 enable-path §3.3）。以下为历史记述。
 
 - 上游：`super((ContextGL) null)`；`getWindow()` 返回 `Display.getWindow()`。
 - Actinium：`super()`；`getWindow()` 返回 `SDLGPUGate.device().getSdlWindowHandle()`。

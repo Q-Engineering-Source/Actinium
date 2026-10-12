@@ -41,7 +41,6 @@ import org.lwjgl.opengl.GLDebugMessageCallback;
 import org.lwjgl.system.JNI;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
-import org.lwjglx.opengl.Display;
 
 import java.nio.Buffer;
 import java.nio.ByteBuffer;

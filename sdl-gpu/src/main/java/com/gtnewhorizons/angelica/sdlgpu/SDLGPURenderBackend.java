@@ -18,7 +18,6 @@ import com.gtnewhorizons.angelica.glsm.texture.TextureInfoCache;
 import com.gtnewhorizons.angelica.glsm.texture.TextureStaging;
 import com.gtnewhorizons.angelica.sdlgpu.compute.ComputeBinder;
 import com.gtnewhorizons.angelica.sdlgpu.device.Device;
-import com.gtnewhorizons.angelica.sdlgpu.device.SDLDrawable;
 import com.gtnewhorizons.angelica.sdlgpu.frame.ContextState;
 import com.gtnewhorizons.angelica.sdlgpu.frame.FenceTracker;
 import com.gtnewhorizons.angelica.sdlgpu.frame.FrameManager;
@@ -102,6 +101,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 
+import org.lwjgl.opengl.Display;
 import org.lwjgl.sdl.SDLGPU;
 import org.lwjgl.sdl.SDLTimer;
 import org.lwjgl.sdl.SDL_GPUBlitInfo;
@@ -110,9 +110,9 @@ import org.lwjgl.sdl.SDL_GPUTextureLocation;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.system.Pointer;
-import org.lwjglx.opengl.Display;
 
 import com.gtnewhorizons.angelica.sdlgpu.compat.Lwjgl3GLCapabilitiesShim;
+import com.gtnewhorizons.angelica.sdlgpu.compat.lwjgly.LwjglyWindowHost;
 
 import static org.lwjgl.sdl.SDLGPU.*;
 import static org.lwjgl.sdl.SDLSurface.SDL_FLIP_HORIZONTAL;
@@ -349,8 +349,8 @@ public class SDLGPURenderBackend extends RenderBackend {
         }
 
         if (hasWindow()) {
-            final int splashW = Math.max(1, Display.getWidth());
-            final int splashH = Math.max(1, Display.getHeight());
+            final int splashW = Math.max(1, LwjglyWindowHost.width());
+            final int splashH = Math.max(1, LwjglyWindowHost.height());
             final int[] maxDesktop = device.getMaxDesktopSizePixels();
             final int splashTexW = Math.max(splashW, maxDesktop[0]);
             final int splashTexH = Math.max(splashH, maxDesktop[1]);
@@ -471,6 +471,10 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
 
     private static final class Pump {
+        // The event pump is the one window operation that does not go through LwjglyWindowHost:
+        // Display.processMessages() is the resident org.lwjgl.** call LWJGLY forwards to
+        // WindowBridge.pump(), so the host's own pump is the only one that runs, and naming LWJGLY
+        // here would load its classes at backend class load - which happens on OpenGL runs too.
         static final MainThreadPump INSTANCE = new MainThreadPump(Runnable::run, GLStateManager::isMainThread, Display::processMessages, MainThreadPump::pollInput);
     }
 
@@ -595,21 +599,26 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
 
     @Override public boolean handleMakeCurrent(Object drawable) {
-        if (!isSDLManagedDrawable(drawable)) return false;
+        // LWJGLY's host has one window and one GL context, and Display.getDrawable() returns null for
+        // it: that null is this backend's context, and it is the only context request that can be
+        // this backend's - a host running LWJGLY hands out no drawable object at all.
+        if (drawable != null) return false;
         Lwjgl3GLCapabilitiesShim.installOnCurrentThread(advertisedCapabilities());
-        enterContext(drawable instanceof SDLDrawable);
+        enterContext();
         return true;
     }
 
-    private void enterContext(boolean displayDrawable) {
+    private void enterContext() {
         final ContextState st = s();
         final GLContextState ctx = GLStateManager.ctx();
         if (st.mirroredContext != ctx) {
             st.invalidateMirror();
             st.mirroredContext = ctx;
         }
+        // One context means one distinction is left: on the main thread it is the game's context, on
+        // any other thread a startup splash rendering through the offscreen target.
         final OffscreenTarget splash = splashTarget;
-        final boolean splashContext = displayDrawable && splash != null && Thread.currentThread() != GLStateManager.getMainThread();
+        final boolean splashContext = splash != null && Thread.currentThread() != GLStateManager.getMainThread();
         st.defaultFboId = splashContext ? splash.fboId() : 0;
         if (splashContext && !frameManager.isFrameActive()) {
             beginSplashFrame();
@@ -626,17 +635,12 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
 
     @Override public boolean handleReleaseContext(Object drawable) {
-        if (!isSDLManagedDrawable(drawable)) return false;
+        // Same identity rule as handleMakeCurrent: only the null drawable is this backend's context.
+        if (drawable != null) return false;
         if (Thread.currentThread() == GLStateManager.getMainThread()) return true;
         Lwjgl3GLCapabilitiesShim.clearOnCurrentThread();
         onRenderThreadReleased(Thread.currentThread());
         return true;
-    }
-
-    private static boolean isSDLManagedDrawable(Object drawable) {
-        if (drawable == null) return false;
-        if (drawable instanceof SDLDrawable) return true;
-        return SDLGPUDisplayBridge.isSdlSharedDrawable(drawable);
     }
 
     @Override public boolean handleSwapBuffers() {
