@@ -692,6 +692,23 @@ public class Iris {
     }
 
     /**
+     * Warms the transforms of a pack that was read ahead of time, so the pipeline built for it hits
+     * {@link TransformPatcher}'s cache instead of transforming on the frame that opens the world.
+     *
+     * <p>No pack is current yet, so unlike {@link #warmupShaderTransforms()} this only fills the
+     * transform cache: the harvested uniform blocks describe the pack the pipeline compiles for, and
+     * publishing them before that pipeline exists would describe a pack nothing renders with.</p>
+     */
+    public static void warmupPreparedTransforms(ProgramSet programs) {
+        logger.info("Warming the transforms of the shaderpack read ahead of time");
+        ShaderTransformExecutor.submitTracked(() -> DeferredWorldRenderingPipeline.warmupTransforms(programs))
+            .exceptionally(e -> {
+                logger.warn("Transform warmup for the pack read ahead of time failed; transforms will run at pipeline creation", e);
+                return null;
+            });
+    }
+
+    /**
      * Waits for the running transform warmup, if any. A warmup failure is logged and swallowed: the
      * transforms it was going to cache run again at pipeline creation, which is correct, just slower.
      */
@@ -709,17 +726,21 @@ public class Iris {
     /** A pack read ahead of time, kept alongside the fingerprint it was read with. */
     private record PreparedPack(String settings, ShaderPack pack) {}
 
+    /** A pack that a pre-read produced, together with the program set to warm before it is loaded. */
+    private record PreRead(PreparedPack pack, ProgramSet programs) {}
+
     private static volatile SoftReference<PreparedPack> preparedPack;
 
     /**
-     * {@return a task that reads the selected pack into {@link #preparedPack}, or null when there is
+     * {@return a reader that reads the selected pack into {@link #preparedPack}, or null when there is
      * nothing useful to read}
      *
-     * <p>Runs on a background thread while the game sits at the main menu: the sources and program
-     * sets are then ready, and only the transformation work is left when the pack is really loaded.</p>
+     * <p>Built on the calling thread: the environment defines it captures are read from the GL context.
+     * The reader itself only reads files, so a background thread can run it while the game sits at the
+     * main menu, and the program set it returns is the one to warm before the pack is really loaded.</p>
      */
     @Nullable
-    public static Runnable prepareSelectedShaderPack() {
+    public static Supplier<ProgramSet> prepareSelectedShaderPack() {
         if (irisConfig == null || currentPack != null) return null;
         final Optional<String> name = irisConfig.getShaderPackName();
         if (name.isEmpty()) return null;
@@ -727,36 +748,38 @@ public class Iris {
         StandardMacros.createStandardEnvironmentDefines().forEach(environmentDefines::add);
         return () -> {
             try {
-                final PreparedPack prepared = readPreparedPack(name.get(), environmentDefines);
-                if (prepared != null) preparedPack = new SoftReference<>(prepared);
+                final PreRead read = readPreparedPack(name.get(), environmentDefines);
+                if (read == null) return null;
+                preparedPack = new SoftReference<>(read.pack());
+                return read.programs();
             } catch (Exception e) {
                 logger.debug("Could not read shaderpack \"{}\" ahead of time", name.get(), e);
+                return null;
             }
         };
     }
 
     @Nullable
-    private static PreparedPack readPreparedPack(String name, List<StringPair> environmentDefines) throws IOException {
+    private static PreRead readPreparedPack(String name, List<StringPair> environmentDefines) throws IOException {
         final Path shaderPackRoot = getShaderpacksDirectory().resolve(name);
         final Map<String, String> changedConfigs = readChangedConfigs(getShaderpacksDirectory().resolve(name + ".txt"));
         final String settings = describeSettings(name, shaderPackRoot, toProperties(changedConfigs), environmentDefines, false);
         if (settings == null) return null;
 
         if (Files.isDirectory(shaderPackRoot)) {
-            return new PreparedPack(settings, parsePack(shaderPackRoot.resolve("shaders"), changedConfigs, environmentDefines));
+            return parsePack(settings, shaderPackRoot.resolve("shaders"), changedConfigs, environmentDefines);
         }
         try (FileSystem zipSystem = FileSystems.newFileSystem(shaderPackRoot, Iris.class.getClassLoader())) {
             final Optional<Path> shadersDirectory = findShadersDirectory(zipSystem);
             if (shadersDirectory.isEmpty()) return null;
-            return new PreparedPack(settings, parsePack(shadersDirectory.get(), changedConfigs, environmentDefines));
+            return parsePack(settings, shadersDirectory.get(), changedConfigs, environmentDefines);
         }
     }
 
-    private static ShaderPack parsePack(Path shadersDirectory, Map<String, String> changedConfigs, List<StringPair> environmentDefines) throws IOException {
+    private static PreRead parsePack(String settings, Path shadersDirectory, Map<String, String> changedConfigs, List<StringPair> environmentDefines) throws IOException {
         final ShaderPack pack = new ShaderPack(shadersDirectory, changedConfigs, environmentDefines);
         // Most worlds open in the overworld; other dimensions build their program sets on demand as usual.
-        pack.getProgramSet("Overworld");
-        return pack;
+        return new PreRead(new PreparedPack(settings, pack), pack.getProgramSet("Overworld"));
     }
 
     /**

@@ -3,8 +3,10 @@ package com.gtnewhorizons.angelica.iris;
 import com.gtnewhorizons.angelica.utils.AngelicaJar;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.parsing.IrisFunctions;
+import net.coderbot.iris.shaderpack.ProgramSet;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -13,14 +15,16 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 /**
  * Prepares the first shader pack load on a background thread while the game sits at the main menu:
- * the shader classes are resolved ahead of time, and the selected pack is read into
- * {@link Iris#prepareSelectedShaderPack()}.
+ * the shader classes are resolved ahead of time, the selected pack is read through
+ * {@link Iris#prepareSelectedShaderPack()}, and the transforms of the program set that read returned
+ * are warmed on the transform pool, so loading the pack finds them cached.
  */
 public final class ShaderWarmup {
     private static final Logger LOGGER = LogManager.getLogger("Actinium/ShaderWarmup");
@@ -35,14 +39,20 @@ public final class ShaderWarmup {
     public static void start() {
         if (started) return;
         started = true;
-        final Runnable readSelectedPack = Iris.prepareSelectedShaderPack();
-        final Thread thread = new Thread(() -> {
-            preloadClasses();
-            if (readSelectedPack != null) readSelectedPack.run();
-        }, "Actinium-Shader-Warmup");
+        final Supplier<ProgramSet> readSelectedPack = Iris.prepareSelectedShaderPack();
+        final Thread thread = new Thread(() -> warmUp(readSelectedPack), "Actinium-Shader-Warmup");
         thread.setDaemon(true);
         thread.setPriority(Thread.MIN_PRIORITY);
         thread.start();
+    }
+
+    private static void warmUp(@Nullable Supplier<ProgramSet> readSelectedPack) {
+        preloadClasses();
+        if (readSelectedPack == null) return;
+        final ProgramSet programs = readSelectedPack.get();
+        if (programs != null) {
+            Iris.warmupPreparedTransforms(programs);
+        }
     }
 
     private static void preloadClasses() {
