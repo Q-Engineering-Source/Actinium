@@ -1235,9 +1235,9 @@ CloudRenderer 的 `src/` 修复，见本节末尾的跳过清单）。本节是 
     （`PreRasterComputeDispatcher.dispatch`），这套机制来自更早的 #1993（`8da561d3`）。本阶段
     移植时 Actinium 的 shader 模块还没有 `preRaster*`，`PreRasterComputeDispatcher` 因此
     **无调用方**，COMPOSITE/CELERITAS_TERRAIN 的 image 写入被剥离而不重放（其它补丁类型的
-    「剥离并丢弃」就是上游行为）。该缺口已由 `feat(shader): wire pre-raster compute dispatch
-    for extracted image stores` 补齐：消费方接在 `PreRasterComputeStages`（注册/dispatch/清理），
-    `CompositeRenderer` 与 `ShadowCompositeRenderer` 各自持有，细节见本文档 Phase 11 一节。
+    「剥离并丢弃」就是上游行为）。该缺口已由 `812f69e6`（`feat(shader): wire pre-raster compute
+    dispatch for extracted image stores`）补齐：消费方接在 `PreRasterComputeStages`（注册/dispatch/
+    清理），`CompositeRenderer` 与 `ShadowCompositeRenderer` 各自持有，细节见本文档 Phase 11 一节。
     CELERITAS_TERRAIN 的抽取结果仍由 `CeleritasTerrainPipeline` 消费（Phase 8 随该提交一并移植，
     非本缺口）。
   - **跳过**：上游 gbuffer **variant** 程序的接线（`sourceName + kind.variantSuffix`）
@@ -1871,6 +1871,8 @@ optimizations (#2009)」（67 文件 +2919/-734）。本轮**不是整提交照�
    （主观验证，可与 `-Dangelica.sdlgpu.enable=false` 的 GL 路径对照）。
 
 ## 上游同步状态（2026-10-12，Phase 11：pre-raster compute 消费方接线）
+
+**提交**：`812f69e6`（`feat(shader): wire pre-raster compute dispatch for extracted image stores`）。
 
 **背景**：Phase 8 把 `PreRasterComputeDispatcher` 整文件移植进来却**没有调用方**（见上文 Phase 8
 的「已知缺口」）：SDL 后端下 COMPOSITE 的 image 写入会被抽取成 compute 并从光栅阶段剥离，剥离后
