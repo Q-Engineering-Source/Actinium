@@ -50,8 +50,8 @@ Actinium 是 Minecraft 1.12.2（Cleanroom Loader）上的渲染与光影兼容�
 ### Mixin 组织约定
 
 - **mixin 类只做注入**，业务逻辑放在 mixin 包之外的实现类（`compat/`、功能包或工具类），mixin 类保持薄。
-- **注入接口与注入类分离**：访问器/调用器（Accessor/Invoker）按现有 `core.terrain.AccessorEntityRenderer` 模式组织；需要跨类暴露的注入能力，接口定义放对应 `mixinterface/` 子包，实现留在 mixin 类。
-- **mixin 包隔离规则**：mixin 包内的辅助类（含内部类/静态嵌套类）不得被 mixin 目标类或其调用方直接引用——会触发 `IllegalClassLoadError`。该检查**仅在非 dev 环境强制，dev 验证无法覆盖**（2026-08-12 生产崩溃实例：`MixinGlStateTracker$Saved`）。辅助实现一律放 mixin 包外。
+- **注入接口与注入类分离**：访问器/调用器（Accessor/Invoker）按现有 `core.terrain.AccessorEntityRenderer` 模式组织；Accessor/Invoker 这类**自身也是 @Mixin、注册进配置**的接口放对应 `mixinterface/` 子包；而**由目标类 implement 的能力接口**（鸭子类型转换用）不是 mixin，必须放 mixin 包外（如 `com.dhj.actinium.texture.*Extension`），实现留在 mixin 类。
+- **mixin 包隔离规则**：mixin 包内的辅助类（含内部类/静态嵌套类）不得被 mixin 目标类或其调用方直接引用——会触发 `IllegalClassLoadError`。出现在目标类签名里（如目标类 implement 的接口）时 **dev 也会立刻崩**（2026-10-12 dev 实例：`mixinterface/TextureMetadataExtension` 作为目标类超接口在 define 阶段被加载）；仅被方法体惰性引用时通常只在非 dev 环境强制（2026-08-12 生产崩溃实例：`MixinGlStateTracker$Saved`）。辅助实现与能力接口一律放 mixin 包外（参照 `com.dhj.actinium.texture.TextureMapExtension` 模式）。
 
 ### 第三方 addon 绑定契约
 
