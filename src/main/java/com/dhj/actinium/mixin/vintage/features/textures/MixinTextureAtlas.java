@@ -57,11 +57,11 @@ public class MixinTextureAtlas implements TextureMapExtension {
     private int celeritas$width, celeritas$height;
 
     /**
-     * The slot width has to grow before the stitcher lays the atlas out, and only once the mip level count is
-     * final: the mipmap scan can still drop levels after the sprites are registered.
+     * The slot width has to grow before the stitcher lays the atlas out, which 1.12.2 does in its own
+     * {@code finishLoading} step.
      */
     @Inject(
-        method = "loadTextureAtlas",
+        method = "finishLoading",
         at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/texture/Stitcher;doStitch()V"))
     private void angelica$assignGutters(CallbackInfo ci) {
         final boolean blocksAtlas = (Object) this == Minecraft.getMinecraft().getTextureMapBlocks();
@@ -76,7 +76,7 @@ public class MixinTextureAtlas implements TextureMapExtension {
 
     /** The sprite's content is inset by its gutter, so the upload has to start one gutter further out. */
     @Redirect(
-        method = "loadTextureAtlas",
+        method = "finishLoading",
         at = @At(
             value = "INVOKE",
             target = "Lnet/minecraft/client/renderer/texture/TextureUtil;uploadTextureMipmap([[IIIIIZZ)V"))
@@ -93,8 +93,8 @@ public class MixinTextureAtlas implements TextureMapExtension {
     private void generateQuadTree(CallbackInfo ci, @Local(ordinal = 0) Stitcher stitcher) {
         if ((Object) this == Minecraft.getMinecraft().getTextureMapBlocks()) {
             // The sprite gutter, the pass defines and the terrain sampler's mip filter are all sized from the
-            // mip level count this atlas really ended up with, and loadTextureAtlas has just lowered its own
-            // count wherever the stitched sprites could not support the configured one.
+            // mip level count this atlas ended up with. 1.12.2 keeps the configured count and only warns about
+            // sprites too small to support it, so this records the count the whole load used.
             SodiumGameOptions.recordAtlasMipmapLevels(this.mipmapLevels);
         }
 
