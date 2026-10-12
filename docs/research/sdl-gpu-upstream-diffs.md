@@ -2110,3 +2110,111 @@ PR #2112）、`ef68af58`（*Fix texture filtering sampling regression*，PR #211
 
 实机验证建议见 `docs/research/mipmap-strategy-port.md` 末节（RGSS 远景质量、gutter 显存、mipmap 边界出血、
 `mipmap_strategy` 键、各向异性是否真的生效、资源/渲染器重载组合路径）。
+
+## 上游同步状态（2026-10-12，Phase 14：B5 三小项打包：`glClearDepth` clamp / celeritas 程序 hint / 主菜单预读预热）
+
+三项互不相关，各自独立提交；来源分别是 `44c930f4` 里的非 COW hunk、`docs/research/sdl-gpu-program-binary-cache.md`
+§8 遗留风险 6、`docs/research/sdl-gpu-shader-loading.md` §6.4 偏差 4。
+
+### 14.1 `glClearDepth` 的 [0,1] clamp（上游 `44c930f4` 的非 COW hunk）
+
+**上游改法**：`glClearDepth` 在写完显示列表记录、更新缓存与调用后端之前把入参压进 `[0, 1]`
+（`44c930f4`「Fix scissor clears wiping the whole screen on SDL-GPU」夹带的修复，与 COW/scissor 无关）。
+
+**本树落地**：`glsm/.../GLStateManager.java` 的 `glClearDepth` 加同一行 clamp，位置与上游一致
+（在 `DisplayListManager.recordClearDepth` **之后**、`mod(ctx().depthState).setClearValue` 与
+`RENDER_BACKEND.clearDepth` **之前**）。显示列表仍记录原始入参——重放会再次进入本方法，届时仍被 clamp。
+
+**为什么不 clamp 会出问题**：调用方按深度测试的习惯传 `-1` / `2` 之类的值，SDL 后端把
+`depthClearValue` 原样带进 `SDL_GPUDepthStencilTargetInfo`（`AttachmentClear` 侧还有一道 clamp，
+但那是清屏 pass 的局部防线）；缓存值同样会被 `glPopAttrib`/`replayStateToBackend` 原样回灌给后端。
+
+**测试覆盖**：`src/test/java/com/gtnewhorizons/angelica/glsm/ClearDepthClampTest.java`（3 例，安装记录式
+`StubRenderBackend` 替身 + 经 `testutil.Reflect` 换 `BackendManager.RENDER_BACKEND`，与 `CowStateStackTest`
+同一手法）：低于 0 → 后端与缓存清 0；高于 1 → 清 1；`0` / `0.5` / `1` 原样透传。
+
+**未带过来的部分**：`44c930f4` 的 scissor / COW 状态栈 / SDL attachment clear 全部**未取**——本树的 COW
+状态栈与 SDL 清屏路径已由 COW-A/COW-B/COW-B2 与 SDL 移植阶段各自落地，本项只取那一个 clamp。
+
+### 14.2 celeritas 地形程序补 `GL_PROGRAM_BINARY_RETRIEVABLE_HINT`
+
+**背景**：`ProgramBinaryCache.markRetrievable` 原先只在 `GLStateManager.glLinkProgram` 里被调用；celeritas 的
+`GlProgram.Builder.link()` 走 `com.mitchej123.lwjgl` 直连（不经 GLSM），因此地形程序（`IrisCeleritasChunkProgramOverrides`
+建的那批，正是 `ProgramBinaryCache.save` 的对象）没有打 hint。严格按 spec 实现 hint 的驱动会对这类程序返回
+`GL_PROGRAM_BINARY_LENGTH == 0`，`saveBinary` 随即放弃保存——不影响正确性，只让地形程序每次重编译。
+
+**逐文件落地**
+
+| 文件 | 改动 |
+|---|---|
+| `celeritas-common/.../impl/gl/shader/GlProgram.java` | 新增嵌套接口 `LinkHook#beforeLink(int)`、`static volatile LinkHook linkHook`、`setLinkHook`，以及包内可见的 `applyLinkHook(int)`；`Builder.link` 在 `LWJGL.glLinkProgram` **之前**调用它 |
+| `glsm/.../shader/ProgramBinaryCache.java` | `markRetrievable` 自身按 `isEnabled()` 门控（原先由调用方判断），javadoc 写明两个入口 |
+| `glsm/.../GLStateManager.java` | `glLinkProgram` 里删掉外层的 `if (ProgramBinaryCache.isEnabled())`，行为不变（同一个条件，收敛到一处） |
+| `src/main/java/com/dhj/actinium/Actinium.java` | `onConstruct` 里接线：`GlProgram.setLinkHook(ProgramBinaryCache::markRetrievable)`（与 `GLSMHooks.textureBindSyncCallback`、`PostProcessingBridge` 等同一批宿主接线） |
+
+**偏差与理由**
+
+1. **门控收敛到 `markRetrievable` 内部**（本树选择，上游没有对应形态）：两个调用点（GLSM 的链接、celeritas 的
+   钩子）需要同一个条件，写在调用方会重复两遍。代价是 `markRetrievable` 变成「缓存开着时才有动作」。
+2. **钩子只做注入，不做配置注入**：`celeritas-common` 只新增一个函数式接口，不引用 `com.dhj.actinium`，也不
+   自己判断「保存程序」这个策略（策略在 glsm 的缓存里）；因此本项不需要额外的小接口做配置注入。
+3. **`applyLinkHook` 独立成方法**：纯为在无 GL 上下文下断言「钩子在 link 前拿到 program id」。
+
+**测试覆盖**：`src/test/java/dhj/embeddedt/embeddium/impl/gl/shader/GlProgramLinkHookTest.java`（2 例：钩子按
+调用顺序收到每个待链接程序；清空钩子后不再收到）+ `ProgramBinaryCacheTest` 新增
+`theRetrievableHintIsRequestedOnlyWhileSavingIsOn`（记录式后端替身断言 `programParameteri(7,
+GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE)`，关掉保存后不再请求）。
+**link 与 hint 的真实先后只能在有 GL 设备时确认**（`glGetProgramBinary` 的 format/长度对这批程序是否非 0），
+见 §14.4 实机验证建议。
+
+### 14.3 主菜单预读包触发变换预热
+
+**缺口**（`sdl-gpu-shader-loading.md` §6.4 偏差 4）：`warmupShaderTransforms()` 读的是 `currentPack`，而主菜单
+预读发生在 `currentPack == null` 时，预读拿到的 `ProgramSet` 被 `parsePack` 丢弃，因此主菜单不产生任何变换缓存。
+
+**逐文件落地**
+
+| 文件 | 改动 |
+|---|---|
+| `shader/.../Iris.java` | `prepareSelectedShaderPack()` 的返回类型 `Runnable` → `Supplier<ProgramSet>`（**仍是主线程构造成立**：它内部要先取 `StandardMacros.createStandardEnvironmentDefines()`，那批 define 来自 GL 查询，只能在 GL 上下文所在线程读；返回的 reader 只做文件 I/O，可后台跑）；预读结果改由新 record `PreRead(PreparedPack pack, ProgramSet programs)` 携带（`PreparedPack` 本身保持两成员，`destroyEverything` 的复用路径不变）；新增预热入口 `warmupPreparedTransforms(ProgramSet)`，带一条 INFO 日志 |
+| `src/main/java/com/gtnewhorizons/angelica/iris/ShaderWarmup.java` | 预热线程：`preloadClasses()` → `readSelectedPack.get()` 取到预读的 ProgramSet → 非 null 时把 ProgramSet 交给 `Iris.warmupPreparedTransforms(programs)` |
+
+**`warmupPreparedTransforms` 与 `warmupShaderTransforms` 的差别（有意）**：只提交
+`DeferredWorldRenderingPipeline.warmupTransforms(programs)`（= 构造体提交的同一批 composite / attributes /
+celeritas / compute 变换，键按值相等，因此进世界建管线时命中），**不** `PerFrameUniformBlockHarvester.harvest`
+也**不**注册 `programSetWarmup`：
+
+- harvest 写的是 `GLSMHooks.perFrameUniformBlock`/`perPassUniformBlock` 两个全局块，它们描述「当前正在编译程序的
+  那个包」；主菜单阶段没有包是当前的，且预读结果可能因为指纹不符被丢弃，此时发布块会让 SDL 用错的声明编译 shader。
+  预读阶段也不会有任何 shader 编译（没有管线），所以 harvest 在预读路径上没有收益。
+- 不注册 `programSetWarmup`：该字段的语义是「刚加载的那个包的预热，建管线前必须 join」。预读的包可能被丢弃，
+  注册进去会让世界加载去 join 一份无用功（甚至卡住主线程）。变换缓存是按键取值共享的，晚到的流水线只是重复算一遍
+  或直接命中，不需要 join 保证正确性。
+
+**收益坐标**（与 §6.6 遗留风险 3/5 一并看）：主菜单停留期间把变换算完并进缓存，进世界时构造体的 `patchXxx`
+直接命中，首帧不再有变换抖动；若玩家主菜单里换了包/改设置再进世界，预读的成果要么因源码不同而键不匹配、要么被
+`RwImageStoreExtractor.setActiveCustomImages` 的换图集 `clearCache()` 丢掉，退化为「白算一遍」，不影响正确性。
+
+**测试覆盖**：**无自动化用例**（已实测确认不可行，非跳过）。要触发这条路径需要一份能被 `ShaderPack` 解析的
+包目录，而 `ShaderPack` 构造期在 `FeatureFlags.isUsable()` → `RenderSystem.supportsBufferBlending()` 上读
+`GLStateManager.capabilities`（LWJGL2 的 `org.lwjgl.opengl.ContextCapabilities`）。该类只在**编译期**由
+`com.cleanroommc:lwjglx` 提供（glsm 的 testFixtures、`testFixturesImplementation`），**测试运行期不在 classpath**：
+本次先用 `@TempDir` 里的最小包（`composite.vsh`/`.fsh`）+ 记录式后端替身做过一次夹具实验，在
+`new ShaderPack(...)` 处先撞 `NoClassDefFoundError`，改为不设 `capabilities` 后在
+`ShaderPack.<init>` 的 `FeatureFlags.isUsable()` 处撞 NPE，遂放弃。要补齐得先给根工程测试运行期补上 LWJGL2
+依赖或启用真 GL 测试台（`@GLCoreTest`/`@GLCompatTest`，当前树未启用），超出本项范围——与
+`sdl-gpu-shader-loading.md` §6.5 对预热链其余部分的处理一致。该项的验证方式见 §14.4 的日志与命中率观测。
+
+### 14.4 验证与实机建议
+
+```
+./gradlew check --no-daemon        # 见下（本阶段结果）
+```
+
+- **①**：`ClearDepthClampTest` 3 例通过（自动化已覆盖后端与缓存的 clamp）。
+- **②**：`GlProgramLinkHookTest` 2 例 + `ProgramBinaryCacheTest` 1 例通过。实机（SDL 后端 + 开「保存编译好的
+  shader」）：开启光影进世界一次，重启后再进世界，日志里不应再出现地形程序的重复编译；`glGetProgramBinary`
+  失败时的 `Driver rejected a saved shader program!!` 若出现说明该驱动不支持，属预期回退。
+- **③**：主菜单启动后应出现 `Warming the transforms of the shaderpack read ahead of time`（INFO，来自
+  `Iris.warmupPreparedTransforms`）。随后进世界，对比「关掉该预读」的启动卡顿；`GLSMPerfDebug`（游戏内 GUI
+  开关）打开时 `[ShaderTransformCache] ... hit cacheSize=` 应显示构造体提交时大量命中。世界内切包路径不受影响。

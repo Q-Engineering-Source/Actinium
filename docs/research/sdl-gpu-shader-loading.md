@@ -261,7 +261,7 @@ submitComputeTransform(programs.getShadowCompute(), TextureStage.GBUFFERS_AND_SH
 1. **不在 `warmupShaderTransforms()` 里装钩子**：见 §6.3 的模块边界说明。
 2. **`ShaderType` 不归并，做一次显式转换**：见 §6.3；`UniformType` 则归并（harvester 必须产出 glsm 的值）。
 3. **`iris_WeatherParams*` 不进 `LIVE_STATE_UNIFORMS`**：本仓库没有这三个 uniform。
-4. **主菜单预读包（`prepareSelectedShaderPack`）不触发预热**：预热入口读的是 `currentPack`，而预读发生在 `currentPack == null` 时；让预读包也预热需要把 ProgramSet 从 `ShaderWarmup` 传到预热入口，超出本次范围（见 §5/§6.6 的收益说明）。
+4. ~~**主菜单预读包（`prepareSelectedShaderPack`）不触发预热**~~：**已于 2026-10-12 补齐**（Phase 14.3，`sdl-gpu-upstream-diffs.md`）：`prepareSelectedShaderPack` 的返回类型由 `Runnable` 改为 `Supplier<ProgramSet>`（仍在调用线程构造，因为环境 defines 来自 GL 查询），`ShaderWarmup` 在预热线程取到该 `ProgramSet` 后交给新入口 `Iris.warmupPreparedTransforms(ProgramSet)` 预热变换。预读路径只填变换缓存，不 harvest 块、不注册 `programSetWarmup`，理由见 Phase 14.3。
 5. **测试去反射**：`PerFrameUniformBlockHarvesterTest` 按上游形态重写（无反射）+ 补 3 例（dynamic/外部托管 uniform 必须排除、同名重复声明只入块一次、块内顺序=声明顺序）；`IrisProgramSetWarmupTest` 用包内可见成员替代 `Reflect`。
 
 ### 6.5 自动化验证
@@ -279,4 +279,5 @@ submitComputeTransform(programs.getShadowCompute(), TextureStage.GBUFFERS_AND_SH
 2. **预热维度可能与实际维度不一致**：预热用 `lastDimensionName ?: Overworld`，若玩家第一次进的不是主世界维度，预热的是另一套 ProgramSet（白做一次工作，且 `createPipeline` 仍会等它）。正确性不受影响——`createPipeline` 会为重采样的维度重新 `harvest`。
 3. **`GLSMPerfDebug` 打开时的缓存键漂移**：`CacheKey` 含 `AdaptiveShadowBoundsStats` 的启用位与 binding，而该状态在管线构造时才 `activate`；打开 perf debug 时预热写入的键与建管线时的键不同 → 预热全部落空（回退到「变换跑两遍」）。属于调试路径的性能退化，不影响正确性。
 4. **prewarm 与变换缓存的寿命不一致**：`TransformPatcher` 的缓存会在变换线程池空闲 120 s 后清空，SDL 的 prewarm 缓存是 LRU；两者各自失效都可能让对方多干一次活（我们只在命中路径补通知来兜底）。
-5. **收益位置**：Actinium 的包加载发生在首个世界帧，所以「进世界首帧」这一场景里预热的并行收益有限；收益最明显的是「主菜单里已经选好包（触发过 `reload`）再进世界」与「世界内切包后的首帧」。要把它前移到主菜单预读包，见 §6.4 第 4 条。
+5. **收益位置**：Actinium 的包加载发生在首个世界帧，所以「进世界首帧」这一场景里预热的并行收益有限；收益最明显的是「主菜单里已经选好包（触发过 `reload`）再进世界」与「世界内切包后的首帧」。主菜单预读包已在 2026-10-12 接上变换预热（Phase 14.3），因此「主菜单停留 → 进世界」这一路径的变换在进世界前就已算完；若玩家在预读之后又换包/改设置，预读成果可能因源码键不同或被 `setActiveCustomImages` 的换图集 `clearCache()` 丢掉，退化为白算一遍（不影响正确性）。
+6. **主菜单预读的预热与建管线并发时可能白算**：预读的变换任务与建管线提交的变换任务共用同一个池，`TransformPatcher` 缓存按值相等，最坏情况是同一份变换被并发算两遍（缓存未命中窗口），不会产出错误结果；`RwImageStoreExtractor.setActiveCustomImages` 在换图集时会 `clearCache()`，预读中晚到的插入可能落在清空之后——这与既有 `warmupShaderTransforms` 的 fire-and-forget 提交是同一类时序，未额外加锁。

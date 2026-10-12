@@ -41,7 +41,7 @@
 |---|---|---|
 | `glsm/shader/ProgramBinaryCache.java`（新，236 行 + #2213 的 23 行） | 同名新文件 | **全量移植**（含 `saveRetained`/`isFullCompileRunning`）；注释按本仓库风格重写 |
 | `glsm/shader/ShaderDiskCache.java`（+104） | 同名 | **补齐**：layer API 与 `remove` 此前**并不存在**（上一环的对账错误记录了它，见 §6）；`put`/`putBlob` 改为返回 `boolean` |
-| `glsm/GLStateManager.java`（+19） | 同名 | `glProgramParameteri`/`glGetProgramBinary`/`glProgramBinary` + `glLinkProgram` 里的 `markRetrievable`。**适配**：`glProgramBinary` 用 Actinium 的 `CompatUniformManager.beforeLinkProgram`/`onLinkProgram(program, epoch)` 组合（上游只有一个 `onLinkProgram`），与 `glLinkProgram` 保持同一写法 |
+| `glsm/GLStateManager.java`（+19） | 同名 | `glProgramParameteri`/`glGetProgramBinary`/`glProgramBinary` + `glLinkProgram` 里的 `markRetrievable`。**适配**：`glProgramBinary` 用 Actinium 的 `CompatUniformManager.beforeLinkProgram`/`onLinkProgram(program, epoch)` 组合（上游只有一个 `onLinkProgram`），与 `glLinkProgram` 保持同一写法。⚠️ 后续（2026-10-12，Phase 14.2）：`markRetrievable` 改为自身按 `isEnabled()` 门控，`glLinkProgram` 里的外层判断随之删掉 |
 | `glsm/RenderSystem.java`（+8） | 同名 | `supportsProgramBinary()` 字段/getter + initRenderer 内赋值 |
 | `glsm/backend/RenderBackend.java`（+4） | 同名 | 四个默认方法（`supportsProgramBinary` 默认 false，其余空实现） |
 | `lwjgl3-backend/.../Lwjgl3GLRenderBackend.java`（+22） | `src/lwjgl3/java/...`（glsm 的 main source set 包含该目录） | 全部移植，额外加 `caps != null` 判断（该类既有惯例） |
@@ -93,6 +93,10 @@
 `RetainedPrograms.afterPipelineBuilt()` 环绕、`loadExternalShaderpack` 的
 `describeSettings` → `takePreparedPack` → `RetainedPrograms.useConfiguration` → `activate()`
 → `ProgramBinaryCache.usePack(name)` 顺序。
+⚠️ **后续（2026-10-12）**：`prepareSelectedShaderPack()` 的返回类型由 `Runnable` 改为
+`Supplier<ProgramSet>`（仍在调用线程构造，因为它先捕获来自 GL 查询的环境 defines），预读产物改由 record
+`PreRead` 携带，`ShaderWarmup` 把其中的 `ProgramSet` 交给新入口 `Iris.warmupPreparedTransforms(ProgramSet)`
+预热变换，见 `sdl-gpu-upstream-diffs.md` Phase 14.3。
 
 ### 3.2 保留 Actinium 的接线
 - 上游在 `onRenderSystemInit` 就 `loadShaderpack()`，Actinium 一律推迟到首个世界帧
@@ -229,10 +233,10 @@ Actinium 的版本又早已大改（SDL 接线、`vertexWriteReplays`、voxeliza
 5. **`compileTerrainPrograms` 的顶点格式**：预热用 provider 当前的 `vertexType`，
    与运行时 `TerrainRenderPass.vertexType()` 在 vertex format requirements 变化后可能不一致，
    表现为「该维度地形程序未命中缓存」（多编译一次），不会产出错误程序（属性表在键里）。
-6. **地形（celeritas）程序可能存不下来**：`GL_PROGRAM_BINARY_RETRIEVABLE_HINT` 是在
+6. **地形（celeritas）程序可能存不下来**：~~`GL_PROGRAM_BINARY_RETRIEVABLE_HINT` 是在
    `GLStateManager.glLinkProgram` 里打的，而 celeritas 的 `GlProgram.Builder.link()` 走
    `com.mitchej123.lwjgl` 服务（`LWJGL3Service`/`SDLGPULWJGLService`）直连，不经 GLSM，
-   因此地形程序**没有**打这个 hint。严格按 spec 实现 hint 的驱动会对这类程序返回
-   `GL_PROGRAM_BINARY_LENGTH == 0`，`ProgramBinaryCache.saveBinary` 随即放弃保存（只多编译一次，
-   不影响正确性）。要补齐需给 `celeritas-common` 的 `GlProgram.Builder` 加一个 link 前的钩子，
-   本次未做（牵动共享子项目，收益仅限地形程序）。
+   因此地形程序**没有**打这个 hint。~~ **已于 2026-10-12 补齐**（Phase 14.2，`sdl-gpu-upstream-diffs.md`）：
+   `celeritas-common` 的 `GlProgram` 新增 link 前钩子 `LinkHook`（`Actinium.onConstruct` 接线为
+   `ProgramBinaryCache::markRetrievable`），`GL_PROGRAM_BINARY_RETRIEVABLE_HINT` 现在也覆盖这批程序。
+   该驱动指纹维度上的行为（`glGetProgramBinary` 是否真的返回非 0 长度）仍需实机确认。
