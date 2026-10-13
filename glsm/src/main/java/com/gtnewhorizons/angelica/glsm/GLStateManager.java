@@ -2124,6 +2124,7 @@ public class GLStateManager {
         // Rebinding a deferred-delete texture rescues it (Mesa/compat-profile behavior)
         if (texture != 0) {
             deferredDeleteTextures.remove(texture);
+            TextureInfoCache.INSTANCE.getInfo(texture).setTarget(target);
         }
 
         if (target != GL11.GL_TEXTURE_2D) {
@@ -2446,12 +2447,19 @@ public class GLStateManager {
         if (changedUnit) {
             RENDER_BACKEND.activeTexture(GL13.GL_TEXTURE0 + savedUnit);
         }
-        RENDER_BACKEND.bindTexture(GL11.GL_TEXTURE_2D, id);
-        RENDER_BACKEND.texParameteri(GL11.GL_TEXTURE_2D, GL12.GL_TEXTURE_MAX_LEVEL, 0);
-        RENDER_BACKEND.texImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_R8, 1, 1, 0, GL11.GL_RED, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
 
-        // Restore previous binding on active unit
-        RENDER_BACKEND.bindTexture(GL11.GL_TEXTURE_2D, savedBinding == id ? 0 : savedBinding);
+        // The shrink goes through TEXTURE_2D: non-2D targets keep their storage until the
+        // deferred delete runs, rather than erroring on the mismatched bind and shrinking
+        // whatever 2D texture happens to be bound instead.
+        final TextureInfo info = TextureInfoCache.INSTANCE.peekInfo(id);
+        if (info == null || info.getTarget() == GL11.GL_TEXTURE_2D) {
+            RENDER_BACKEND.bindTexture(GL11.GL_TEXTURE_2D, id);
+            RENDER_BACKEND.texParameteri(GL11.GL_TEXTURE_2D, GL12.GL_TEXTURE_MAX_LEVEL, 0);
+            RENDER_BACKEND.texImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_R8, 1, 1, 0, GL11.GL_RED, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
+
+            // Restore previous binding on active unit
+            RENDER_BACKEND.bindTexture(GL11.GL_TEXTURE_2D, savedBinding == id ? 0 : savedBinding);
+        }
 
         deferredDeleteTextures.add(id);
     }
