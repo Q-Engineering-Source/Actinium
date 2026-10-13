@@ -70,8 +70,12 @@
   逐层下采样，下采样复用 `celeritas-common` 的 `MipmapHelper.weightedAverageColor`）。
 - `texture/mipmap/SpriteMipmaps.java`（新）：精灵帧的透明分类（`Transparency`）与策略判定
   （`resolve`）——两部分逻辑都放在 mixin 包外，mixin 只做转发。
+- `texture/mipmap/SpriteMipmapExtension.java`（新）：精灵侧回读本次生成**实际生效**模式的接口，
+  由 `MixinTextureAtlasSprite` 实现、图集会话（`AtlasLoadSession.prepare`）消费。
 - `mixin/vintage/features/mipmaps/MixinTextureAtlasSprite.java`：重写为三个注入点：
-  `loadSpriteFrames` HEAD 读策略（mcmeta 声明优先，否则命名族回退）、`generateMipmaps` HEAD 分类、
+  `loadSpriteFrames` HEAD 读策略（mcmeta 声明优先，否则命名族回退）、`generateMipmaps` HEAD 分类并
+  解析出本次生成**真正生效**的模式（落 `celeritas$generatedMipmapStrategy`，由
+  `SpriteMipmapExtension` 提供给图集构建摘要，见 `sdl-gpu-port-stats-logging.md` 第 5 项）、
   `generateMipmaps` 里 `TextureUtil.generateMipmapData` 的 `@Redirect` 改走 `MipmapGenerator`。
 - `mixin/vintage/features/mipmaps/MixinTextureMetadataSection.java`（新）：在
   `TextureMetadataSection` 上挂 `TextureMetadataExtension` 的实现。

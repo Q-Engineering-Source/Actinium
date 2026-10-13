@@ -1,6 +1,6 @@
 # 已移植优化的统计日志（GL 路径实机验证用）
 
-最后更新：2026-10-12。分支：`research/sdl-gpu-port`。
+最后更新：2026-10-13。分支：`research/sdl-gpu-port`。
 
 本文列出**本分支各项已移植优化新增的日志**：确切文本格式、字段含义、落点文件，以及
 「这条日志出现/取什么值 ⇒ 该优化生效」的判读方式。用户在 `./gradlew runClient`（GL 路径，
@@ -191,20 +191,20 @@ pbr[lookups=1420,memoHits=1180,answeredAbsent=228,notPbr=12,state=ready(packs=7,
 ### 4. 图集并行加载（#2167，7b244cea）
 
 落点：`src/main/java/com/dhj/actinium/texture/atlas/AtlasLoadStats.java`（汇总）、
-`.../AtlasLoadSession.java`（会话计数）、
+`.../AtlasLoadSession.java`（会话计数：并行工作、本图集的精灵集合与策略计数）、
 `.../mixin/vintage/features/textures/MixinTextureAtlasParallelLoad.java`（阶段计时与输出）。
 
 **图集构建摘要**（logger `Actinium`，每次 `TextureMap.loadTextureAtlas` 结束一行；地形图集与
 物品图集各一行）：
 
 ```
-Atlas build: atlas=textures/blocks sprites=3176 mipLevels=4 gutter=16 filter=RGSS_ANISOTROPIC anisotropy=4x texelSnap=true workers=8 parallel=[decode=true,mipmaps=true,batchedUpload=true,submitted=3175,decoded=3172,decodeFailures=0,decodeDesync=false,mipmapsOffloaded=3160,batchedUploaded=3175,prepared=3176] phases=[stitchMs=812.400,prepareMs=5210.118,assembleMs=612.004,totalMs=6905.223] strategies=[MEAN=2401,CUTOUT=520,STRICT_CUTOUT=118,DARK_CUTOUT=137]
+Atlas build: atlas=textures/blocks sprites=3176 mipLevels=4 gutter=16 filter=RGSS_ANISOTROPIC anisotropy=4x texelSnap=true workers=8 parallel=[decode=true,mipmaps=true,batchedUpload=true,submitted=3175,decoded=3172,decodeFailures=0,decodeDesync=false,mipmapsOffloaded=3160,batchedUploaded=3175,prepared=3175] phases=[stitchMs=812.400,prepareMs=5210.118,assembleMs=612.004,totalMs=6905.223] strategies=[MEAN=2401,CUTOUT=520,STRICT_CUTOUT=118,DARK_CUTOUT=136] foreignMipmapCalls=0
 ```
 
 | 字段 | 含义 |
 | --- | --- |
 | `atlas` | `TextureMap.getBasePath()`：`textures/blocks`（地形图集）或 `textures/items` |
-| `sprites` | 拼接出的精灵数 |
+| `sprites` | 拼接出的精灵数（含图集自带的 missing 精灵） |
 | `mipLevels` | 本次加载**最终**采用的 mip 层数（可能被加载过程下调） |
 | `gutter` | 精灵实际被填充的边界宽度（texel，0 = 未填充） |
 | `filter` | 生效的过滤模式（见第 5 项） |
@@ -215,9 +215,10 @@ Atlas build: atlas=textures/blocks sprites=3176 mipLevels=4 gutter=16 filter=RGS
 | `submitted` / `decoded` / `decodeFailures` / `decodeDesync` | 解码通道提交数 / 主线程实际取用的预解码数 / 解码失败数 / 通道失序被关闭 |
 | `mipmapsOffloaded` | 甩到工作线程的 mipmap 生成次数 |
 | `batchedUploaded` | 批量上传通道实际写入（并因此让逐精灵上传跳过）的精灵数 |
-| `prepared` | 会话预先完成「解码+mipmap」的精灵数 |
+| `prepared` | 会话跑完「解码+mipmap」生成的精灵数（不含图集的 missing 精灵） |
 | `phases` | `stitchMs` 拼图、`prepareMs` 解码通道+逐精灵生成+mipmap join、`assembleMs` 批量装配上传、`totalMs` 整个 `loadTextureAtlas` |
-| `strategies` | 精灵按**最终生效**的 mipmap 策略计数（见第 5 项） |
+| `strategies` | 会话生成的精灵按**最终生效**的 mipmap 策略计数（见第 5 项），正常情况下 `Σstrategies = prepared` |
+| `foreignMipmapCalls` | 本图集加载**没有**覆盖到的 `generateMipmaps` 调用次数（模组精灵 loader 自己生成 mipmap，见第 5 项） |
 
 > 判读要点：
 > - `parallel=[decode=true,...]` 且 `decoded` 接近 `submitted` ⇒ 并行解码生效；
@@ -227,12 +228,21 @@ Atlas build: atlas=textures/blocks sprites=3176 mipLevels=4 gutter=16 filter=RGS
 >   `Batched atlas upload failed, remaining sprites use the per-sprite path`（WARN，logger `Actinium`）
 >   则该次回退到逐精灵上传。
 > - `phases` 里 `prepareMs` 应明显小于「精灵数 × 单精灵解码+生成」，且并行度越高收益越大。
+> - `Σstrategies = prepared = sprites - 1`（少的那一个是图集自带的 missing 精灵）⇒ 策略计数只覆盖本次
+>   加载自己的精灵。`Σstrategies = sprites` 说明 missing 精灵也被算了进来，`Σstrategies > prepared`
+>   说明有本不属于本次加载的调用混入，`Σstrategies < prepared` 说明有精灵在策略解析之前就被跳过
+>   （资源损坏，见第 5 项）。
+> - `foreignMipmapCalls=0` ⇒ 本次加载里没有模组精灵 loader 自行生成 mipmap。
+>   `>0` 是**正常现象**（EU2/CodeChicken 一类的自定义精灵在自己的 `load` 里生成）：它说明出现了图集
+>   口径之外的生成调用——`load` 返回 false 的精灵随后还会被图集再生成一次（这正是要暴露的重复生成），
+>   返回 true 被 loader 独占的精灵则完全不进图集。这两种精灵在 `strategies` 里仍只计入会话生成的那
+>   一次，或完全不计（若图集没有拼接它们）。
 
 ### 5. 纹理过滤 / mipmap / RGSS（a52e323e、4a02b90e）
 
 落点：`src/main/java/com/dhj/actinium/render/terrain/VintageRenderPassConfigurationBuilder.java`
-（过滤模式事件）、`MipmapGenerator.effectiveStrategy` + `MixinTextureAtlasSprite`（策略计数，
-计入上面的图集摘要）。
+（过滤模式事件）、`MipmapGenerator.effectiveStrategy` + `AtlasLoadSession.prepare`（策略计数，
+计入上面的图集摘要）+ `MixinTextureAtlasSprite`（把本图集外的调用报成 `foreignMipmapCalls`）。
 
 **过滤模式事件**（logger `Actinium`，每次构建地形 pass 配置输出一行，即资源重载/进入世界时；
 过滤选项或 mipmap 选项改变后必然重建，所以这行同时就是「模式切换」日志）：
@@ -254,10 +264,24 @@ Terrain texture filtering: mode=RGSS_ANISOTROPIC anisotropy=4x texelSnap=true rg
 
 **各 mipmap 策略的精灵计数**：见第 4 项摘要的 `strategies=[...]`。取值是 `MipmapStrategy`
 枚举名，按枚举序号排列：`MEAN`（普通盒式过滤）、`CUTOUT`、`STRICT_CUTOUT`、`DARK_CUTOUT`；
-`AUTO` 已按精灵透明度解析成实际模式，因此不会出现。计数口径是
-`TextureAtlasSprite.generateMipmaps` 的调用次数（每个拼接精灵一次，物品图集同样统计）；mip
-层数为 0 时该调用不做实际生成，但策略仍会计入，此时 `Atlas build` 行的 `mipLevels=0` 即说明
-本次没有真正的 mip 链。
+`AUTO` 已按精灵透明度解析成实际模式，因此不会出现。
+
+计数口径是**图集会话自己生成的精灵**，不是 `TextureAtlasSprite.generateMipmaps` 的调用次数：一次图集
+加载的会话（`AtlasLoadSession.prepare`）知道本次要生成哪些精灵，它在 join 完所有生成之后按精灵回读
+`celeritas$generatedMipmapStrategy()`（`SpriteMipmapExtension`，由 `MixinTextureAtlasSprite` 在
+`generateMipmaps` HEAD 里解析并落字段）→ 每个精灵恰好计一次，`Σstrategies = prepared`（生成没走到策略
+解析的损坏精灵不计，见第 4 项判读要点），物品图集同样统计。因此以下两类调用**不会**污染计数（历史上
+它们会让计数比 `sprites` 还多）：
+
+- 模组自定义精灵 loader 在自己 `load` 里调用的 `generateMipmaps`（EU2 `SpriteGenBase`/
+  `SpriteSub`/`SpriteCompressed`、`codechicken.lib.texture.TextureSpecial` 等）——它们被计入
+  `foreignMipmapCalls`，会话随后是否再生成一次都不影响它们在 `strategies` 里至多一次；
+- `TextureMap.finishLoading` 里图集自带 missing 精灵的 `generateMipmaps`——它属于加载自己（会话把
+  missing 精灵视为本图集精灵），既不计入 `strategies`，也不计入 `foreignMipmapCalls`。
+
+mip 层数为 0 时上述生成不做实际层级，但策略仍会计入（每个会话精灵一次），此时 `Atlas build` 行的
+`mipLevels=0` 即说明本次没有真正的 mip 链。三条并行开关全关时没有会话，`strategies` 为空列表、
+`prepared=0`（此时该行不再承担策略分布的口径）。
 
 > 判读要点：`strategies` 里出现 `DARK_CUTOUT`/`STRICT_CUTOUT`/`CUTOUT` ⇒ 移植的策略在生效；
 > 全为 `MEAN` 说明当前资源包没有命中任何规则（叶子/花/蘑菇/玻璃/红石线路径名或 `.mcmeta`
@@ -384,7 +408,8 @@ entityId[specialQueries=1860,specialResolves=0,specialHits=1860,idCacheHits=1798
 | 4 | 批量图集上传 | `parallel=[...,batchedUpload=true]` 且 `batchedUploaded>0`；`phases.assembleMs` 有值 | `batchedUploaded=0`；或出现 `Batched atlas upload failed, remaining sprites use the per-sprite path`（WARN） |
 | 4 | 图集阶段耗时 | `phases=[stitchMs=..,prepareMs=..,assembleMs=..,totalMs=..]` | 三段之和 << `totalMs` ⇒ 时间花在逐精灵上传循环里（并行未覆盖的部分） |
 | 5 | 过滤模式 | `Terrain texture filtering: mode=... anisotropy=..x rgss=.. texelSnap=..` | `mode=NONE` 表示不加过滤；`mode` 与选项不一致但 `anisotropy=1x` ⇒ 驱动不支持各向异性，已按设计降级 |
-| 5 | mipmap 策略 | `Atlas build: ... strategies=[CUTOUT=..,STRICT_CUTOUT=..,DARK_CUTOUT=..]` | `strategies=[MEAN=<全部精灵数>]` ⇒ 没有精灵命中规则/元数据，移植未触发 |
+| 5 | mipmap 策略 | `Atlas build: ... strategies=[CUTOUT=..,STRICT_CUTOUT=..,DARK_CUTOUT=..]` 且 `Σstrategies = prepared = sprites-1` | `strategies=[MEAN=<全部会话精灵数>]` ⇒ 没有精灵命中规则/元数据，移植未触发；`Σstrategies` 与 `prepared` 不等 ⇒ 计数口径又偏了（见第 4/5 项） |
+| 5 | 模组精灵自行生成 | `foreignMipmapCalls=0` 表示本图集加载没有额外生成调用 | `foreignMipmapCalls>0` 属**正常**（EU2/CodeChicken 一类 loader 自建精灵）；它只说明这些精灵在 `strategies` 之外还有生成调用，不代表口径出错 |
 | 5 | gutter / mip 层 | `Atlas build: ... mipLevels=.. gutter=..` 与过滤行 `atlasMipLevels=.. gutter=..` 一致 | `gutter=0` ⇒ 未填充边界（mip=0 且非地形图集），此时各向异性路径不适用 |
 | 6 | pacer | `paced=[frames=N,paced=M,ratio>0%]`；`cfg=[mode=ON/MAILBOX ...]`；锁定后 `locked=true` | `mode=OFF cap=0` ⇒ 无任何限制；`ratio=0%` ⇒ 帧不受 pacer 纳管 |
 | 6 | FpsReducer | `reducer=[state=<非 FOCUSED>,cap=<非 0>]` + `FPS reducer: A -> B` 切换行 | `state=FOCUSED` 且 `cap=0` ⇒ 降帧未激活（窗口有焦点且未超时，属正常） |
@@ -394,20 +419,36 @@ entityId[specialQueries=1860,specialResolves=0,specialHits=1860,idCacheHits=1798
 
 ## 四、验证记录
 
-- `./gradlew check --no-daemon`（D:\Code\Actinium，Git Bash 正斜杠）：**通过**，
-  根项目测试 1196 项 0 失败（含本次新增）。
-- 本次新增/扩展的自动化测试（直接调用被测代码，无反射、无纯文本包含式断言）：
-  - `com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCacheStatsTest`（5 项）：
-    区间空报告、未命中编译计时与清空语义、会话均摊与 `estSavedCompileMs`、
-    命中率与 `n/a` 分支。
-  - `com.dhj.actinium.texture.atlas.AtlasLoadStatsTest`（3 项）：采集字段、
-    采集外的记录被丢弃（`isCollecting` 门控）、单行输出格式。
-  - `com.dhj.actinium.render.pacing.ReducerStatsTest`（4 项）：降帧状态段的四种形态。
-  - `FramePacerTest` 新增 2 项：被纳管帧计数与清空、无节流时不纳管。
-  - `TransformPatcherCacheTest` 新增 1 项：一次 miss + 一次 hit 的区间报告。
-  - `PBRResourceIndexTest` 新增 1 项：真实查询驱动的 `pbr[...]` 计数。
-  - `EntityIdHelperSpecialIdCacheTest` 新增 1 项：每个 id map 只重新解析一次。
-  - `PreviousMatrixSharingTest` 新增 1 项：共享实例数与读取数。
+- `./gradlew check --no-daemon`（D:\Code\Actinium，Git Bash 正斜杠）：**通过**。
+  2026-10-13 复跑：根项目测试 1205 项 0 失败（含下面两批）。
+
+### 图集 mipmap 策略计数口径修正（2026-10-13）
+
+- 症状：实机 `Atlas build` 行 `strategies=[MEAN=4032,CUTOUT=6460,STRICT_CUTOUT=158,DARK_CUTOUT=14]`
+  合计 10664，比 `sprites=10195` 还多 469——计数点原先在 `generateMipmaps` 的 mixin HEAD，凡窗口内的
+  调用都计（模组 loader 自调的、以及 EU2 那类 `load` 返回 false 后又被图集再生成一次的精灵被计两次）。
+- 改法：计数点移入图集会话（`AtlasLoadSession.prepare`，按它自己生成的精灵回读策略），mixin HEAD 只
+  把本图集之外、即无法归属本会话的调用报成 `foreignMipmapCalls`（非图集窗口不计）。
+- 新增/调整的自动化测试（直接调用被测代码，无反射、无纯文本包含式断言）：
+  - `com.dhj.actinium.texture.atlas.AtlasLoadSessionTest`（新增 2 项）：会话按自己生成的精灵计数
+    且 `Σstrategies = prepared = sprites-1`、missing 精灵属于本图集但不计策略、同名非同实例的精灵被判
+    为图集外、生成没走到策略解析的精灵不计入；测试按 `TextureMap` 驱动加载的方式直接跑
+    `begin`/`prepare`/`close`（策略回读接口在测试里由精灵子类实现）。
+  - `com.dhj.actinium.texture.atlas.AtlasLoadStatsTest`（3 → 4 项）：新增「foreign 计数只增、且不进
+    `strategies`」，并在采集项上补 foreign/策略断言、在空窗口项上断言窗口外调用被丢弃、
+    `describe` 断言带上新字段。
+
+### 本批日志最初新增/扩展的自动化测试（2026-10-12）
+
+- `com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCacheStatsTest`（5 项）：
+  区间空报告、未命中编译计时与清空语义、会话均摊与 `estSavedCompileMs`、
+  命中率与 `n/a` 分支。
+- `com.dhj.actinium.render.pacing.ReducerStatsTest`（4 项）：降帧状态段的四种形态。
+- `FramePacerTest` 新增 2 项：被纳管帧计数与清空、无节流时不纳管。
+- `TransformPatcherCacheTest` 新增 1 项：一次 miss + 一次 hit 的区间报告。
+- `PBRResourceIndexTest` 新增 1 项：真实查询驱动的 `pbr[...]` 计数。
+- `EntityIdHelperSpecialIdCacheTest` 新增 1 项：每个 id map 只重新解析一次。
+- `PreviousMatrixSharingTest` 新增 1 项：共享实例数与读取数。
 - **未验证（待实机）**：上述日志在真实光影包/资源包下的取值（本任务只保证格式与统计逻辑，
   不替用户跑 `runClient`）。
 

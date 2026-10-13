@@ -1,6 +1,7 @@
 package com.dhj.actinium.texture.atlas;
 
 import com.dhj.actinium.config.ActiniumRuntimeOptions;
+import com.dhj.actinium.texture.mipmap.SpriteMipmapExtension;
 import com.dhj.actinium.util.PrefetchLane;
 import com.gtnewhorizons.angelica.glsm.threading.AngelicaWorkers;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
@@ -38,7 +39,8 @@ import java.util.function.Function;
  * work overlap with the remaining decodes.
  *
  * <p>A session is created for the duration of one {@code TextureMap.loadTextureAtlas} call, and is
- * main-thread only.
+ * main-thread only. The set of sprites whose levels the load generates is handed to its workers as well, so
+ * the mipmap hook can tell a sprite of this load from one a mod loader generated for itself.
  */
 public final class AtlasLoadSession {
 
@@ -64,6 +66,7 @@ public final class AtlasLoadSession {
     private final TextureMap map;
     private final boolean decodeEnabled;
     private final boolean mipmapsEnabled;
+    private final TextureAtlasSprite missingImage;
 
     private Set<String> eligibleDomains = Set.of();
     private PrefetchLane<TextureAtlasSprite, Decoded> decodes;
@@ -75,31 +78,40 @@ public final class AtlasLoadSession {
 
     private final List<CompletableFuture<Void>> mipmaps = new ArrayList<>();
     private final Map<TextureAtlasSprite, Boolean> generated = new IdentityHashMap<>();
+    private final Set<TextureAtlasSprite> expected = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<int[][]> uploaded = Collections.newSetFromMap(new IdentityHashMap<>());
     private int mipmapsOffloaded;
     private int batchedUploads;
 
     private boolean closed;
 
-    private AtlasLoadSession(TextureMap map, IResourceManager manager, boolean decodeEnabled, boolean mipmapsEnabled) {
+    private AtlasLoadSession(TextureMap map, IResourceManager manager, TextureAtlasSprite missingImage,
+        boolean decodeEnabled, boolean mipmapsEnabled) {
         this.map = map;
         this.manager = manager;
+        this.missingImage = missingImage;
         this.decodeEnabled = decodeEnabled;
         this.mipmapsEnabled = mipmapsEnabled;
+        // The load generates this one itself, before the stitched sprites are known, so it is part of what the
+        // session expects to see rather than something generated for the sprite's own sake.
+        this.expected.add(missingImage);
     }
 
     /**
      * Returns null when the options ask for no parallel work at all, which leaves the vanilla path untouched.
      * The batched upload needs the session for its "already written" bookkeeping, so it is part of the gate.
+     *
+     * @param missingImage the atlas's own missing sprite, which the load generates itself, outside this
+     *                     session's generation
      */
-    public static AtlasLoadSession begin(TextureMap map, IResourceManager manager) {
+    public static AtlasLoadSession begin(TextureMap map, IResourceManager manager, TextureAtlasSprite missingImage) {
         final boolean decodeEnabled = ActiniumRuntimeOptions.enableParallelAtlasDecode();
         final boolean mipmapsEnabled = ActiniumRuntimeOptions.enableParallelAtlasMipmaps();
         if (!decodeEnabled && !mipmapsEnabled && !ActiniumRuntimeOptions.enableBatchedAtlasUpload()) {
             return null;
         }
 
-        final AtlasLoadSession session = new AtlasLoadSession(map, manager, decodeEnabled, mipmapsEnabled);
+        final AtlasLoadSession session = new AtlasLoadSession(map, manager, missingImage, decodeEnabled, mipmapsEnabled);
         active = session;
         return session;
     }
@@ -112,21 +124,51 @@ public final class AtlasLoadSession {
     /**
      * Seeds the decode lane, runs the vanilla per-sprite generation for every stitched sprite so its mipmaps
      * can overlap with the remaining decodes, and waits for both before the caller touches the frames.
+     *
+     * <p>These sprites are also what the atlas build report counts by mipmap mode: the session is the only
+     * place that knows which sprites the load itself generates levels for, so counting them here, after every
+     * generation it started has been joined, is what keeps a mod sprite loader's own generation out of the
+     * count.
      */
-    public void prepare(List<TextureAtlasSprite> sprites, TextureAtlasSprite missingImage,
-        Function<TextureAtlasSprite, ResourceLocation> locator, SpriteGenerator generator) {
-        beginDecodes(sprites, missingImage, locator);
+    public void prepare(List<TextureAtlasSprite> sprites, Function<TextureAtlasSprite, ResourceLocation> locator,
+        SpriteGenerator generator) {
+        // Filled before the generation starts: the mipmap hook reads it from whichever worker the session
+        // hands a sprite to, and an IdentityHashMap must not be read while the main thread is writing to it.
+        this.expected.addAll(sprites);
+
+        beginDecodes(sprites, locator);
         for (TextureAtlasSprite sprite : sprites) {
-            if (sprite == missingImage) {
+            if (sprite == this.missingImage) {
                 continue;
             }
             this.generated.put(sprite, generator.generate(sprite));
         }
         joinMipmaps();
+        recordStrategies();
     }
 
-    private void beginDecodes(List<TextureAtlasSprite> sprites, TextureAtlasSprite missingImage,
-        Function<TextureAtlasSprite, ResourceLocation> locator) {
+    /**
+     * Whether a generation call for this sprite belongs to the atlas load this session drives: the sprites its
+     * own generation covers, plus the atlas's missing image, which the load generates itself before the
+     * stitched sprites are known. Reading levels for any other sprite means something built them for itself,
+     * which the build report surfaces instead of counting it as one of the load's sprites.
+     */
+    public boolean expects(TextureAtlasSprite sprite) {
+        return this.expected.contains(sprite);
+    }
+
+    /**
+     * Reports every sprite this session generated levels for by the mode it generated them with. A sprite whose
+     * generation never reached the sprite's own hook - a broken resource the load skipped - has no mode to
+     * report and is left out.
+     */
+    private void recordStrategies() {
+        for (TextureAtlasSprite sprite : this.generated.keySet()) {
+            AtlasLoadStats.recordStrategy(((SpriteMipmapExtension) sprite).celeritas$generatedMipmapStrategy());
+        }
+    }
+
+    private void beginDecodes(List<TextureAtlasSprite> sprites, Function<TextureAtlasSprite, ResourceLocation> locator) {
         if (!this.decodeEnabled || this.decodes != null) {
             return;
         }
@@ -144,7 +186,7 @@ public final class AtlasLoadSession {
         final PrefetchLane<TextureAtlasSprite, Decoded> lane = new PrefetchLane<>(AngelicaWorkers::submit, lookahead(),
             AtlasLoadSession::dispose);
         for (TextureAtlasSprite sprite : sprites) {
-            if (sprite == missingImage) {
+            if (sprite == this.missingImage) {
                 continue;
             }
             lane.add(sprite, decodeTask(sprite, locator));

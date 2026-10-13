@@ -76,7 +76,7 @@ public abstract class MixinTextureAtlasParallelLoad implements AtlasSessionHolde
             previous.close();
         }
         this.angelica$atlasManager = manager;
-        this.angelica$atlasSession = AtlasLoadSession.begin((TextureMap) (Object) this, manager);
+        this.angelica$atlasSession = AtlasLoadSession.begin((TextureMap) (Object) this, manager, this.missingImage);
     }
 
     /** Starts the build report, so its total covers the whole load including the stitching. */
@@ -152,7 +152,7 @@ public abstract class MixinTextureAtlasParallelLoad implements AtlasSessionHolde
         }
 
         final long prepareStart = System.nanoTime();
-        session.prepare(stitched, this.missingImage, this::angelica$resourceLocationOf,
+        session.prepare(stitched, this::angelica$resourceLocationOf,
             sprite -> this.angelica$generateMipmaps(this.angelica$atlasManager, sprite));
         AtlasLoadStats.recordPrepare(System.nanoTime() - prepareStart);
 

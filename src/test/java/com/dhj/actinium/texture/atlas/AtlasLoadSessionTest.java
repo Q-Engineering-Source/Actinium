@@ -1,0 +1,175 @@
+package com.dhj.actinium.texture.atlas;
+
+import com.dhj.actinium.texture.mipmap.MipmapStrategy;
+import com.dhj.actinium.texture.mipmap.SpriteMipmapExtension;
+import dhj.embeddedt.embeddium.impl.texture.TextureFilterMode;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.renderer.texture.TextureMap;
+import net.minecraft.client.resources.IResource;
+import net.minecraft.client.resources.IResourceManager;
+import net.minecraft.util.ResourceLocation;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * The atlas session is the one place that knows which sprites an atlas load generates mipmaps for, so it is
+ * where the build report's strategy counts come from. The load is driven the way {@code TextureMap} drives it -
+ * the session hands a stitched sprite to the vanilla per-sprite generation - so the report is checked from the
+ * sprites it was given to the line it produces, not from a stub of the counting call.
+ */
+class AtlasLoadSessionTest {
+
+    private static final String DECODE_PROPERTY = "actinium.parallelAtlasDecode";
+    private static final String MIPMAPS_PROPERTY = "actinium.parallelAtlasMipmaps";
+    private static final String BATCHED_UPLOAD_PROPERTY = "actinium.batchedAtlasUpload";
+
+    /** A resource manager with no packs at all, which the decode lane is kept out of by the options. */
+    private static final IResourceManager MANAGER = new IResourceManager() {
+        @Override
+        public Set<String> getResourceDomains() {
+            return Set.of();
+        }
+
+        @Override
+        public IResource getResource(ResourceLocation location) {
+            throw new UnsupportedOperationException("this test's resource manager has no packs");
+        }
+
+        @Override
+        public List<IResource> getAllResources(ResourceLocation location) {
+            throw new UnsupportedOperationException("this test's resource manager has no packs");
+        }
+    };
+
+    private final String originalDecode = System.getProperty(DECODE_PROPERTY);
+    private final String originalMipmaps = System.getProperty(MIPMAPS_PROPERTY);
+    private final String originalBatchedUpload = System.getProperty(BATCHED_UPLOAD_PROPERTY);
+
+    @BeforeEach
+    void enableTheParallelMipmapPathTheSessionNeeds() {
+        // A session exists as soon as one of the three parallel paths is on. The decode lane stays off so no
+        // worker is involved and the test drives the generation itself.
+        System.setProperty(DECODE_PROPERTY, "false");
+        System.setProperty(MIPMAPS_PROPERTY, "true");
+        System.setProperty(BATCHED_UPLOAD_PROPERTY, "false");
+    }
+
+    @AfterEach
+    void restoreTheOptionsAndTheReport() {
+        restoreProperty(DECODE_PROPERTY, this.originalDecode);
+        restoreProperty(MIPMAPS_PROPERTY, this.originalMipmaps);
+        restoreProperty(BATCHED_UPLOAD_PROPERTY, this.originalBatchedUpload);
+        AtlasLoadStats.snapshot("test", 0, 1, TextureFilterMode.NONE, 1, false, 0L);
+    }
+
+    @Test
+    void countsEverySpriteItGeneratedOnceAndKeepsForeignSpritesOutOfTheReport() {
+        AtlasLoadStats.begin();
+
+        final TextureMap map = new TextureMap("textures/blocks");
+        final PreparedSprite missing = new PreparedSprite("missingno", MipmapStrategy.MEAN);
+        final PreparedSprite leaves = new PreparedSprite("minecraft:blocks/leaves_oak", MipmapStrategy.CUTOUT);
+        final PreparedSprite stone = new PreparedSprite("minecraft:blocks/stone", MipmapStrategy.MEAN);
+        final PreparedSprite glass = new PreparedSprite("minecraft:blocks/glass", MipmapStrategy.STRICT_CUTOUT);
+
+        final AtlasLoadSession session = AtlasLoadSession.begin(map, MANAGER, missing);
+        assertNotNull(session, "the parallel mipmap option is on, so the load has a session");
+        try {
+            assertSame(session, AtlasLoadSession.active());
+
+            // The load hands over every stitched sprite, the missing image among them: that one it generated
+            // itself, before the stitched sprites were known.
+            session.prepare(List.of(leaves, stone, glass, missing),
+                sprite -> new ResourceLocation("minecraft", "unused"), sprite -> true);
+            AtlasLoadStats.recordSprites(4);
+
+            assertTrue(session.expects(leaves));
+            assertTrue(session.expects(missing), "the load generates the missing image itself, so its call is not foreign");
+            assertFalse(session.expects(new PreparedSprite("minecraft:blocks/stone", MipmapStrategy.MEAN)),
+                "a sprite this atlas did not stitch generated its levels for itself, even with the name of one it did");
+        } finally {
+            session.close();
+        }
+
+        assertNull(AtlasLoadSession.active(), "no load is in progress, so nothing is attributed to one");
+
+        final AtlasLoadStats.Values values = AtlasLoadStats.snapshot("textures/blocks", 4, 16,
+            TextureFilterMode.RGSS, 1, false, 1L);
+
+        assertEquals(4, values.sprites());
+        assertEquals(3, values.prepared(), "the missing image is generated by the load, not by the session");
+        assertEquals(Map.of(MipmapStrategy.MEAN, 1, MipmapStrategy.CUTOUT, 1, MipmapStrategy.STRICT_CUTOUT, 1),
+            values.strategies());
+        assertEquals(values.prepared(), countedSprites(values), "Sigma strategies = prepared: one count per sprite, and no foreign call in it");
+        assertEquals(values.sprites() - 1, countedSprites(values), "the missing image is what makes sprites one larger than the counts");
+        assertEquals(0, values.foreignMipmapCalls(), "nothing generated outside the load's own sprites here");
+    }
+
+    @Test
+    void leavesOutASpriteWhoseGenerationNeverResolvedAMode() {
+        AtlasLoadStats.begin();
+
+        final TextureMap map = new TextureMap("textures/items");
+        final PreparedSprite missing = new PreparedSprite("missingno", null);
+        final PreparedSprite apple = new PreparedSprite("minecraft:items/apple", MipmapStrategy.MEAN);
+        final PreparedSprite broken = new PreparedSprite("minecraft:items/broken", null);
+
+        final AtlasLoadSession session = AtlasLoadSession.begin(map, MANAGER, missing);
+        try {
+            session.prepare(List.of(apple, broken), sprite -> new ResourceLocation("minecraft", "unused"), sprite -> true);
+        } finally {
+            session.close();
+        }
+
+        final AtlasLoadStats.Values values = AtlasLoadStats.snapshot("textures/items", 4, 16,
+            TextureFilterMode.NONE, 1, false, 1L);
+
+        assertEquals(2, values.prepared(), "the session ran the generation for both");
+        assertEquals(Map.of(MipmapStrategy.MEAN, 1), values.strategies(),
+            "a sprite the load skipped before its levels were built has no mode to report");
+        assertEquals(0, values.foreignMipmapCalls());
+    }
+
+    private static int countedSprites(AtlasLoadStats.Values values) {
+        return values.strategies().values().stream().mapToInt(Integer::intValue).sum();
+    }
+
+    private static void restoreProperty(String name, String value) {
+        if (value == null) {
+            System.clearProperty(name);
+        } else {
+            System.setProperty(name, value);
+        }
+    }
+
+    /**
+     * A sprite whose levels were generated with a mode the load can read back. The mixin that answers this in
+     * the game is not applied to a sprite class in a test, so the mode is handed in instead of scanned.
+     */
+    private static final class PreparedSprite extends TextureAtlasSprite implements SpriteMipmapExtension {
+
+        private final MipmapStrategy generatedMipmapStrategy;
+
+        private PreparedSprite(String name, MipmapStrategy generatedMipmapStrategy) {
+            super(name);
+            this.generatedMipmapStrategy = generatedMipmapStrategy;
+        }
+
+        @Override
+        public MipmapStrategy celeritas$generatedMipmapStrategy() {
+            return this.generatedMipmapStrategy;
+        }
+    }
+}

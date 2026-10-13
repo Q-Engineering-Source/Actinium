@@ -9,6 +9,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * One atlas load's observable facts, collected while the load runs and reported as a single line when it ends.
@@ -18,10 +19,11 @@ import java.util.Map;
  * where the load says which of them were in effect, which path the load actually took, and how long each
  * phase took, so the log answers "did the optimization run" without a profiler.</p>
  *
- * <p>Main thread only, like the load itself: the parallel work is joined before the load returns, so every
- * number here is complete by the time {@link #finish} reports it. When no load is in progress the recording
- * calls return on the first read, which is what keeps the per-sprite hooks off the atlas load's critical path
- * when the atlas is loaded for an unrelated reason.</p>
+ * <p>The numbers are written by the load itself: the parallel work is joined before the load returns, so every
+ * number here is complete by the time {@link #finish} reports it, and the strategy counts are read off the
+ * sprites once the atlas session has joined their generation. The one exception is
+ * {@link #recordForeignMipmapCall}, which the mipmap hook calls from whichever thread generates a sprite.
+ * When no load is in progress the recording calls return on the first read.</p>
  */
 public final class AtlasLoadStats {
 
@@ -40,6 +42,7 @@ public final class AtlasLoadStats {
     private static int mipmapsOffloaded;
     private static int batchedUploaded;
     private static final Map<MipmapStrategy, Integer> strategies = new EnumMap<>(MipmapStrategy.class);
+    private static final AtomicInteger foreignMipmapCalls = new AtomicInteger();
 
     private AtlasLoadStats() {}
 
@@ -52,7 +55,7 @@ public final class AtlasLoadStats {
                          boolean parallelMipmaps, boolean batchedUpload, int decodeSubmitted, int decoded,
                          int decodeFailures, boolean decodeDesynced, int mipmapsOffloaded, int batchedUploaded,
                          int prepared, long stitchNanos, long prepareNanos, long assembleNanos, long totalNanos,
-                         Map<MipmapStrategy, Integer> strategies) {}
+                         Map<MipmapStrategy, Integer> strategies, int foreignMipmapCalls) {}
 
     /** Starts a load's collection, discarding whatever an interrupted previous load left behind. */
     public static void begin() {
@@ -82,6 +85,7 @@ public final class AtlasLoadStats {
         mipmapsOffloaded = 0;
         batchedUploaded = 0;
         strategies.clear();
+        foreignMipmapCalls.set(0);
     }
 
     public static void recordStitch(long nanos) {
@@ -120,10 +124,24 @@ public final class AtlasLoadStats {
         if (isCollecting()) batchedUploaded = count;
     }
 
-    /** Counts one sprite by the mipmap strategy its levels were generated with. */
+    /**
+     * Counts one sprite by the mipmap strategy its levels were generated with. Every sprite the atlas session
+     * generated belongs here exactly once; a sprite without a resolved mode (its generation never reached the
+     * sprite's own hook) is left out.
+     */
     public static void recordStrategy(MipmapStrategy strategy) {
         if (strategy == null || !isCollecting()) return;
         strategies.merge(strategy, 1, Integer::sum);
+    }
+
+    /**
+     * Counts a {@code generateMipmaps} call for a sprite the atlas load in progress does not generate for
+     * itself, which is what a mod's sprite loader building its own levels looks like from the atlas. These
+     * calls arrive from whichever thread ran the loader, so the count is atomic; a call arriving outside a
+     * load belongs to no report and is dropped.
+     */
+    public static void recordForeignMipmapCall() {
+        if (isCollecting()) foreignMipmapCalls.incrementAndGet();
     }
 
     /**
@@ -148,7 +166,8 @@ public final class AtlasLoadStats {
         final Values values = new Values(atlas, sprites, mipLevels, gutter, filterMode, anisotropy, texelSnap,
             AngelicaWorkers.threads(), decodeSubmitted > 0 || decoded > 0, mipmapsOffloaded > 0, batchedUploaded > 0,
             decodeSubmitted, decoded, decodeFailures, decodeDesynced, mipmapsOffloaded, batchedUploaded, prepared,
-            stitchNanos, prepareNanos, assembleNanos, totalNanos, new EnumMap<>(strategies));
+            stitchNanos, prepareNanos, assembleNanos, totalNanos, new EnumMap<>(strategies),
+            foreignMipmapCalls.get());
         loadStartNanos = 0L;
         reset();
         return values;
@@ -188,7 +207,8 @@ public final class AtlasLoadStats {
             first = false;
             sb.append(entry.getKey()).append('=').append(entry.getValue());
         }
-        return sb.append(']').toString();
+        sb.append(']');
+        return sb.append(" foreignMipmapCalls=").append(values.foreignMipmapCalls()).toString();
     }
 
     private static String millis(long nanos) {

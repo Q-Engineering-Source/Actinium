@@ -24,8 +24,8 @@ PR #2167）的 **A 部分**（图集加载并行化）。该提交的 **B 部分
   在工作线程上把各 mip 层的扩散边像素写进 client staging buffer，每带每层提交一次纹理上传；
   写过的精灵通过回调登记，per-sprite 上传路径据此跳过。不能批量的地方（选项关闭、放置越界、
   对齐不符、带提交失败）一律回退到逐精灵上传。
-- `texture/atlas/AtlasLoadSession.java`（新增）：一次图集加载的并行工作与会话状态，
-  1.12.2 结构适配见下。
+- `texture/atlas/AtlasLoadSession.java`（新增）：一次图集加载的并行工作与会话状态（本图集的精灵集合、
+  策略计数见「实质差异」第 9 条），1.12.2 结构适配见下。
 - `texture/atlas/AtlasPackPolicy.java`（新增）：worker 线程可读的资源域判定
   （原生文件夹/zip 包按类信任 + 探针，其余包按类名由玩家授权，未授权的域整个串行并记录）。
 - `texture/atlas/MipmapSafety.java`（新增）：能否把某个精灵的 mipmap 生成放到工作线程。
@@ -99,6 +99,13 @@ PR #2167）的 **A 部分**（图集加载并行化）。该提交的 **B 部分
 8. **AT 新增三条**：`SimpleReloadableResourceManager.domainResourceManagers`（private）、
    `FallbackResourceManager.resourcePacks`（protected）、`FileResourcePack.getResourcePackZipFile()`（private）。
    上游靠 mcpatcherforge 的 AT 文件开放前两条（该文件 Actinium 没有）。
+9. **策略计数落在会话里**：图集构建摘要的 `strategies=[...]` 不再数 `generateMipmaps` 的调用次数，
+   而是会话按**自己生成的精灵**回读 `SpriteMipmapExtension.celeritas$generatedMipmapStrategy()`
+   （`MixinTextureAtlasSprite` 在 `generateMipmaps` HEAD 里解析并落字段），因此每个会话精灵恰好计一次
+   （`Σstrategies = prepared = sprites - 1`）。本图集之外的调用——模组精灵 loader 在自己的 `load` 里
+   生成、以及随后又被图集生成一次的重复生成——报成 `foreignMipmapCalls`；非图集窗口的调用不计。
+   顺带消掉了原先在 `generateMipmaps` HEAD 里从工作线程写 `AtlasLoadStats` 的竞态。计数口径的日志
+   说明见 `docs/research/sdl-gpu-port-stats-logging.md` 第 4/5 项。
 
 ## 选项与界面
 

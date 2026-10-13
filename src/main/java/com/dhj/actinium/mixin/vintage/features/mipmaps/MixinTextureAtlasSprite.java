@@ -2,10 +2,12 @@ package com.dhj.actinium.mixin.vintage.features.mipmaps;
 
 import com.dhj.actinium.texture.mipmap.TextureMetadataExtension;
 import com.dhj.actinium.texture.SpriteExtension;
+import com.dhj.actinium.texture.atlas.AtlasLoadSession;
 import com.dhj.actinium.texture.atlas.AtlasLoadStats;
 import com.dhj.actinium.texture.mipmap.MipmapGenerator;
 import com.dhj.actinium.texture.mipmap.MipmapStrategies;
 import com.dhj.actinium.texture.mipmap.MipmapStrategy;
+import com.dhj.actinium.texture.mipmap.SpriteMipmapExtension;
 import com.dhj.actinium.texture.mipmap.SpriteMipmaps;
 import dhj.embeddedt.embeddium.impl.render.chunk.sprite.SpriteTransparencyLevel;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
@@ -28,9 +30,14 @@ import java.util.List;
  * <p>The strategy arrives in two ways: a {@code mipmap_strategy} key on the sprite's {@code .mcmeta}, or the
  * name-based fallback in {@link MipmapStrategies}. Both are read when the sprite's frames are loaded, which is
  * the last moment before generation that has the sprite and its resource together.
+ *
+ * <p>The mode a generation really used is exposed through {@link SpriteMipmapExtension}: the atlas build
+ * report reads it off the sprites the atlas load prepared, and this class only reports the calls that load
+ * does not cover.
  */
 @Mixin(TextureAtlasSprite.class)
-public abstract class MixinTextureAtlasSprite implements SpriteExtension, SpriteTransparencyLevel.Holder {
+public abstract class MixinTextureAtlasSprite implements SpriteExtension, SpriteMipmapExtension,
+    SpriteTransparencyLevel.Holder {
 
     @Unique
     private static final String METADATA_TEXTURE = "texture";
@@ -54,15 +61,25 @@ public abstract class MixinTextureAtlasSprite implements SpriteExtension, Sprite
     @Unique
     private boolean celeritas$hasTransparentTexels;
 
+    @Unique
+    private MipmapStrategy celeritas$generatedMipmapStrategy;
+
     @Inject(method = "generateMipmaps", at = @At("HEAD"))
     private void celeritas$processSprite(int mipLevel, CallbackInfo ci) {
         final SpriteMipmaps.Transparency transparency = SpriteMipmaps.scan(this.framesTextureData);
         this.embeddium$transparencyLevel = transparency.level();
         this.celeritas$hasTransparentTexels = transparency.hasTransparentTexels();
-        // The atlas build report counts the mode each sprite's levels were really generated with, which is
-        // what makes the ported strategies visible as "these sprites got CUTOUT, those got MEAN".
-        AtlasLoadStats.recordStrategy(
-            MipmapGenerator.effectiveStrategy(celeritas$resolvedStrategy(), this.celeritas$hasTransparentTexels));
+        this.celeritas$generatedMipmapStrategy =
+            MipmapGenerator.effectiveStrategy(celeritas$resolvedStrategy(), this.celeritas$hasTransparentTexels);
+
+        // A mod's sprite loader may build a sprite's levels itself, and the atlas load then builds them a
+        // second time, or never, when the loader claims the sprite. Generation for a sprite the atlas load in
+        // progress does not cover is reported as such instead of being counted as one of its sprites; the
+        // session counts its own sprites off the sprites it prepared.
+        final AtlasLoadSession session = AtlasLoadSession.active();
+        if (session != null && !session.expects((TextureAtlasSprite) (Object) this)) {
+            AtlasLoadStats.recordForeignMipmapCall();
+        }
     }
 
     /**
@@ -102,7 +119,10 @@ public abstract class MixinTextureAtlasSprite implements SpriteExtension, Sprite
         return ((TextureMetadataExtension) section).angelica$getMipmapStrategy();
     }
 
-    /** The strategy to generate with, or null to let the generator resolve it from the transparency scan. */
+    /**
+     * The strategy this sprite asks generation with, or null to let the generator resolve it from the
+     * transparency scan. {@link MipmapGenerator#effectiveStrategy} turns either into the reported mode.
+     */
     @Unique
     private MipmapStrategy celeritas$resolvedStrategy() {
         return SpriteMipmaps.resolve(this.celeritas$mipmapStrategy, this.celeritas$mipmapStrategyExplicit,
@@ -117,7 +137,12 @@ public abstract class MixinTextureAtlasSprite implements SpriteExtension, Sprite
             target = "Lnet/minecraft/client/renderer/texture/TextureUtil;generateMipmapData(II[[I)[[I"))
     private int[][] celeritas$generateMipmapData(int mipLevel, int width, int[][] currentMips) {
         return MipmapGenerator.generateMipLevels(mipLevel, width, currentMips,
-            celeritas$resolvedStrategy(), this.celeritas$hasTransparentTexels);
+            this.celeritas$generatedMipmapStrategy, this.celeritas$hasTransparentTexels);
+    }
+
+    @Override
+    public MipmapStrategy celeritas$generatedMipmapStrategy() {
+        return this.celeritas$generatedMipmapStrategy;
     }
 
     @Override
