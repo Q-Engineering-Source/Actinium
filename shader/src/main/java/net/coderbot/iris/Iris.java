@@ -81,6 +81,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -731,10 +732,11 @@ public class Iris {
     public static void warmupShaderTransforms() {
         final ShaderPack pack = currentPack;
         if (pack == null) return;
+        final String packName = currentPackName;
         try {
             final String dimensionName = lastDimensionName != null ? lastDimensionName : DimensionId.OVERWORLD.getCanonicalId();
             GLSMHooks.uniformBlockBarrier = Iris::awaitProgramSetWarmup;
-            logger.info("[ShaderTransformCache] warmup submitted source=loadedPack dimension={}", dimensionName);
+            logger.info("[ShaderTransformCache] warmup submitted source=loadedPack pack={} dimension={}", packName, dimensionName);
             // Only the harvest and the submissions are waited on: what the barrier waits for is the
             // uniform blocks, and waiting for the transforms too would serialise pack loading.
             final CompletableFuture<List<CompletableFuture<?>>> submitted = ShaderTransformExecutor.submitTracked(() -> {
@@ -743,7 +745,7 @@ public class Iris {
                 return DeferredWorldRenderingPipeline.warmupTransforms(programs);
             });
             programSetWarmup = submitted.thenAccept(transforms -> { });
-            submitted.whenComplete((transforms, failure) -> reportWarmup("loadedPack", transforms, failure));
+            submitted.whenComplete((transforms, failure) -> reportWarmup("loadedPack", packName, transforms, failure));
         } catch (Throwable t) {
             logger.warn("Early shader transform warmup failed; transforms will run at pipeline creation", t);
         }
@@ -756,7 +758,8 @@ public class Iris {
      * periodic {@code transform[...]} segment matters - a warmup that did not fill the cache means the
      * pipeline built next transforms on the frame that opens the world.
      */
-    private static void reportWarmup(String source, @Nullable List<CompletableFuture<?>> transforms, @Nullable Throwable failure) {
+    private static void reportWarmup(String source, String packName, @Nullable List<CompletableFuture<?>> transforms,
+                                     @Nullable Throwable failure) {
         if (failure != null || transforms == null) {
             logger.warn("Early shader transform warmup failed; transforms will run at pipeline creation",
                 failure != null ? failure : new IllegalStateException("warmup ended without a submitted transform list"));
@@ -768,8 +771,8 @@ public class Iris {
                     logger.warn("Early shader transform warmup failed; transforms will run at pipeline creation", transformFailure);
                     return;
                 }
-                logger.info("[ShaderTransformCache] warmup done source={} submitted={} cacheSizeAfter={}",
-                    source, transforms.size(), TransformPatcher.cacheSize());
+                logger.info("[ShaderTransformCache] warmup done source={} pack={} submitted={} cacheSizeAfter={}",
+                    source, packName, transforms.size(), TransformPatcher.cacheSize());
             });
     }
 
@@ -781,10 +784,10 @@ public class Iris {
      * transform cache: the harvested uniform blocks describe the pack the pipeline compiles for, and
      * publishing them before that pipeline exists would describe a pack nothing renders with.</p>
      */
-    public static void warmupPreparedTransforms(ProgramSet programs) {
-        logger.info("Warming the transforms of the shaderpack read ahead of time");
+    public static void warmupPreparedTransforms(String packName, ProgramSet programs) {
+        logger.info("Warming the transforms of shaderpack \"{}\" read ahead of time", packName);
         ShaderTransformExecutor.submitTracked(() -> DeferredWorldRenderingPipeline.warmupTransforms(programs))
-            .whenComplete((transforms, failure) -> reportWarmup("readAheadPack", transforms, failure));
+            .whenComplete((transforms, failure) -> reportWarmup("readAheadPack", packName, transforms, failure));
     }
 
     /**
@@ -808,7 +811,47 @@ public class Iris {
     /** A pack that a pre-read produced, together with the program set to warm before it is loaded. */
     private record PreRead(PreparedPack pack, ProgramSet programs) {}
 
+    /**
+     * A reader for the pack the config has selected: the name it will be loaded under, and the supplier
+     * that reads it. Built on the calling thread, run on the warmup thread.
+     */
+    public record SelectedPackReader(String name, Supplier<ProgramSet> read) {}
+
     private static volatile SoftReference<PreparedPack> preparedPack;
+    /** Whether the read-ahead warmup has already run for the current pack selection. */
+    private static boolean shaderWarmupClaimed;
+
+    /**
+     * {@return whether this caller should read the selected pack ahead of time}
+     *
+     * <p>True once per selection: reading the pack and preloading the classes it is compiled with only
+     * has to happen for the first title screen shown for that selection. {@link
+     * #invalidatePreparedPack()} hands the warmup back, so a pack selected later is read too.</p>
+     *
+     * <p>The claim lives here, not in the warmup that takes it: the pack screen that gives it back is
+     * part of this module and cannot reach the warmup, which is not.</p>
+     *
+     * <p>Main thread only: claimed by the shader warmup when the title screen is built, and reset by the
+     * shader pack screen when it applies another selection.</p>
+     */
+    public static boolean claimShaderWarmup() {
+        if (shaderWarmupClaimed) {
+            return false;
+        }
+        shaderWarmupClaimed = true;
+        return true;
+    }
+
+    /**
+     * Drops the pack read ahead of time, and lets {@link #claimShaderWarmup()} succeed again: the
+     * selection just changed, so what was read describes a pack that is not going to be loaded.
+     *
+     * <p>Main thread only.</p>
+     */
+    public static void invalidatePreparedPack() {
+        preparedPack = null;
+        shaderWarmupClaimed = false;
+    }
 
     /**
      * {@return a reader that reads the selected pack into {@link #preparedPack}, or null when there is
@@ -819,23 +862,24 @@ public class Iris {
      * main menu, and the program set it returns is the one to warm before the pack is really loaded.</p>
      */
     @Nullable
-    public static Supplier<ProgramSet> prepareSelectedShaderPack() {
+    public static SelectedPackReader prepareSelectedShaderPack() {
         if (irisConfig == null || currentPack != null) return null;
         final Optional<String> name = irisConfig.getShaderPackName();
         if (name.isEmpty()) return null;
+        final String packName = name.get();
         final List<StringPair> environmentDefines = new ArrayList<>();
         StandardMacros.createStandardEnvironmentDefines().forEach(environmentDefines::add);
-        return () -> {
+        return new SelectedPackReader(packName, () -> {
             try {
-                final PreRead read = readPreparedPack(name.get(), environmentDefines);
+                final PreRead read = readPreparedPack(packName, environmentDefines);
                 if (read == null) return null;
                 preparedPack = new SoftReference<>(read.pack());
                 return read.programs();
             } catch (Exception e) {
-                logger.debug("Could not read shaderpack \"{}\" ahead of time", name.get(), e);
+                logger.debug("Could not read shaderpack \"{}\" ahead of time", packName, e);
                 return null;
             }
-        };
+        });
     }
 
     @Nullable
@@ -865,16 +909,55 @@ public class Iris {
      * {@return the pack read ahead of time, or null when it cannot be reused}
      *
      * <p>Only the fingerprint decides: a changed pack file, option, or environment define makes the
-     * prepared pack stale, and the caller reads the pack normally.</p>
+     * prepared pack stale, and the caller reads the pack normally. Every rejection is reported with its
+     * cause: a pack that is read twice is exactly what the read-ahead exists to avoid, so a load whose
+     * log does not say it reused the pack has to say why it could not.</p>
      */
     @Nullable
     private static ShaderPack takePreparedPack(String name, @Nullable String packState) {
         final SoftReference<PreparedPack> reference = preparedPack;
         preparedPack = null;
-        final PreparedPack prepared = reference != null ? reference.get() : null;
-        if (prepared == null || !prepared.settings().equals(packState)) return null;
+        if (reference == null) {
+            logger.info("Shaderpack \"{}\": no pack was read ahead of this load", name);
+            return null;
+        }
+        final PreparedPack prepared = reference.get();
+        if (prepared == null) {
+            logger.info("Shaderpack \"{}\": the pack read ahead was reclaimed before this load", name);
+            return null;
+        }
+        if (!prepared.settings().equals(packState)) {
+            logger.info("Shaderpack \"{}\": the pack read ahead no longer matches the selection, {}",
+                name, firstDifferingLine(prepared.settings(), packState));
+            return null;
+        }
         logger.info("Reusing shaderpack \"{}\" read earlier, nothing it was read from has changed", name);
         return prepared.pack();
+    }
+
+    /**
+     * {@return the line two pack fingerprints first differ in, or the fact that one of them is missing}
+     *
+     * <p>A fingerprint lists the pack file, its files, options and environment defines in a fixed order,
+     * so naming the first line that differs names what made the pack read ahead stale.</p>
+     */
+    private static String firstDifferingLine(@Nullable String read, @Nullable String selected) {
+        if (read == null) return "nothing was read ahead";
+        if (selected == null) return "the selection could not be described";
+
+        final Iterator<String> readLines = read.lines().iterator();
+        final Iterator<String> selectedLines = selected.lines().iterator();
+        int line = 1;
+        while (readLines.hasNext() && selectedLines.hasNext()) {
+            final String left = readLines.next();
+            final String right = selectedLines.next();
+            if (!left.equals(right)) {
+                return "line " + line + ": read=\"" + left + "\" selected=\"" + right + "\"";
+            }
+            line++;
+        }
+
+        return "the fingerprints have different lengths from line " + line;
     }
 
     private static Map<String, String> readChangedConfigs(Path shaderPackConfigTxt) {

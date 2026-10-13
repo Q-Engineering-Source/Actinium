@@ -15,55 +15,55 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.List;
-import java.util.function.Supplier;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 /**
- * Prepares the first shader pack load on a background thread while the game sits at the main menu:
- * the shader classes are resolved ahead of time, the selected pack is read through
- * {@link Iris#prepareSelectedShaderPack()}, and the transforms of the program set that read returned
- * are warmed on the transform pool, so loading the pack finds them cached.
+ * Prepares a shader pack load on a background thread while the game sits at the main menu: the shader
+ * classes are resolved ahead of time, the selected pack is read through
+ * {@link Iris#prepareSelectedShaderPack()}, and the transforms of the program set that read returned are
+ * warmed on the transform pool, so loading the pack finds them cached.
+ *
+ * <p>Runs once per pack selection. {@link Iris#invalidatePreparedPack()} lets it run again, which is how
+ * a selection applied after the first title screen is read ahead too.</p>
  */
 public final class ShaderWarmup {
     private static final Logger LOGGER = LogManager.getLogger("Actinium/ShaderWarmup");
     private static final String[] PACKAGES = { "net/coderbot/iris/", "kroppeb/stareval/" };
     private static final String SKIPPED_PACKAGE = "net/coderbot/iris/compat/dh/";
 
-    private static boolean started;
-
     private ShaderWarmup() {}
 
     /** Main thread only. */
     public static void start() {
-        if (started) return;
-        started = true;
-        final Supplier<ProgramSet> readSelectedPack = Iris.prepareSelectedShaderPack();
-        final Thread thread = new Thread(() -> warmUp(readSelectedPack), "Actinium-Shader-Warmup");
+        if (!Iris.claimShaderWarmup()) return;
+        final Iris.SelectedPackReader selected = Iris.prepareSelectedShaderPack();
+        final Thread thread = new Thread(() -> warmUp(selected), "Actinium-Shader-Warmup");
         thread.setDaemon(true);
         thread.setPriority(Thread.MIN_PRIORITY);
         thread.start();
     }
 
-    private static void warmUp(@Nullable Supplier<ProgramSet> readSelectedPack) {
+    private static void warmUp(@Nullable Iris.SelectedPackReader selected) {
         final long startNanos = System.nanoTime();
         LOGGER.info("Shader warmup: preloading shader classes");
         preloadClasses();
-        if (readSelectedPack == null) {
+        if (selected == null) {
             LOGGER.info("Shader warmup: no shaderpack selected to read ahead, done in {}ms",
                 elapsedMillis(startNanos));
             return;
         }
-        LOGGER.info("Shader warmup: reading the selected shaderpack ahead of time");
-        final ProgramSet programs = readSelectedPack.get();
+        LOGGER.info("Shader warmup: reading the shaderpack \"{}\" ahead of time", selected.name());
+        final ProgramSet programs = selected.read().get();
         if (programs == null) {
-            LOGGER.info("Shader warmup: nothing was read ahead, done in {}ms", elapsedMillis(startNanos));
+            LOGGER.info("Shader warmup: nothing of \"{}\" was read ahead, done in {}ms",
+                selected.name(), elapsedMillis(startNanos));
             return;
         }
-        Iris.warmupPreparedTransforms(programs);
-        LOGGER.info("Shader warmup: read the selected pack ahead and submitted its transform warmup in {}ms",
-            elapsedMillis(startNanos));
+        Iris.warmupPreparedTransforms(selected.name(), programs);
+        LOGGER.info("Shader warmup: read the shaderpack \"{}\" ahead and submitted its transform warmup in {}ms",
+            selected.name(), elapsedMillis(startNanos));
     }
 
     private static String elapsedMillis(long startNanos) {

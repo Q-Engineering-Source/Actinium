@@ -594,6 +594,13 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
         final String previousPackName = Iris.getIrisConfig().getShaderPackName().orElse(null);
         final boolean previousShadersEnabled = Iris.getIrisConfig().areShadersEnabled();
 
+        // The pack read ahead describes the selection that was in place when it was read, so applying
+        // another one has to drop it: otherwise the next load pays to read the pack it is not going to
+        // use, and the read-ahead never runs again for a selection made after the first title screen.
+        if (!name.equals(previousPackName)) {
+            Iris.invalidatePreparedPack();
+        }
+
         if (ShaderPackApplyLogic.shouldReloadOnApply(name, previousPackName, enabled, previousShadersEnabled,
                 Iris.getShaderPackOptionQueue().isEmpty(), Iris.shouldResetShaderPackOptionsOnNextReload(),
                 Iris.getCurrentPack().isPresent(), Iris.isFallback())) {
