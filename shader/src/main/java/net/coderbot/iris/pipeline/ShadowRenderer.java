@@ -497,12 +497,17 @@ public class ShadowRenderer {
 
 		final boolean playerIsSpectator = GameModeUtil.isSpectator();
 		final EntityPlayer player = Minecraft.getMinecraft().player;
+		final RenderManager renderManager = Minecraft.getMinecraft().getRenderManager();
 
 		for (Entity entity : getLevel().loadedEntityList) {
 			if (playerIsSpectator && entity == player) continue;
 			if (Rfp2Compat.isPlayerDummy(entity)) continue;
 
-			if (!entity.ignoreFrustumCheck && !frustum.isBoundingBoxInFrustum(entity.getEntityBoundingBox())) continue;
+			// Vanilla only reaches renderEntityStatic for entities that pass RenderManager#shouldRender, whose
+			// first clause is Entity#isInRangeToRender3d. An entity that opts out of range rendering there
+			// (placeholder/proxy entities do, while their target is missing) must not be drawn here either:
+			// nothing in this pass stands in front of the lightmap lookup renderEntityStatic starts with.
+			if (!renderManager.shouldRender(entity, frustum, cameraX, cameraY, cameraZ)) continue;
 
 			renderedEntitiesList.add(entity);
 		}
@@ -515,7 +520,6 @@ public class ShadowRenderer {
 
 		setupEntityShadowState(modelView, cameraX, cameraY, cameraZ);
 		try {
-			RenderManager renderManager = Minecraft.getMinecraft().getRenderManager();
 			for (Entity entity : renderedEntitiesList) {
 				renderManager.renderEntityStatic(entity, tickDelta, false);
 			}
@@ -614,15 +618,16 @@ public class ShadowRenderer {
 		profiler.startSection("cull");
 
 		Entity player = Minecraft.getMinecraft().player;
+		RenderManager renderManager = Minecraft.getMinecraft().getRenderManager();
 
-		// Skip if spectating or outside frustum
+		// Skip if spectating, or if the player would not be drawn in the main pass either
 		if (GameModeUtil.isSpectator()) {
 			profiler.endSection();
 			renderedShadowEntities = 0;
 			return;
 		}
 
-		if (!player.ignoreFrustumCheck && !frustum.isBoundingBoxInFrustum(player.getEntityBoundingBox())) {
+		if (!renderManager.shouldRender(player, frustum, cameraX, cameraY, cameraZ)) {
 			profiler.endSection();
 			renderedShadowEntities = 0;
 			return;
@@ -634,7 +639,6 @@ public class ShadowRenderer {
 
 		setupEntityShadowState(modelView, cameraX, cameraY, cameraZ);
 		try {
-			RenderManager renderManager = Minecraft.getMinecraft().getRenderManager();
 			for (Entity passenger : player.getPassengers()) {
 				renderManager.renderEntityStatic(passenger, tickDelta, false);
 				shadowEntities++;
