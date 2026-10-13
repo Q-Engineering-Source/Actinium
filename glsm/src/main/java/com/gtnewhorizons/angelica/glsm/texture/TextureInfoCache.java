@@ -47,6 +47,22 @@ public class TextureInfoCache {
         }
     }
 
+    @Nullable
+    public TextureInfo peekInfo(int id) {
+        if (id < 0) return null;
+
+        if (GLStateManager.isSplashComplete()) {
+            return cache.get(id);
+        }
+
+        lock.lock();
+        try {
+            return cache.get(id);
+        } finally {
+            lock.unlock();
+        }
+    }
+
     public void onTexImage2D(int target, int level, int internalformat, int width, int height, int border, int format, int type, @Nullable Buffer pixels) {
         if (isTrackedTarget(target) && level == 0) {
             final TextureInfo info = getInfo(GLStateManager.getBoundTextureForServerState());
