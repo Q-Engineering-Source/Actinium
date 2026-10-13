@@ -735,27 +735,42 @@ public class Iris {
             final String dimensionName = lastDimensionName != null ? lastDimensionName : DimensionId.OVERWORLD.getCanonicalId();
             GLSMHooks.uniformBlockBarrier = Iris::awaitProgramSetWarmup;
             logger.info("[ShaderTransformCache] warmup submitted source=loadedPack dimension={}", dimensionName);
-            programSetWarmup = ShaderTransformExecutor.submitTracked(() -> {
+            // Only the harvest and the submissions are waited on: what the barrier waits for is the
+            // uniform blocks, and waiting for the transforms too would serialise pack loading.
+            final CompletableFuture<List<CompletableFuture<?>>> submitted = ShaderTransformExecutor.submitTracked(() -> {
                 final ProgramSet programs = pack.getProgramSet(dimensionName);
                 PerFrameUniformBlockHarvester.harvest(programs);
-                DeferredWorldRenderingPipeline.warmupTransforms(programs);
-            }).whenComplete((ignored, failure) -> logWarmupCompletion("loadedPack", failure));
+                return DeferredWorldRenderingPipeline.warmupTransforms(programs);
+            });
+            programSetWarmup = submitted.thenAccept(transforms -> { });
+            submitted.whenComplete((transforms, failure) -> reportWarmup("loadedPack", transforms, failure));
         } catch (Throwable t) {
             logger.warn("Early shader transform warmup failed; transforms will run at pipeline creation", t);
         }
     }
 
     /**
-     * Reports how a transform warmup ended, so the periodic {@code transform[...]} segment showing no
-     * misses at pipeline creation can be traced back to a warmup that really did run to completion.
+     * Reports how a transform warmup ended, once the transforms it submitted have finished: the cache
+     * size at submission time says nothing, because none of the submitted work has run yet. A warmup
+     * that ends without a submitted list, or with one that failed, is reported for the same reason the
+     * periodic {@code transform[...]} segment matters - a warmup that did not fill the cache means the
+     * pipeline built next transforms on the frame that opens the world.
      */
-    private static void logWarmupCompletion(String source, @Nullable Throwable failure) {
-        if (failure != null) {
-            logger.warn("[ShaderTransformCache] warmup failed source=" + source
-                + "; transforms will run at pipeline creation", failure);
+    private static void reportWarmup(String source, @Nullable List<CompletableFuture<?>> transforms, @Nullable Throwable failure) {
+        if (failure != null || transforms == null) {
+            logger.warn("Early shader transform warmup failed; transforms will run at pipeline creation",
+                failure != null ? failure : new IllegalStateException("warmup ended without a submitted transform list"));
             return;
         }
-        logger.info("[ShaderTransformCache] warmup done source={} cacheSize={}", source, TransformPatcher.cacheSize());
+        CompletableFuture.allOf(transforms.toArray(new CompletableFuture<?>[0]))
+            .whenComplete((ignored, transformFailure) -> {
+                if (transformFailure != null) {
+                    logger.warn("Early shader transform warmup failed; transforms will run at pipeline creation", transformFailure);
+                    return;
+                }
+                logger.info("[ShaderTransformCache] warmup done source={} submitted={} cacheSizeAfter={}",
+                    source, transforms.size(), TransformPatcher.cacheSize());
+            });
     }
 
     /**
@@ -769,7 +784,7 @@ public class Iris {
     public static void warmupPreparedTransforms(ProgramSet programs) {
         logger.info("Warming the transforms of the shaderpack read ahead of time");
         ShaderTransformExecutor.submitTracked(() -> DeferredWorldRenderingPipeline.warmupTransforms(programs))
-            .whenComplete((ignored, failure) -> logWarmupCompletion("readAheadPack", failure));
+            .whenComplete((transforms, failure) -> reportWarmup("readAheadPack", transforms, failure));
     }
 
     /**

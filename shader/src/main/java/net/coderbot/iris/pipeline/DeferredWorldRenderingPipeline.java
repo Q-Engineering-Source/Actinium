@@ -2254,44 +2254,48 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	 *
 	 * <p>Called ahead of the pipeline, for the dimension a world is about to render with: the work
 	 * then overlaps with the rest of pack loading instead of sitting on the frame that opens the
-	 * world. Nothing is awaited here - the futures are the same ones the constructor submits and
-	 * joins, so a warmup that is still running only means the constructor waits for it.</p>
+	 * world. Nothing is awaited here - the returned futures are the same ones the constructor submits
+	 * and joins, so a warmup that is still running only means the constructor waits for it. They are
+	 * returned rather than dropped so the caller can report what the warmup really ended up caching,
+	 * once the transforms have run.</p>
 	 */
-	public static void warmupTransforms(ProgramSet programs) {
+	public static List<CompletableFuture<?>> warmupTransforms(ProgramSet programs) {
 		final Object2ObjectMap<Tri<String, TextureType, TextureStage>, String> textureMap = programs.getPackDirectives().getTextureMap();
-		submitCompositeTransforms(programs.getPrepare(), TextureStage.PREPARE, textureMap);
-		submitCompositeTransforms(programs.getDeferred(), TextureStage.DEFERRED, textureMap);
-		submitCompositeTransforms(programs.getComposite(), TextureStage.COMPOSITE_AND_FINAL, textureMap);
+		final List<CompletableFuture<?>> submitted = new ArrayList<>();
+		submitted.addAll(submitCompositeTransforms(programs.getPrepare(), TextureStage.PREPARE, textureMap).values());
+		submitted.addAll(submitCompositeTransforms(programs.getDeferred(), TextureStage.DEFERRED, textureMap).values());
+		submitted.addAll(submitCompositeTransforms(programs.getComposite(), TextureStage.COMPOSITE_AND_FINAL, textureMap).values());
 		programs.getCompositeFinal().filter(ProgramSource::isValid)
-			.ifPresent(source -> submitCompositeTransform(source, TextureStage.COMPOSITE_AND_FINAL, textureMap));
+			.ifPresent(source -> submitted.add(submitCompositeTransform(source, TextureStage.COMPOSITE_AND_FINAL, textureMap)));
 
-		submitAttributeTransforms(new ProgramFallbackResolver(programs));
+		submitted.addAll(submitAttributeTransforms(new ProgramFallbackResolver(programs)).values());
 
 		final Optional<ProgramSource> terrainSource = first(programs.getGbuffersTerrain(), programs.getGbuffersTexturedLit(), programs.getGbuffersTextured(), programs.getGbuffersBasic());
 		final Optional<ProgramSource> translucentSource = first(programs.getGbuffersWater(), terrainSource);
 		final Optional<ProgramSource> shadowSource = programs.getShadow();
 		final Optional<ProgramSource> shadowTranslucentSource = first(programs.getShadowWater(), shadowSource);
-		terrainSource.ifPresent(DeferredWorldRenderingPipeline::submitCeleritasTerrainTransform);
-		translucentSource.ifPresent(DeferredWorldRenderingPipeline::submitCeleritasTerrainTransform);
-		shadowSource.ifPresent(DeferredWorldRenderingPipeline::submitCeleritasTerrainTransform);
-		shadowTranslucentSource.ifPresent(DeferredWorldRenderingPipeline::submitCeleritasTerrainTransform);
+		terrainSource.ifPresent(source -> submitted.add(submitCeleritasTerrainTransform(source)));
+		translucentSource.ifPresent(source -> submitted.add(submitCeleritasTerrainTransform(source)));
+		shadowSource.ifPresent(source -> submitted.add(submitCeleritasTerrainTransform(source)));
+		shadowTranslucentSource.ifPresent(source -> submitted.add(submitCeleritasTerrainTransform(source)));
 
-		for (ComputeSource source : programs.getSetup()) {
-			submitComputeTransform(source, TextureStage.SETUP, textureMap);
-		}
-		for (ComputeSource source : programs.getShadowCompute()) {
-			submitComputeTransform(source, TextureStage.GBUFFERS_AND_SHADOW, textureMap);
-		}
+		submitComputeTransforms(programs.getSetup(), TextureStage.SETUP, textureMap, submitted);
+		submitComputeTransforms(programs.getShadowCompute(), TextureStage.GBUFFERS_AND_SHADOW, textureMap, submitted);
+
+		return submitted;
 	}
 
-	private static void submitComputeTransform(ComputeSource source, TextureStage stage,
-		Object2ObjectMap<Tri<String, TextureType, TextureStage>, String> textureMap) {
-		if (source == null || !source.getSource().isPresent()) {
-			return;
+	/** Submits the transform of every compute source in {@code sources} and records it in {@code submitted}. */
+	private static void submitComputeTransforms(ComputeSource[] sources, TextureStage stage,
+		Object2ObjectMap<Tri<String, TextureType, TextureStage>, String> textureMap, List<CompletableFuture<?>> submitted) {
+		for (ComputeSource source : sources) {
+			if (source == null || !source.getSource().isPresent()) {
+				continue;
+			}
+			final String name = source.getName();
+			final String compute = source.getSource().get();
+			submitted.add(Iris.ShaderTransformExecutor.submitTracked(() -> TransformPatcher.patchCompute(name, compute, stage, textureMap)));
 		}
-		final String name = source.getName();
-		final String compute = source.getSource().get();
-		Iris.ShaderTransformExecutor.submitTracked(() -> TransformPatcher.patchCompute(name, compute, stage, textureMap));
 	}
 
 	private static void logBlockMappingSummary() {
