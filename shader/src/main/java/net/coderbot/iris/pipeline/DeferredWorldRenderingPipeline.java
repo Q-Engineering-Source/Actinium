@@ -111,6 +111,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -243,32 +244,12 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			customTextureManager = new CustomTextureManager(programs.getPackDirectives(), programs.getPack().getCustomTextureDataMap(), programs.getPack().getIrisCustomTextureDataMap(), programs.getPack().getCustomNoiseTexture());
 			GLStateManager.glActiveTexture(GL13.GL_TEXTURE0 + entryTextureUnit);
 
-			final Map<Integer, CompletableFuture<Map<PatchShaderType, String>>> prepareTransformFutures =
-				submitCompositeTransforms(programs.getPrepare(), TextureStage.PREPARE, programs.getPackDirectives().getTextureMap());
-			final Map<Integer, CompletableFuture<Map<PatchShaderType, String>>> deferredTransformFutures =
-				submitCompositeTransforms(programs.getDeferred(), TextureStage.DEFERRED, programs.getPackDirectives().getTextureMap());
-			final Map<Integer, CompletableFuture<Map<PatchShaderType, String>>> compositeTransformFutures =
-				submitCompositeTransforms(programs.getComposite(), TextureStage.COMPOSITE_AND_FINAL, programs.getPackDirectives().getTextureMap());
-
-			final CompletableFuture<Map<PatchShaderType, String>> finalTransformFuture =
-				programs.getCompositeFinal()
-					.filter(ProgramSource::isValid)
-					.map(source -> submitCompositeTransform(source, TextureStage.COMPOSITE_AND_FINAL, programs.getPackDirectives().getTextureMap()))
-					.orElse(null);
-
 			resolver = new ProgramFallbackResolver(programs);
-			final Map<Pair<String, InputAvailability>, CompletableFuture<Map<PatchShaderType, String>>> attributeTransformFutures = submitAttributeTransforms(resolver);
-
-			final Optional<ProgramSource> terrainSource = first(programs.getGbuffersTerrain(), programs.getGbuffersTexturedLit(), programs.getGbuffersTextured(), programs.getGbuffersBasic());
-			final Optional<ProgramSource> translucentSource = first(programs.getGbuffersWater(), terrainSource);
-			final Optional<ProgramSource> shadowSource = programs.getShadow();
-			final Optional<ProgramSource> shadowTranslucentSource = first(programs.getShadowWater(), shadowSource);
-
-			// Celeritas terrain transform futures
-			final CompletableFuture<Map<PatchShaderType, String>> celeritasTerrainFuture = terrainSource.map(DeferredWorldRenderingPipeline::submitCeleritasTerrainTransform).orElse(null);
-			final CompletableFuture<Map<PatchShaderType, String>> celeritasTranslucentFuture = translucentSource.map(DeferredWorldRenderingPipeline::submitCeleritasTerrainTransform).orElse(null);
-			final CompletableFuture<Map<PatchShaderType, String>> celeritasShadowFuture = shadowSource.map(DeferredWorldRenderingPipeline::submitCeleritasTerrainTransform).orElse(null);
-			final CompletableFuture<Map<PatchShaderType, String>> celeritasShadowTranslucentFuture = shadowTranslucentSource.map(DeferredWorldRenderingPipeline::submitCeleritasTerrainTransform).orElse(null);
+			// Every transform this constructor is about to need, submitted up front through the one
+			// place the warmup submits them through too: whatever this set covers is read back out of
+			// the transform cache below instead of being transformed on this thread.
+			final ProgramTransforms transforms = ProgramTransforms.submit(programs);
+			final Map<Pair<String, InputAvailability>, CompletableFuture<Map<PatchShaderType, String>>> attributeTransformFutures = transforms.attributes();
 
 			this.cloudSetting = programs.getPackDirectives().getCloudSetting();
 			this.shouldRenderUnderwaterOverlay = programs.getPackDirectives().underwaterOverlay();
@@ -409,20 +390,20 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 			this.setup = createSetupComputes(programs.getSetup());
 
-			this.beginRenderer = new CompositeRenderer(programs.getBegin(), programs.getBeginCompute(), flipper, beginBuildContext, programs.getPackDirectives().getExplicitFlips("begin_pre"), null, "begin", TextureStage.BEGIN);
+			this.beginRenderer = new CompositeRenderer(programs.getBegin(), programs.getBeginCompute(), flipper, beginBuildContext, programs.getPackDirectives().getExplicitFlips("begin_pre"), transforms.composites().begin(), "begin", TextureStage.BEGIN);
 
 			this.flippedBeforeShadow = flipper.snapshot();
 
-			this.prepareRenderer = new CompositeRenderer(programs.getPrepare(), programs.getPrepareCompute(), flipper, prepareBuildContext, programs.getPackDirectives().getExplicitFlips("prepare_pre"), prepareTransformFutures, "prepare", TextureStage.PREPARE);
+			this.prepareRenderer = new CompositeRenderer(programs.getPrepare(), programs.getPrepareCompute(), flipper, prepareBuildContext, programs.getPackDirectives().getExplicitFlips("prepare_pre"), transforms.composites().prepare(), "prepare", TextureStage.PREPARE);
 
 			flippedAfterPrepare = flipper.snapshot();
 
-			this.deferredRenderer = new CompositeRenderer(programs.getDeferred(), programs.getDeferredCompute(), flipper, deferredBuildContext, programs.getPackDirectives().getExplicitFlips("deferred_pre"), deferredTransformFutures, "deferred", TextureStage.DEFERRED);
+			this.deferredRenderer = new CompositeRenderer(programs.getDeferred(), programs.getDeferredCompute(), flipper, deferredBuildContext, programs.getPackDirectives().getExplicitFlips("deferred_pre"), transforms.composites().deferred(), "deferred", TextureStage.DEFERRED);
 
 			flippedAfterTranslucent = flipper.snapshot();
 
-			this.compositeRenderer = new CompositeRenderer(programs.getComposite(), programs.getCompositeCompute(), flipper, compositeBuildContext, programs.getPackDirectives().getExplicitFlips("composite_pre"), compositeTransformFutures, "composite", TextureStage.COMPOSITE_AND_FINAL);
-			this.finalPassRenderer = new FinalPassRenderer(programs, compositeBuildContext, flipper.snapshot(), this.compositeRenderer.getFlippedAtLeastOnceFinal(), finalTransformFuture, "final");
+			this.compositeRenderer = new CompositeRenderer(programs.getComposite(), programs.getCompositeCompute(), flipper, compositeBuildContext, programs.getPackDirectives().getExplicitFlips("composite_pre"), transforms.composites().composite(), "composite", TextureStage.COMPOSITE_AND_FINAL);
+			this.finalPassRenderer = new FinalPassRenderer(programs, compositeBuildContext, flipper.snapshot(), this.compositeRenderer.getFlippedAtLeastOnceFinal(), transforms.composites().compositeFinal(), "final");
 
 			// [(textured=false,lightmap=false), (textured=true,lightmap=false), (textured=true,lightmap=true)]
 			final ProgramId[] ids = new ProgramId[] {
@@ -632,14 +613,16 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 				? shadowRenderTargets.createShadowFramebuffer(shadowRenderTargets.snapshot(), new int[] {0, 1})
 				: null;
 
+			final ProgramTransforms.TerrainPasses terrain = transforms.terrain();
 			this.celeritasTerrainPipeline = new CeleritasTerrainPipeline(createTerrainSamplers,
 				shadowRenderer == null ? null : createShadowTerrainSamplers, createTerrainImages,
 				shadowRenderer == null ? null : createShadowTerrainImages, this.customUniforms,
-				terrainSource,
-				translucentSource,
-				shadowSource,
-				shadowTranslucentSource,
-				celeritasTerrainFuture, celeritasTranslucentFuture, celeritasShadowFuture, celeritasShadowTranslucentFuture,
+				terrain.solid().source(),
+				terrain.translucent().source(),
+				terrain.shadow().source(),
+				terrain.shadowTranslucent().source(),
+				terrain.solid().transform(), terrain.translucent().transform(),
+				terrain.shadow().transform(), terrain.shadowTranslucent().transform(),
 				renderTargets, flippedAfterPrepare, flippedAfterTranslucent,
 				celeritasShadowFb);
 
@@ -2254,47 +2237,161 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	 *
 	 * <p>Called ahead of the pipeline, for the dimension a world is about to render with: the work
 	 * then overlaps with the rest of pack loading instead of sitting on the frame that opens the
-	 * world. Nothing is awaited here - the returned futures are the same ones the constructor submits
-	 * and joins, so a warmup that is still running only means the constructor waits for it. They are
-	 * returned rather than dropped so the caller can report what the warmup really ended up caching,
-	 * once the transforms have run.</p>
+	 * world. Nothing is awaited here - the returned futures are the ones {@link ProgramTransforms}
+	 * hands the constructor, so a warmup that is still running only means the constructor waits for
+	 * it. They are returned rather than dropped so the caller can report what the warmup really ended
+	 * up caching, once the transforms have run.</p>
 	 */
 	public static List<CompletableFuture<?>> warmupTransforms(ProgramSet programs) {
-		final Object2ObjectMap<Tri<String, TextureType, TextureStage>, String> textureMap = programs.getPackDirectives().getTextureMap();
-		final List<CompletableFuture<?>> submitted = new ArrayList<>();
-		submitted.addAll(submitCompositeTransforms(programs.getPrepare(), TextureStage.PREPARE, textureMap).values());
-		submitted.addAll(submitCompositeTransforms(programs.getDeferred(), TextureStage.DEFERRED, textureMap).values());
-		submitted.addAll(submitCompositeTransforms(programs.getComposite(), TextureStage.COMPOSITE_AND_FINAL, textureMap).values());
-		programs.getCompositeFinal().filter(ProgramSource::isValid)
-			.ifPresent(source -> submitted.add(submitCompositeTransform(source, TextureStage.COMPOSITE_AND_FINAL, textureMap)));
+		return ProgramTransforms.submit(programs).submitted();
+	}
 
-		submitted.addAll(submitAttributeTransforms(new ProgramFallbackResolver(programs)).values());
+	/**
+	 * The transforms a program set needs, submitted to the transform pool as one unit.
+	 *
+	 * <p>Both the warmup that runs before a pack is loaded and the constructor that builds the pipeline
+	 * collect their work here: the constructor reads the results back out of {@link TransformPatcher}'s
+	 * cache, so a transform this does not submit is one that runs again on the thread opening the world.
+	 * Nothing here decides which thread a transform runs on - they all go to the transform pool - and a
+	 * source that several roles name is submitted once.</p>
+	 */
+	private record ProgramTransforms(
+		CompositePasses composites,
+		Map<Pair<String, InputAvailability>, CompletableFuture<Map<PatchShaderType, String>>> attributes,
+		TerrainPasses terrain,
+		List<CompletableFuture<?>> submitted) {
 
-		final Optional<ProgramSource> terrainSource = first(programs.getGbuffersTerrain(), programs.getGbuffersTexturedLit(), programs.getGbuffersTextured(), programs.getGbuffersBasic());
-		final Optional<ProgramSource> translucentSource = first(programs.getGbuffersWater(), terrainSource);
-		final Optional<ProgramSource> shadowSource = programs.getShadow();
-		final Optional<ProgramSource> shadowTranslucentSource = first(programs.getShadowWater(), shadowSource);
-		terrainSource.ifPresent(source -> submitted.add(submitCeleritasTerrainTransform(source)));
-		translucentSource.ifPresent(source -> submitted.add(submitCeleritasTerrainTransform(source)));
-		shadowSource.ifPresent(source -> submitted.add(submitCeleritasTerrainTransform(source)));
-		shadowTranslucentSource.ifPresent(source -> submitted.add(submitCeleritasTerrainTransform(source)));
+		/** The transforms of the fullscreen passes, keyed the way the renderer of each stage looks them up. */
+		private record CompositePasses(
+			Map<Integer, CompletableFuture<Map<PatchShaderType, String>>> begin,
+			Map<Integer, CompletableFuture<Map<PatchShaderType, String>>> prepare,
+			Map<Integer, CompletableFuture<Map<PatchShaderType, String>>> deferred,
+			Map<Integer, CompletableFuture<Map<PatchShaderType, String>>> composite,
+			@Nullable CompletableFuture<Map<PatchShaderType, String>> compositeFinal) {}
 
-		submitComputeTransforms(programs.getSetup(), TextureStage.SETUP, textureMap, submitted);
-		submitComputeTransforms(programs.getShadowCompute(), TextureStage.GBUFFERS_AND_SHADOW, textureMap, submitted);
+		/** The terrain roles the celeritas terrain pipeline builds from, each with the transform submitted for it. */
+		private record TerrainPasses(TerrainRole solid, TerrainRole translucent, TerrainRole shadow, TerrainRole shadowTranslucent) {}
 
-		return submitted;
+		/** What a compute transform is keyed on, so a source submitted for the same stage is only transformed once. */
+		private record ComputeKey(TextureStage stage, String source) {}
+
+		/** One terrain role: the source the pack names for it, and the transform submitted for that source. */
+		private record TerrainRole(Optional<ProgramSource> source, @Nullable CompletableFuture<Map<PatchShaderType, String>> transform) {}
+
+		static ProgramTransforms submit(ProgramSet programs) {
+			final Object2ObjectMap<Tri<String, TextureType, TextureStage>, String> textureMap = programs.getPackDirectives().getTextureMap();
+			final List<CompletableFuture<?>> submitted = new ArrayList<>();
+
+			final Map<Integer, CompletableFuture<Map<PatchShaderType, String>>> begin =
+				submitCompositeTransforms(programs.getBegin(), TextureStage.BEGIN, textureMap);
+			final Map<Integer, CompletableFuture<Map<PatchShaderType, String>>> prepare =
+				submitCompositeTransforms(programs.getPrepare(), TextureStage.PREPARE, textureMap);
+			final Map<Integer, CompletableFuture<Map<PatchShaderType, String>>> deferred =
+				submitCompositeTransforms(programs.getDeferred(), TextureStage.DEFERRED, textureMap);
+			final Map<Integer, CompletableFuture<Map<PatchShaderType, String>>> composite =
+				submitCompositeTransforms(programs.getComposite(), TextureStage.COMPOSITE_AND_FINAL, textureMap);
+			final CompletableFuture<Map<PatchShaderType, String>> compositeFinal = programs.getCompositeFinal()
+				.filter(ProgramSource::isValid)
+				.map(source -> submitCompositeTransform(source, TextureStage.COMPOSITE_AND_FINAL, textureMap))
+				.orElse(null);
+			// The shadowcomposite passes are transformed in their own stage by a renderer that builds them
+			// synchronously, so only the submission is shared with the warmup.
+			final Map<Integer, CompletableFuture<Map<PatchShaderType, String>>> shadowComposite =
+				submitCompositeTransforms(programs.getShadowComposite(), TextureStage.SHADOWCOMP, textureMap);
+			submitted.addAll(begin.values());
+			submitted.addAll(prepare.values());
+			submitted.addAll(deferred.values());
+			submitted.addAll(composite.values());
+			submitted.addAll(shadowComposite.values());
+			if (compositeFinal != null) {
+				submitted.add(compositeFinal);
+			}
+
+			final Map<Pair<String, InputAvailability>, CompletableFuture<Map<PatchShaderType, String>>> attributes =
+				submitAttributeTransforms(new ProgramFallbackResolver(programs));
+			submitted.addAll(attributes.values());
+
+			final TerrainPasses terrain = submitTerrainTransforms(programs, submitted);
+
+			// The stages here are the ones the renderers that compile these computes transform with, so a
+			// compute is submitted under the same key the renderer will look up.
+			final Set<ComputeKey> computeKeys = new HashSet<>();
+			submitComputeTransforms(programs.getSetup(), TextureStage.SETUP, textureMap, submitted, computeKeys);
+			submitComputeTransforms(programs.getShadowCompute(), TextureStage.GBUFFERS_AND_SHADOW, textureMap, submitted, computeKeys);
+			submitComputeTransforms(programs.getBeginCompute(), TextureStage.BEGIN, textureMap, submitted, computeKeys);
+			submitComputeTransforms(programs.getPrepareCompute(), TextureStage.PREPARE, textureMap, submitted, computeKeys);
+			submitComputeTransforms(programs.getDeferredCompute(), TextureStage.DEFERRED, textureMap, submitted, computeKeys);
+			submitComputeTransforms(programs.getCompositeCompute(), TextureStage.COMPOSITE_AND_FINAL, textureMap, submitted, computeKeys);
+			submitComputeTransforms(programs.getFinalCompute(), TextureStage.COMPOSITE_AND_FINAL, textureMap, submitted, computeKeys);
+			submitComputeTransforms(programs.getShadowCompCompute(), TextureStage.SHADOWCOMP, textureMap, submitted, computeKeys);
+
+			return new ProgramTransforms(new CompositePasses(begin, prepare, deferred, composite, compositeFinal),
+				attributes, terrain, List.copyOf(submitted));
+		}
+
+		/**
+		 * Submits the four terrain roles. The translucent roles fall back to the terrain and shadow
+		 * sources, and submitting the source a role fell back to again only occupies the pool with a
+		 * duplicate of the same transform.
+		 */
+		private static TerrainPasses submitTerrainTransforms(ProgramSet programs, List<CompletableFuture<?>> submitted) {
+			final Map<ProgramSource, TerrainRole> bySource = new IdentityHashMap<>();
+			final TerrainRole solid = terrainRole(first(programs.getGbuffersTerrain(), programs.getGbuffersTexturedLit(), programs.getGbuffersTextured(), programs.getGbuffersBasic()), bySource);
+			final TerrainRole translucent = terrainRole(first(programs.getGbuffersWater(), solid.source()), bySource);
+			final TerrainRole shadow = terrainRole(programs.getShadow(), bySource);
+			final TerrainRole shadowTranslucent = terrainRole(first(programs.getShadowWater(), shadow.source()), bySource);
+
+			for (TerrainRole role : new TerrainRole[] { solid, translucent, shadow, shadowTranslucent }) {
+				if (role.transform() != null) {
+					submitted.add(role.transform());
+				}
+			}
+
+			return new TerrainPasses(solid, translucent, shadow, shadowTranslucent);
+		}
+
+		private static TerrainRole terrainRole(Optional<ProgramSource> source, Map<ProgramSource, TerrainRole> bySource) {
+			if (source.isEmpty()) {
+				return new TerrainRole(source, null);
+			}
+
+			final ProgramSource program = source.get();
+			final TerrainRole submitted = bySource.get(program);
+			if (submitted != null) {
+				return submitted;
+			}
+
+			final TerrainRole role = new TerrainRole(source, submitCeleritasTerrainTransform(program));
+			bySource.put(program, role);
+			return role;
+		}
 	}
 
 	/** Submits the transform of every compute source in {@code sources} and records it in {@code submitted}. */
 	private static void submitComputeTransforms(ComputeSource[] sources, TextureStage stage,
-		Object2ObjectMap<Tri<String, TextureType, TextureStage>, String> textureMap, List<CompletableFuture<?>> submitted) {
+		Object2ObjectMap<Tri<String, TextureType, TextureStage>, String> textureMap,
+		List<CompletableFuture<?>> submitted, Set<ProgramTransforms.ComputeKey> keys) {
 		for (ComputeSource source : sources) {
 			if (source == null || !source.getSource().isPresent()) {
 				continue;
 			}
-			final String name = source.getName();
 			final String compute = source.getSource().get();
+			if (!keys.add(new ProgramTransforms.ComputeKey(stage, compute))) {
+				continue;
+			}
+			final String name = source.getName();
 			submitted.add(Iris.ShaderTransformExecutor.submitTracked(() -> TransformPatcher.patchCompute(name, compute, stage, textureMap)));
+		}
+	}
+
+	/** Submits the computes of every fullscreen pass, which is where the shadowcomposite computes live. */
+	private static void submitComputeTransforms(ComputeSource[][] sources, TextureStage stage,
+		Object2ObjectMap<Tri<String, TextureType, TextureStage>, String> textureMap,
+		List<CompletableFuture<?>> submitted, Set<ProgramTransforms.ComputeKey> keys) {
+		for (ComputeSource[] pass : sources) {
+			if (pass != null) {
+				submitComputeTransforms(pass, stage, textureMap, submitted, keys);
+			}
 		}
 	}
 
