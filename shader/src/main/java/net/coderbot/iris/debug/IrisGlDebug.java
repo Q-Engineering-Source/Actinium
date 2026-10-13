@@ -2650,10 +2650,23 @@ public final class IrisGlDebug {
     }
 
     private static void appendCurrentDepthPixel(StringBuilder builder, String name, int x, int y) {
+        builder.append(" ").append(name).append("@(").append(x).append(",").append(y).append(")=(");
+
+        int depthAttachmentType = GL30.glGetFramebufferAttachmentParameteri(
+            GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
+        if (depthAttachmentType == GL11.GL_NONE) {
+            builder.append("no-depth-attachment)");
+            return;
+        }
+
+        int previousReadBuffer = GL11.glGetInteger(GL11.GL_READ_BUFFER);
+        GL11.glReadBuffer(GL11.GL_NONE);
+
         FloatBuffer pixel = BufferUtils.createFloatBuffer(1);
         GL11.glReadPixels(x, y, 1, 1, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT, pixel);
-        builder.append(" ").append(name).append("@(").append(x).append(",").append(y).append(")=(")
-            .append(formatFloat(pixel.get(0))).append(")");
+        builder.append(formatFloat(pixel.get(0))).append(")");
+
+        GL11.glReadBuffer(previousReadBuffer);
     }
 
     private static float[] readTexturePixel(int texture, int x, int y) {
