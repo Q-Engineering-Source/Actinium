@@ -23,6 +23,7 @@ import net.coderbot.iris.gbuffer_overrides.matching.ProgramTable;
 import net.coderbot.iris.gbuffer_overrides.matching.RenderCondition;
 import net.coderbot.iris.gbuffer_overrides.matching.SpecialCondition;
 import net.coderbot.iris.gbuffer_overrides.matching.TranslucentBlendMatcher;
+import net.coderbot.iris.gbuffer_overrides.matching.TransformInputs;
 import net.coderbot.iris.gbuffer_overrides.state.RenderTargetStateListener;
 import net.coderbot.iris.gl.blending.AlphaTestOverride;
 import net.coderbot.iris.gl.blending.BlendModeOverride;
@@ -1048,7 +1049,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	private Pass createPass(ProgramSource source, InputAvailability availability, boolean shadow, ProgramId id,
 							Map<SharedProgramKey, BuiltProgram> builtPrograms) {
 		// Use pre-computed transform if available, otherwise transform synchronously
-		InputAvailability transformAvailability = getTransformInputAvailability(id, availability);
+		InputAvailability transformAvailability = TransformInputs.of(id, availability);
 		Pair<String, InputAvailability> key = Pair.of(source.getName(), transformAvailability);
 		Map<PatchShaderType, String> transformed = attributeTransforms.get(key);
 
@@ -1118,13 +1119,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			return () -> ((shouldRenderPrepareBeforeShadow || hasRenderedPreparePass) ? flippedAfterPrepare : flippedBeforeShadow);
 		}
 		return () -> isBeforeTranslucent ? flippedAfterPrepare : flippedAfterTranslucent;
-	}
-
-	private static InputAvailability getTransformInputAvailability(ProgramId id, InputAvailability availability) {
-		if (id == ProgramId.SkyTextured && availability.texture && !availability.lightmap) {
-			return INPUT_TEXTURE_NO_COLOR;
-		}
-		return availability;
 	}
 
 	private Pass createPassInner(Program program, ProgramDirectives programDirectives, boolean shadow, ProgramId id) {
@@ -2195,12 +2189,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		}
 	}
 
-	private static final InputAvailability INPUT_NONE = new InputAvailability(false, false);
-	private static final InputAvailability INPUT_TEXTURE = new InputAvailability(true, false);
-	private static final InputAvailability INPUT_TEXTURE_LIGHTMAP = new InputAvailability(true, true);
-	private static final InputAvailability INPUT_TEXTURE_NO_COLOR = new InputAvailability(true, false, false);
-	private static final InputAvailability[] INPUT_AVAILABILITIES = { INPUT_NONE, INPUT_TEXTURE, INPUT_TEXTURE_LIGHTMAP, INPUT_TEXTURE_NO_COLOR };
-
 	private static CompletableFuture<Map<PatchShaderType, String>> submitCompositeTransform(ProgramSource source, TextureStage stage,
 		Object2ObjectMap<Tri<String, TextureType, TextureStage>, String> textureMap) {
 		return Iris.ShaderTransformExecutor.submitTracked(() -> TransformPatcher.patchComposite(
@@ -2237,7 +2225,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			ProgramSource source = resolver.resolveNullable(id);
 			if (source != null && !processedSourceNames.contains(source.getName())) {
 				processedSourceNames.add(source.getName());
-				for (InputAvailability avail : INPUT_AVAILABILITIES) {
+				for (InputAvailability avail : TransformInputs.availabilities()) {
 					Pair<String, InputAvailability> key = Pair.of(source.getName(), avail);
 					futures.put(key, Iris.ShaderTransformExecutor.submitTracked(() -> TransformPatcher.patchAttributes(source.getVertexSource().orElse(null), source.getGeometrySource().orElse(null), source.getTessControlSource().orElse(null), source.getTessEvalSource().orElse(null), source.getFragmentSource().orElse(null), avail)));
 				}
