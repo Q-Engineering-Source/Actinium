@@ -194,7 +194,7 @@
 
 | 环节 | 位置 | 作用 |
 |---|---|---|
-| 变换预热 | `Iris.warmupShaderTransforms()` → `DeferredWorldRenderingPipeline.warmupTransforms(programs)` | 包加载完成后，把该维度 ProgramSet 的 composite / attributes / celeritas / compute 变换全部提交到 `ShaderTransformExecutor`，真正建管线时全部命中 `TransformPatcher` 的缓存 |
+| 变换预热 | `Iris.warmupShaderTransforms()` → `DeferredWorldRenderingPipeline.warmupTransforms(programs)` | 包加载完成后，把该维度 ProgramSet 的 composite / attributes / celeritas / compute 变换全部提交到 `ShaderTransformExecutor`，真正建管线时命中 `TransformPatcher` 的缓存（首轮实现未达成「全部命中」，2026-10-13 修复链补齐，实机数据见 §6.7） |
 | 汇合点 | `Iris.programSetWarmup` + `awaitProgramSetWarmup()` | `createPipeline` / `destroyEverything` / `compileEveryShaderFolder` 在读取变换结果前等待预热；失败只记日志，变换会在建管线时重跑（正确、只是慢） |
 | SDL barrier | `GLSMHooks.uniformBlockBarrier = Iris::awaitProgramSetWarmup` | SDL `ShaderManager.shaderSource` 在非 worker 线程上会先等预热结束再读 per-frame uniform block（消费侧早前已移植，本次终于有生产端） |
 | uniform block 采集 | `PerFrameUniformBlockHarvester.harvest(programs)` | 用 `ManifestCollectingHolder` 跑一遍常规 uniform 注册，得到该包声明的 per-frame uniform 集合，切成 `perFrameUniformBlock`/`perPassUniformBlock` 两种共享块 |
@@ -281,3 +281,25 @@ submitComputeTransform(programs.getShadowCompute(), TextureStage.GBUFFERS_AND_SH
 4. **prewarm 与变换缓存的寿命不一致**：`TransformPatcher` 的缓存会在变换线程池空闲 120 s 后清空，SDL 的 prewarm 缓存是 LRU；两者各自失效都可能让对方多干一次活（我们只在命中路径补通知来兜底）。
 5. **收益位置**：Actinium 的包加载发生在首个世界帧，所以「进世界首帧」这一场景里预热的并行收益有限；收益最明显的是「主菜单里已经选好包（触发过 `reload`）再进世界」与「世界内切包后的首帧」。主菜单预读包已在 2026-10-12 接上变换预热（Phase 14.3），因此「主菜单停留 → 进世界」这一路径的变换在进世界前就已算完；若玩家在预读之后又换包/改设置，预读成果可能因源码键不同或被 `setActiveCustomImages` 的换图集 `clearCache()` 丢掉，退化为白算一遍（不影响正确性）。
 6. **主菜单预读的预热与建管线并发时可能白算**：预读的变换任务与建管线提交的变换任务共用同一个池，`TransformPatcher` 缓存按值相等，最坏情况是同一份变换被并发算两遍（缓存未命中窗口），不会产出错误结果；`RwImageStoreExtractor.setActiveCustomImages` 在换图集时会 `clearCache()`，预读中晚到的插入可能落在清空之后——这与既有 `warmupShaderTransforms` 的 fire-and-forget 提交是同一类时序，未额外加锁。
+
+### 6.7 实机验证与首轮修复链（2026-10-13）
+
+§6.1 的「建管线全部命中」在实机日志中被证伪，随后按日志逐项修复（4 个提交）：
+
+| 提交 | 问题 | 修复 |
+|---|---|---|
+| `899f6a98` | `warmup done` 在变换实际完成前上报，`cacheSizeAfter` 恒为 0 | 上报移到变换跑完之后 |
+| `f1f0abc9` | 预热漏掉 lightmap-only 的 input availability 变体，进世界后按需 miss 一百多次 | 补齐该变体 |
+| `005b8fd9` | 预读包不被复用时静默回退 | 打出具体原因（`read=`/`selected=` 不匹配行），消费后 rearm 预读 |
+| `5ec46f48` | 变换按程序逐个提交 | 改为整个 ProgramSet 从一处提交 |
+
+验证环境：dev `runClient`，core profile（NVIDIA），`itrp修改0826` 与 `Derivative Main d24.4.14` 互切。
+
+- **启动路径**：预读选中包并提交 147 个变换（579 ms，`cacheSizeAfter=146`）；真实加载
+  `reused=true totalMs=4.5`，预热再请求 147 个、146 命中（`cacheSizeAfter=148`）；
+  进世界后按需 transform miss=2（修复前为一百多次按需 miss）。
+- **换包路径**：切到未预读的包 `reused=false`，日志给出具体原因
+  `the pack read ahead no longer matches the selection, line 1: read=... selected=...`；
+  冷切 1.3~1.7 s（含程序二进制缓存因构建 salt 变化未命中时的重编译）；
+  同会话内切回已加载过的包 100 ms（程序二进制缓存全命中，`compileMs=0.278`，耗时几乎全在包解析 `parseMs=97`）。
+- **预读 rearm**：换包后预读重读新选中包，下一次互切的不匹配日志里 `read=` 随之更新，行为符合预期。
