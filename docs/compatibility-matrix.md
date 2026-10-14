@@ -1,6 +1,6 @@
 # Actinium 兼容性矩阵
 
-最后更新：2026-10-10。
+最后更新：2026-10-14。
 
 状态定义：`已验证` 表示在记录的版本和场景中通过；`部分` 表示能运行但存在已知缺口；
 `无法启用` 表示光影包不能成功开启；`未验证` 不代表不兼容。更新记录时必须填写 Actinium commit、
@@ -8,6 +8,15 @@
 
 本轮验证环境：Actinium `30c7ffb`、Java 25.0.3、Cleanroom 0.5.12-alpha、Distant Horizons 3.1.2-b、
 Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
+
+> 2026-10-14 追加：Tinkers' Construct 系（tconstruct 2.13.0.183 + mantle 1.3.3.55 + conarm 1.2.5.10）
+> 动态纹理空壳崩溃已修复——并行图集加载把 1.12.2 私有 `generateMipmaps`（载帧与建 mip 链捆在同一方法）
+> 整体推迟，破坏注册循环"依赖帧先就绪"契约：TiCon 系 `AbstractColoredTexture` 的 loader 读基础纹理帧
+> 拿到空数据，生成 1×1、0 帧空壳（如 `conarm:items/boots/broken_core_advanced_alloy`），
+> `TextureMap.finishLoading()` 读第 0 帧抛 `IndexOutOfBoundsException`。修复为通用路径：帧装载回原版
+> 位置（注册循环内即时完成），仅 mip 链构建分流——loader 依赖闭包内的精灵不上 worker，链在循环结束后
+> 主线程构建（级链构建原地重绘 base level，与 loader 读帧并发会读到半成品）。`./gradlew check --no-daemon`
+> 通过（1213 测试），用户 dev 实机确认进入世界，详见 [docs/compat/tconstruct.md](compat/tconstruct.md)。
 
 > 2026-10-10 追加：第一人称手持染色玻璃被水面和云层遮挡的问题已修复。用户反馈该问题不限于 BSL；根因是
 > `HandRenderer` 依据光影包可选的 `layer.*` 覆盖表分类手持透明方块，未声明覆盖的包会让染色玻璃留在较早的
@@ -251,6 +260,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 | LittleTiles      | 部分（Photon v1.3b 实测通过） | 条件 Mixin（shader quad context + 独立 AO 顶点通道） | 1.5.87 + CreativeCore 1.10.71（issue #193）：放置的微型方块在光影下比相邻原版方块暗；已修复并经用户确认，Solas 与其他 shader pack 待回归，详见 [docs/compat/littletiles.md](compat/littletiles.md) |
 | ArchitectureCraft | 部分（Photon v1.3b 实测通过） | 条件 Mixin（`RenderTargetWorld#setLight` 的 AO / 方向着色拆分） | 1.12-3.108：用户发现放置 shape 有同类偏暗现象；与原版木板、LittleTiles 同场验证，其他 shader pack 待回归，详见 [docs/compat/architecturecraft.md](compat/architecturecraft.md) |
 | ReplayMod        | 已验证（视频渲染） | 高优先级 selection-box outline scope + GLSM PBO offset readback | 1.12.2-2.6.13 在 BSL_v10.1p1 视频导出时的 G-buffer 状态崩溃及 PBO `glReadPixels(..., long)` 缺失重载已修复；Cleanroom 0.6.13-alpha 整合包实测确认，详见 [docs/compat/replaymod.md](compat/replaymod.md) |
+| Tinkers' Construct 系 | 部分（崩溃场景已验证） | 通用路径（图集并行加载恢复 vanilla 加载顺序契约，无模组特例 Mixin） | tconstruct 2.13.0.183 + mantle 1.3.3.55 + conarm 1.2.5.10：自定义 sprite loader（`AbstractColoredTexture` 染色）依赖注册循环"依赖帧先就绪"契约，并行图集加载整体推迟帧装载导致 1×1 空壳精灵、`finishLoading` 崩溃；帧装载已回原版位置、仅 mip 链分流，dev 实机进入世界确认，F3+T 重载待回归，详见 [docs/compat/tconstruct.md](compat/tconstruct.md) |
 | Celeritas        | 内嵌   | Gradle 子项目、最终 Jar 合并               | Actinium 的区块渲染器  |
 | GLSM             | 内嵌   | Gradle 子项目、service provider        | 管理 GL 状态和固定管线兼容  |
 | GTNHLib          | 内嵌   | Gradle 子项目、bridge API              | 提供底层渲染与内存工具      |
