@@ -4,6 +4,7 @@ import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.texture.atlas.AtlasPackPolicy;
 import net.coderbot.iris.gui.element.IrisGuiSlot;
 import net.coderbot.iris.gui.element.widget.IrisButton;
+import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.util.text.TextFormatting;
@@ -46,6 +47,13 @@ public class AtlasPackScreen extends GuiScreen {
             this.dirty = false;
         }
         this.mc.displayGuiScreen(this.parent);
+    }
+
+    @Override
+    protected void actionPerformed(GuiButton guiButton) {
+        if (guiButton.enabled && guiButton instanceof IrisButton irisButton) {
+            irisButton.onPress();
+        }
     }
 
     @Override
