@@ -118,6 +118,12 @@ dependencies {
     // Runtime-only because Actinium does not compile against IE classes.
     modRuntimeOnly 'curse.maven:immersive-engineering-231951:2974106'
 
+    // Tinkers' Construct + Mantle + Construct's Armory: repro set for the conarm dynamic-texture crash.
+    // conarm requires tconstruct and mantle; runtime-only, Actinium does not compile against them.
+    modRuntimeOnly 'curse.maven:tinkers-construct-74072:2902483'
+    modRuntimeOnly 'curse.maven:mantle-74924:2713386'
+    modRuntimeOnly 'curse.maven:constructs-armory-287683:3174535'
+
     // Draconic Evolution
     modCompileOnly 'maven.modrinth:draconic-evolution:2.3.28.354'
     modCompileOnly 'maven.modrinth:brandons-core:2.4.20.162'
