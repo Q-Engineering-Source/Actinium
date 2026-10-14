@@ -197,12 +197,12 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
         final int topCenter = this.width / 2 - 76;
         final boolean inWorld = this.mc.world != null;
 
-        this.shaderPackList = new ShaderPackSelectionList(this, this.mc, this.width, this.height, 32, this.height - 82, 0, this.width);
+        this.shaderPackList = new ShaderPackSelectionList(this, this.mc, this.width, this.height, 32, this.height - 58, 0, this.width);
 
         if (Iris.getCurrentPack().isPresent() && this.navigation != null) {
             final ShaderPack currentPack = Iris.getCurrentPack().get();
 
-            this.shaderOptionList = new ShaderPackOptionList(this, this.navigation, currentPack, this.mc, this.width, this.height, 32, this.height - 82, 0, this.width);
+            this.shaderOptionList = new ShaderPackOptionList(this, this.navigation, currentPack, this.mc, this.width, this.height, 32, this.height - 58, 0, this.width);
             this.navigation.setActiveOptionList(this.shaderOptionList);
 
             this.shaderOptionList.rebuild();
