@@ -23,21 +23,15 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
- * Drives the parallel atlas load from {@code loadTextureAtlas}.
- *
- * <p>Vanilla stitches the atlas first and only then decodes each sprite, builds its mipmaps and uploads it,
- * one sprite at a time. That order is kept, but the steps are widened: the decode lane is seeded with the
- * stitched sprites in the order the upload loop will consume them, the vanilla per-sprite generation then
- * runs on the prefetched images with its mipmap levels built on workers, and once every sprite is generated
- * the whole atlas is uploaded in batches. The vanilla upload loop then finds every sprite already written and
- * skips it.
- *
- * <p>1.12.2 runs that per-sprite generation from the stitching loop, before the atlas exists and before the
- * stitched sprites are known, so the loop's own generation is deferred to this phase; see
- * {@code angelica$deferSpriteGeneration}.
+ * Drives the parallel atlas load from {@code loadTextureAtlas}: frames load in vanilla order in the
+ * registration loop, while each sprite's mipmap levels go where {@link AtlasLoadSession} decides (worker,
+ * post-loop pass, or inline).
  */
 @Mixin(TextureMap.class)
 public abstract class MixinTextureAtlasParallelLoad implements AtlasSessionHolder {
@@ -52,7 +46,6 @@ public abstract class MixinTextureAtlasParallelLoad implements AtlasSessionHolde
     @Unique
     private AtlasLoadSession angelica$atlasSession;
 
-    /** The manager of the load in progress; the generation phase runs from a method that has none of its own. */
     @Unique
     private IResourceManager angelica$atlasManager;
 
@@ -64,31 +57,34 @@ public abstract class MixinTextureAtlasParallelLoad implements AtlasSessionHolde
     @Invoker("getResourceLocation")
     abstract ResourceLocation angelica$resourceLocationOf(TextureAtlasSprite sprite);
 
-    @Invoker("generateMipmaps")
-    abstract boolean angelica$generateMipmaps(IResourceManager manager, TextureAtlasSprite sprite);
+    /** Starts the build report, so its total covers the whole load including the stitching. */
+    @Inject(method = "loadTextureAtlas", at = @At("HEAD"))
+    private void angelica$beginAtlasReport(IResourceManager manager, CallbackInfo ci) {
+        this.angelica$atlasManager = manager;
+        AtlasLoadStats.begin();
+    }
 
-    @Inject(
+    /** Opens the session over the registry copy the registration loop is about to walk. */
+    @WrapOperation(
         method = "loadTextureAtlas",
         at = @At(value = "INVOKE", target = "Ljava/util/HashMap;entrySet()Ljava/util/Set;", remap = false))
-    private void angelica$beginAtlasSession(IResourceManager manager, CallbackInfo ci) {
+    private Set<Map.Entry<String, TextureAtlasSprite>> angelica$openAtlasSession(
+        HashMap<String, TextureAtlasSprite> registered, Operation<Set<Map.Entry<String, TextureAtlasSprite>>> original) {
         final AtlasLoadSession previous = this.angelica$atlasSession;
         if (previous != null) {
             previous.close();
         }
-        this.angelica$atlasManager = manager;
-        this.angelica$atlasSession = AtlasLoadSession.begin((TextureMap) (Object) this, manager, this.missingImage);
+
+        final AtlasLoadSession session = AtlasLoadSession.begin((TextureMap) (Object) this, this.angelica$atlasManager,
+            this.missingImage, this::angelica$resourceLocationOf);
+        this.angelica$atlasSession = session;
+        if (session != null) {
+            session.beginRegistration(registered);
+        }
+        return original.call(registered);
     }
 
-    /** Starts the build report, so its total covers the whole load including the stitching. */
-    @Inject(method = "loadTextureAtlas", at = @At("HEAD"))
-    private void angelica$beginAtlasReport(IResourceManager manager, CallbackInfo ci) {
-        AtlasLoadStats.begin();
-    }
-
-    /**
-     * Hands the prefetched resource of this sprite to the session's generation phase instead of letting it
-     * open the pack again on the main thread.
-     */
+    /** Hands this sprite's prefetched resource to the main thread instead of letting it re-open the pack. */
     @WrapOperation(
         method = "generateMipmaps(Lnet/minecraft/client/resources/IResourceManager;Lnet/minecraft/client/renderer/texture/TextureAtlasSprite;)Z",
         at = @At(
@@ -111,28 +107,25 @@ public abstract class MixinTextureAtlasParallelLoad implements AtlasSessionHolde
     }
 
     /**
-     * Moves one sprite's mipmap generation onto a worker; the main thread reads the frames again only after
-     * the session has joined every offloaded mipmap, which happens before the atlas is assembled.
+     * Builds one sprite's levels where the session decides, or inline where vanilla does. Called once the
+     * sprite's frames are in place.
      */
     @WrapOperation(
         method = "generateMipmaps(Lnet/minecraft/client/resources/IResourceManager;Lnet/minecraft/client/renderer/texture/TextureAtlasSprite;)Z",
         at = @At(
             value = "INVOKE",
             target = "Lnet/minecraft/client/renderer/texture/TextureAtlasSprite;generateMipmaps(I)V"))
-    private void angelica$offloadMipmaps(TextureAtlasSprite sprite, int levels, Operation<Void> original) {
+    private void angelica$takeMipmapLevels(TextureAtlasSprite sprite, int levels, Operation<Void> original) {
         final AtlasLoadSession session = this.angelica$atlasSession;
-        if (session != null && session.offloadMipmaps(sprite, levels)) {
+        if (session != null && session.takeGeneration(sprite, levels)) {
             return;
         }
         original.call(sprite, levels);
     }
 
     /**
-     * Generates every stitched sprite before the upload loop starts, so the mipmaps of one sprite overlap
-     * with the decodes of the next, and then assembles the atlas in batches.
-     *
-     * <p>The list is handed back to the vanilla loop, so the second {@code getStichSlots} call of the method
-     * is the one that starts the loop; the first only sizes the progress bar.
+     * Builds the deferred level chains, joins the workers, then uploads in batches. Hooked at the second
+     * {@code getStichSlots} call; the first only sizes the progress bar.
      */
     @WrapOperation(
         method = "finishLoading",
@@ -152,46 +145,14 @@ public abstract class MixinTextureAtlasParallelLoad implements AtlasSessionHolde
         }
 
         final long prepareStart = System.nanoTime();
-        session.prepare(stitched, this::angelica$resourceLocationOf,
-            sprite -> this.angelica$generateMipmaps(this.angelica$atlasManager, sprite));
+        session.prepare(stitched, this.mipmapLevels);
         AtlasLoadStats.recordPrepare(System.nanoTime() - prepareStart);
 
-        // The generation these sprites were stitched for is deferred to this phase, so the stitcher had no
-        // result to refuse them with: a sprite the vanilla generation failed for is left out of the upload
-        // loop here, which is where vanilla leaves it, and the leftover pass that copies the missing sprite
-        // over every remaining registered sprite then repairs it.
-        final List<TextureAtlasSprite> generated = stitched.stream()
-            .filter(sprite -> sprite == this.missingImage || Boolean.TRUE.equals(session.preparedResult(sprite)))
-            .toList();
-
         final long assembleStart = System.nanoTime();
-        AtlasAssembler.upload(generated, this.mipmapLevels, stitcher.getCurrentWidth(), stitcher.getCurrentHeight(),
+        AtlasAssembler.upload(stitched, this.mipmapLevels, stitcher.getCurrentWidth(), stitcher.getCurrentHeight(),
             session::markUploaded);
         AtlasLoadStats.recordAssemble(System.nanoTime() - assembleStart);
-        return generated;
-    }
-
-    /**
-     * Defers the per-sprite generation of this loop to {@code angelica$assembleAtlas}, which runs it through
-     * the session so the decodes of the stitched sprites can come off the decode lane and their mipmap levels
-     * can be built on workers.
-     *
-     * <p>1.12.2 generates a sprite here, in the stitching loop that runs before the atlas is stitched and
-     * before the session knows which sprites to prepare, so generating here as well would build every
-     * sprite's mip chain twice. The stitcher only needs the size the sprite's registration has already read,
-     * so reporting success is enough for it to keep the sprite.
-     */
-    @WrapOperation(
-        method = "loadTexture(Lnet/minecraft/client/renderer/texture/Stitcher;Lnet/minecraft/client/resources/IResourceManager;Lnet/minecraft/util/ResourceLocation;Lnet/minecraft/client/renderer/texture/TextureAtlasSprite;Lnet/minecraftforge/fml/common/ProgressManager$ProgressBar;II)I",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/texture/TextureMap;generateMipmaps(Lnet/minecraft/client/resources/IResourceManager;Lnet/minecraft/client/renderer/texture/TextureAtlasSprite;)Z"))
-    private boolean angelica$deferSpriteGeneration(TextureMap map, IResourceManager manager, TextureAtlasSprite sprite,
-        Operation<Boolean> original) {
-        if (this.angelica$atlasSession != null) {
-            return true;
-        }
-        return original.call(map, manager, sprite);
+        return stitched;
     }
 
     @Inject(method = "loadTextureAtlas", at = @At("RETURN"))

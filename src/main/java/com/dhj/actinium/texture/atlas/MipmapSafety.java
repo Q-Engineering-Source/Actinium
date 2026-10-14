@@ -3,14 +3,10 @@ package com.dhj.actinium.texture.atlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 
 /**
- * Decides whether a sprite's mipmap generation may run on a worker thread.
- *
- * <p>Upstream scans each sprite class for overrides of {@code generateMipmaps} and
- * {@code setFramesTextureData} and offloads everything that does not declare one. That scan is reflective,
- * which Actinium's rules forbid for business logic, so this is an explicit allow list instead: only the
- * vanilla class is offloaded and every modded subclass keeps its mipmaps on the main thread. The result is a
- * strict subset of upstream's parallel work and cannot mis-handle a subclass that changes how frames are
- * stored.
+ * Whether a sprite's mipmap generation may run on a worker thread. An explicit allow list - the vanilla class
+ * only - instead of upstream's reflective override scan, which project rules forbid; modded subclasses keep
+ * their mipmaps on the main thread. The other half of the decision (who may read the frames meanwhile) is
+ * {@link AtlasLoadPlan}.
  */
 public final class MipmapSafety {
 

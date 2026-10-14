@@ -12,9 +12,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -24,16 +27,17 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The atlas session is the one place that knows which sprites an atlas load generates mipmaps for, so it is
- * where the build report's strategy counts come from. The load is driven the way {@code TextureMap} drives it -
- * the session hands a stitched sprite to the vanilla per-sprite generation - so the report is checked from the
- * sprites it was given to the line it produces, not from a stub of the counting call.
+ * The session knows which sprites a load generates mipmaps for (the build report's counts) and where each
+ * level chain may be built. Driven the way {@code TextureMap} drives it: handed the registry, then every
+ * sprite the loop loads frames for.
  */
 class AtlasLoadSessionTest {
 
     private static final String DECODE_PROPERTY = "actinium.parallelAtlasDecode";
     private static final String MIPMAPS_PROPERTY = "actinium.parallelAtlasMipmaps";
     private static final String BATCHED_UPLOAD_PROPERTY = "actinium.batchedAtlasUpload";
+
+    private static final int LEVELS = 4;
 
     /** A resource manager with no packs at all, which the decode lane is kept out of by the options. */
     private static final IResourceManager MANAGER = new IResourceManager() {
@@ -53,6 +57,10 @@ class AtlasLoadSessionTest {
         }
     };
 
+    /** The location a sprite's image would live at; nothing reads it while the decode lane is off. */
+    private static final Function<TextureAtlasSprite, ResourceLocation> LOCATOR =
+        sprite -> new ResourceLocation("minecraft", sprite.getIconName().replace(':', '/') + ".png");
+
     private final String originalDecode = System.getProperty(DECODE_PROPERTY);
     private final String originalMipmaps = System.getProperty(MIPMAPS_PROPERTY);
     private final String originalBatchedUpload = System.getProperty(BATCHED_UPLOAD_PROPERTY);
@@ -60,7 +68,7 @@ class AtlasLoadSessionTest {
     @BeforeEach
     void enableTheParallelMipmapPathTheSessionNeeds() {
         // A session exists as soon as one of the three parallel paths is on. The decode lane stays off so no
-        // worker is involved and the test drives the generation itself.
+        // worker is involved in loading the frames.
         System.setProperty(DECODE_PROPERTY, "false");
         System.setProperty(MIPMAPS_PROPERTY, "true");
         System.setProperty(BATCHED_UPLOAD_PROPERTY, "false");
@@ -83,22 +91,27 @@ class AtlasLoadSessionTest {
         final PreparedSprite leaves = new PreparedSprite("minecraft:blocks/leaves_oak", MipmapStrategy.CUTOUT);
         final PreparedSprite stone = new PreparedSprite("minecraft:blocks/stone", MipmapStrategy.MEAN);
         final PreparedSprite glass = new PreparedSprite("minecraft:blocks/glass", MipmapStrategy.STRICT_CUTOUT);
+        final List<PreparedSprite> sprites = List.of(leaves, stone, glass);
 
-        final AtlasLoadSession session = AtlasLoadSession.begin(map, MANAGER, missing);
+        final AtlasLoadSession session = AtlasLoadSession.begin(map, MANAGER, missing, LOCATOR);
         assertNotNull(session, "the parallel mipmap option is on, so the load has a session");
         try {
             assertSame(session, AtlasLoadSession.active());
 
-            // The load hands over every stitched sprite, the missing image among them: that one it generated
-            // itself, before the stitched sprites were known.
-            session.prepare(List.of(leaves, stone, glass, missing),
-                sprite -> new ResourceLocation("minecraft", "unused"), sprite -> true);
+            // The registration loop asks the session about every sprite it loads frames for; the load built
+            // the missing image before the loop.
+            session.beginRegistration(registryOf(leaves, stone, glass));
+            for (PreparedSprite sprite : sprites) {
+                assertFalse(session.takeGeneration(sprite, LEVELS),
+                    "a modded sprite class builds its levels on the main thread, where the loop leaves them");
+            }
+            session.prepare(List.of(leaves, stone, glass, missing), LEVELS);
             AtlasLoadStats.recordSprites(4);
 
             assertTrue(session.expects(leaves));
             assertTrue(session.expects(missing), "the load generates the missing image itself, so its call is not foreign");
-            assertFalse(session.expects(new PreparedSprite("minecraft:blocks/stone", MipmapStrategy.MEAN)),
-                "a sprite this atlas did not stitch generated its levels for itself, even with the name of one it did");
+            assertFalse(session.expects(new PreparedSprite("minecraft:blocks/emerald", MipmapStrategy.MEAN)),
+                "a sprite this atlas did not register generated its levels for itself, and is no sprite of this load");
         } finally {
             session.close();
         }
@@ -126,9 +139,12 @@ class AtlasLoadSessionTest {
         final PreparedSprite apple = new PreparedSprite("minecraft:items/apple", MipmapStrategy.MEAN);
         final PreparedSprite broken = new PreparedSprite("minecraft:items/broken", null);
 
-        final AtlasLoadSession session = AtlasLoadSession.begin(map, MANAGER, missing);
+        final AtlasLoadSession session = AtlasLoadSession.begin(map, MANAGER, missing, LOCATOR);
         try {
-            session.prepare(List.of(apple, broken), sprite -> new ResourceLocation("minecraft", "unused"), sprite -> true);
+            session.beginRegistration(registryOf(apple, broken));
+            session.takeGeneration(apple, LEVELS);
+            session.takeGeneration(broken, LEVELS);
+            session.prepare(List.of(apple, broken), LEVELS);
         } finally {
             session.close();
         }
@@ -142,8 +158,88 @@ class AtlasLoadSessionTest {
         assertEquals(0, values.foreignMipmapCalls());
     }
 
+    /** A sprite a loader can read keeps its chain off the loop; it is built once, in the pass after the loop. */
+    @Test
+    void buildsOnlyTheDeferredLevelChainsInThePassAfterTheLoop() {
+        AtlasLoadStats.begin();
+
+        final TextureMap map = new TextureMap("textures/blocks");
+        final PreparedSprite missing = new PreparedSprite("missingno", null);
+        final LevelCountingSprite base = new LevelCountingSprite("minecraft:blocks/base");
+        final LevelCountingSprite plain = new LevelCountingSprite("minecraft:blocks/plain");
+        final LevelCountingSprite derived = new DerivedSprite("minecraft:blocks/derived", base);
+
+        final AtlasLoadSession session = AtlasLoadSession.begin(map, MANAGER, missing, LOCATOR);
+        try {
+            session.beginRegistration(registryOf(base, plain, derived));
+
+            assertTrue(session.takeGeneration(base, LEVELS),
+                "a dependency the loop's loader reads keeps its levels for the pass after the loop");
+            assertFalse(session.takeGeneration(plain, LEVELS),
+                "a sprite no loader reads is built where vanilla builds it");
+            assertFalse(session.takeGeneration(derived, LEVELS),
+                "the loader's own sprite is built where vanilla builds it");
+            assertEquals(0, base.levelsBuilt, "nothing built the dependency's levels while the loop ran");
+
+            session.prepare(List.of(base, plain, derived), LEVELS);
+
+            assertEquals(1, base.levelsBuilt, "the deferred chain is built exactly once, in the pass after the loop");
+            assertEquals(0, plain.levelsBuilt, "the pass must not build a chain the registration loop already built");
+            assertEquals(0, derived.levelsBuilt, "nor the one the loader's own sprite was given");
+        } finally {
+            session.close();
+        }
+
+        final AtlasLoadStats.Values values = AtlasLoadStats.snapshot("textures/blocks", 4, 16,
+            TextureFilterMode.NONE, 1, false, 1L);
+
+        assertEquals(3, values.prepared(), "all three sprites were the load's own generation");
+        assertEquals(0, values.mipmapsOffloaded(),
+            "no sprite of this registry may go to a worker: one a loader reads, one built inline, one a subclass");
+    }
+
+    /** A registered sprite no loader reads goes to a worker, and only that sprite. */
+    @Test
+    void handsASpriteNoLoaderReadsToAWorker() {
+        AtlasLoadStats.begin();
+
+        final TextureMap map = new TextureMap("textures/blocks");
+        final TextureAtlasSprite plain = map.registerSprite(new ResourceLocation("minecraft:blocks/plain"));
+        final PreparedSprite missing = new PreparedSprite("missingno", null);
+        final LevelCountingSprite base = new LevelCountingSprite("minecraft:blocks/base");
+        final DerivedSprite derived = new DerivedSprite("minecraft:blocks/derived", base);
+
+        final AtlasLoadSession session = AtlasLoadSession.begin(map, MANAGER, missing, LOCATOR);
+        try {
+            session.beginRegistration(registryOf(plain, base, derived));
+
+            assertTrue(session.takeGeneration(plain, LEVELS),
+                "nothing reads this sprite's frames, so the session builds its levels on a worker");
+            assertTrue(session.takeGeneration(base, LEVELS),
+                "the loader's dependency keeps its levels for the main thread instead");
+        } finally {
+            session.close();
+        }
+
+        final AtlasLoadStats.Values values = AtlasLoadStats.snapshot("textures/blocks", 4, 16,
+            TextureFilterMode.NONE, 1, false, 1L);
+
+        assertEquals(2, values.prepared());
+        assertEquals(1, values.mipmapsOffloaded(), "exactly the sprite no loader reads went to a worker");
+        assertTrue(values.parallelMipmaps(), "and that is what the build report calls a parallel load");
+    }
+
     private static int countedSprites(AtlasLoadStats.Values values) {
         return values.strategies().values().stream().mapToInt(Integer::intValue).sum();
+    }
+
+    /** The registry the registration loop walks, keyed the way {@code TextureMap} keys it. */
+    private static Map<String, TextureAtlasSprite> registryOf(TextureAtlasSprite... sprites) {
+        final Map<String, TextureAtlasSprite> registered = new LinkedHashMap<>();
+        for (TextureAtlasSprite sprite : sprites) {
+            registered.put(sprite.getIconName(), sprite);
+        }
+        return registered;
     }
 
     private static void restoreProperty(String name, String value) {
@@ -154,10 +250,7 @@ class AtlasLoadSessionTest {
         }
     }
 
-    /**
-     * A sprite whose levels were generated with a mode the load can read back. The mixin that answers this in
-     * the game is not applied to a sprite class in a test, so the mode is handed in instead of scanned.
-     */
+    /** A sprite whose generation mode is handed in - the answering mixin is not applied outside the game. */
     private static final class PreparedSprite extends TextureAtlasSprite implements SpriteMipmapExtension {
 
         private final MipmapStrategy generatedMipmapStrategy;
@@ -170,6 +263,47 @@ class AtlasLoadSessionTest {
         @Override
         public MipmapStrategy celeritas$generatedMipmapStrategy() {
             return this.generatedMipmapStrategy;
+        }
+    }
+
+    /** A sprite that counts the level chains built for it, so a test can tell where they were built. */
+    private static class LevelCountingSprite extends TextureAtlasSprite implements SpriteMipmapExtension {
+
+        private int levelsBuilt;
+
+        private LevelCountingSprite(String name) {
+            super(name);
+        }
+
+        @Override
+        public void generateMipmaps(int level) {
+            this.levelsBuilt++;
+        }
+
+        @Override
+        public MipmapStrategy celeritas$generatedMipmapStrategy() {
+            return null;
+        }
+    }
+
+    /** The shape a mod's sprite loader takes: it claims the sprite and names the frames it reads. */
+    private static final class DerivedSprite extends LevelCountingSprite {
+
+        private final ResourceLocation dependency;
+
+        private DerivedSprite(String name, TextureAtlasSprite dependency) {
+            super(name);
+            this.dependency = new ResourceLocation(dependency.getIconName());
+        }
+
+        @Override
+        public boolean hasCustomLoader(IResourceManager manager, ResourceLocation location) {
+            return true;
+        }
+
+        @Override
+        public Collection<ResourceLocation> getDependencies() {
+            return List.of(this.dependency);
         }
     }
 }

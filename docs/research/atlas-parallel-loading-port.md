@@ -1,6 +1,6 @@
 # 图集并行加载移植（上游 #2167）
 
-最后更新：2026-10-11。
+最后更新：2026-10-14。
 
 移植上游 Angelica 提交 `c10d30b2`（*Parallelize atlas loading and fix SDL-GPU mip-level targets*，
 PR #2167）的 **A 部分**（图集加载并行化）。该提交的 **B 部分**（SDL-GPU mip-level target 修复）
@@ -107,6 +107,56 @@ PR #2167）的 **A 部分**（图集加载并行化）。该提交的 **B 部分
    顺带消掉了原先在 `generateMipmaps` HEAD 里从工作线程写 `AtlasLoadStats` 的竞态。计数口径的日志
    说明见 `docs/research/sdl-gpu-port-stats-logging.md` 第 4/5 项。
 
+## 1.12.2 帧时序缺陷与 A2 修复（conarm 派生纹理崩溃）
+
+**症状**：装有 Tinkers' Construct / Construct's Armory 的环境里，图集加载在
+`TextureMap.finishLoading` 的上传循环抛 `IndexOutOfBoundsException`（读第 0 帧）；出事的精灵是
+conarm 的派生纹理，尺寸 1×1、`getFrameCount() == 0`。
+
+**根因**：Forge 的注册循环里，`loadTexture` 对每个精灵的处理顺序是「先递归装载
+`getDependencies()` 的依赖 → 再跑自定义 loader（`sprite.load(...)`）→ 最后私有
+`generateMipmaps(manager, sprite)`」（后者 = `loadSpriteFrames` 解码帧 + `generateMipmaps(int)` 建链）。
+契约是：**loader 被调用时，它声明的依赖的帧已经装载完毕**。`AbstractColoredTexture.load` 正是靠这一点：
+
+```java
+TextureAtlasSprite baseTexture = textureGetter.apply(backupTextureLocation);
+if (baseTexture == null || baseTexture.getFrameCount() <= 0) {
+  this.width = 1; this.height = 1;   // 失败分支，留下 1×1 / frameCount=0 的空精灵
+  return false;                       // Forge 语义：false = loader 已自己填帧，继续拼图
+}
+```
+
+而移植时把整个私有 helper 短路成了 `return true`（原 `angelica$deferSpriteGeneration`），帧装载被整体
+推迟到拼接后的 `prepare`。于是注册循环里的 loader 读到的是**还没解码的依赖精灵**，走了失败分支：精灵仍被
+`stitcher.addSprite`，最终在上传循环里读 `getFrameTextureData(0)` 崩掉。
+
+即使不触发失败分支，原实现还有第二重风险：依赖精灵的链被甩给 worker，而
+`MipmapGenerator.generateMipLevels` 会**就地重绘 base level**（`solidify`/`fillEmptyAreasWithDarkColor`），
+loader 同时 `Arrays.copyOf` 该帧就会拿到半成品的像素。
+
+**修复（A2）**：把私有 helper 的两件事拆开——**帧留在注册循环里装载**（恢复契约），**链按"谁读帧"分流**：
+
+1. 删除 defer 短路，让注册循环真实执行私有 helper 的 `loadSpriteFrames`。
+2. 私有 helper 内 `TextureAtlasSprite;generateMipmaps(I)V` 的 hook 语义从「一律 offload」改为
+   `AtlasLoadSession.takeGeneration` 的三分支：属依赖闭包 → 本阶段不建链、登记为 deferred，稍后由
+   `prepare` 在主线程建；否则 → 甩给 worker（保持与下一帧装载的重叠）；不可并行的模组子类 → 交回调方就地建。
+3. 新增 `AtlasLoadPlan`：在注册循环开始前读注册表快照（`Maps.newHashMap(mapRegisteredSprites)` 的实例），
+   产出两样东西——`decodeOrder`（按循环的 DFS 顺序：依赖在前、自身在后，逐步复刻 `loadTexture` 的递归与
+   `loadedSprites` 去重）与 `deferredChains`（所有被声明为依赖的**名字**，含尚未注册的，循环里
+   `registerSprite` 动态加入的依赖因此也能覆盖）。闭包按名字而不是按精灵身份，正是因为动态加入的依赖在
+   播种时还不存在。
+4. 解码通道播种点从 `prepare` 前移到会话开始（消费点回到注册循环，顺序才对得上）；`takeResource` 增加
+   「未播种的精灵不查通道」的保护，避免动态注册的依赖被当成失序消费而让整条通道 desync。
+5. `angelica$assembleAtlas` 里的 `preparedResult` 过滤段删除：生成失败的精灵在注册循环里就不会被
+   `stitcher.addSprite`，原本该过滤段只是重复了这件事。
+6. 诊断：`prepare` 对拼接后仍无帧的精灵打 WARN（精灵名 + 实际类名 + `hasCustomLoader` + 依赖列表），
+   "某 mod 的 loader 产出空精灵"因此可一眼定位；不修不兜底，让原版在上传处 fail fast。
+
+**与上游 1.7.10 的结构差异**：上游是「注册阶段解码成 BufferedImage → 全部生成 mipmap → 拼接 → 批量上传」，
+帧与链天然是两个阶段，不存在"循环期间 loader 读别人的帧"这个耦合；1.12.2 的帧与链同在一个私有 helper 里，
+所以修复只能把链这一步摘出来分流，帧必须留在循环内。同理，依赖闭包是 1.12.2（Forge `hasCustomLoader` /
+`getDependencies` 契约 + 循环内解码）才需要的新概念。
+
 ## 选项与界面
 
 - sodium 选项（Advanced 页「纹理加载」分组）：并行纹理解码、并行 Mipmap、批量图集上传
@@ -148,9 +198,12 @@ PR #2167）的 **A 部分**（图集加载并行化）。该提交的 **B 部分
   - `MixinTextureAtlasParallelLoad`：`loadTextureAtlas` → `func_110571_b`、
     `Stitcher.getStichSlots` → `func_94309_g`、私有 helper
     `TextureMap.generateMipmaps(IResourceManager,TextureAtlasSprite)Z` → `func_184397_a`
-    （`@Invoker` 也解析到同一成员）、`IResourceManager.getResource` → `func_110536_a`、
+    （两处 `@WrapOperation` 挂在它内部）、`IResourceManager.getResource` → `func_110536_a`、
     `TextureAtlasSprite.generateMipmaps(I)V` → `func_147963_d`、
     `getResourceLocation(TextureAtlasSprite)` → `func_184396_a`。
+    A2 之后 `loadTexture(Stitcher,...)` 的 defer 注入与私有 helper 的 `@Invoker` 都已删除，同一位置改挂
+    `loadTextureAtlas` 里 `HashMap.entrySet()` 的 `@WrapOperation`（JDK 成员，`remap = false`，故不进
+    refmap）；会话由它拿到注册循环真正迭代的那份注册表快照。
   - `MixinTextureAtlasSprite`：`loadSpriteFrames` → `func_188539_a(IResource;I)V`、
     `TextureUtil.readBufferedImage` → `func_177053_a`。
 - 新增/修改的自动化测试：
@@ -167,7 +220,20 @@ PR #2167）的 **A 部分**（图集加载并行化）。该提交的 **B 部分
   - `ActiniumRuntimeOptionsTest`：新增 `resolveWorkerThreadCount` 的系统属性覆盖与回退。
   - 未移植上游的 `AtlasAssemblerStripeTest`（整篇用反射访问私有内部类与方法，
     违反 Actinium 的测试规范）；其覆盖的切条写入不变量由上面的 `SpritePaddingTest` 用例承担。
+  - `com.dhj.actinium.texture.atlas.AtlasLoadPlanTest`（A2 新增）：依赖先于声明者播种、依赖链外层最后、
+    多个精灵依赖同一精灵时只播种一次、循环依赖终止、被声明的依赖全部进入 `deferredChains`、
+    注册表尚未持有的依赖按名字覆盖。
+  - `com.dhj.actinium.texture.atlas.AtlasLoadSessionTest`（A2 改写）：按注册循环的真实调用序列驱动
+    （`beginRegistration` → 逐精灵 `takeGeneration` → `prepare`），除原有计数与策略口径外新增
+    「只有 deferred 的精灵在装配前建链、且只建一次」「无人读取的精灵交给 worker
+    （按 `mipmapsOffloaded` 断言）」。原「同名不同身份的精灵不算本图集」断言随 `expects` 改为按名字
+    判定（并发读安全，见会话注释）而更新为「未注册的精灵不算本图集」。
 - **未验证（待实机）**：图集视觉正确性（gutter + 批量上传 + 并行 mipmap 三者叠加）、
   资源重载（F3+T）与光影包加载、并行解码/上传对启动时间的实际收益、
   以及非法/异常资源包在 worker 线程上的行为。`check` 只覆盖到编译、mixins 配置与纯逻辑测试；
   mixin 注入点是否真正命中要到客户端启动时才验证。
+- **待实机验证（本案例，A2 新增）**：TiCon / Construct's Armory 派生纹理
+  （`AbstractColoredTexture` 一族：`hasCustomLoader == true` + `getDependencies()` 声明基纹理）——
+  注册循环内依赖帧必须先装载，装配阶段不再有派生精灵的 1×1 / `frameCount == 0` 崩溃；
+  同时确认派生纹理着色与 mipmap 一并正确（依赖链改由装配前主线程建链）。
+

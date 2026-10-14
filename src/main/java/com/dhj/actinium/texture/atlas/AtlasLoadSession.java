@@ -25,22 +25,18 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 
 /**
- * One atlas load's parallel work: sprite images are decoded ahead of the main thread, and the mipmaps of the
- * sprites it has just decoded are generated on worker threads.
+ * One atlas load's parallel work: sprite images decoded ahead of the main thread, mipmap levels built on
+ * workers where safe.
  *
- * <p>Vanilla decodes a sprite and builds its mipmaps inside the same loop iteration, right before uploading
- * it, so the two parallel phases are driven from that loop: the decode lane is seeded in the stitcher's
- * consumption order, and every sprite the main thread decodes is handed on for parallel mipmap generation.
- * The results are joined before the atlas assembler reads the whole atlas, which is what makes the mipmap
- * work overlap with the remaining decodes.
- *
- * <p>A session is created for the duration of one {@code TextureMap.loadTextureAtlas} call, and is
- * main-thread only. The set of sprites whose levels the load generates is handed to its workers as well, so
- * the mipmap hook can tell a sprite of this load from one a mod loader generated for itself.
+ * <p>Frames always load on the main thread in vanilla order - a custom loader reads its dependencies' frames
+ * through {@code textureGetter}. Only level building is parallel, and sprites a loader may read
+ * ({@link AtlasLoadPlan#deferredChains}) build theirs in {@link #prepare}, after the loop. Main-thread only,
+ * except for the worker level building.
  */
 public final class AtlasLoadSession {
 
@@ -52,33 +48,30 @@ public final class AtlasLoadSession {
         BufferedImage decode(InputStream stream) throws IOException;
     }
 
-    /** Builds one sprite's frames and mipmaps exactly as the vanilla atlas load does. */
-    @FunctionalInterface
-    public interface SpriteGenerator {
-        boolean generate(TextureAtlasSprite sprite);
-    }
-
     private record Decoded(ResourceLocation location, IResource resource, BufferedImage image) {}
 
     private static volatile AtlasLoadSession active;
 
     private final IResourceManager manager;
     private final TextureMap map;
+    private final Function<TextureAtlasSprite, ResourceLocation> locator;
     private final boolean decodeEnabled;
     private final boolean mipmapsEnabled;
     private final TextureAtlasSprite missingImage;
 
     private Set<String> eligibleDomains = Set.of();
     private PrefetchLane<TextureAtlasSprite, Decoded> decodes;
+    private final Set<TextureAtlasSprite> seeded = Collections.newSetFromMap(new IdentityHashMap<>());
     private Decoder decoder;
     private TextureAtlasSprite pendingSprite;
     private InputStream pendingStream;
     private BufferedImage pendingImage;
     private int substituted;
 
+    private Set<String> deferredChains = Set.of();
     private final List<CompletableFuture<Void>> mipmaps = new ArrayList<>();
-    private final Map<TextureAtlasSprite, Boolean> generated = new IdentityHashMap<>();
-    private final Set<TextureAtlasSprite> expected = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<TextureAtlasSprite> prepared = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<String> expected = ConcurrentHashMap.newKeySet();
     private final Set<int[][]> uploaded = Collections.newSetFromMap(new IdentityHashMap<>());
     private int mipmapsOffloaded;
     private int batchedUploads;
@@ -86,32 +79,31 @@ public final class AtlasLoadSession {
     private boolean closed;
 
     private AtlasLoadSession(TextureMap map, IResourceManager manager, TextureAtlasSprite missingImage,
-        boolean decodeEnabled, boolean mipmapsEnabled) {
+        Function<TextureAtlasSprite, ResourceLocation> locator, boolean decodeEnabled, boolean mipmapsEnabled) {
         this.map = map;
         this.manager = manager;
         this.missingImage = missingImage;
+        this.locator = locator;
         this.decodeEnabled = decodeEnabled;
         this.mipmapsEnabled = mipmapsEnabled;
-        // The load generates this one itself, before the stitched sprites are known, so it is part of what the
-        // session expects to see rather than something generated for the sprite's own sake.
-        this.expected.add(missingImage);
+        // The load builds the missing image's levels itself, before the registration loop.
+        this.expected.add(missingImage.getIconName());
     }
 
     /**
-     * Returns null when the options ask for no parallel work at all, which leaves the vanilla path untouched.
-     * The batched upload needs the session for its "already written" bookkeeping, so it is part of the gate.
-     *
-     * @param missingImage the atlas's own missing sprite, which the load generates itself, outside this
-     *                     session's generation
+     * Returns null when no parallel path is enabled, leaving the vanilla load untouched. The batched upload
+     * needs the session's bookkeeping, so it is part of the gate.
      */
-    public static AtlasLoadSession begin(TextureMap map, IResourceManager manager, TextureAtlasSprite missingImage) {
+    public static AtlasLoadSession begin(TextureMap map, IResourceManager manager, TextureAtlasSprite missingImage,
+        Function<TextureAtlasSprite, ResourceLocation> locator) {
         final boolean decodeEnabled = ActiniumRuntimeOptions.enableParallelAtlasDecode();
         final boolean mipmapsEnabled = ActiniumRuntimeOptions.enableParallelAtlasMipmaps();
         if (!decodeEnabled && !mipmapsEnabled && !ActiniumRuntimeOptions.enableBatchedAtlasUpload()) {
             return null;
         }
 
-        final AtlasLoadSession session = new AtlasLoadSession(map, manager, missingImage, decodeEnabled, mipmapsEnabled);
+        final AtlasLoadSession session = new AtlasLoadSession(map, manager, missingImage, locator, decodeEnabled,
+            mipmapsEnabled);
         active = session;
         return session;
     }
@@ -121,54 +113,63 @@ public final class AtlasLoadSession {
         return active;
     }
 
-    /**
-     * Seeds the decode lane, runs the vanilla per-sprite generation for every stitched sprite so its mipmaps
-     * can overlap with the remaining decodes, and waits for both before the caller touches the frames.
-     *
-     * <p>These sprites are also what the atlas build report counts by mipmap mode: the session is the only
-     * place that knows which sprites the load itself generates levels for, so counting them here, after every
-     * generation it started has been joined, is what keeps a mod sprite loader's own generation out of the
-     * count.
-     */
-    public void prepare(List<TextureAtlasSprite> sprites, Function<TextureAtlasSprite, ResourceLocation> locator,
-        SpriteGenerator generator) {
-        // Filled before the generation starts: the mipmap hook reads it from whichever worker the session
-        // hands a sprite to, and an IdentityHashMap must not be read while the main thread is writing to it.
-        this.expected.addAll(sprites);
+    /** Hands the session the registry before the loop starts: seeds the decode lane and fixes the deferred chains. */
+    public void beginRegistration(Map<String, TextureAtlasSprite> registered) {
+        final AtlasLoadPlan plan = AtlasLoadPlan.of(registered);
+        this.deferredChains = plan.deferredChains();
+        beginDecodes(plan.decodeOrder());
+    }
 
-        beginDecodes(sprites, locator);
+    /**
+     * Decides where one sprite's level building goes, called once its frames are in place: deferred to
+     * {@link #prepare} when a loader may read the sprite, a worker when safe, or the caller otherwise.
+     *
+     * @return true when the session took the work, so the caller must not build the levels itself
+     */
+    public boolean takeGeneration(TextureAtlasSprite sprite, int levels) {
+        // Recorded either way: the sprite's mipmap hook treats a generation it never saw as a mod's own.
+        this.prepared.add(sprite);
+        this.expected.add(sprite.getIconName());
+
+        if (this.deferredChains.contains(sprite.getIconName())) {
+            return true;
+        }
+        return offloadMipmaps(sprite, levels);
+    }
+
+    /** Builds the deferred level chains and joins the offloaded ones, after the loop, on its thread. */
+    public void prepare(List<TextureAtlasSprite> sprites, int levels) {
         for (TextureAtlasSprite sprite : sprites) {
             if (sprite == this.missingImage) {
                 continue;
             }
-            this.generated.put(sprite, generator.generate(sprite));
+            if (sprite.getFrameCount() <= 0) {
+                // Vanilla throws reading frame 0 in the upload loop; name the mod bug here instead of hiding it.
+                LOGGER.warn("Atlas sprite {} ({}) has no frame to upload: {}x{}, custom loader={}, dependencies={}",
+                    sprite.getIconName(), sprite.getClass().getName(), sprite.getIconWidth(), sprite.getIconHeight(),
+                    sprite.hasCustomLoader(this.manager, this.locator.apply(sprite)), sprite.getDependencies());
+            }
+            if (this.deferredChains.contains(sprite.getIconName())) {
+                sprite.generateMipmaps(levels);
+            }
         }
         joinMipmaps();
         recordStrategies();
     }
 
-    /**
-     * Whether a generation call for this sprite belongs to the atlas load this session drives: the sprites its
-     * own generation covers, plus the atlas's missing image, which the load generates itself before the
-     * stitched sprites are known. Reading levels for any other sprite means something built them for itself,
-     * which the build report surfaces instead of counting it as one of the load's sprites.
-     */
+    /** Whether a generation belongs to this load. By name: the asking hook may run on a worker thread. */
     public boolean expects(TextureAtlasSprite sprite) {
-        return this.expected.contains(sprite);
+        return this.expected.contains(sprite.getIconName());
     }
 
-    /**
-     * Reports every sprite this session generated levels for by the mode it generated them with. A sprite whose
-     * generation never reached the sprite's own hook - a broken resource the load skipped - has no mode to
-     * report and is left out.
-     */
+    /** Reports each generated sprite's mode; a broken resource never reached the hook and is skipped. */
     private void recordStrategies() {
-        for (TextureAtlasSprite sprite : this.generated.keySet()) {
+        for (TextureAtlasSprite sprite : this.prepared) {
             AtlasLoadStats.recordStrategy(((SpriteMipmapExtension) sprite).celeritas$generatedMipmapStrategy());
         }
     }
 
-    private void beginDecodes(List<TextureAtlasSprite> sprites, Function<TextureAtlasSprite, ResourceLocation> locator) {
+    private void beginDecodes(List<TextureAtlasSprite> sprites) {
         if (!this.decodeEnabled || this.decodes != null) {
             return;
         }
@@ -189,7 +190,8 @@ public final class AtlasLoadSession {
             if (sprite == this.missingImage) {
                 continue;
             }
-            lane.add(sprite, decodeTask(sprite, locator));
+            this.seeded.add(sprite);
+            lane.add(sprite, decodeTask(sprite));
         }
         this.decodes = lane;
     }
@@ -198,13 +200,12 @@ public final class AtlasLoadSession {
         return 32 * AngelicaWorkers.threads();
     }
 
-    private Callable<Decoded> decodeTask(TextureAtlasSprite sprite,
-        Function<TextureAtlasSprite, ResourceLocation> locator) {
+    private Callable<Decoded> decodeTask(TextureAtlasSprite sprite) {
         if (sprite == null || sprite.getClass() != TextureAtlasSprite.class) {
             return null;
         }
 
-        final ResourceLocation candidate = locator.apply(sprite);
+        final ResourceLocation candidate = this.locator.apply(sprite);
         if (candidate == null || !this.eligibleDomains.contains(candidate.getNamespace())) {
             return null;
         }
@@ -228,11 +229,12 @@ public final class AtlasLoadSession {
     }
 
     /**
-     * Hands the prefetched resource for a sprite over to the main thread, or null when this sprite was not
-     * prefetched, when the location does not match, or when the lane gave up.
+     * Hands the prefetched resource for a sprite to the main thread, or null when not prefetched, on location
+     * mismatch, or when the lane gave up. Unseeded sprites (registered mid-loop) must not ask the lane - that
+     * would read as an out-of-order consumer and desynchronise it.
      */
     public IResource takeResource(TextureAtlasSprite sprite, ResourceLocation location) {
-        if (this.decodes == null) {
+        if (this.decodes == null || !this.seeded.contains(sprite)) {
             return null;
         }
 
@@ -254,9 +256,8 @@ public final class AtlasLoadSession {
     }
 
     /**
-     * Consumes the image the worker decoded for the sprite currently loading its frames. Matching the sprite
-     * rather than the stream is deliberate: resource implementations hand out a fresh stream on every call,
-     * so the stream the decode hook sees is never the one the prefetch stored.
+     * Consumes the decoded image for the sprite currently loading its frames. Matches the sprite, not the
+     * stream: resources hand out a fresh stream per call.
      */
     public BufferedImage takeImage(TextureAtlasSprite sprite, InputStream stream) {
         if (this.pendingImage == null || sprite != this.pendingSprite) {
@@ -284,11 +285,8 @@ public final class AtlasLoadSession {
         this.decodes.start();
     }
 
-    /**
-     * Offloads one sprite's mipmap generation, or returns false to leave it to the calling thread. The sprite
-     * is queried again for its frames only after {@link #joinMipmaps()}.
-     */
-    public boolean offloadMipmaps(TextureAtlasSprite sprite, int levels) {
+    /** Hands level building to a worker; until {@link #joinMipmaps} no other thread may read the sprite's frames. */
+    private boolean offloadMipmaps(TextureAtlasSprite sprite, int levels) {
         if (!this.mipmapsEnabled || !MipmapSafety.isSafe(sprite.getClass())) {
             return false;
         }
@@ -297,7 +295,7 @@ public final class AtlasLoadSession {
         return true;
     }
 
-    /** Waits for every offloaded mipmap, falling back to the calling thread when one of them failed. */
+    /** Waits for every offloaded mipmap, rethrowing the first failure. */
     public void joinMipmaps() {
         final int count = this.mipmaps.size();
         for (int i = 0; i < count; i++) {
@@ -313,16 +311,7 @@ public final class AtlasLoadSession {
         this.mipmaps.clear();
     }
 
-    /** The result of the vanilla generation for a sprite, or null when this session never ran it. */
-    public Boolean preparedResult(TextureAtlasSprite sprite) {
-        return this.generated.get(sprite);
-    }
-
-    /**
-     * Records a sprite the batched upload already wrote. The frame array is the key rather than the sprite,
-     * because the vanilla upload loop is hooked at the texture upload call, where the frame data is the only
-     * thing that identifies the sprite.
-     */
+    /** Records a sprite the batched upload wrote, keyed by frame array - the only identity at the hooked upload call. */
     public void markUploaded(TextureAtlasSprite sprite) {
         final int[][] frame = sprite.getFrameCount() > 0 ? sprite.getFrameTextureData(0) : null;
         if (frame != null) {
@@ -351,13 +340,12 @@ public final class AtlasLoadSession {
         releasePending();
         joinMipmaps();
 
-        // The parallel path's own numbers go into the build report, which the atlas map logs once the load
-        // is over and the mip level count and gutter are final.
+        // Own numbers go into the build report, which the atlas map logs once the load is over.
         AtlasLoadStats.recordDecode(lane == null ? 0 : lane.submitted(), this.substituted,
             lane == null ? 0 : lane.failures(), lane != null && lane.isDesynced());
         AtlasLoadStats.recordMipmapsOffloaded(this.mipmapsOffloaded);
         AtlasLoadStats.recordBatchedUploads(this.batchedUploads);
-        AtlasLoadStats.recordPrepared(this.generated.size());
+        AtlasLoadStats.recordPrepared(this.prepared.size());
     }
 
     private void releasePending() {
