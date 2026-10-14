@@ -91,6 +91,7 @@ public final class IrisConfigEntryPoint {
                 .setBinding((ignored, value) -> this.saveCompiledSaver.accept(value),
                         ignored -> this.saveCompiledLoader.get())
                 .setDefaultValue(false)
+                .setEnabledPredicate(() -> Iris.enabled)
                 .build();
 
         OptionGroup group = OptionGroup.createBuilder()
