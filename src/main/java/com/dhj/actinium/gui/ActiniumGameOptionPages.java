@@ -104,6 +104,7 @@ public class ActiniumGameOptionPages {
                     Minecraft mc = Minecraft.getMinecraft();
                     mc.resize(mc.displayWidth, mc.displayHeight);
                 }, opts -> opts.guiScale)
+                .setDefaultValue(0)
                 .build();
     }
 
@@ -127,6 +128,7 @@ public class ActiniumGameOptionPages {
                 .setControl(TickBoxControl::new)
                 .setImpact(OptionImpact.MEDIUM)
                 .setBinding((opts, value) -> opts.advanced.useModelRendererBatching = value, opts -> opts.advanced.useModelRendererBatching)
+                .setDefaultValue(true)
                 .build();
     }
 
@@ -138,6 +140,7 @@ public class ActiniumGameOptionPages {
                 .setControl(TickBoxControl::new)
                 .setImpact(OptionImpact.MEDIUM)
                 .setBinding((opts, value) -> opts.advanced.useModelRendererDisplayLists = value, opts -> opts.advanced.useModelRendererDisplayLists)
+                .setDefaultValue(true)
                 .build();
     }
 
@@ -149,6 +152,7 @@ public class ActiniumGameOptionPages {
                 .setControl(TickBoxControl::new)
                 .setImpact(OptionImpact.LOW)
                 .setBinding(ActiniumGameOptionPages::setFastLitItemRendering, opts -> opts.advanced.useFastLitItemRendering)
+                .setDefaultValue(true)
                 .build();
     }
 
@@ -160,6 +164,7 @@ public class ActiniumGameOptionPages {
                 .setControl(TickBoxControl::new)
                 .setImpact(OptionImpact.MEDIUM)
                 .setBinding(ActiniumGameOptionPages::setFastLitItemDisplayLists, opts -> opts.advanced.useFastLitItemDisplayLists)
+                .setDefaultValue(true)
                 .build();
     }
 
@@ -175,6 +180,7 @@ public class ActiniumGameOptionPages {
                         .setBinding((options, value) -> options.renderDistanceChunks = value, options -> options.renderDistanceChunks)
                         .setImpact(OptionImpact.HIGH)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(12)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, vanillaOpts)
                         .setId(StandardOptions.Option.BRIGHTNESS.cast())
@@ -182,6 +188,7 @@ public class ActiniumGameOptionPages {
                         .setTooltip(TextComponent.translatable("sodium.options.brightness.tooltip"))
                         .setControl(opt -> new SliderControl(opt, 0, 100, 1, ControlValueFormatter.brightness()))
                         .setBinding((opts, value) -> opts.gammaSetting = (float) (value * 0.01D), (opts) -> (int) (opts.gammaSetting / 0.01D))
+                        .setDefaultValue(0)
                         .build())
                 .build());
 
@@ -212,6 +219,7 @@ public class ActiniumGameOptionPages {
                         .setTooltip(TextComponent.translatable("sodium.options.fps_limit.tooltip"))
                         .setControl(option -> new SliderControl(option, 10, 260, 1, ControlValueFormatter.fpsLimit()))
                         .setBinding((opts, value) -> opts.limitFramerate = value, opts -> opts.limitFramerate)
+                        .setDefaultValue(120)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)
                         .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "loading_screen_framerate_limit", int.class))
@@ -220,6 +228,7 @@ public class ActiniumGameOptionPages {
                         .setControl(option -> new SliderControl(option, 30, 240, 10, ControlValueFormatter.fpsLimit()))
                         .setBinding((opts, value) -> opts.performance.loadingScreenFramerateLimit = value,
                                 opts -> opts.performance.loadingScreenFramerateLimit)
+                        .setDefaultValue(60)
                         .build())
                 .build());
 
@@ -231,6 +240,7 @@ public class ActiniumGameOptionPages {
                         .setTooltip(TextComponent.translatable("sodium.options.view_bobbing.tooltip"))
                         .setControl(TickBoxControl::new)
                         .setBinding((opts, value) -> opts.viewBobbing = value, opts -> opts.viewBobbing)
+                        .setDefaultValue(true)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, vanillaOpts)
                         .setId(StandardOptions.Option.ATTACK_INDICATOR.cast())
@@ -241,6 +251,7 @@ public class ActiniumGameOptionPages {
                                 TextComponent.translatable("options.attack.crosshair"),
                                 TextComponent.translatable("options.attack.hotbar") }))
                         .setBinding((opts, value) -> opts.attackIndicator = value, (opts) -> opts.attackIndicator)
+                        .setDefaultValue(1)
                         .build())
                 .build());
 
@@ -260,6 +271,7 @@ public class ActiniumGameOptionPages {
                         .setBinding((opts, value) -> opts.fancyGraphics = value, opts -> opts.fancyGraphics)
                         .setImpact(OptionImpact.HIGH)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(true)
                         .build())
                 .build());
 
@@ -279,6 +291,7 @@ public class ActiniumGameOptionPages {
                             return opts.clouds;
                         })
                         .setImpact(OptionImpact.LOW)
+                        .setDefaultValue(2)
                         .build())
                 .add(OptionImpl.createBuilder(SodiumGameOptions.GraphicsQuality.class, sodiumOpts)
                         .setId(StandardOptions.Option.WEATHER.cast())
@@ -287,6 +300,7 @@ public class ActiniumGameOptionPages {
                         .setControl(option -> new CyclingControl<>(option, SodiumGameOptions.GraphicsQuality.class))
                         .setBinding((opts, value) -> opts.quality.weatherQuality = value, opts -> opts.quality.weatherQuality)
                         .setImpact(OptionImpact.MEDIUM)
+                        .setDefaultValue(SodiumGameOptions.GraphicsQuality.DEFAULT)
                         .build())
                 .add(OptionImpl.createBuilder(SodiumGameOptions.GraphicsQuality.class, sodiumOpts)
                         .setId(StandardOptions.Option.LEAVES.cast())
@@ -296,6 +310,7 @@ public class ActiniumGameOptionPages {
                         .setBinding((opts, value) -> opts.quality.leavesQuality = value, opts -> opts.quality.leavesQuality)
                         .setImpact(OptionImpact.MEDIUM)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(SodiumGameOptions.GraphicsQuality.DEFAULT)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, vanillaOpts)
                         .setId(StandardOptions.Option.PARTICLES.cast())
@@ -307,6 +322,7 @@ public class ActiniumGameOptionPages {
                                 TextComponent.translatable("options.particles.minimal") }))
                         .setBinding((opts, value) -> opts.particleSetting = value, (opts) -> opts.particleSetting)
                         .setImpact(OptionImpact.MEDIUM)
+                        .setDefaultValue(0)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, vanillaOpts)
                         .setId(StandardOptions.Option.SMOOTH_LIGHT.cast())
@@ -319,6 +335,7 @@ public class ActiniumGameOptionPages {
                         .setBinding((opts, value) -> opts.ambientOcclusion = value, opts -> opts.ambientOcclusion)
                         .setImpact(OptionImpact.LOW)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(2)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)
                         .setId(StandardOptions.Option.BIOME_BLEND.cast())
@@ -328,6 +345,7 @@ public class ActiniumGameOptionPages {
                         .setBinding((opts, value) -> opts.quality.legacyBiomeBlendRadius = value, opts -> opts.quality.legacyBiomeBlendRadius)
                         .setImpact(OptionImpact.LOW)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(0)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "biome_color_noise", boolean.class))
@@ -337,6 +355,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.LOW)
                         .setBinding((opts, value) -> opts.quality.useBiomeColorNoise = value, opts -> opts.quality.useBiomeColorNoise)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(true)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)
                         .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "biome_color_noise_grass", int.class))
@@ -347,6 +366,7 @@ public class ActiniumGameOptionPages {
                                 opts -> Math.round(opts.quality.biomeColorNoiseGrassIntensity * 100))
                         .setImpact(OptionImpact.LOW)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(8)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)
                         .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "biome_color_noise_foliage", int.class))
@@ -357,6 +377,7 @@ public class ActiniumGameOptionPages {
                                 opts -> Math.round(opts.quality.biomeColorNoiseFoliageIntensity * 100))
                         .setImpact(OptionImpact.LOW)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(8)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)
                         .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "biome_color_noise_water", int.class))
@@ -367,6 +388,7 @@ public class ActiniumGameOptionPages {
                                 opts -> Math.round(opts.quality.biomeColorNoiseWaterIntensity * 100))
                         .setImpact(OptionImpact.LOW)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(8)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)
                         .setId(StandardOptions.Option.CHUNK_FADE_IN_DURATION.cast())
@@ -376,6 +398,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.LOW)
                         .setBinding((opts, value) -> opts.quality.chunkFadeInDuration = value, opts -> opts.quality.chunkFadeInDuration)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(0)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, vanillaOpts)
                         .setId(StandardOptions.Option.ENTITY_SHADOWS.cast())
@@ -384,6 +407,7 @@ public class ActiniumGameOptionPages {
                         .setControl(TickBoxControl::new)
                         .setBinding((opts, value) -> opts.entityShadows = value, opts -> opts.entityShadows)
                         .setImpact(OptionImpact.LOW)
+                        .setDefaultValue(true)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(StandardOptions.Option.VIGNETTE.cast())
@@ -392,6 +416,7 @@ public class ActiniumGameOptionPages {
                         .setControl(TickBoxControl::new)
                         .setBinding((opts, value) -> opts.quality.enableVignette = value, opts -> opts.quality.enableVignette)
                         .setImpact(OptionImpact.LOW)
+                        .setDefaultValue(true)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "circular_fog", boolean.class))
@@ -401,6 +426,7 @@ public class ActiniumGameOptionPages {
                         .setBinding((opts, value) -> opts.quality.circularFog = value, opts -> opts.quality.circularFog)
                         .setImpact(OptionImpact.LOW)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(false)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(StandardOptions.Option.DYNAMIC_FOV.cast())
@@ -409,6 +435,7 @@ public class ActiniumGameOptionPages {
                         .setControl(TickBoxControl::new)
                         .setBinding((opts, value) -> opts.quality.dynamicFov = value, opts -> opts.quality.dynamicFov)
                         .setImpact(OptionImpact.LOW)
+                        .setDefaultValue(true)
                         .build())
                 .build());
 
@@ -427,6 +454,7 @@ public class ActiniumGameOptionPages {
                                 opts -> TerrainTextureFiltering.resolveFilterMode(opts.quality.textureFilterMode))
                         .setImpact(OptionImpact.LOW)
                         .setFlags(OptionFlag.REQUIRES_ASSET_RELOAD, OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(TerrainTextureFiltering.resolveFilterMode(TextureFilterMode.RGSS_ANISOTROPIC))
                         .build();
 
         groups.add(OptionGroup.createBuilder()
@@ -439,6 +467,7 @@ public class ActiniumGameOptionPages {
                         .setBinding((opts, value) -> opts.mipmapLevels = value, opts -> opts.mipmapLevels)
                         .setImpact(OptionImpact.MEDIUM)
                         .setFlags(OptionFlag.REQUIRES_ASSET_RELOAD)
+                        .setDefaultValue(4)
                         .build())
                 .add(textureFilterMode)
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)
@@ -450,6 +479,7 @@ public class ActiniumGameOptionPages {
                         .setBinding((opts, value) -> opts.quality.anisotropicLevel = value,
                                 opts -> MathHelper.clamp(opts.quality.anisotropicLevel, anisotropyMin, anisotropyMax))
                         .setImpact(OptionImpact.MEDIUM)
+                        .setDefaultValue(1)
                         .setEnabledPredicate(() -> textureFilterMode.getValue().usesAnisotropy()
                                 && TerrainTextureFiltering.hasAnisotropyRange())
                         .build())
@@ -460,6 +490,7 @@ public class ActiniumGameOptionPages {
                         .setControl(option -> new CyclingControl<>(option, TexelSampling.class))
                         .setBinding((opts, value) -> opts.quality.texelSampling = value, opts -> opts.quality.texelSampling)
                         .setImpact(OptionImpact.LOW)
+                        .setDefaultValue(TexelSampling.LINEAR)
                         // The shader only lets the texture's own filter state pick the mip level while no filter
                         // mode asks for the snapped path and nearest texels are wanted, so this choice changes a
                         // shader define - and needs a rerender - exactly when filtering is off.
@@ -479,6 +510,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.VARIES)
                         .setBinding((opts, value) -> opts.performance.useTranslucentFaceSorting = value, opts -> opts.performance.useTranslucentFaceSorting)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(true)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(OptionIdentifier.create("celeritas", "fast_block_renderer", boolean.class))
@@ -488,6 +520,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.MEDIUM)
                         .setBinding((opts, value) -> opts.performance.useFastBlockRenderer = value, opts -> opts.performance.useFastBlockRenderer)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(true)
                         .build())
                 .build());
 
@@ -506,6 +539,7 @@ public class ActiniumGameOptionPages {
                         .setControl(opt -> new SliderControl(opt, 0, 9, 1, ControlValueFormatter.translateVariable("sodium.options.cpu_render_ahead_limit.value")))
                         .setBinding((opts, value) -> opts.advanced.cpuRenderAheadLimit = value, opts -> opts.advanced.cpuRenderAheadLimit)
                         .setEnabled(LWJGL.isOpenGLVersionSupported(3, 2))
+                        .setDefaultValue(0)
                         .build()
                 )
                 .add(OptionImpl.createBuilder(MultiDrawMode.class, sodiumOpts)
@@ -520,6 +554,7 @@ public class ActiniumGameOptionPages {
                         })
                         .setBinding((opts, value) -> opts.advanced.multiDrawMode = value, opts -> opts.advanced.multiDrawMode)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(MultiDrawMode.DIRECT)
                         .build()
                 )
                 .add(OptionImpl.createBuilder(SodiumGameOptions.StreamingUploadStrategy.class, sodiumOpts)
@@ -529,6 +564,7 @@ public class ActiniumGameOptionPages {
                         .setControl(option -> new CyclingControl<>(option, SodiumGameOptions.StreamingUploadStrategy.class))
                         .setBinding((opts, value) -> opts.advanced.streamingUploadStrategy = value, opts -> opts.advanced.streamingUploadStrategy)
                         .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
+                        .setDefaultValue(SodiumGameOptions.StreamingUploadStrategy.MAP_BUFFER_RANGE)
                         .build()
                 )
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
@@ -538,6 +574,7 @@ public class ActiniumGameOptionPages {
                         .setControl(TickBoxControl::new)
                         .setImpact(OptionImpact.MEDIUM)
                         .setBinding((opts, value) -> opts.advanced.enableDeferredBatching = value, opts -> opts.advanced.enableDeferredBatching)
+                        .setDefaultValue(true)
                         .build()
                 )
                 .add(createModelRendererBatchingOption(TextComponent.translatable("sodium.options.actinium.model_renderer_batching.tooltip")))
@@ -555,6 +592,7 @@ public class ActiniumGameOptionPages {
                         .setControl(TickBoxControl::new)
                         .setImpact(OptionImpact.HIGH)
                         .setBinding((opts, value) -> opts.advanced.allowDirectMemoryAccess = value, opts -> opts.advanced.allowDirectMemoryAccess)
+                        .setDefaultValue(true)
                         .build()
                 )
                 .build());
@@ -568,6 +606,7 @@ public class ActiniumGameOptionPages {
                         .setControl(TickBoxControl::new)
                         .setImpact(OptionImpact.MEDIUM)
                         .setBinding((opts, value) -> opts.debug.ignoreFramebufferErrors = value, opts -> opts.debug.ignoreFramebufferErrors)
+                        .setDefaultValue(false)
                         .build()
                 )
                 .build());
@@ -582,6 +621,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.MEDIUM)
                         .setFlags(OptionFlag.REQUIRES_ASSET_RELOAD)
                         .setBinding((opts, value) -> opts.performance.enableParallelAtlasDecode = value, opts -> opts.performance.enableParallelAtlasDecode)
+                        .setDefaultValue(true)
                         .build()
                 )
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
@@ -592,6 +632,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.MEDIUM)
                         .setFlags(OptionFlag.REQUIRES_ASSET_RELOAD)
                         .setBinding((opts, value) -> opts.performance.enableParallelAtlasMipmaps = value, opts -> opts.performance.enableParallelAtlasMipmaps)
+                        .setDefaultValue(true)
                         .build()
                 )
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
@@ -602,6 +643,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.MEDIUM)
                         .setFlags(OptionFlag.REQUIRES_ASSET_RELOAD)
                         .setBinding((opts, value) -> opts.performance.enableBatchedAtlasUpload = value, opts -> opts.performance.enableBatchedAtlasUpload)
+                        .setDefaultValue(true)
                         .build()
                 )
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)
@@ -615,6 +657,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.MEDIUM)
                         .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
                         .setBinding((opts, value) -> opts.performance.workerThreadCount = value, opts -> opts.performance.workerThreadCount)
+                        .setDefaultValue(0)
                         .build()
                 )
                 .add(OptionImpl.createBuilder(Void.class, sodiumOpts)
@@ -650,6 +693,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.LOW)
                         .setBinding(reducerBinding((opts, value) -> opts.reducer.enabled = value),
                                 opts -> opts.reducer.enabled)
+                        .setDefaultValue(false)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)
                         .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_unfocused_fps_limit", int.class))
@@ -659,6 +703,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.LOW)
                         .setBinding(reducerBinding((opts, value) -> opts.reducer.unfocusedFpsLimit = value),
                                 opts -> opts.reducer.unfocusedFpsLimit)
+                        .setDefaultValue(10)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)
                         .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_unfocused_volume", int.class))
@@ -668,6 +713,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.LOW)
                         .setBinding(reducerBinding((opts, value) -> opts.reducer.unfocusedVolume = value),
                                 opts -> opts.reducer.unfocusedVolume)
+                        .setDefaultValue(100)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)
                         .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_minimized_volume", int.class))
@@ -677,6 +723,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.LOW)
                         .setBinding(reducerBinding((opts, value) -> opts.reducer.minimizedVolume = value),
                                 opts -> opts.reducer.minimizedVolume)
+                        .setDefaultValue(100)
                         .build())
                 .build());
 
@@ -693,6 +740,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.LOW)
                         .setBinding(reducerBinding((opts, value) -> opts.reducer.idleTimeoutMinutes = value),
                                 opts -> opts.reducer.idleTimeoutMinutes)
+                        .setDefaultValue(5)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)
                         .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_idle_fps_limit", int.class))
@@ -702,6 +750,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.LOW)
                         .setBinding(reducerBinding((opts, value) -> opts.reducer.idleFpsLimit = value),
                                 opts -> opts.reducer.idleFpsLimit)
+                        .setDefaultValue(30)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)
                         .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_idle_volume", int.class))
@@ -711,6 +760,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.LOW)
                         .setBinding(reducerBinding((opts, value) -> opts.reducer.idleVolume = value),
                                 opts -> opts.reducer.idleVolume)
+                        .setDefaultValue(100)
                         .build())
                 .build());
 
@@ -724,6 +774,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.LOW)
                         .setBinding(reducerBinding((opts, value) -> opts.reducer.limitMenuFrameRate = value),
                                 opts -> opts.reducer.limitMenuFrameRate)
+                        .setDefaultValue(true)
                         .build())
                 .build());
 
@@ -749,6 +800,7 @@ public class ActiniumGameOptionPages {
                         .setControl(TickBoxControl::new)
                         .setImpact(OptionImpact.LOW)
                         .setBinding((opts, value) -> opts.debug.enableProductionDiagnostics = value, opts -> opts.debug.enableProductionDiagnostics)
+                        .setDefaultValue(true)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(StandardOptions.Option.ACTINIUM_GL_DEBUG.cast())
@@ -757,6 +809,7 @@ public class ActiniumGameOptionPages {
                         .setControl(TickBoxControl::new)
                         .setImpact(OptionImpact.HIGH)
                         .setBinding((opts, value) -> opts.debug.enableActiniumGlDebug = value, opts -> opts.debug.enableActiniumGlDebug)
+                        .setDefaultValue(false)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(StandardOptions.Option.ACTINIUM_LWJGL_DEBUG.cast())
@@ -766,6 +819,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.HIGH)
                         .setBinding((opts, value) -> opts.debug.enableLwjglDebug = value, opts -> opts.debug.enableLwjglDebug)
                         .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
+                        .setDefaultValue(false)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(StandardOptions.Option.ACTINIUM_PBR_DEBUG.cast())
@@ -774,6 +828,7 @@ public class ActiniumGameOptionPages {
                         .setControl(TickBoxControl::new)
                         .setImpact(OptionImpact.HIGH)
                         .setBinding((opts, value) -> opts.debug.enablePbrDebug = value, opts -> opts.debug.enablePbrDebug)
+                        .setDefaultValue(false)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(StandardOptions.Option.ACTINIUM_CLOUD_CONTROL_DEBUG.cast())
@@ -782,6 +837,7 @@ public class ActiniumGameOptionPages {
                         .setControl(TickBoxControl::new)
                         .setImpact(OptionImpact.MEDIUM)
                         .setBinding((opts, value) -> opts.debug.enableCloudControlDebug = value, opts -> opts.debug.enableCloudControlDebug)
+                        .setDefaultValue(false)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(StandardOptions.Option.ACTINIUM_PERF_DEBUG.cast())
@@ -795,6 +851,7 @@ public class ActiniumGameOptionPages {
                                 ActiniumRuntimeOptions.resolvePerfDebugEnabled(value)
                             );
                         }, opts -> opts.debug.enableActiniumPerfDebug)
+                        .setDefaultValue(false)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(StandardOptions.Option.ACTINIUM_GPU_PERF_DEBUG.cast())
@@ -803,6 +860,7 @@ public class ActiniumGameOptionPages {
                         .setControl(TickBoxControl::new)
                         .setImpact(OptionImpact.HIGH)
                         .setBinding((opts, value) -> opts.debug.enableActiniumGpuPerfDebug = value, opts -> opts.debug.enableActiniumGpuPerfDebug)
+                        .setDefaultValue(false)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(StandardOptions.Option.ACTINIUM_FRAME_GL_ERROR_CHECK.cast())
@@ -811,6 +869,7 @@ public class ActiniumGameOptionPages {
                         .setControl(TickBoxControl::new)
                         .setImpact(OptionImpact.MEDIUM)
                         .setBinding((opts, value) -> opts.debug.enableFrameGlErrorCheck = value, opts -> opts.debug.enableFrameGlErrorCheck)
+                        .setDefaultValue(false)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(StandardOptions.Option.ACTINIUM_POST_RENDER_GL_ERROR_CHECK.cast())
@@ -819,6 +878,7 @@ public class ActiniumGameOptionPages {
                         .setControl(TickBoxControl::new)
                         .setImpact(OptionImpact.MEDIUM)
                         .setBinding((opts, value) -> opts.debug.enablePostRenderGlErrorCheck = value, opts -> opts.debug.enablePostRenderGlErrorCheck)
+                        .setDefaultValue(false)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(StandardOptions.Option.ACTINIUM_REDIRECTOR_DEBUG.cast())
@@ -828,6 +888,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.MEDIUM)
                         .setBinding((opts, value) -> opts.debug.enableRedirectorDebug = value, opts -> opts.debug.enableRedirectorDebug)
                         .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
+                        .setDefaultValue(false)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(StandardOptions.Option.ACTINIUM_REDIRECTOR_LOG_SPAM.cast())
@@ -837,6 +898,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.HIGH)
                         .setBinding((opts, value) -> opts.debug.enableRedirectorLogSpam = value, opts -> opts.debug.enableRedirectorLogSpam)
                         .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
+                        .setDefaultValue(false)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(StandardOptions.Option.ACTINIUM_REDIRECTOR_CLASS_DUMP.cast())
@@ -846,6 +908,7 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.HIGH)
                         .setBinding((opts, value) -> opts.debug.enableRedirectorClassDump = value, opts -> opts.debug.enableRedirectorClassDump)
                         .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
+                        .setDefaultValue(false)
                         .build())
                 .build());
 
