@@ -1,6 +1,8 @@
 package net.irisshaders.iris.compat.sodium;
 
+import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import net.coderbot.iris.gui.option.IrisVideoSettings;
+import dhj.embeddedt.embeddium.api.options.control.TickBoxControl;
 import dhj.embeddedt.embeddium.api.options.structure.ExternalPage;
 import dhj.embeddedt.embeddium.api.options.structure.Option;
 import dhj.embeddedt.embeddium.api.options.structure.OptionPage;
@@ -19,9 +21,10 @@ class IrisConfigEntryPointTest {
     @Test
     void buildsShadowOptionPageAndExternalPageAndAppliesInjectedBinding() {
         AtomicInteger persisted = new AtomicInteger(32);
+        AtomicBoolean saveCompiledPersisted = new AtomicBoolean();
         AtomicBoolean openedCalled = new AtomicBoolean();
         IrisConfigEntryPoint entryPoint = new IrisConfigEntryPoint(persisted::set, persisted::get,
-                ignored -> openedCalled.set(true));
+                ignored -> openedCalled.set(true), saveCompiledPersisted::set, saveCompiledPersisted::get);
 
         List<OptionPage> pages = entryPoint.createPages();
         assertEquals(2, pages.size());
@@ -57,11 +60,29 @@ class IrisConfigEntryPointTest {
         shadow.setValue(64);
         shadow.applyChanges();
         assertEquals(64, persisted.get());
+
+        @SuppressWarnings("unchecked")
+        Option<Boolean> saveCompiled = (Option<Boolean>) videoSettings.getOptions().stream()
+                .filter(option -> "save_compiled_shaders".equals(option.getId().getPath()))
+                .findFirst().orElseThrow();
+        assertInstanceOf(TickBoxControl.class, saveCompiled.getControl());
+        assertEquals("options.iris.saveCompiledShaders",
+                ((TextComponent.Translatable) saveCompiled.getName()).keys().get(0));
+        String expectedSaveCompiledTooltipKey = RenderSystem.supportsProgramBinary()
+                ? "options.iris.saveCompiledShaders.tooltip"
+                : "options.iris.saveCompiledShaders.tooltipUnsupported";
+        assertEquals(expectedSaveCompiledTooltipKey,
+                ((TextComponent.Translatable) saveCompiled.getTooltip()).keys().get(0));
+
+        saveCompiled.setValue(true);
+        saveCompiled.applyChanges();
+        assertTrue(saveCompiledPersisted.get());
     }
 
     @Test
     void externalPageActivationSkipsVideoSettingsWhenOpeningShaderPacks() {
-        IrisConfigEntryPoint entryPoint = new IrisConfigEntryPoint(value -> { }, () -> 32, ignored -> { });
+        IrisConfigEntryPoint entryPoint = new IrisConfigEntryPoint(value -> { }, () -> 32, ignored -> { },
+                value -> { }, () -> false);
         List<OptionPage> pages = entryPoint.createPages();
         assertInstanceOf(ExternalPage.class, pages.get(1));
         assertEquals("shader_pack_selection", pages.get(1).getId().getPath());
