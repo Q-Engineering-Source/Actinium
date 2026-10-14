@@ -9,6 +9,12 @@
 本轮验证环境：Actinium `30c7ffb`、Java 25.0.3、Cleanroom 0.5.12-alpha、Distant Horizons 3.1.2-b、
 Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 
+> 2026-10-07 追加：GVCLib 9.10 + GVCReversion2 alpha.10.2 第一人称持枪（issue #198）的模型/贴图
+> 错误与光影下亮度突变已修复并由用户实机确认——枪体/手臂模型不写逐顶点亮度，GLSM 的 lightmap
+> 属性默认值取全局残留值（实体、全亮 flash、GUI 240/240）所致；修复为逐帧钉住玩家亮度，并将
+> 枪械绘制路由进 Iris 手部 pass 单次执行，详见 [docs/compat/gvclib.md](compat/gvclib.md) 与下方
+> [模组与环境](#模组与环境) 的 GVCLib 行。
+> 
 > 2026-10-10 追加：第一人称手持染色玻璃被水面和云层遮挡的问题已修复。用户反馈该问题不限于 BSL；根因是
 > `HandRenderer` 依据光影包可选的 `layer.*` 覆盖表分类手持透明方块，未声明覆盖的包会让染色玻璃留在较早的
 > `HAND_SOLID` pass。现在改用 Minecraft 方块自身的 `getRenderLayer()`，因此不依赖光影包元数据。
@@ -251,6 +257,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 | LittleTiles      | 部分（Photon v1.3b 实测通过） | 条件 Mixin（shader quad context + 独立 AO 顶点通道） | 1.5.87 + CreativeCore 1.10.71（issue #193）：放置的微型方块在光影下比相邻原版方块暗；已修复并经用户确认，Solas 与其他 shader pack 待回归，详见 [docs/compat/littletiles.md](compat/littletiles.md) |
 | ArchitectureCraft | 部分（Photon v1.3b 实测通过） | 条件 Mixin（`RenderTargetWorld#setLight` 的 AO / 方向着色拆分） | 1.12-3.108：用户发现放置 shape 有同类偏暗现象；与原版木板、LittleTiles 同场验证，其他 shader pack 待回归，详见 [docs/compat/architecturecraft.md](compat/architecturecraft.md) |
 | ReplayMod        | 已验证（视频渲染） | 高优先级 selection-box outline scope + GLSM PBO offset readback | 1.12.2-2.6.13 在 BSL_v10.1p1 视频导出时的 G-buffer 状态崩溃及 PBO `glReadPixels(..., long)` 缺失重载已修复；Cleanroom 0.6.13-alpha 整合包实测确认，详见 [docs/compat/replaymod.md](compat/replaymod.md) |
+| GVCLib / GVCReversion2 | 已验证（第一人称持枪） | 条件 Mixin（持枪渲染单次路由进 Iris 手部 pass + 逐帧钉住玩家 lightmap 坐标 + `Tessellator2.draw` 的 client texture unit 守护） | GVCLib 9.10 + GVCR2 alpha.10.2（issue #198）：持枪模型/贴图错误与光影下亮度随环境残留值突变已修复并实机确认（开火、实体进出视野、切枪、GUI 开关、无光影路径均回归正常），详见 [docs/compat/gvclib.md](compat/gvclib.md) |
 | Celeritas        | 内嵌   | Gradle 子项目、最终 Jar 合并               | Actinium 的区块渲染器  |
 | GLSM             | 内嵌   | Gradle 子项目、service provider        | 管理 GL 状态和固定管线兼容  |
 | GTNHLib          | 内嵌   | Gradle 子项目、bridge API              | 提供底层渲染与内存工具      |

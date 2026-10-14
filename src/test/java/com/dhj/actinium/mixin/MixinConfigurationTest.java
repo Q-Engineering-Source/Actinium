@@ -61,6 +61,7 @@ class MixinConfigurationTest {
         "mixins.actinium.scannable.json",
         "mixins.actinium.littletiles.json",
         "mixins.actinium.architecturecraft.json",
+        "mixins.actinium.gvclib.json",
         "mixins.actinium.obscuretooltips.json"
     );
     private static final List<String> CONFIGS = MAIN_CONFIGS;

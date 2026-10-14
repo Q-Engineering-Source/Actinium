@@ -1,0 +1,17 @@
+{
+  "package": "com.dhj.actinium.mixin.mod.gvclib",
+  "required": true,
+  "refmap": "mixins.actinium-refmap.json",
+  "target": "@env(DEFAULT)",
+  "minVersion": "0.8.5",
+  "compatibilityLevel": "JAVA_8",
+  "mixins": [],
+  "server": [],
+  "client": [
+    "MixinGVCFirstPersonArmLighting",
+    "MixinGVCTessellatorClientUnitGuard"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

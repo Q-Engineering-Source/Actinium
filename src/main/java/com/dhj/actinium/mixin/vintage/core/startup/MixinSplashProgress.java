@@ -3,6 +3,7 @@ package com.dhj.actinium.mixin.vintage.core.startup;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.recording.ImmediateModeRecorder;
 import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
+import com.dhj.actinium.compat.modernsplash.ModernSplashOverlayCompat;
 import com.dhj.actinium.render.BufferBuilderStreamingDrawer;
 import com.dhj.actinium.render.VanillaVertexBufferRenderer;
 import org.apache.logging.log4j.LogManager;
@@ -56,6 +57,10 @@ public class MixinSplashProgress {
         GLStateManager.glBindVertexArray(0);
         GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
         GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
+        // If ModernSplash's @Mod class was defined before the redirector was installed
+        // (issue #200), its fade overlay still holds raw FFP calls; clear the logo
+        // texture so that overlay sticks to safe vanilla paths. No-op otherwise.
+        ModernSplashOverlayCompat.neutralizeLogoOverlayIfEscaped();
         GLStateManager.markSplashComplete();
     }
 }
