@@ -142,6 +142,10 @@ public final class ChunkBuildBuffers {
      * positions of the retained buffers are reset by {@link #init} when the next task begins.
      */
     public void resetForTask() {
+        final boolean used = this.renderData != null;
+        for (var builder : this.builders.values()) {
+            builder.finishTask(used);
+        }
         this.sectionIndex = 0;
         this.renderData = null;
     }

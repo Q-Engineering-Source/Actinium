@@ -1,6 +1,6 @@
 # Actinium 架构说明
 
-最后更新：2026-09-06。
+最后更新：2026-10-08。
 
 ## 概述
 
@@ -252,6 +252,23 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
 
 ## celeritas-common/ 子项目（区块构建与绘制引擎）
 
+区块上传的完成同步以 `RenderRegionManager.uploadMeshes` 为作用域：
+`MappedStagingBuffer.flush` 仍在每次 arena 刷新时提交 mapped range 与 copy 命令，
+但同一最外层上传批次只为累计字节创建一个 fence。`flip()` 必须等 fence 完成才归还
+暂存容量，不能在批次结束时提前复用。批次外 flush 保留立即 fence 行为；空批次不创建
+fence。环绕刷新按实际复制字节数计算，避免满环时起止位置相等的歧义。
+环绕复制使用源 buffer 当前 position 加相对偏移，不创建 slice；连续复制在入队时合并，
+累计字节数同时维护。fallback storage 仅实际使用后释放，空刷新不再重新分配。
+
+`NativeBuffer` 的显式 free 同时撤销 phantom 回收登记，未显式释放的分配仍由回收队列处理；
+分配字节使用原子计数，适配 worker 分配与主线程释放。纯内存操作依赖 GTNHLib 的
+`MemoryUtilities`，其底层仍是 LWJGL 分配器，避免首次内存操作依赖当前线程的 GL 上下文。
+扩容直接复制地址范围，不创建临时 ByteBuffer。区块上传结果在 finally 中释放，过滤结果
+直接消费 fastutil map 的 values 视图；全局方块实体列表变空时同步移除全局 section 登记。
+
+通用 `BufferBuilderStreamingDrawer` 仅在确实使用 orphan 路径时分配备用 VBO/VAO，
+bounded ByteBuffer 视图由 drawRaw 统一创建。此改动已通过自动化检查，实机渲染回归待完成。
+
 几乎不 import Minecraft 类（仅 2 处），是脱离 Minecraft 的纯 GL 渲染引擎
 （JOML 20 处、LWJGL 3 处 import）。
 
@@ -425,7 +442,7 @@ LWJGL 后端（并入本子项目）：
 | `mixins.actinium.hbm.early.json` | early（MixinEarly） | `MixinTileEntityRendererDispatcherLightmap` —— 原版 TE dispatcher 的世界 lightmap 同步（必须 early：目标类会被核心 mod 的 ASM 变压器在 late 窗口前拉起，late 配置会以 `MixinTargetAlreadyLoadedException` 中止启动；注入体按 `isHbmInstalled()` 门控） |
 | `mixins.actinium.gibbed.json` | late/conditional（gibbed） | `BasicGibMixin` |
 | `mixins.actinium.ichunutil.json` | late/conditional（ichunutil） | `mixin/mod/ichunutil` 3 类 |
-| `mixins.actinium.lumenized.json` | late/conditional（lumenized） | `mixin/mod/lumenized` 3 类 |
+| `mixins.actinium.lumenized.json` | late/conditional（class:gregtech.client.utils.BloomEffectUtil） | `mixin/mod/lumenized` 7 类（bloom 兼容层 5 类 + 空 ticket 组跳过后处理 2 类） |
 | `mixins.actinium.revoui.json` | late/conditional（neofontrender_ui_enhancements） | `mixin/mod/revoui` 3 类 |
 | `mixins.actinium.betterfoliage.json` | late/conditional（betterfoliage） | `MixinChunkBuilderMeshingTaskBetterFoliage` |
 | `mixins.actinium.ccl.json` | late/conditional（codechickenlib） | `MixinGlStateTracker` |

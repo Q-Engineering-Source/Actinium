@@ -5,26 +5,20 @@ import com.gtnewhorizons.angelica.compat.mojang.GameModeUtil;
 import com.gtnewhorizons.angelica.compat.mojang.InteractionHand;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.rendering.RenderingState;
-import dhj.embeddedt.embeddium.api.shader.BlockRenderLayer;
 import lombok.Getter;
-import net.coderbot.iris.block_rendering.BlockRenderingSettings;
 import net.coderbot.iris.debug.IrisGlDebug;
 import net.coderbot.iris.layer.GbufferPrograms;
 import net.irisshaders.iris.api.v0.IrisApi;
-import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderGlobal;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.BlockRenderLayer;
 import net.minecraftforge.client.event.RenderHandEvent;
 import net.minecraftforge.common.MinecraftForge;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.util.glu.Project;
-
-import java.util.Map;
-
-
 
 public class HandRenderer {
     public static final HandRenderer INSTANCE = new HandRenderer();
@@ -96,8 +90,7 @@ public class HandRenderer {
         final Item item = heldItem.getItem();
 
         if (item instanceof ItemBlock itemBlock) {
-            final Map<Block, BlockRenderLayer> blockTypeIds = BlockRenderingSettings.INSTANCE.getBlockTypeIds();
-            return blockTypeIds != null && blockTypeIds.get(itemBlock.getBlock()) == BlockRenderLayer.TRANSLUCENT;
+            return itemBlock.getBlock().getRenderLayer() == BlockRenderLayer.TRANSLUCENT;
         }
 
         return false;
