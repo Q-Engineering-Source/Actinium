@@ -248,10 +248,14 @@ public class MixinMinecraft {
      * installs) and destroys a GLFW window that does not exist. The window belongs to the bridge and
      * the GPU device is released by the render backend's own shutdown, which already ran by the time
      * this is called.</p>
+     *
+     * <p>require = 0: Cleanroom 0.7.x (LWJGLY) removed the {@code Display.destroy()} call from
+     * {@code shutdownMinecraftApplet}, so there is nothing left to redirect there.</p>
      */
     @Redirect(
             method = "shutdownMinecraftApplet",
-            at = @At(value = "INVOKE", target = "Lorg/lwjgl/opengl/Display;destroy()V", remap = false)
+            at = @At(value = "INVOKE", target = "Lorg/lwjgl/opengl/Display;destroy()V", remap = false),
+            require = 0
     )
     private static void actinium$sdlDisplayDestroy() {
         if (SDLGPUGate.isEngaged()) {

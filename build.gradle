@@ -512,9 +512,10 @@ cleanroom {
 }
 
 // TODO: fundamental Foundation issue (applied to every JavaExec unconditionally, mirroring the
-// official CleanroomGradle mod template)
+// official CleanroomGradle mod template). Off for the dev runs: LoadsAllClassLoader's preloading
+// makes Goslingcord's ASM frame computation re-enter the Mixin processor (ReEntrantTransformerError).
 tasks.withType(JavaExec).configureEach {
-    systemProperty 'foundation.loadsall', 'true'
+    systemProperty 'foundation.loadsall', 'false'
 }
 
 tasks.named('assemble').configure {
