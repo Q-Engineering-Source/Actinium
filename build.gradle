@@ -1,17 +1,57 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.attributes.java.TargetJvmVersion
 import org.jetbrains.gradle.ext.Gradle
 
 plugins {
-    id 'java'
     id 'java-library'
     id 'maven-publish'
     id 'com.gradleup.shadow' version '9.5.1'
     id 'org.jetbrains.gradle.plugin.idea-ext' version '1.4.1'
-    id 'xyz.wagyourtail.unimined' version '1.4.36-kappa'
-    id 'net.kyori.blossom' version '2.2.0'
+    id 'com.cleanroommc.cleanroomgradle'
 }
 
 apply from: 'gradle/scripts/helpers.gradle'
+
+allprojects { evaluatedProject ->
+    // LWJGL2's API surface is compiled against through com.cleanroommc:lwjglx, which is published on GTNH's
+    // mirror only. CleanroomGradle's exclusive-content rule pins the whole com.cleanroommc group to
+    // maven.cleanroommc.com and a second rule for the group replaces the first one, so the jar is fetched
+    // here as a bare artifact under a synthetic group that no other rule claims.
+    evaluatedProject.repositories {
+        ivy {
+            name = 'ArcseekersLwjglx'
+            url = 'https://maven.arcseekers.com/releases'
+            patternLayout {
+                artifact 'com/cleanroommc/lwjglx/[revision]/lwjglx-[revision].jar'
+            }
+            metadataSources {
+                artifact()
+            }
+            content {
+                includeModule 'lwjglx.compat', 'lwjglx'
+            }
+        }
+    }
+
+    // afterEvaluate: the Java plugin sets the attribute from the compile task's release option when the
+    // configuration is realized, and its callback has to run before this one.
+    evaluatedProject.afterEvaluate {
+        evaluatedProject.configurations.configureEach { configuration ->
+            if (!configuration.canBeResolved) {
+                return
+            }
+            // Minecraft, the loader, the Mixin runtime and everything else the userdev brings are Java 25
+            // class files, while the mod still emits Java 21 bytecode (options.release on every JavaCompile
+            // task). Gradle derives a classpath's org.gradle.jvm.version from that release option, so the
+            // version the userdev variants publish has to be declared here or nothing on the Minecraft
+            // classpath resolves. Lower producer versions still match through the compatibility rule.
+            configuration.attributes {
+                attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25)
+            }
+        }
+    }
+}
 
 assertProperty 'mod_version'
 assertProperty 'root_package'
@@ -76,8 +116,9 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(25)
     }
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
+    // No source/targetCompatibility: the Cleanroom userdev dependency only publishes JVM 25 variants, and
+    // those two properties are what Gradle derives the compile classpath's org.gradle.jvm.version from.
+    // The bytecode target stays 21 through options.release on every JavaCompile task.
     if (propertyBool('generate_sources_jar')) {
         withSourcesJar()
     }
@@ -93,11 +134,14 @@ configurations {
     // the upstream Celeritas distribution layout. Kept separate from implementation so the plain
     // namespace jars stay on the compile/dev classpath for third-party mods that need them.
     shadowBundle
-    modCompileOnly
-    compileOnly.extendsFrom(modCompileOnly)
-    modRuntimeOnly
-    runtimeOnly.extendsFrom(modRuntimeOnly)
 }
+
+// Shared dependency versions, read by the subprojects block below and by gradle/scripts/dependencies.gradle.
+// LWJGL follows the generation the Cleanroom userdev ships (see cleanroom_version), so the modules and
+// the host agree on the native/core pair.
+ext.lombokVersion = '1.18.46'
+ext.asmVersion = '9.9.1'
+ext.lwjglVersion = '3.4.3'
 
 def embeddedLibraryProjects = [
     project(':GTNHLib'),
@@ -109,11 +153,13 @@ def embeddedLibraryProjects = [
 
 def mergedEmbeddedLibraryClassesDir = layout.buildDirectory.dir('embedded-library-classes/main')
 
-ext.sharedMinecraftCompileClasspath = {
-    rootProject.files(rootProject.provider {
-        rootProject.tasks.named('compileJava', JavaCompile).get().classpath.files.findAll { it.isFile() }
-    })
-}
+/**
+ * Access transformer applied to Minecraft in this project and in every embedded module, so all of them
+ * see the same member visibility. Null when use_access_transformer is off.
+ */
+ext.actiniumAccessTransformer = propertyBool('use_access_transformer')
+    ? new File(rootProject.projectDir, "src/main/resources/${propertyString('access_transformer_locations')}")
+    : null
 
 def mergeEmbeddedLibraryClasses = tasks.register('mergeEmbeddedLibraryClasses', Sync) {
     duplicatesStrategy = DuplicatesStrategy.FAIL
@@ -137,20 +183,37 @@ subprojects {
         toolchain {
             languageVersion = JavaLanguageVersion.of(25)
         }
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
+        // See the root project: the userdev dependency publishes JVM 25 variants only, and
+        // source/targetCompatibility would set org.gradle.jvm.version to 21 on every classpath.
+        // The modules keep producing Java 21 bytecode through options.release.
     }
 
     dependencies {
-        compileOnly rootProject.ext.sharedMinecraftCompileClasspath()
-        annotationProcessor rootProject.files(rootProject.provider {
-            rootProject.configurations.annotationProcessor.files.findAll { it.isFile() }
-        })
+        // Compile-time libraries every embedded module shares. The Minecraft classpath is not shared any
+        // more: each subproject declares its own Cleanroom userdev dependency in its build.gradle, which
+        // also brings the org.lwjgl.** LWJGL2 API these modules use alongside LWJGL3's.
+        compileOnly 'org.jetbrains:annotations:24.1.0'
+        compileOnly "org.projectlombok:lombok:${lombokVersion}"
+        annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+        compileOnly 'org.apache.logging.log4j:log4j-api:2.0-beta9'
+        compileOnly 'it.unimi.dsi:fastutil:8.5.18'
+        compileOnly 'org.joml:joml:1.10.5'
+        compileOnly "org.ow2.asm:asm:${asmVersion}"
+        compileOnly "org.ow2.asm:asm-commons:${asmVersion}"
+        compileOnly "org.ow2.asm:asm-tree:${asmVersion}"
+        compileOnly "org.ow2.asm:asm-util:${asmVersion}"
+    }
+
+    configurations.configureEach {
+        // The Cleanroom userdev tree pins joml 1.10.9, while the distributed jar carries 1.10.5 both
+        // relocated in the jar body and as the nested ContainedDeps jar, so every module compiles
+        // against the version that actually ships.
+        resolutionStrategy.force 'org.joml:joml:1.10.5'
     }
 
     tasks.withType(JavaCompile).configureEach {
-        sourceCompatibility = '21'
-        targetCompatibility = '21'
+        // No source/targetCompatibility here either: Gradle derives the compile classpath's
+        // org.gradle.jvm.version from the compile task, and the userdev only publishes JVM 25.
         options.encoding = 'UTF-8'
         options.release.set(21)
         javaCompiler = javaToolchains.compilerFor {
@@ -169,15 +232,27 @@ subprojects {
 }
 
 repositories {
-    mavenCentral()
-    maven { url = 'https://maven.cleanroommc.com' }
+    // CleanroomGradle injects Maven Central, CleanroomMC (exclusive for the CleanroomMC/Forge/MCP groups)
+    // and Mojang into every project before its buildscript runs; these are the sources it does not cover.
+    maven { url = 'https://curse.cleanroommc.com' }
     maven { url = 'https://cursemaven.com' }
     maven { url = 'https://api.modrinth.com/maven' }
+    // Not exclusive on purpose: the injected rule only exposes the CleanroomMC-owned groups from this
+    // repository, and artifacts of other groups (codechicken) live here as well.
+    maven { url = 'https://maven.cleanroommc.com' }
     maven { url = 'https://nexus.gtnewhorizons.com/repository/public/' }
     mavenLocal()
 }
 
 dependencies {
+    // Minecraft, the loader and the Mixin runtime for the whole project tree. The mod does not ship any of
+    // it, but tests and the dev runtime need it on the classpath like a normal dependency.
+    implementation cleanroom.userdev(propertyString('cleanroom_version')) {
+        if (rootProject.ext.actiniumAccessTransformer != null) {
+            accessTransformers.from(rootProject.ext.actiniumAccessTransformer)
+        }
+    }
+
     compileOnly project(':celeritas-common')
     compileOnly project(':shader')
     compileOnly project(':sdl-gpu')
@@ -185,13 +260,13 @@ dependencies {
     // not registered for backend selection right now. The SDL libraries stay on the runtime
     // classpath so the sdl-gpu module and a future re-wiring of the backend can load them through
     // the app loader like LWJGL itself.
-    runtimeOnly 'org.lwjgl:lwjgl-sdl:3.4.1'
-    runtimeOnly 'org.lwjgl:lwjgl-spvc:3.4.1'
-    runtimeOnly 'org.lwjgl:lwjgl-shaderc:3.4.1'
+    runtimeOnly "org.lwjgl:lwjgl-sdl:${lwjglVersion}"
+    runtimeOnly "org.lwjgl:lwjgl-spvc:${lwjglVersion}"
+    runtimeOnly "org.lwjgl:lwjgl-shaderc:${lwjglVersion}"
     ['windows', 'linux', 'macos'].each { platform ->
-        runtimeOnly "org.lwjgl:lwjgl-sdl:3.4.1:natives-$platform"
-        runtimeOnly "org.lwjgl:lwjgl-spvc:3.4.1:natives-$platform"
-        runtimeOnly "org.lwjgl:lwjgl-shaderc:3.4.1:natives-$platform"
+        runtimeOnly "org.lwjgl:lwjgl-sdl:${lwjglVersion}:natives-$platform"
+        runtimeOnly "org.lwjgl:lwjgl-spvc:${lwjglVersion}:natives-$platform"
+        runtimeOnly "org.lwjgl:lwjgl-shaderc:${lwjglVersion}:natives-$platform"
     }
     // Declare test dependencies explicitly so IDEA sees the embedded source modules as well.
     // Gradle's merged main output alone is not a test-module dependency in the IDE model.
@@ -203,6 +278,13 @@ dependencies {
     // glsm-side tests live in this project (the glsm module has no test source set), so the shared
     // glsm test fixtures (Reflect, GLCoreTest, ...) must be on the test classpath.
     testImplementation testFixtures(project(':glsm'))
+    // The vanilla client resources (assets, ...) sit in the userdev's client-extra jar, which the plugin
+    // only puts on compileOnly. Tests that read game resources need it on their own classpath.
+    testCompileOnly files(configurations._cleanroomUserdevClientExtra)
+    testRuntimeOnly files(configurations._cleanroomUserdevClientExtra)
+    // LWJGL's platform natives. The modules' tests exercise client-side paths that load them, and the
+    // userdev publishes exactly the set for this machine.
+    testRuntimeOnly files(configurations._cleanroomUserdevNatives)
 
     contain('org.taumc:glsl-transformation-lib:0.2.0-32.g7dd88a4-GTNH') {
         transitive = false
@@ -211,9 +293,32 @@ dependencies {
     contain 'org.antlr:antlr4-runtime:4.13.2'
 }
 
-def actiniumProjectAccessTransformer = propertyBool('use_access_transformer')
-    ? rootProject.projectDir.toPath().resolve("src/main/resources/${propertyString('access_transformer_locations')}").toFile()
-    : null
+// The tests compile and run against the mods Actinium itself only compiles against: their API types appear
+// in several world and render tests, and neither testCompileOnly nor testRuntimeOnly inherits compileOnly.
+configurations.testCompileOnly.extendsFrom(configurations.compileOnly)
+configurations.testRuntimeOnly.extendsFrom(configurations.compileOnly)
+
+/**
+ * Manifest attributes every jar that ships as a mod carries: the Cleanroom mod type, the version, the
+ * flattened contained dependency list and the coremod / access transformer entries FML reads at startup.
+ * Applied in each jar task's doFirst, so it is written whenever the task actually runs.
+ */
+def applyActiniumManifest = { manifest ->
+    manifest.attributes('ModType': 'CRL', 'Implementation-Version': finalVersion)
+    if (!configurations.contain.dependencies.isEmpty()) {
+        manifest.attributes('ContainedDeps': configurations.contain.files.collect { it.name }.join(' '),
+                'NonModDeps': true)
+    }
+    if (propertyBool('is_coremod')) {
+        manifest.attributes('FMLCorePlugin': propertyString('coremod_plugin_class_name'), 'ForceLoadAsMod': 'true')
+        if (propertyBool('coremod_includes_mod')) {
+            manifest.attributes('FMLCorePluginContainsFMLMod': true)
+        }
+    }
+    if (propertyBool('use_access_transformer')) {
+        manifest.attributes('FMLAT': propertyString('access_transformer_locations').tokenize('/\\').last())
+    }
+}
 
 /**
  * Dev-runtime image of the mod in the same shadow layout as the production jar: merged module
@@ -236,115 +341,43 @@ def devShadowJar = tasks.register('devShadowJar', ShadowJar) {
     mergeServiceFiles()
     // Deliberately no manifest inheritance from the jar task: that manifest carries the
     // FMLCorePlugin / FMLCorePluginContainsFMLMod entries the production jar needs, but at dev time
-    // the coremod is already provided through unimined's fml.coreMods.load system property. Letting
-    // them surface on a plain classpath jar makes FML's classpath scan treat this jar as a coremod
-    // container, which parent-delegates its package (class loader exclusion) and splits classes
-    // like MixinLate across the app class loader and the LaunchClassLoader (ClassCastException on
-    // the mixinbooter ILateMixinLoader cast).
+    // the coremod is launched through the userdev run configuration instead. Letting them surface on a
+    // plain classpath jar makes FML's classpath scan treat this jar as a coremod container, which
+    // parent-delegates its package (class loader exclusion) and splits classes like MixinLate across
+    // the app class loader and the LaunchClassLoader (ClassCastException on the mixinbooter
+    // ILateMixinLoader cast).
     manifest.attributes('Implementation-Version': finalVersion)
 }
 
-unimined.minecraft {
-    version '1.12.2'
-
-    mappings {
-        mcp 'stable', '39-1.12'
-    }
-
-    cleanroom {
-        if (actiniumProjectAccessTransformer != null) {
-            accessTransformer actiniumProjectAccessTransformer.absolutePath
-        }
-
-        loader '0.6.12-alpha'
-
-        // SDL GPU backend client run (task: runClientSdl): the same client setup plus the SDL
-        // backend flag, so the backend can be exercised without passing extra_jvm_args by hand.
-        runs.config('clientSdl') {
-        }
-
-        runs.all {
-            args += ['--username', propertyString('minecraft_username')]
-            if (name == 'clientSdl') {
-                jvmArgs += '-Dangelica.sdlgpu.enable=true'
-            }
-            def extraArgs = propertyString('extra_jvm_args')
-            if (extraArgs != null && !extraArgs.trim().isEmpty()) {
-                jvmArgs += extraArgs.split('\\s+').toList()
-            }
-
-            // Swap the raw module outputs for the shadow-layout dev jar so the dev runtime carries
-            // the same relocated joml descriptors as the production distribution. The swap happens
-            // on the -Dcrl.dev.extrapath channel below, NOT on the JavaExec classpath: mod classes
-            // must stay invisible to the app class loader (exactly like production, where the mod
-            // jar is not on java.class.path). Keeping the jar on the JavaExec classpath lets the
-            // app loader serve Actinium classes as a parent-delegation fallback and splits classes
-            // like MixinLate across the app loader and the LaunchClassLoader (ClassCastException on
-            // the mixinbooter ILateMixinLoader cast).
-            def originalRunClasspath = classpath
-            classpath = files(provider {
-                def rawModuleOutputs = sourceSets.main.output.files
-                originalRunClasspath.files.findAll { file ->
-                    !rawModuleOutputs.contains(file)
-                }
-            })
-
-            // Unimined omits source output paths here when a clean build has not created their directories yet.
-            // The raw module outputs must not reach Cleanroom either: they would expose unrelocated
-            // joml descriptors next to the shadowed ones, so the dev shadow jar replaces them here.
-            def extraPathArgument = '-Dcrl.dev.extrapath='
-            def rawModuleOutputPaths = project.sourceSets.main.output.files.collect { it.absolutePath } as Set
-            def extraPaths = new LinkedHashSet<String>()
-            extraPaths.add(devShadowJar.get().archiveFile.get().asFile.absolutePath)
-            jvmArgs.findAll { it.toString().startsWith(extraPathArgument) }.each { argument ->
-                extraPaths.addAll(argument.toString().substring(extraPathArgument.length()).tokenize(File.pathSeparator)
-                        .findAll { path -> !rawModuleOutputPaths.contains(path) })
-            }
-            jvmArgs = jvmArgs.findAll { !it.toString().startsWith(extraPathArgument) }
-            jvmArgs += "${extraPathArgument}${extraPaths.join(File.pathSeparator)}"
-
-            if (propertyBool('is_coremod')) {
-                systemProperty 'fml.coreMods.load', propertyString('coremod_plugin_class_name')
-            }
-        }
-    }
-
-    defaultRemapJar = false
-
-    remap(tasks.named('jar').get()) {
-        mixinRemap {
-            enableBaseMixin()
-            enableMixinExtra()
-        }
-        // Thin intermediate: the distributed jar is the shadowRemapJar output.
-        asJar {
-            archiveClassifier.set('thin')
-        }
-    }
-
-    mods {
-        remap(configurations.modCompileOnly)
-        remap(configurations.modRuntimeOnly)
-    }
-}
-
 /**
- * Production mod jar: the remapped thin jar merged with the shadow bundle classes, with joml
- * relocated under dhj.embeddedt.embeddium.impl.shadow.joml. The relocation target sits in
- * Actinium's own namespace so this bundled joml cannot class-collide with the shadow copy inside
- * an upstream Embeddium/Celeritas jar on the same class path. The ContainedDeps joml jar inherited
- * from the thin jar stays nested for third-party mods that still consume plain org.joml.
+ * Production mod jar: the SRG-renamed jar merged with the shadow bundle classes, with joml relocated
+ * under dhj.embeddedt.embeddium.impl.shadow.joml. The relocation target sits in Actinium's own
+ * namespace so this bundled joml cannot class-collide with the shadow copy inside an upstream
+ * Embeddium/Celeritas jar on the same class path. The ContainedDeps joml jar inherited from the
+ * renamed jar stays nested for third-party mods that still consume plain org.joml.
  */
 def shadowRemapJar = tasks.register('shadowRemapJar', ShadowJar) {
     group = 'build'
     description = 'Builds the production mod jar with the upstream shadow layout (relocated joml).'
-    dependsOn tasks.named('remapJar')
+    dependsOn tasks.named('reobfJar')
     archiveClassifier.set('')
     configurations.set([project.configurations.shadowBundle])
-    from(zipTree(tasks.named('remapJar').get().archiveFile))
+    from(zipTree(tasks.named('reobfJar').flatMap { it.output }))
     relocate('org.joml', 'dhj.embeddedt.embeddium.impl.shadow.joml')
     mergeServiceFiles()
-    manifest.inheritFrom(tasks.named('jar').get().manifest)
+    // Written here rather than inherited: the attributes are computed when the task runs, and a jar task
+    // that is up to date never runs its doFirst, which would leave an inherited Manifest object empty.
+    doFirst {
+        manifest {
+            applyActiniumManifest(delegate)
+        }
+    }
+}
+
+// reobfJar is the MCP -> SRG intermediate here, not the distributed artifact, so it must not claim the
+// unclassified build/libs/<name>-<version>.jar that shadowRemapJar writes.
+tasks.named('reobfJar') {
+    archiveClassifier.set('reobf')
 }
 
 // The Shadow plugin's default shadowJar produces an unremapped -all.jar that the project
@@ -356,70 +389,73 @@ tasks.named('shadowJar') {
 /**
  * Chunk Animator's dev-environment coremod (MCPNames) reads ./../mcp/methods.csv and
  * ./../mcp/fields.csv relative to the client run directory and crashes at class init when they
- * are missing. Unimined already downloads and unpacks these MCP stable_39 mappings for its own
- * remapping/genSources pipeline; copy them into run/mcp so the mod can initialize in dev runs.
+ * are missing. The mappings come from the same mcp_stable artifact the userdev pipeline targets.
  */
 def chunkAnimatorMcpMappingsDir = layout.projectDirectory.dir('run/mcp').asFile
+
+def mcpStableMappings = configurations.create('mcpStableMappings') {
+    canBeConsumed = false
+    canBeResolved = true
+    transitive = false
+}
+
+dependencies {
+    add(mcpStableMappings.name, 'de.oceanlabs.mcp:mcp_stable:39-1.12@zip')
+}
 
 def prepareChunkAnimatorMcpMappings = tasks.register('prepareChunkAnimatorMcpMappings') {
     group = 'build'
     description = 'Copies MCP stable_39 mappings into the run directory for Chunk Animator dev compatibility.'
+    inputs.files(mcpStableMappings)
     outputs.dir(chunkAnimatorMcpMappingsDir)
     outputs.upToDateWhen { false }
 
     doLast {
-        def mcpStableDir = gradle.gradleUserHomeDir.toPath()
-                .resolve('caches/minecraft/de/oceanlabs/mcp/mcp_stable/39')
-                .toFile()
-        def methodsCsv = new File(mcpStableDir, 'methods.csv')
-        def fieldsCsv = new File(mcpStableDir, 'fields.csv')
-        if (!methodsCsv.isFile() || !fieldsCsv.isFile()) {
-            throw new GradleException(
-                "Could not locate MCP stable_39 mappings for Chunk Animator dev compatibility " +
-                "in ${mcpStableDir}. Run the genSources task once so Unimined populates its mappings cache.")
+        def mappingsArchive = mcpStableMappings.singleFile
+        if (!mappingsArchive.isFile()) {
+            throw new GradleException("Could not locate the MCP stable_39 mappings archive: ${mappingsArchive}")
         }
         if (!chunkAnimatorMcpMappingsDir.exists() && !chunkAnimatorMcpMappingsDir.mkdirs()) {
             throw new GradleException("Failed to create MCP mappings directory: ${chunkAnimatorMcpMappingsDir}")
         }
         copy {
-            from methodsCsv, fieldsCsv
+            from zipTree(mappingsArchive)
+            include 'methods.csv', 'fields.csv'
             into chunkAnimatorMcpMappingsDir
         }
     }
 }
 
-tasks.named('preRunClient').configure {
-    dependsOn tasks.named('classes')
-    dependsOn devShadowJar
-    dependsOn prepareChunkAnimatorMcpMappings
-}
-
-// runClientSdl inherits runClient's classpath (see the afterEvaluate block below), which points at
-// the dev shadow jar; without these dependencies it would start against a stale or missing one.
-tasks.named('preRunClientSdl').configure {
-    dependsOn tasks.named('classes')
-    dependsOn devShadowJar
-    dependsOn prepareChunkAnimatorMcpMappings
-}
-
-tasks.named('preRunServer').configure {
-    dependsOn tasks.named('classes')
-    dependsOn devShadowJar
-}
+// TODO(阶段B): rewire the run dependencies once the run configurations are migrated. The unimined
+// preRun* tasks no longer exist; CleanroomGradle's own runClient / runServer are the run entry points.
+//  tasks.named('preRunClient').configure {
+//      dependsOn tasks.named('classes')
+//      dependsOn devShadowJar
+//      dependsOn prepareChunkAnimatorMcpMappings
+//  }
+//  tasks.named('preRunClientSdl').configure {
+//      dependsOn tasks.named('classes')
+//      dependsOn devShadowJar
+//      dependsOn prepareChunkAnimatorMcpMappings
+//  }
+//  tasks.named('preRunServer').configure {
+//      dependsOn tasks.named('classes')
+//      dependsOn devShadowJar
+//  }
 
 tasks.named('assemble').configure {
     dependsOn shadowRemapJar
 }
 
-tasks.named('runClient', JavaExec).configure {
-    workingDir = layout.projectDirectory.dir('run/client').asFile
-    jvmArgs = jvmArgs.findAll { !it.startsWith('-Xmx') }
-    maxHeapSize = '8G'
-}
-
-tasks.named('runServer', JavaExec).configure {
-    workingDir = layout.projectDirectory.dir('run/server').asFile
-}
+// TODO(阶段B): the run launch configuration (working directory, heap, SDL client variant) moves to the
+// CleanroomGradle run configuration; the unimined JavaExec tasks are gone.
+//  tasks.named('runClient', JavaExec).configure {
+//      workingDir = layout.projectDirectory.dir('run/client').asFile
+//      maxHeapSize = '8G'
+//  }
+//  tasks.named('runServer', JavaExec).configure {
+//      workingDir = layout.projectDirectory.dir('run/server').asFile
+//  }
 
 apply from: 'gradle/scripts/dependencies.gradle'
 
@@ -505,33 +541,22 @@ idea {
                 }
             }
             taskTriggers {
-                afterSync tasks.named('genSources')
+                // TODO(阶段B): point this at the CleanroomGradle sources task once the dev environment
+                // migration is done; unimined's genSources no longer exists.
             }
         }
     }
 }
 
-// Unimined only applies the full run template (mainClass, classpath, env, args, workingDir and the
-// ${...} placeholder properties) to the fixed "client"/"server" names; custom runs like clientSdl
-// start empty. Inherit the client run's launch configuration after evaluation so runClientSdl (and
-// the IDEA run config generated from it) is complete. The property map must be copied too:
-// applyAll() resolves ${mcp_to_srg} etc. from it, and without it FML fails to load the
-// deobfuscation map at startup.
-afterEvaluate {
-    def runClient = tasks.findByName('runClient')
-    def runClientSdl = tasks.findByName('runClientSdl')
-    if (runClient instanceof JavaExec && runClientSdl instanceof JavaExec) {
-        runClientSdl.setMainClass(runClient.getMainClass())
-        runClientSdl.setClasspath(runClient.getClasspath())
-        runClientSdl.setWorkingDir(runClient.getWorkingDir())
-        runClientSdl.setArgs(runClient.getArgs())
-        runClientSdl.setJvmArgs(runClient.getJvmArgs() + ['-Dangelica.sdlgpu.enable=true'])
-        runClientSdl.setEnvironment(runClient.getEnvironment())
-        runClientSdl.setJavaVersion(runClient.getJavaVersion())
-        runClientSdl.getProperties().putAll(runClient.getProperties())
-        logger.lifecycle('[Actinium] runClientSdl inherited client launch configuration ({} classpath entries, {} properties)', runClientSdl.getClasspath().files.size(), runClientSdl.getProperties().size())
-    }
-}
+// TODO(阶段B): runClientSdl and its property inheritance from the client run move to the CleanroomGradle
+// run configuration.
+//  afterEvaluate {
+//      def runClient = tasks.findByName('runClient')
+//      def runClientSdl = tasks.findByName('runClientSdl')
+//      if (runClient instanceof JavaExec && runClientSdl instanceof JavaExec) {
+//          ...
+//      }
+//  }
 
 jar {
     duplicatesStrategy = DuplicatesStrategy.FAIL
@@ -540,7 +565,9 @@ jar {
     // Declare the version explicitly or the build cache can restore a jar whose Implementation-Version is stale.
     inputs.property('finalVersion', finalVersion)
 
-    if (configurations.contain.size() > 0) {
+    // Reading the resolved artifacts here would resolve the configuration during configuration time, which
+    // the CleanroomGradle deobf wiring (afterEvaluate, withDependencies on every configuration) rejects.
+    if (!configurations.contain.dependencies.isEmpty()) {
         into('/') {
             from configurations.contain
         }
@@ -548,53 +575,58 @@ jar {
 
     doFirst {
         manifest {
-            def attributeMap = [
-                ModType: 'CRL',
-                'Implementation-Version': finalVersion,
-            ]
-            if (configurations.contain.size() > 0) {
-                attributeMap['ContainedDeps'] = configurations.contain.collect { it.name }.join(' ')
-                attributeMap['NonModDeps'] = true
-            }
-            if (propertyBool('is_coremod')) {
-                attributeMap['FMLCorePlugin'] = propertyString('coremod_plugin_class_name')
-                attributeMap['ForceLoadAsMod'] = 'true'
-                if (propertyBool('coremod_includes_mod')) {
-                    attributeMap['FMLCorePluginContainsFMLMod'] = true
-                }
-            }
-            if (propertyBool('use_access_transformer')) {
-                attributeMap['FMLAT'] = propertyString('access_transformer_locations').tokenize('/\\').last()
-            }
-            attributes(attributeMap)
+            applyActiniumManifest(delegate)
         }
-    }
-
-    finalizedBy tasks.named('remapJar')
-}
-
-tasks.named('remapJar').configure {
-    doFirst {
-        logging.captureStandardOutput LogLevel.INFO
-    }
-    doLast {
-        logging.captureStandardOutput LogLevel.QUIET
     }
 }
 
 tasks.withType(JavaCompile).configureEach {
-    sourceCompatibility = '21'
-    targetCompatibility = '21'
+    // No source/targetCompatibility: Gradle derives the compile classpath's org.gradle.jvm.version from the
+    // compile task's release option, and the Cleanroom userdev only publishes JVM 25 variants.
     options.encoding = 'UTF-8'
     options.release.set(21)
     javaCompiler = javaToolchains.compilerFor {
         languageVersion = JavaLanguageVersion.of(25)
     }
+    // The conditional compat mixins list alternate spellings of their targets (MCP next to SRG and notch
+    // names), target mod classes that only ever carry MCP names, and use string targets for mods that may
+    // be absent. The Mixin annotation processor reports each of those as an error, which fails the compile;
+    // unimined's own refmap builder skipped exactly the same entries silently, so the generated refmap is
+    // unchanged by downgrading the messages to warnings.
+    options.compilerArgs.add('-AMSG_NO_OBFDATA_FOR_TARGET=warning')
+    options.compilerArgs.add('-AMSG_NO_OBFDATA_FOR_OVERWRITE=warning')
+    options.compilerArgs.add('-AMSG_MIXIN_SOFT_TARGET_NOT_FOUND=warning')
+}
+
+/**
+ * LWJGLY's jar as resolved off the given configuration, so it can be subtracted from a classpath.
+ *
+ * LWJGLY (com.cleanroommc:lwjgly) and lwjglx both ship org.lwjgl.**. javac and the test classloader take the
+ * class from the first jar that provides it, and only lwjglx's copy has the borderless extensions and the
+ * GLFW-backed Display.create() the mod compiles against and transforms. LWJGLY cannot be dropped from the
+ * dependency graph itself (it arrives with the userdev), so it is removed from these classpaths instead.
+ * Everything else keeps the resolved order, in which LWJGL3's core classes still precede lwjglx.
+ */
+def lwjglyJars = { Configuration configuration ->
+    configuration.incoming.artifactView { view ->
+        view.componentFilter { id ->
+            id instanceof ModuleComponentIdentifier &&
+                id.group == 'com.cleanroommc' && id.module == 'lwjgly'
+        }
+    }.files
 }
 
 tasks.named('compileJava', JavaCompile).configure {
     options.fork = true
     options.forkOptions.jvmArgs.add('--sun-misc-unsafe-memory-access=allow')
+    classpath = configurations.compileClasspath - lwjglyJars(configurations.compileClasspath)
+}
+
+// The test classpath needs the same treatment: MacDisplayForwardCompatTransformerTest reads the LWJGL2
+// Display class off it and expects lwjglx's GLFW-backed copy. The default classpath also carries the main
+// output, which the subtraction must not lose.
+tasks.named('compileTestJava', JavaCompile).configure {
+    classpath = sourceSets.main.output + (configurations.testCompileClasspath - lwjglyJars(configurations.testCompileClasspath))
 }
 
 def testRunDirectory = layout.projectDirectory.dir('run/test')
@@ -607,6 +639,9 @@ def prepareTestRunDirectory = tasks.register('prepareTestRunDirectory') {
 }
 
 test {
+    // Same LWJGLY subtraction as compileTestJava: MacDisplayForwardCompatTransformerTest reads the
+    // Display class off this classpath and expects lwjglx's GLFW-backed copy.
+    classpath = sourceSets.test.runtimeClasspath - lwjglyJars(configurations.testRuntimeClasspath)
     systemProperty 'actinium.projectRoot', rootProject.projectDir.absolutePath
     dependsOn prepareTestRunDirectory
     useJUnitPlatform()
@@ -646,6 +681,9 @@ def verifyDistributedJar = tasks.register('verifyDistributedJar') {
             'joml-1.10.5.jar',
             'mixins.actinium.iris.json',
             'mixins.actinium.vintage.json',
+            // Every mixin config points at this refmap; without it every @Shadow/@Redirect reference in
+            // the distributed (SRG-named) jar would stay unresolved at runtime.
+            'mixins.actinium-refmap.json',
             'META-INF/services/com.gtnewhorizons.angelica.glsm.backend.RenderBackend'
         ]
 

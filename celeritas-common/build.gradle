@@ -1,5 +1,6 @@
 plugins {
     id 'java-library'
+    id 'com.cleanroommc.cleanroomgradle'
 }
 
 import java.util.Locale
@@ -63,7 +64,7 @@ if (lwjglNatives == null) {
     throw new GradleException("Unsupported jmh platform: ${osName}/${osArchitecture}")
 }
 
-def lwjglVersion = '3.4.1'
+def lwjglVersion = rootProject.ext.lwjglVersion
 def mesaEglArchive = layout.projectDirectory.file('src/jmh/natives/mesa-windows-x64.zip')
 def mesaEglDirectory = layout.buildDirectory.dir('jmh/mesa-windows-x64')
 
@@ -90,12 +91,19 @@ configurations {
 }
 
 dependencies {
+    // Minecraft, the loader and the Mixin runtime, materialized from Cleanroom by the userdev.
+    compileOnly cleanroom.userdev(rootProject.property('cleanroom_version')) {
+        if (rootProject.ext.actiniumAccessTransformer != null) {
+            accessTransformers.from(rootProject.ext.actiniumAccessTransformer)
+        }
+    }
+
     api project(':glsm')
 
     jmhImplementation "org.openjdk.jmh:jmh-core:${jmh_version}"
     jmhAnnotationProcessor "org.openjdk.jmh:jmh-generator-annprocess:${jmh_version}"
 
-    // LWJGL 3.4.1 bindings for the headless EGL benchmark context. EGL itself is supplied by the system or the
+    // LWJGL bindings for the headless EGL benchmark context. EGL itself is supplied by the system or the
     // JMH-only Mesa runtime; lwjgl-egl publishes no natives classifier.
     jmhImplementation platform("org.lwjgl:lwjgl-bom:${lwjglVersion}")
     jmhImplementation "org.lwjgl:lwjgl:${lwjglVersion}"

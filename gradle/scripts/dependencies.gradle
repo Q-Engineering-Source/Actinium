@@ -1,39 +1,40 @@
 apply from: 'gradle/scripts/helpers.gradle'
 
 repositories {
-    mavenCentral()
+    // CleanroomGradle injects Maven Central, CleanroomMC (exclusive for the CleanroomMC/Forge/MCP groups)
+    // and Mojang before this buildscript runs; these are the sources it does not cover.
     maven {
         name = 'CurseMaven'
-        url = 'https://cursemaven.com'
+        url = 'https://curse.cleanroommc.com'
     }
     maven {
-        name = 'CleanroomCurseMaven'
-        url = 'https://curse.cleanroommc.com'
+        name = 'CurseMavenFallback'
+        url = 'https://cursemaven.com'
     }
     maven {
         name = 'Modrinth'
         url = 'https://api.modrinth.com/maven'
     }
+    // Not exclusive on purpose: the injected rule only exposes the CleanroomMC-owned groups from this
+    // repository, and artifacts of other groups live here as well.
     maven {
         name = 'CleanroomMaven'
         url = 'https://maven.cleanroommc.com'
     }
-    // LWJGLY (com.cleanroommc:lwjgly, com.cleanroommc:lwjgly-spi) is published here, not on
-    // maven.cleanroommc.com.
+    // org.taumc:glsl-transformation-lib
     maven {
-        name = 'CleanroomReleases'
-        url = 'https://repo.cleanroommc.com/releases'
+        name = 'GTNH'
+        url = 'https://nexus.gtnewhorizons.com/repository/public/'
     }
     mavenCentral()
     mavenLocal()
 }
 
 dependencies {
-    def lwjglVersion = '3.4.1'
-    def lombokVersion = '1.18.46'
-    def asmVersion = '9.9.1'
+    def lombokVersion = rootProject.ext.lombokVersion
+    def asmVersion = rootProject.ext.asmVersion
+    def lwjglVersion = rootProject.ext.lwjglVersion
 
-    compileOnly 'com.cleanroommc:sponge-mixin:0.20.13+mixin.0.8.7'
     compileOnly 'org.jetbrains:annotations:24.1.0'
     compileOnly "org.projectlombok:lombok:${lombokVersion}"
     annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
@@ -53,21 +54,23 @@ dependencies {
     implementation 'org.anarres:jcpp:1.4.14'
     contain 'org.anarres:jcpp:1.4.14'
 
-    modCompileOnly 'maven.modrinth:fluidlogged-api:3.0.6'
+    compileOnly deobf('maven.modrinth:fluidlogged-api:3.0.6')
 
     compileOnly "org.lwjgl:lwjgl:${lwjglVersion}"
     compileOnly "org.lwjgl:lwjgl-opengl:${lwjglVersion}"
+    // The windowing API the LWJGL3-era Cleanroom builds its window with; the code that reads the video
+    // mode and the file-drop callback speaks to it directly.
+    compileOnly "org.lwjgl:lwjgl-glfw:${lwjglVersion}"
     if (propertyBool('enable_lwjgl_compat')) {
-        // Older-Cleanroom LWJGL2 layer plus its lwjgl3ify-style shims: this one artifact carries
-        // both org.lwjgl.** (LWJGL 2's API in LWJGL 2's own package) and org.lwjglx.**, so it
-        // compiles code for either Cleanroom generation. At runtime the host supplies the real
-        // implementation (lwjglx + lwjglxx, or LWJGLY) and nothing of it is shipped by the mod.
-        compileOnly 'com.cleanroommc:lwjglx:1.0.0'
-        // LWJGLY's SPI (com.cleanroommc.lwjgly.LWJGLY, .spi.WindowBridge). Compile-only: LWJGLY
-        // itself only ever ships with the host, and its org.lwjgl.** classes would collide with
-        // lwjglx's on the compile classpath.
-        compileOnly 'com.cleanroommc:lwjgly-spi:1.0.0'
+        // LWJGL2's API surface in LWJGL 2's own package (org.lwjgl.**), including the borderless
+        // extensions the window-mode controller uses. It is the compile-time provider for
+        // org.lwjgl.** on both Cleanroom generations; at runtime the host supplies the real
+        // implementation (vanilla LWJGL2 or LWJGLY) and nothing of it is shipped by the mod.
+        compileOnly 'lwjglx.compat:lwjglx:1.0.0'
     }
+    // LWJGLY's SPI (com.cleanroommc.lwjgly.LWJGLY, .spi.WindowBridge) that the SDL GPU backend claims the
+    // window through. Compile-only: LWJGLY itself only ever ships with the host.
+    compileOnly 'com.cleanroommc:lwjgly-spi:1.0.0'
     if (propertyBool('enable_junit_testing')) {
         testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
         testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -77,181 +80,180 @@ dependencies {
         // Gnetum 1.4.3 raw jar: GnetumHudCachingCompatTransformerTest feeds the real
         // GuiIngameForgeMixin class bytes through the transformer (sha1 matches CurseForge 1220460).
         testImplementation "maven.modrinth:gnetum:1.4.3"
-        testImplementation files(sharedMinecraftCompileClasspath())
     }
 
 //    modRuntimeOnly 'curse.maven:catalogue-vintage-1465746:7872634'
 //    compileOnly 'maven.modrinth:DistantHorizonsApi:5.1.0'
-    modImplementation "maven.modrinth:uCdwusMi:Sa0ttGJr"  // Distant Horizons 3.3.0-1.12.2 (first release with b15b57cf/ae21a1a0: DH binds IIrisAccessor itself and drives its own LOD passes)
+    implementation deobf("maven.modrinth:uCdwusMi:Sa0ttGJr")  // Distant Horizons 3.3.0-1.12.2 (first release with b15b57cf/ae21a1a0: DH binds IIrisAccessor itself and drives its own LOD passes)
     // XaeroLib 1.7.3 + Xaero's Minimap 26.5.1 + Xaero's World Map 1.46.0 (issue #175: both maps
     // render their 64x64 terrain as flat colour, and the world map's GuiTexturedButton plates come
     // out opaque while the minimap's entity radar is on). Dev-runtime, not just compiled against:
     // the defect only reproduces with the three of them present. This replaces the previous
     // minimap compileOnly entry so a single version of the mod sits on the classpath.
-    modImplementation 'curse.maven:xaerolib-1417462:8849823'
-    modImplementation 'curse.maven:xaeros-minimap-263420:8863814'
-    modImplementation 'curse.maven:xaeros-world-map-317780:8849947'
-    compileOnly 'curse.maven:better-hud-286066:3327633'
-    compileOnly 'curse.maven:voxelmap-225179:3029445'  // issue #34: VoxelMap minimap compatibility (mixins.actinium.voxelmap.json, conditional on mod presence)
+    implementation deobf('curse.maven:xaerolib-1417462:8849823')
+    implementation deobf('curse.maven:xaeros-minimap-263420:8863814')
+    implementation deobf('curse.maven:xaeros-world-map-317780:8849947')
+    compileOnly deobf('curse.maven:better-hud-286066:3327633')
+    compileOnly deobf('curse.maven:voxelmap-225179:3029445')  // issue #34: VoxelMap minimap compatibility (mixins.actinium.voxelmap.json, conditional on mod presence)
 
     // JourneyMap 1.12.2-5.7.1p3 (StellarCore 1.6.0 references common.feature.PlayerRadarManager; 6.0.3 moved it to common.util and crashes)
     // Kept compile-only for the dev runtime: JourneyMap and Xaero's World Map both claim the
     // world_id / world_info plugin channels, so the two cannot be loaded together.
-    modCompileOnly 'curse.maven:journeymap-32274:5172461'
+    compileOnly deobf('curse.maven:journeymap-32274:5172461')
 
-    compileOnly 'curse.maven:scalingguis-319656:5150678'
-    compileOnly 'curse.maven:quark-243121:2924091'
-    compileOnly 'curse.maven:valkyrie-874067:5235356'
-//    modImplementation 'curse.maven:depths-update-1472501:8038246'
-//    modRuntimeOnly 'curse.maven:assetmover-571482:4430763'
-//    modImplementation 'curse.maven:nether-api-1306115:8201135'
-//    modRuntimeOnly 'curse.maven:unseens-nether-backport-1109447:7694245'
-    modCompileOnly 'curse.maven:gibbed-1480667:7737413'
-    modImplementation 'curse.maven:stellarcore-1064321:8406201'
-    modImplementation 'curse.maven:modern-splash-629058:8487408'
+    compileOnly deobf('curse.maven:scalingguis-319656:5150678')
+    compileOnly deobf('curse.maven:quark-243121:2924091')
+    compileOnly deobf('curse.maven:valkyrie-874067:5235356')
+//    implementation deobf('curse.maven:depths-update-1472501:8038246')
+//    runtimeOnly deobf('curse.maven:assetmover-571482:4430763')
+//    implementation deobf('curse.maven:nether-api-1306115:8201135')
+//    runtimeOnly deobf('curse.maven:unseens-nether-backport-1109447:7694245')
+    compileOnly deobf('curse.maven:gibbed-1480667:7737413')
+    implementation deobf('curse.maven:stellarcore-1064321:8406201')
+    implementation deobf('curse.maven:modern-splash-629058:8487408')
 
     // Mekanism-CE-Unofficial 10.0.5.021 (issue #194: shader rendering repro on large machines).
     // Runtime-only because Actinium has no compile-time references to Mekanism.
-    modRuntimeOnly 'curse.maven:mekanism-ce-unofficial-840735:8862568'
+    runtimeOnly deobf('curse.maven:mekanism-ce-unofficial-840735:8862568')
 
     // Immersive Engineering 0.12-98 (issue #197: exercise the Garden Cloche translucent block-entity pass).
     // Runtime-only because Actinium does not compile against IE classes.
-    modRuntimeOnly 'curse.maven:immersive-engineering-231951:2974106'
+    runtimeOnly deobf('curse.maven:immersive-engineering-231951:2974106')
 
     // Tinkers' Construct + Mantle + Construct's Armory: repro set for the conarm dynamic-texture crash.
     // conarm requires tconstruct and mantle; runtime-only, Actinium does not compile against them.
-    modRuntimeOnly 'curse.maven:tinkers-construct-74072:2902483'
-    modRuntimeOnly 'curse.maven:mantle-74924:2713386'
-    modRuntimeOnly 'curse.maven:constructs-armory-287683:3174535'
+    runtimeOnly deobf('curse.maven:tinkers-construct-74072:2902483')
+    runtimeOnly deobf('curse.maven:mantle-74924:2713386')
+    runtimeOnly deobf('curse.maven:constructs-armory-287683:3174535')
 
     // Draconic Evolution
-    modCompileOnly 'maven.modrinth:draconic-evolution:2.3.28.354'
-    modCompileOnly 'maven.modrinth:brandons-core:2.4.20.162'
-    modCompileOnly 'codechicken:CodeChickenLib:3.3.8'
-    modCompileOnly 'curse.maven:lumenized-1234162:6734060'
-    modCompileOnly "curse.maven:redstoneflux-270789:2920436"
+    compileOnly deobf('maven.modrinth:draconic-evolution:2.3.28.354')
+    compileOnly deobf('maven.modrinth:brandons-core:2.4.20.162')
+    compileOnly deobf('codechicken:CodeChickenLib:3.3.8')
+    compileOnly deobf('curse.maven:lumenized-1234162:6734060')
+    compileOnly deobf("curse.maven:redstoneflux-270789:2920436")
 
     // CubicChunks 0.0.1301: vertviewdist MixinEntityRenderer @Redirects the same
     // GameSettings.renderDistanceChunks reads as EntityRendererIrisMixin (startup crash fix)
-    modCompileOnly 'curse.maven:opencubicchunks-292243:3546640'
+    compileOnly deobf('curse.maven:opencubicchunks-292243:3546640')
     // GTCEu 2.8.10-beta: GregTechTransformer replaces the 4th renderBlockLayer call in
     // renderWorldPass with BloomEffectUtil.renderBloomBlockLayer (startup crash fix)
-    modCompileOnly 'curse.maven:gregtech-ce-unofficial-557242:5519022'
+    compileOnly deobf('curse.maven:gregtech-ce-unofficial-557242:5519022')
 
-    // modRuntimeOnly "curse.maven:celeritas-dynamic-lights-1313831:8387313"
-    // modRuntimeOnly "curse.maven:celeritasleafculling-1449111:7550650"
+    // runtimeOnly deobf("curse.maven:celeritas-dynamic-lights-1313831:8387313")
+    // runtimeOnly deobf("curse.maven:celeritasleafculling-1449111:7550650")
 
     // issue #123: CQR boot crash (compat shader transform). Compile-only: the dev-namespace
-    // Minecraft jar unimined generates names MapData.dimension as `d`, so CQR's dungeon map
+    // Minecraft jar the userdev materializes names MapData.dimension as `d`, so CQR's dungeon map
     // generation (GeneratableMapInfo.updateMapData reads MapData.field_76200_c) dies with
     // NoSuchFieldError in the server tick loop as soon as a dungeon with a filled map generates.
     // Loading CQR at dev runtime therefore only crashes runs that reach that code path; the
     // compat shader path stays covered by CompatShaderTransformerTest against the shipped GLSL.
-    // Restore modRuntimeOnly (plus geckolib/reachfix below) once the dev jar carries the field.
-    modCompileOnly 'maven.modrinth:chocolate-quest-repoured:2.8.0B'
+    // Restore runtimeOnly (plus geckolib/reachfix below) once the dev jar carries the field.
+    compileOnly deobf('maven.modrinth:chocolate-quest-repoured:2.8.0B')
     // CQR requiredMods, only needed while CQR runs in dev: geckolib-forge-1.12.2-3.0.31 and
     // ReachFix-1.12.2-1.1.3.
-//    modRuntimeOnly 'maven.modrinth:geckolib:PePYVhnE'
-//    modRuntimeOnly 'maven.modrinth:reach-fix:yREinuec'
+//    runtimeOnly deobf('maven.modrinth:geckolib:PePYVhnE')
+//    runtimeOnly deobf('maven.modrinth:reach-fix:yREinuec')
 
-    modCompileOnly 'curse.maven:chunk-animator-236484:3850023'
+    compileOnly deobf('curse.maven:chunk-animator-236484:3850023')
 
-    modImplementation "curse.maven:ichunutil-229060:2801262"  // dev-verifies mixins.actinium.ichunutil.json (issue #39)
-    modCompileOnly "curse.maven:mobdismemberment-229067:2487081"
+    implementation deobf("curse.maven:ichunutil-229060:2801262")  // dev-verifies mixins.actinium.ichunutil.json (issue #39)
+    compileOnly deobf("curse.maven:mobdismemberment-229067:2487081")
 
 
-    modCompileOnly 'curse.maven:revo-font-1617673:8586768'
+    compileOnly deobf('curse.maven:revo-font-1617673:8586768')
     // Biomes O' Plenty 7.0.1.2445 (issue #32: it swaps GuiMainMenu.titlePanoramaPaths for its own title
     // panorama; the GTNH skybox renderer must read the swapped field instead of hard-coded vanilla paths)
-    modCompileOnly "curse.maven:biomes-o-plenty-220318:3558882"
-    modCompileOnly 'curse.maven:revo-ui-1620532:8593682'
-    modCompileOnly('com.cleanroommc:modularui:3.1.6') { transitive = false }
+    compileOnly deobf("curse.maven:biomes-o-plenty-220318:3558882")
+    compileOnly deobf('curse.maven:revo-ui-1620532:8593682')
+    compileOnly(deobf('com.cleanroommc:modularui:3.1.6')) { transitive = false }
 
-    modCompileOnly "curse.maven:somnia-refreshed-1062151:5544381"
-//    modImplementation "curse.maven:conquest-reforged-250077:2565963"
+    compileOnly deobf("curse.maven:somnia-refreshed-1062151:5544381")
+//    implementation deobf("curse.maven:conquest-reforged-250077:2565963")
 
-    modCompileOnly "curse.maven:rebooter-1625784:8518809"
-    modImplementation "curse.maven:forgelin-continuous-456403:8248535"
-    modImplementation 'curse.maven:better-foliage-228529:3393955'
-    modCompileOnly "curse.maven:rlfoliage-970462:7645701"
+    compileOnly deobf("curse.maven:rebooter-1625784:8518809")
+    implementation deobf("curse.maven:forgelin-continuous-456403:8248535")
+    implementation deobf('curse.maven:better-foliage-228529:3393955')
+    compileOnly deobf("curse.maven:rlfoliage-970462:7645701")
 
-    modImplementation "curse.maven:cofh-core-69162:2920433"
-    modImplementation "curse.maven:cofh-world-271384:2920434"
-    modImplementation "curse.maven:thermal-expansion-69163:2926431"
-    modImplementation "curse.maven:thermal-foundation-222880:2926428"
-    modImplementation "curse.maven:redstone-flux-270789:2920436"
-    modImplementation "curse.maven:codechicken-lib-cre-1328922:6898525"
+    implementation deobf("curse.maven:cofh-core-69162:2920433")
+    implementation deobf("curse.maven:cofh-world-271384:2920434")
+    implementation deobf("curse.maven:thermal-expansion-69163:2926431")
+    implementation deobf("curse.maven:thermal-foundation-222880:2926428")
+    implementation deobf("curse.maven:redstone-flux-270789:2920436")
+    implementation deobf("curse.maven:codechicken-lib-cre-1328922:6898525")
 
     // HammerLib 12.2.66 (issue #40: its GL20.glGetActiveUniform(int, int, int) -> String call is redirected to
     // GLSM GLStateManager, which must expose the same descriptor)
-    modCompileOnly "maven.modrinth:hammer-lib:B9uVCQjP"
+    compileOnly deobf("maven.modrinth:hammer-lib:B9uVCQjP")
     // Extra Utilities 2 1.9.9 (issue #48: its GLStateAttributes GUI state snapshot reads the stale vanilla
     // GlStateManager mirror under GLSM; the mixin re-reads live GL state)
-    modCompileOnly "curse.maven:extra-utilities-2-225561:2678374"
+    compileOnly deobf("curse.maven:extra-utilities-2-225561:2678374")
 
     // Depths Update 1.0.0-a10 (issue #68: extends the world build height beyond 0-255; blocks outside the
     // vanilla range are not rendered -- its own celeritas compat mixins target pre-restructure class paths)
-    // modCompileOnly exposes its public API (sayys.depthsupdate.api.DepthsUpdateAPI) for the compat shim.
-    modImplementation 'curse.maven:depths-update-1472501:8038246'
-    modRuntimeOnly 'curse.maven:assetmover-571482:4430763'
-    
-    modImplementation "curse.maven:extra-utilities-2-225561:2678374"
+    // compileOnly exposes its public API (sayys.depthsupdate.api.DepthsUpdateAPI) for the compat shim.
+    implementation deobf('curse.maven:depths-update-1472501:8038246')
+    runtimeOnly deobf('curse.maven:assetmover-571482:4430763')
+
+    implementation deobf("curse.maven:extra-utilities-2-225561:2678374")
 
     // Snow! Real Magic! 0.7.4 (issue #35: SRM replaces snow-covered blocks with a snow layer carrying a
     // SnowTile and only re-emits the covered block inside BlockRendererDispatcher.renderBlock; the fast
     // chunk path must fall back to the vanilla dispatcher for its snow_layer block)
-    modRuntimeOnly 'curse.maven:snow-real-magic-308663:6275195'
+    runtimeOnly deobf('curse.maven:snow-real-magic-308663:6275195')
 
-    modImplementation 'curse.maven:oldresearchreborn-1632015:8642028'
-    modImplementation 'curse.maven:thaumcraft-223628:2629023'
-    modImplementation 'curse.maven:baubles-227083:2518667'
+    implementation deobf('curse.maven:oldresearchreborn-1632015:8642028')
+    implementation deobf('curse.maven:thaumcraft-223628:2629023')
+    implementation deobf('curse.maven:baubles-227083:2518667')
 
     // Botania CEU (issue: held items render flat white because its RenderWorldLastEvent handlers leave
     // GL_TEXTURE_2D disabled in the GLSM cache; the conditional botania mixin restores it)
-    modImplementation 'curse.maven:botania-ceu-1179448:8706250'
+    implementation deobf('curse.maven:botania-ceu-1179448:8706250')
 
     // HBM's Nuclear Tech Mod Community Edition (issue #64: glRotatef(DFFF) redirect target;
     // issue #47: its celeritas compat mixins target the rewritten renderer — dev-verifies the
     // DefaultChunkRenderer fillCommandBuffer seam). Depends on CTM.
-    modImplementation "curse.maven:ctm-267602:2915363"
-    modImplementation "curse.maven:hbm-nuclear-tech-mod-community-edition-1312314:8330665"
+    implementation deobf("curse.maven:ctm-267602:2915363")
+    implementation deobf("curse.maven:hbm-nuclear-tech-mod-community-edition-1312314:8330665")
 
     // ArchitectureCraft 1.12-3.108 TridenMC (issue #101: its blocks are invisible / sawbench hits
     // FancyMissingModel inside the fast chunk meshing path; dev-verifies the shape rendering compat)
-    modImplementation 'curse.maven:architecturecraft-tridev-277631:4344128'
+    implementation deobf('curse.maven:architecturecraft-tridev-277631:4344128')
 
     // Scannable 1.6.3.26 (issue #94: its scanner overlay rendering conflicts with the Actinium render
     // pipeline -- see-through terrain without shaders, white ghosting with shaders; needs runtime repro)
-    modImplementation 'curse.maven:scannable-266784:3146549'
+    implementation deobf('curse.maven:scannable-266784:3146549')
 
     // FluxLoading 1.4.1 (issue #102: re-entering a world leaves its loading screen image stuck
     // instead of fading out; dev-verifies the loading screen overlay compat)
-    modImplementation 'curse.maven:fluxloading-1207328:7601634'
+    implementation deobf('curse.maven:fluxloading-1207328:7601634')
 
     // LittleTiles 1.5.87 + CreativeCore 1.10.71 (issue #133: non-full LittleTiles blocks are
     // invisible under the fast chunk pipeline; dev-verifies the rendering compat)
-    modImplementation 'curse.maven:creativecore-257814:4722163'
-    modImplementation 'curse.maven:littletiles-257818:5180387'
+    implementation deobf('curse.maven:creativecore-257814:4722163')
+    implementation deobf('curse.maven:littletiles-257818:5180387')
 
     // Advanced Rocketry 2.0.0-17 + LibVulpes 0.4.2-25, compile-only: at runtime its
     // overworldSkyOverride replaces the vanilla sky in the dev instance, which has been
     // mistaken for a rendering regression. For issue #150 (RendererPrecisionAssembler /
     // WavefrontObject.renderAll feeds 2214 GL_TRIANGLES vertices through BufferBuilderStreamingDrawer
     // and the JVM dies with EXCEPTION_ACCESS_VIOLATION inside the NVIDIA driver's vertex copy loop)
-    // switch back to modRuntimeOnly — that repro needs AR at runtime.
-    modCompileOnly 'curse.maven:libvulpes-236541:3801015'
-    modCompileOnly 'curse.maven:advanced-rocketry-236542:4671856'
+    // switch back to runtimeOnly — that repro needs AR at runtime.
+    compileOnly deobf('curse.maven:libvulpes-236541:3801015')
+    compileOnly deobf('curse.maven:advanced-rocketry-236542:4671856')
     // Obscure Tooltips 3.10.2 (PR #142: its ArmorPreviewComponent renders an armor-stand entity
     // inside the GUI tooltip pass; the Iris armor item ID/glint hooks must skip that pass —
     // dev-verifies mixins.actinium.obscuretooltips.json)
-    modImplementation 'curse.maven:obscure-tooltips-715660:8522661'
+    implementation deobf('curse.maven:obscure-tooltips-715660:8522661')
 
     // CensoredASM / Chibi 5.33 (issue #159: its on-demand animated textures @Overwrite
     // TextureMap.updateAnimations and BufferBuilder.tex -- the same members Actinium injects into
     // and overwrites -- and its BakedQuad squasher rewrites the fields MixinBakedQuad shadows.
     // LoliASM switches both features off by itself once it sees a Celeritas-family marker, so the
     // org.taumc.celeritas.core marker class is what this dev entry exercises.)
-    modRuntimeOnly 'curse.maven:chibi-460609:8225778'
+    runtimeOnly deobf('curse.maven:chibi-460609:8225778')
 
     // Component Model Hider 1.0 (mod id component_model_hider, CurseForge project 940949 file
     // 4885858): the standalone extraction of Multiblocked's block-model hiding API that Modular
@@ -259,7 +261,7 @@ dependencies {
     // RenderChunk.rebuildChunk -- a path the Actinium chunk mesher never executes -- so the compat
     // re-applies the skip and the build gate from ChunkBuilderMeshingTask. Compile-only: the compat
     // is guarded by Mods.COMPONENT_MODEL_HIDER, which is false whenever the mod is absent.
-    modCompileOnly 'curse.maven:component-model-hider-940949:4885858'
+    compileOnly deobf('curse.maven:component-model-hider-940949:4885858')
 
     // NeverEnoughAnimation 1.0.7 (issue #145: its GUI open/close fade scales every item vertex
     // alpha through LightUtil/BufferBuilder mixins; Actinium's fast lit item path writes baked quad
@@ -267,11 +269,11 @@ dependencies {
     // frame was baked into the cache and left chest GUI items invisible). Compiled against, not just
     // run: the compat layer in com.dhj.actinium.compat.neverenoughanimations reads NEA's animation
     // state, and it is only loaded once Mods.NEVERENOUGHANIMATIONS reports the mod present.
-    modImplementation 'curse.maven:neverenoughanimation-1062347:7289408'
+    implementation deobf('curse.maven:neverenoughanimation-1062347:7289408')
 
     // Issue #118 repro dependencies and compile-time types for the conditional drawer renderer mixin.
-    modCompileOnly 'curse.maven:chameleon-230497:2450900'
-    modCompileOnly 'curse.maven:storage-drawers-223852:2952606'
-    modRuntimeOnly 'curse.maven:chameleon-230497:2450900'
-    modRuntimeOnly 'curse.maven:storage-drawers-223852:2952606'
+    compileOnly deobf('curse.maven:chameleon-230497:2450900')
+    compileOnly deobf('curse.maven:storage-drawers-223852:2952606')
+    runtimeOnly deobf('curse.maven:chameleon-230497:2450900')
+    runtimeOnly deobf('curse.maven:storage-drawers-223852:2952606')
 }
