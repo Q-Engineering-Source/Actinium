@@ -8771,7 +8771,7 @@ public class GLStateManager {
         }
         RENDER_BACKEND.activeTexture(GL13.GL_TEXTURE0 + glCtx.activeTextureUnit.getValue());
         if (glCtx.defaultVAO == 0 && primaryContext().defaultVAO != 0) glCtx.defaultVAO = RENDER_BACKEND.genVertexArrays();
-        glCtx.vao.init(glCtx.defaultVAO);
+        if (!glCtx.vao.isInitialized()) glCtx.vao.init(glCtx.defaultVAO);
         RENDER_BACKEND.bindVertexArray(glCtx.boundVAO != 0 ? glCtx.boundVAO : glCtx.defaultVAO);
         RENDER_BACKEND.useProgram(glCtx.activeProgram);
         RENDER_BACKEND.bindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, glCtx.drawFramebuffer);

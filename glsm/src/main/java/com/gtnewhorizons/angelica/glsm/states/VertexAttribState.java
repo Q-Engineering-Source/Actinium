@@ -24,6 +24,11 @@ public class VertexAttribState {
     private Attrib[] current;
     private final ArrayDeque<Attrib[]> pool = new ArrayDeque<>();
     private int clientSideEnabledCount;
+    private boolean initialized;
+
+    public boolean isInitialized() {
+        return initialized;
+    }
 
     public void init(int defaultVAO) {
         vaoAttribs.clear();
@@ -31,6 +36,7 @@ public class VertexAttribState {
         current = allocAttribArray();
         vaoAttribs.put(defaultVAO, current);
         clientSideEnabledCount = 0;
+        initialized = true;
     }
 
     public void onBindVertexArray(int newVAO) {
@@ -50,6 +56,7 @@ public class VertexAttribState {
         pool.clear();
         current = null;
         clientSideEnabledCount = 0;
+        initialized = false;
     }
 
     private Attrib[] allocAttribArray() {
