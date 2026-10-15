@@ -10,6 +10,7 @@ import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
 import com.gtnewhorizons.angelica.glsm.backend.GLDebugMessageListener;
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
+import com.gtnewhorizons.angelica.glsm.backend.WindowSystem;
 import com.gtnewhorizons.angelica.glsm.backend.VSyncMode;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
@@ -4275,6 +4276,15 @@ public class GLStateManager {
         if (drawableGLHolder == Thread.currentThread()) {
             drawableGLHolder = null;
         }
+    }
+
+    /**
+     * The current thread's GL context handle, 0 when none. Third-party GLFW-era probes
+     * ({@code GLFW.glfwGetCurrentContext()}) are redirected here; the answer comes from whichever
+     * window system the runtime actually has.
+     */
+    public static long currentContext() {
+        return WindowSystem.currentContext();
     }
 
     public static void makeCurrent(Drawable drawable) throws LWJGLException {
