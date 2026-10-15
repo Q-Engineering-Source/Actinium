@@ -212,6 +212,7 @@ public class GLSMRedirector {
             .add("glLogicOp")
             .add("glMatrixMode")
             .add("glMultMatrix")
+            .add("glMultMatrixf", "glMultMatrix")
             .add("glNewList")
             .add("glNormal3b")
             .add("glNormal3d")
