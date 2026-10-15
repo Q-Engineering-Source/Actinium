@@ -228,6 +228,12 @@ subprojects {
         options.forkOptions.jvmArgs.add('--sun-misc-unsafe-memory-access=allow')
     }
 
+    // Only the root project launches the game; the CleanroomGradle plugin registers run tasks in
+    // every project it is applied to, and a bare ./gradlew runClient would start one client each.
+    tasks.matching { it.name in ['runClient', 'runServer'] }.configureEach {
+        enabled = false
+    }
+
     tasks.withType(Javadoc).configureEach {
         failOnError = false
     }
@@ -466,12 +472,21 @@ def configureActiniumDevRun = { JavaExec runTask, boolean clientRun ->
     }
     runTask.dependsOn(tasks.named('classes'), devShadowJar)
 
-    // Swap the raw module outputs out of the JavaExec classpath (see the block comment). Resolved
-    // lazily: runtimeClasspath must not resolve during configuration — the CleanroomGradle deobf
-    // wiring (afterEvaluate, withDependencies on every configuration) rejects it.
+    // Swap the raw module outputs and the deobf'd mod jars out of the JavaExec classpath (see the
+    // block comment). The mod jars must resolve only through extrapath: with them on the app
+    // classpath, the LaunchClassLoader's parent-first lookup for non-inclusion packages loads them
+    // into the app loader, and their ILateMixinLoader/IFMLLoadingPlugin implementations fail the
+    // cast against the LaunchClassLoader's own copy of the interface. Resolved lazily:
+    // runtimeClasspath must not resolve during configuration — the CleanroomGradle deobf wiring
+    // (afterEvaluate, withDependencies on every configuration) rejects it.
     def rawModuleOutputs = sourceSets.main.output.files
     def baseClasspath = runTask.classpath
-    runTask.classpath = files(provider { baseClasspath.files.findAll { !rawModuleOutputs.contains(it) } })
+    runTask.classpath = files(provider {
+        def deobfJars = configurations.runtimeClasspath.incoming.artifacts.findAll {
+            it.variant.attributes.getAttribute(deobfuscatedAttribute) == 'mcp'
+        }.collect { it.file } as Set
+        baseClasspath.files.findAll { !rawModuleOutputs.contains(it) && !deobfJars.contains(it) }
+    })
 
     // Computed at execution time for the same reason: the artifact set is only known once
     // runtimeClasspath resolves. devShadowJar comes first so the mod itself is the first
