@@ -9,6 +9,7 @@ import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 
@@ -135,6 +136,7 @@ public abstract class RenderBackend {
         drawElementsBaseVertex(mode, count, type, indices, baseVertex);
     }
     public abstract void multiDrawArrays(int mode, IntBuffer firsts, IntBuffer counts);
+    public void multiDrawArrays(int mode, int[] firsts, int[] counts) { multiDrawArrays(mode, IntBuffer.wrap(firsts), IntBuffer.wrap(counts)); }
     public abstract void primitiveRestartIndex(int index);
     public abstract void pointParameterf(int pname, float param);
     public abstract void pointParameteri(int pname, int param);
@@ -199,6 +201,7 @@ public abstract class RenderBackend {
     public abstract void blitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1, int dstX0, int dstY0, int dstX1, int dstY1, int mask, int filter);
     public abstract void drawBuffers(int buffer);
     public abstract void drawBuffers(IntBuffer bufs);
+    public void drawBuffers(int[] bufs) { drawBuffers(IntBuffer.wrap(bufs)); }
     public abstract void readBuffer(int mode);
     public abstract void readPixels(int x, int y, int width, int height, int format, int type, ByteBuffer pixels);
     public abstract void readPixels(int x, int y, int width, int height, int format, int type, FloatBuffer pixels);
@@ -228,17 +231,29 @@ public abstract class RenderBackend {
         return getShaderInfoLog(shader, getShaderi(shader, GL20.GL_INFO_LOG_LENGTH));
     }
     public abstract void getShaderInfoLog(int shader, IntBuffer length, ByteBuffer infoLog);
+    public void getShaderInfoLog(int shader, int[] length, ByteBuffer infoLog) {
+        getShaderInfoLog(shader, length == null ? null : IntBuffer.wrap(length), infoLog);
+    }
     public abstract String getProgramInfoLog(int program, int maxLength);
     public String getProgramInfoLog(int program) {
         return getProgramInfoLog(program, getProgrami(program, GL20.GL_INFO_LOG_LENGTH));
     }
     public abstract void getProgramInfoLog(int program, IntBuffer length, ByteBuffer infoLog);
+    public void getProgramInfoLog(int program, int[] length, ByteBuffer infoLog) {
+        getProgramInfoLog(program, length == null ? null : IntBuffer.wrap(length), infoLog);
+    }
     public abstract int getShaderi(int shader, int pname);
     public abstract int getProgrami(int program, int pname);
     public abstract void getProgramiv(int program, int pname, IntBuffer params);
     public abstract String getActiveUniform(int program, int index, int maxLength, IntBuffer sizeType);
     public abstract void getActiveUniform(int program, int index, IntBuffer length, IntBuffer size, IntBuffer type, ByteBuffer name);
+    public void getActiveUniform(int program, int index, int[] length, int[] size, int[] type, ByteBuffer name) {
+        getActiveUniform(program, index, length == null ? null : IntBuffer.wrap(length), size == null ? null : IntBuffer.wrap(size), type == null ? null : IntBuffer.wrap(type), name);
+    }
     public abstract void getActiveAttrib(int program, int index, IntBuffer length, IntBuffer size, IntBuffer type, ByteBuffer name);
+    public void getActiveAttrib(int program, int index, int[] length, int[] size, int[] type, ByteBuffer name) {
+        getActiveAttrib(program, index, length == null ? null : IntBuffer.wrap(length), size == null ? null : IntBuffer.wrap(size), type == null ? null : IntBuffer.wrap(type), name);
+    }
     public abstract String getActiveAttrib(int program, int index, int maxLength, IntBuffer sizeType);
     public abstract void bindAttribLocation(int program, int index, CharSequence name);
     public void bindFragDataLocation(int program, int colorNumber, CharSequence name) {}
@@ -252,12 +267,19 @@ public abstract class RenderBackend {
     public void getAttachedShaders(int program, IntBuffer count, IntBuffer shaders) {
         if (count != null) count.put(0, 0);
     }
+    public void getAttachedShaders(int program, int[] count, int[] shaders) {
+        getAttachedShaders(program, count == null ? null : IntBuffer.wrap(count), shaders == null ? null : IntBuffer.wrap(shaders));
+    }
     public String getShaderSource(int shader, int maxLength) { return ""; }
     public abstract void getShaderSource(int shader, IntBuffer length, ByteBuffer source);
+    public void getShaderSource(int shader, int[] length, ByteBuffer source) {
+        getShaderSource(shader, length == null ? null : IntBuffer.wrap(length), source);
+    }
 
     public abstract void uniform1i(int location, int v0);
     public abstract void uniform1f(int location, float v0);
     public void uniform1fv(int location, FloatBuffer values) {}
+    public void uniform1fv(int location, float[] values) {}
     public abstract void uniform2f(int location, float v0, float v1);
     public abstract void uniform2i(int location, int v0, int v1);
     public abstract void uniform3f(int location, float v0, float v1, float v2);
@@ -286,6 +308,8 @@ public abstract class RenderBackend {
     public abstract void uniformMatrix3(int location, boolean transpose, FloatBuffer value);
     public abstract void uniformMatrix4(int location, boolean transpose, FloatBuffer value);
     public void uniformMatrix2(int location, boolean transpose, FloatBuffer matrices) {}
+    public void uniformMatrix3(int location, boolean transpose, float[] matrices) {}
+    public void uniformMatrix4(int location, boolean transpose, float[] matrices) {}
     public void getUniformfv(int program, int location, FloatBuffer params) {}
     public void getUniformiv(int program, int location, IntBuffer params) {}
 
@@ -300,6 +324,9 @@ public abstract class RenderBackend {
     public abstract void bindBufferBase(int target, int index, int buffer);
     public abstract void bindBufferRange(int target, int index, int buffer, long offset, long size);
     public abstract int getUniformBlockIndex(int program, CharSequence name);
+    public int getUniformBlockIndex(int program, ByteBuffer name) {
+        return getUniformBlockIndex(program, StandardCharsets.UTF_8.decode(name.slice()).toString().trim());
+    }
     public abstract void uniformBlockBinding(int program, int blockIndex, int binding);
     public abstract int getIndexedBufferBinding(int target, int index);
     public abstract void bufferData(int target, long size, int usage);
@@ -430,6 +457,7 @@ public abstract class RenderBackend {
     public void beginQuery(int target, int id) { throw new UnsupportedOperationException("occlusion queries unsupported"); }
     public void endQuery(int target) { throw new UnsupportedOperationException("occlusion queries unsupported"); }
     public void getQueryObjectui(int id, int pname, IntBuffer params) { throw new UnsupportedOperationException("occlusion queries unsupported"); }
+    public int getQueryObjectui(int id, int pname) { throw new UnsupportedOperationException("occlusion queries unsupported"); }
     public int getQueryObjecti(int id, int pname) { throw new UnsupportedOperationException("occlusion queries unsupported"); }
     public void queryCounter(int id, int target) { throw new UnsupportedOperationException("timer queries unsupported"); }
     public long getQueryObjectui64(int id, int pname) { throw new UnsupportedOperationException("timer queries unsupported"); }
