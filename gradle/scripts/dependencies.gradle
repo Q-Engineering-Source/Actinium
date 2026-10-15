@@ -177,12 +177,16 @@ dependencies {
     implementation deobf('curse.maven:better-foliage-228529:3393955')
     compileOnly deobf("curse.maven:rlfoliage-970462:7645701")
 
-    implementation deobf("curse.maven:cofh-core-69162:2920433")
-    implementation deobf("curse.maven:cofh-world-271384:2920434")
-    implementation deobf("curse.maven:thermal-expansion-69163:2926431")
-    implementation deobf("curse.maven:thermal-foundation-222880:2926428")
-    implementation deobf("curse.maven:redstone-flux-270789:2920436")
-    implementation deobf("curse.maven:codechicken-lib-cre-1328922:6898525")
+    // CoFH/TE chain compile-only for now: every published CodeChickenLib CRE build (through Modrinth
+    // 3.3.8) still calls com.cleanroommc.hackery.ReflectionHackery, which Cleanroom 0.7.x no longer
+    // bundles, so CCL and everything requiring it cannot start at runtime. Kept on the compile
+    // classpath so the conditional cofhcore mixins still build; restore runtime once CCL CRE adapts.
+    compileOnly deobf("curse.maven:cofh-core-69162:2920433")
+    compileOnly deobf("curse.maven:cofh-world-271384:2920434")
+    compileOnly deobf("curse.maven:thermal-expansion-69163:2926431")
+    compileOnly deobf("curse.maven:thermal-foundation-222880:2926428")
+    compileOnly deobf("curse.maven:redstone-flux-270789:2920436")
+    compileOnly deobf("maven.modrinth:codechicken-lib-cre:3.3.8")
 
     // HammerLib 12.2.66 (issue #40: its GL20.glGetActiveUniform(int, int, int) -> String call is redirected to
     // GLSM GLStateManager, which must expose the same descriptor)
