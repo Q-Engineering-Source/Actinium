@@ -89,9 +89,9 @@ key，section 销毁后自动回收，无需显式清理。
 Chunk Animator 的 `MCPNames` 在 dev 环境（`IN_MCP=true`）静态初始化时读取
 `./../mcp/methods.csv` 与 `./../mcp/fields.csv`（相对 `runClient` 工作目录 `run/client`，
 即 `run/mcp/`），缺失会导致其 coremod 加载崩溃（`ExceptionInInitializerError`，
-2026-08-15 实测）。`prepareChunkAnimatorMcpMappings` 任务会在 `preRunClient` 前把
-Unimined 缓存的 MCP stable_39 映射（`gradleUserHome/caches/minecraft/de/oceanlabs/mcp/
-mcp_stable/39/`，与 genSources 同源）复制到 `run/mcp/`，无需手工干预。
+2026-08-15 实测）。`prepareChunkAnimatorMcpMappings` 任务会在 `runClient`/`runClientSdl` 前把
+MCP stable_39 映射（`de.oceanlabs.mcp:mcp_stable:39-1.12`，与构建管线同源）复制到
+`run/mcp/`，无需手工干预。
 
 > 注：曾尝试 `fg.deobf(...)` 声明依赖（kappa 版 Unimined 未注册 `fg` 扩展，
 > `Could not get unknown property 'fg'`，已探测确认），最终采用映射复制方案，

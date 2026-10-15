@@ -1,6 +1,8 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.attributes.Attribute
 import org.gradle.api.attributes.java.TargetJvmVersion
+import org.gradle.process.CommandLineArgumentProvider
 import org.jetbrains.gradle.ext.Gradle
 
 plugins {
@@ -258,8 +260,9 @@ dependencies {
     compileOnly project(':sdl-gpu')
     // The sdl-gpu classes are embedded into the mod jar (LaunchClassLoader), but its backend is
     // not registered for backend selection right now. The SDL libraries stay on the runtime
-    // classpath so the sdl-gpu module and a future re-wiring of the backend can load them through
-    // the app loader like LWJGL itself.
+    // classpath so the sdl-gpu module, a future re-wiring of the backend and the GL render path's
+    // SDL windowing calls (glsm's WindowSystem on LWJGLY hosts) can load them through the app
+    // loader like LWJGL itself.
     runtimeOnly "org.lwjgl:lwjgl-sdl:${lwjglVersion}"
     runtimeOnly "org.lwjgl:lwjgl-spvc:${lwjglVersion}"
     runtimeOnly "org.lwjgl:lwjgl-shaderc:${lwjglVersion}"
@@ -426,36 +429,97 @@ def prepareChunkAnimatorMcpMappings = tasks.register('prepareChunkAnimatorMcpMap
     }
 }
 
-// TODO(阶段B): rewire the run dependencies once the run configurations are migrated. The unimined
-// preRun* tasks no longer exist; CleanroomGradle's own runClient / runServer are the run entry points.
-//  tasks.named('preRunClient').configure {
-//      dependsOn tasks.named('classes')
-//      dependsOn devShadowJar
-//      dependsOn prepareChunkAnimatorMcpMappings
-//  }
-//  tasks.named('preRunClientSdl').configure {
-//      dependsOn tasks.named('classes')
-//      dependsOn devShadowJar
-//      dependsOn prepareChunkAnimatorMcpMappings
-//  }
-//  tasks.named('preRunServer').configure {
-//      dependsOn tasks.named('classes')
-//      dependsOn devShadowJar
-//  }
+/**
+ * Dev-runtime launch wiring layered on CleanroomGradle's run tasks. The plugin's built-in wiring
+ * (UserDevTasks) already gives each run the main runtimeClasspath + userdev side-extra + natives
+ * as classpath, run/<side> as working directory, --tweakClass, the SRG->MCP remap property, the
+ * mixin debug flags and java.library.path, and makes every run depend on the main classes task.
+ * This block restores the launch contract the unimined setup had on top of that:
+ *
+ * - sourceSets.main.output never reaches the run classpath. The raw class dirs carry unrelocated
+ *   joml descriptors next to the shadowed ones, and Actinium classes visible to the app class
+ *   loader split MixinLate across loaders (ClassCastException on the ILateMixinLoader cast). The
+ *   runs swap the raw outputs for the shadow-layout devShadowJar, delivered through
+ *   -Dcrl.dev.extrapath — Cleanroom's mod-candidate channel (LibraryManager), NOT
+ *   java.class.path — exactly like production, where the mod jar is not on the classpath either.
+ * - deobf(...) mod jars are MCP-named at dev runtime through the plugin's srg2mcp launch
+ *   property, so they join devShadowJar on extrapath; a plain classpath entry alone is not an
+ *   FML mod candidate in dev.
+ * - runClientSdl inherits the full client launch configuration through the runs container and
+ *   only adds the SDL backend flag, replacing the unimined-era afterEvaluate copy.
+ */
+def deobfuscatedAttribute = Attribute.of('com.cleanroommc.deobfuscated', String)
+
+def configureActiniumDevRun = { JavaExec runTask, boolean clientRun ->
+    if (clientRun) {
+        runTask.getUsername().set(propertyString('minecraft_username'))
+        runTask.maxHeapSize = '8G'
+        // Chunk Animator's MCPNames coremod reads run/mcp/*.csv relative to the run directory.
+        runTask.dependsOn(prepareChunkAnimatorMcpMappings)
+    }
+    def extraArgs = propertyString('extra_jvm_args')
+    if (!extraArgs.isBlank()) {
+        runTask.jvmArgs(extraArgs.split('\\s+') as List)
+    }
+    if (propertyBool('is_coremod')) {
+        runTask.systemProperty('fml.coreMods.load', propertyString('coremod_plugin_class_name'))
+    }
+    runTask.dependsOn(tasks.named('classes'), devShadowJar)
+
+    // Swap the raw module outputs out of the JavaExec classpath (see the block comment). Resolved
+    // lazily: runtimeClasspath must not resolve during configuration — the CleanroomGradle deobf
+    // wiring (afterEvaluate, withDependencies on every configuration) rejects it.
+    def rawModuleOutputs = sourceSets.main.output.files
+    def baseClasspath = runTask.classpath
+    runTask.classpath = files(provider { baseClasspath.files.findAll { !rawModuleOutputs.contains(it) } })
+
+    // Computed at execution time for the same reason: the artifact set is only known once
+    // runtimeClasspath resolves. devShadowJar comes first so the mod itself is the first
+    // candidate FML logs; deobf'd mod jars (transform output attribute 'mcp') follow.
+    runTask.jvmArgumentProviders.add({
+        def extraPaths = new LinkedHashSet<String>()
+        extraPaths.add(devShadowJar.get().archiveFile.get().asFile.absolutePath)
+        configurations.runtimeClasspath.incoming.artifacts.each { artifact ->
+            if (artifact.variant.attributes.getAttribute(deobfuscatedAttribute) == 'mcp') {
+                extraPaths.add(artifact.file.absolutePath)
+            }
+        }
+        ["-Dcrl.dev.extrapath=${extraPaths.join(File.pathSeparator)}".toString()]
+    } as CommandLineArgumentProvider)
+}
+
+cleanroom {
+    runs {
+        client {
+            configure {
+                configureActiniumDevRun(delegate, true)
+            }
+        }
+        // SDL GPU backend client run (task: runClientSdl): the same client setup plus the SDL
+        // backend flag, so the backend can be exercised without passing extra_jvm_args by hand.
+        clientSdl {
+            inherit = 'client'
+            configure {
+                jvmArgs '-Dangelica.sdlgpu.enable=true'
+            }
+        }
+        server {
+            configure {
+                configureActiniumDevRun(delegate, false)
+            }
+        }
+    }
+}
+
+// TODO: fundamental Foundation issue (applied to every JavaExec unconditionally, mirroring the
+// official CleanroomGradle mod template)
+tasks.withType(JavaExec).configureEach {
+    systemProperty 'foundation.loadsall', 'true'
+}
 
 tasks.named('assemble').configure {
     dependsOn shadowRemapJar
 }
-
-// TODO(阶段B): the run launch configuration (working directory, heap, SDL client variant) moves to the
-// CleanroomGradle run configuration; the unimined JavaExec tasks are gone.
-//  tasks.named('runClient', JavaExec).configure {
-//      workingDir = layout.projectDirectory.dir('run/client').asFile
-//      maxHeapSize = '8G'
-//  }
-//  tasks.named('runServer', JavaExec).configure {
-//      workingDir = layout.projectDirectory.dir('run/server').asFile
-//  }
 
 apply from: 'gradle/scripts/dependencies.gradle'
 
@@ -540,23 +604,11 @@ idea {
                     ]
                 }
             }
-            taskTriggers {
-                // TODO(阶段B): point this at the CleanroomGradle sources task once the dev environment
-                // migration is done; unimined's genSources no longer exists.
-            }
+            // No beforeSync trigger for sources: CleanroomGradle materializes the userdev sources
+            // jar by itself during the IDEA sync (driven by the idea.sync.active system property).
         }
     }
 }
-
-// TODO(阶段B): runClientSdl and its property inheritance from the client run move to the CleanroomGradle
-// run configuration.
-//  afterEvaluate {
-//      def runClient = tasks.findByName('runClient')
-//      def runClientSdl = tasks.findByName('runClientSdl')
-//      if (runClient instanceof JavaExec && runClientSdl instanceof JavaExec) {
-//          ...
-//      }
-//  }
 
 jar {
     duplicatesStrategy = DuplicatesStrategy.FAIL
