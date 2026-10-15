@@ -8022,6 +8022,14 @@ public class GLStateManager {
         params.put(params.position(), imageBindingOrBackend(pname, index));
     }
 
+    public static void glGetIntegeri_v(int pname, int index, int[] params) {
+        params[0] = imageBindingOrBackend(pname, index);
+    }
+
+    public static boolean glGetBooleani(int pname, int index) {
+        return imageBindingOrBackend(pname, index) != 0;
+    }
+
     public static void glGetBooleani_v(int pname, int index, ByteBuffer params) {
         params.put(params.position(), (byte) (imageBindingOrBackend(pname, index) != 0 ? GL11.GL_TRUE : GL11.GL_FALSE));
     }
