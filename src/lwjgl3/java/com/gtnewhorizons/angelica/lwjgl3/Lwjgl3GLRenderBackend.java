@@ -453,6 +453,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void multiDrawArrays(int mode, int[] firsts, int[] counts) {
+        GL14C.glMultiDrawArrays(mode, firsts, counts);
+    }
+
+    @Override
     public void primitiveRestartIndex(int index) {
         GL31C.glPrimitiveRestartIndex(index);
     }
@@ -749,6 +754,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void drawBuffers(int[] bufs) {
+        GL20C.glDrawBuffers(bufs);
+    }
+
+    @Override
     public void readBuffer(int mode) {
         GL11C.glReadBuffer(mode);
     }
@@ -867,12 +877,22 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void getShaderInfoLog(int shader, int[] length, ByteBuffer infoLog) {
+        GL20C.glGetShaderInfoLog(shader, length, infoLog);
+    }
+
+    @Override
     public String getProgramInfoLog(int program, int maxLength) {
         return GL20C.glGetProgramInfoLog(program, maxLength);
     }
 
     @Override
     public void getProgramInfoLog(int program, IntBuffer length, ByteBuffer infoLog) {
+        GL20C.glGetProgramInfoLog(program, length, infoLog);
+    }
+
+    @Override
+    public void getProgramInfoLog(int program, int[] length, ByteBuffer infoLog) {
         GL20C.glGetProgramInfoLog(program, length, infoLog);
     }
 
@@ -909,6 +929,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void getActiveUniform(int program, int index, int[] length, int[] size, int[] type, ByteBuffer name) {
+        GL20C.glGetActiveUniform(program, index, length, size, type, name);
+    }
+
+    @Override
     public void getActiveAttrib(int program, int index, IntBuffer length, IntBuffer size, IntBuffer type, ByteBuffer name) {
         final String nameStr = GL20C.glGetActiveAttrib(program, index, size, type);
         if (name != null && nameStr != null) {
@@ -917,6 +942,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
             name.put(bytes, 0, n);
             if (length != null && length.remaining() > 0) length.put(0, n);
         }
+    }
+
+    @Override
+    public void getActiveAttrib(int program, int index, int[] length, int[] size, int[] type, ByteBuffer name) {
+        GL20C.glGetActiveAttrib(program, index, length, size, type, name);
     }
 
     @Override
@@ -1005,12 +1035,22 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void getAttachedShaders(int program, int[] count, int[] shaders) {
+        GL20C.glGetAttachedShaders(program, count, shaders);
+    }
+
+    @Override
     public String getShaderSource(int shader, int maxLength) {
         return GL20C.glGetShaderSource(shader, maxLength);
     }
 
     @Override
     public void getShaderSource(int shader, IntBuffer length, ByteBuffer source) {
+        GL20C.glGetShaderSource(shader, length, source);
+    }
+
+    @Override
+    public void getShaderSource(int shader, int[] length, ByteBuffer source) {
         GL20C.glGetShaderSource(shader, length, source);
     }
 
@@ -1026,6 +1066,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public void uniform1fv(int location, FloatBuffer values) {
+        GL20C.glUniform1fv(location, values);
+    }
+
+    @Override
+    public void uniform1fv(int location, float[] values) {
         GL20C.glUniform1fv(location, values);
     }
 
@@ -1110,8 +1155,18 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void uniformMatrix3(int location, boolean transpose, float[] matrices) {
+        GL20C.glUniformMatrix3fv(location, transpose, matrices);
+    }
+
+    @Override
     public void uniformMatrix4(int location, boolean transpose, FloatBuffer value) {
         GL20C.glUniformMatrix4fv(location, transpose, value);
+    }
+
+    @Override
+    public void uniformMatrix4(int location, boolean transpose, float[] matrices) {
+        GL20C.glUniformMatrix4fv(location, transpose, matrices);
     }
 
     @Override
@@ -1176,6 +1231,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public int getUniformBlockIndex(int program, CharSequence name) {
+        return GL31C.glGetUniformBlockIndex(program, name);
+    }
+
+    @Override
+    public int getUniformBlockIndex(int program, ByteBuffer name) {
         return GL31C.glGetUniformBlockIndex(program, name);
     }
 
@@ -1711,6 +1771,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     @Override
     public void getQueryObjectui(int id, int pname, IntBuffer params) {
         GL15C.glGetQueryObjectuiv(id, pname, params);
+    }
+
+    @Override
+    public int getQueryObjectui(int id, int pname) {
+        return GL15C.glGetQueryObjectui(id, pname);
     }
 
     @Override

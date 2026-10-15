@@ -2674,6 +2674,12 @@ public class GLStateManager {
         }
     }
 
+    public static void glDeleteTextures(int[] ids) {
+        for (int id : ids) {
+            glDeleteTextures(id);
+        }
+    }
+
     /** Shrink texture to 1x1 to free GPU memory, unbind from all units, but keep the name valid. */
     private static void deferDeleteTexture(int id) {
         if (id == 0) return;
@@ -2734,6 +2740,12 @@ public class GLStateManager {
         requireContext("glGenTextures");
         flushDeferredTextureDeletes();
         RENDER_BACKEND.genTextures(textures);
+    }
+
+    public static void glGenTextures(int[] textures) {
+        requireContext("glGenTextures");
+        flushDeferredTextureDeletes();
+        for (int i = 0; i < textures.length; i++) textures[i] = RENDER_BACKEND.genTextures();
     }
 
     public static void enableTexture() {
@@ -3033,6 +3045,10 @@ public class GLStateManager {
         }
     }
 
+    public static void glDrawElements(int mode, int count, ByteBuffer indices) {
+        glDrawElements(mode, count, GL11.GL_UNSIGNED_BYTE, indices);
+    }
+
     public static void glDrawElements(int mode, int indices_count, int type, long indices_buffer_offset) {
         CommandRecorder savedRecorder = null;
         final RecordMode recordMode = DisplayListManager.getRecordMode();
@@ -3128,6 +3144,13 @@ public class GLStateManager {
         preDrawFFP();
         prepareClientArrays();
         recordGpuCommand(GpuCommandType.DRAW_ARRAYS, mode, counts.remaining());
+        RENDER_BACKEND.multiDrawArrays(mode, firsts, counts);
+    }
+
+    public static void glMultiDrawArrays(int mode, int[] firsts, int[] counts) {
+        preDrawFFP();
+        prepareClientArrays();
+        recordGpuCommand(GpuCommandType.DRAW_ARRAYS, mode, counts.length);
         RENDER_BACKEND.multiDrawArrays(mode, firsts, counts);
     }
 
@@ -4103,6 +4126,20 @@ public class GLStateManager {
             }
         } else {
             GLStateManager.glFogf(pname, param.get(0));
+        }
+    }
+
+    public static void glFog(int pname, IntBuffer param) {
+        if (HAS_MULTIPLE_SET.contains(pname)) {
+            // glFogiv color components are signed-normalized: c maps to (2c+1)/(2^31-1)
+            final FloatBuffer floats = BufferUtils.createFloatBuffer(param.remaining());
+            for (int i = param.position(); i < param.limit(); i++) {
+                floats.put((2.0f * param.get(i) + 1.0f) / Integer.MAX_VALUE);
+            }
+            floats.flip();
+            glFog(pname, floats);
+        } else {
+            glFogi(pname, param.get(0));
         }
     }
 
@@ -6698,6 +6735,17 @@ public class GLStateManager {
         RENDER_BACKEND.drawBuffers(bufs);
     }
 
+    public static void glDrawBuffers(int[] bufs) {
+        final RecordMode mode = DisplayListManager.getRecordMode();
+        if (mode != RecordMode.NONE) {
+            DisplayListManager.recordDrawBuffers(bufs.length, IntBuffer.wrap(bufs));
+            if (mode == RecordMode.COMPILE) {
+                return;
+            }
+        }
+        RENDER_BACKEND.drawBuffers(bufs);
+    }
+
     // Multisample Commands
     public static void glSampleCoverage(float value, boolean invert) {
         if (DisplayListManager.isRecording()) {
@@ -7198,6 +7246,14 @@ public class GLStateManager {
         RENDER_BACKEND.deleteVertexArrays(array);
     }
 
+    public static void glDeleteVertexArrays(IntBuffer arrays) {
+        for (int i = arrays.position(); i < arrays.limit(); i++) glDeleteVertexArrays(arrays.get(i));
+    }
+
+    public static void glDeleteVertexArrays(int[] arrays) {
+        for (int array : arrays) glDeleteVertexArrays(array);
+    }
+
     public static int glGenVertexArrays() {
         requireContext("glGenVertexArrays");
         final int array = RENDER_BACKEND.genVertexArrays();
@@ -7209,6 +7265,14 @@ public class GLStateManager {
         GLStateManager.ctx().vao.onDeleteVertexArray(array);
         ctx().vaoEboMap.remove(array);
         return array;
+    }
+
+    public static void glGenVertexArrays(IntBuffer arrays) {
+        for (int i = arrays.position(); i < arrays.limit(); i++) arrays.put(i, glGenVertexArrays());
+    }
+
+    public static void glGenVertexArrays(int[] arrays) {
+        for (int i = 0; i < arrays.length; i++) arrays[i] = glGenVertexArrays();
     }
 
     public static boolean glIsVertexArray(int array) {
@@ -7264,9 +7328,27 @@ public class GLStateManager {
         RENDER_BACKEND.deleteFramebuffers(framebuffer);
     }
 
+    public static void glDeleteFramebuffers(IntBuffer framebuffers) {
+        for (int i = framebuffers.position(); i < framebuffers.limit(); i++) glDeleteFramebuffers(framebuffers.get(i));
+    }
+
+    public static void glDeleteFramebuffers(int[] framebuffers) {
+        for (int framebuffer : framebuffers) glDeleteFramebuffers(framebuffer);
+    }
+
     public static int glGenFramebuffers() {
         requireContext("glGenFramebuffers");
         return RENDER_BACKEND.genFramebuffers();
+    }
+
+    public static void glGenFramebuffers(IntBuffer framebuffers) {
+        requireContext("glGenFramebuffers");
+        for (int i = framebuffers.position(); i < framebuffers.limit(); i++) framebuffers.put(i, RENDER_BACKEND.genFramebuffers());
+    }
+
+    public static void glGenFramebuffers(int[] framebuffers) {
+        requireContext("glGenFramebuffers");
+        for (int i = 0; i < framebuffers.length; i++) framebuffers[i] = RENDER_BACKEND.genFramebuffers();
     }
 
     public static int glCheckFramebufferStatus(int target) {
@@ -7288,7 +7370,25 @@ public class GLStateManager {
         return RENDER_BACKEND.genRenderbuffers();
     }
 
+    public static void glGenRenderbuffers(IntBuffer renderbuffers) {
+        requireContext("glGenRenderbuffers");
+        for (int i = renderbuffers.position(); i < renderbuffers.limit(); i++) renderbuffers.put(i, RENDER_BACKEND.genRenderbuffers());
+    }
+
+    public static void glGenRenderbuffers(int[] renderbuffers) {
+        requireContext("glGenRenderbuffers");
+        for (int i = 0; i < renderbuffers.length; i++) renderbuffers[i] = RENDER_BACKEND.genRenderbuffers();
+    }
+
     public static void glDeleteRenderbuffers(int renderbuffer) { RENDER_BACKEND.deleteRenderbuffers(renderbuffer); }
+
+    public static void glDeleteRenderbuffers(IntBuffer renderbuffers) {
+        for (int i = renderbuffers.position(); i < renderbuffers.limit(); i++) glDeleteRenderbuffers(renderbuffers.get(i));
+    }
+
+    public static void glDeleteRenderbuffers(int[] renderbuffers) {
+        for (int renderbuffer : renderbuffers) glDeleteRenderbuffers(renderbuffer);
+    }
 
     public static void glBindRenderbuffer(int target, int renderbuffer) { RENDER_BACKEND.bindRenderbuffer(target, renderbuffer); }
 
@@ -7333,6 +7433,11 @@ public class GLStateManager {
         RENDER_BACKEND.genQueries(ids);
     }
 
+    public static void glGenQueries(int[] ids) {
+        requireContext("glGenQueries");
+        for (int i = 0; i < ids.length; i++) ids[i] = RENDER_BACKEND.genQueries();
+    }
+
     public static int glGenQueries() {
         requireContext("glGenQueries");
         return RENDER_BACKEND.genQueries();
@@ -7340,11 +7445,21 @@ public class GLStateManager {
 
     public static void glDeleteQueries(int id) { RENDER_BACKEND.deleteQueries(id); }
 
+    public static void glDeleteQueries(IntBuffer ids) {
+        for (int i = ids.position(); i < ids.limit(); i++) glDeleteQueries(ids.get(i));
+    }
+
+    public static void glDeleteQueries(int[] ids) {
+        for (int id : ids) glDeleteQueries(id);
+    }
+
     public static void glBeginQuery(int target, int id) { RENDER_BACKEND.beginQuery(target, id); }
 
     public static void glEndQuery(int target) { RENDER_BACKEND.endQuery(target); }
 
     public static void glGetQueryObjectui(int id, int pname, IntBuffer params) { RENDER_BACKEND.getQueryObjectui(id, pname, params); }
+
+    public static int glGetQueryObjectui(int id, int pname) { return RENDER_BACKEND.getQueryObjectui(id, pname); }
 
     public static int glGetQueryObjecti(int id, int pname) { return RENDER_BACKEND.getQueryObjecti(id, pname); }
 
@@ -7352,9 +7467,15 @@ public class GLStateManager {
 
     public static long glGetQueryObjectui64(int id, int pname) { return RENDER_BACKEND.getQueryObjectui64(id, pname); }
 
+    public static void glGetQueryObjectui64(int id, int pname, LongBuffer params) {
+        params.put(params.position(), RENDER_BACKEND.getQueryObjectui64(id, pname));
+    }
+
     public static void glBindBufferBase(int target, int index, int buffer) { RENDER_BACKEND.bindBufferBase(target, index, buffer); }
 
     public static int glGetUniformBlockIndex(int program, CharSequence name) { return RENDER_BACKEND.getUniformBlockIndex(program, name); }
+
+    public static int glGetUniformBlockIndex(int program, ByteBuffer name) { return RENDER_BACKEND.getUniformBlockIndex(program, name); }
 
     public static void glUniformBlockBinding(int program, int blockIndex, int binding) { RENDER_BACKEND.uniformBlockBinding(program, blockIndex, binding); }
 
@@ -7372,8 +7493,24 @@ public class GLStateManager {
         RENDER_BACKEND.getActiveAttrib(program, index, length, size, type, name);
     }
 
+    public static void glGetActiveAttrib(int program, int index, int[] length, int[] size, int[] type, ByteBuffer name) {
+        RENDER_BACKEND.getActiveAttrib(program, index, length, size, type, name);
+    }
+
     public static String glGetActiveAttrib(int program, int index, int maxLength, IntBuffer sizeType) {
         return RENDER_BACKEND.getActiveAttrib(program, index, maxLength, sizeType);
+    }
+
+    public static String glGetActiveAttrib(int program, int index, int maxLength, IntBuffer size, IntBuffer type) {
+        final IntBuffer sizeType = BufferUtils.createIntBuffer(2);
+        final String name = RENDER_BACKEND.getActiveAttrib(program, index, maxLength, sizeType);
+        if (size != null) size.put(size.position(), sizeType.get(0));
+        if (type != null) type.put(type.position(), sizeType.get(1));
+        return name;
+    }
+
+    public static String glGetActiveAttrib(int program, int index, IntBuffer size, IntBuffer type) {
+        return glGetActiveAttrib(program, index, glGetProgrami(program, GL20.GL_ACTIVE_ATTRIBUTE_MAX_LENGTH), size, type);
     }
 
     public static void glObjectLabel(int identifier, int name, CharSequence label) { RENDER_BACKEND.objectLabel(identifier, name, label); }
@@ -8054,6 +8191,14 @@ public class GLStateManager {
         return RENDER_BACKEND.getShaderInfoLog(shader);
     }
 
+    public static void glGetShaderInfoLog(int shader, IntBuffer length, ByteBuffer infoLog) {
+        RENDER_BACKEND.getShaderInfoLog(shader, length, infoLog);
+    }
+
+    public static void glGetShaderInfoLog(int shader, int[] length, ByteBuffer infoLog) {
+        RENDER_BACKEND.getShaderInfoLog(shader, length, infoLog);
+    }
+
     public static int glGetProgrami(int program, int pname) {
         return RENDER_BACKEND.getProgrami(program, pname);
     }
@@ -8064,6 +8209,14 @@ public class GLStateManager {
 
     public static String glGetProgramInfoLog(int program) {
         return RENDER_BACKEND.getProgramInfoLog(program);
+    }
+
+    public static void glGetProgramInfoLog(int program, IntBuffer length, ByteBuffer infoLog) {
+        RENDER_BACKEND.getProgramInfoLog(program, length, infoLog);
+    }
+
+    public static void glGetProgramInfoLog(int program, int[] length, ByteBuffer infoLog) {
+        RENDER_BACKEND.getProgramInfoLog(program, length, infoLog);
     }
 
     public static void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) { RENDER_BACKEND.bindImageTexture(unit, texture, level, layered, layer, access, format); }
@@ -8234,6 +8387,10 @@ public class GLStateManager {
         RENDER_BACKEND.uniform4iv(location, values);
     }
 
+    public static void glUniform1(int location, float[] values) {
+        RENDER_BACKEND.uniform1fv(location, values);
+    }
+
     public static void glUniform3(int location, float[] values) {
         RENDER_BACKEND.uniform3fv(location, values);
     }
@@ -8290,7 +8447,19 @@ public class GLStateManager {
         RENDER_BACKEND.uniformMatrix4(location, transpose, matrices);
     }
 
+    public static void glUniformMatrix3(int location, boolean transpose, float[] matrices) {
+        RENDER_BACKEND.uniformMatrix3(location, transpose, matrices);
+    }
+
+    public static void glUniformMatrix4(int location, boolean transpose, float[] matrices) {
+        RENDER_BACKEND.uniformMatrix4(location, transpose, matrices);
+    }
+
     public static void glGetActiveUniform(int program, int index, IntBuffer length, IntBuffer size, IntBuffer type, ByteBuffer name) {
+        RENDER_BACKEND.getActiveUniform(program, index, length, size, type, name);
+    }
+
+    public static void glGetActiveUniform(int program, int index, int[] length, int[] size, int[] type, ByteBuffer name) {
         RENDER_BACKEND.getActiveUniform(program, index, length, size, type, name);
     }
 
@@ -8307,11 +8476,23 @@ public class GLStateManager {
         RENDER_BACKEND.getAttachedShaders(program, count, shaders);
     }
 
+    public static void glGetAttachedShaders(int program, int[] count, int[] shaders) {
+        RENDER_BACKEND.getAttachedShaders(program, count, shaders);
+    }
+
     public static String glGetShaderSource(int shader, int maxLength) {
         return RENDER_BACKEND.getShaderSource(shader, maxLength);
     }
 
+    public static String glGetShaderSource(int shader) {
+        return glGetShaderSource(shader, glGetShaderi(shader, GL20.GL_SHADER_SOURCE_LENGTH));
+    }
+
     public static void glGetShaderSource(int shader, IntBuffer length, ByteBuffer source) {
+        RENDER_BACKEND.getShaderSource(shader, length, source);
+    }
+
+    public static void glGetShaderSource(int shader, int[] length, ByteBuffer source) {
         RENDER_BACKEND.getShaderSource(shader, length, source);
     }
 
@@ -8749,6 +8930,10 @@ public class GLStateManager {
     }
 
     public static void glGetBooleani(int pname, int index, ByteBuffer params) {
+        glGetBooleani_v(pname, index, params);
+    }
+
+    public static void glGetBoolean(int pname, int index, ByteBuffer params) {
         glGetBooleani_v(pname, index, params);
     }
 
