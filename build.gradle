@@ -251,10 +251,13 @@ subprojects {
     // each. Their dependencies are cleared as well: a disabled task still drags its dependency chain
     // (assets, natives, srg2mcp) into the graph and prints it after the game exits. Done after every
     // project's evaluation because the plugin wires the run dependencies in its own afterEvaluate.
+    // The classpath is emptied too: the natives files in it carry an implicit builtBy edge to
+    // extractNatives, which survives the dependsOn wipe.
     rootProject.gradle.projectsEvaluated {
         tasks.matching { it.name in ['runClient', 'runServer'] }.configureEach {
             enabled = false
             setDependsOn([])
+            classpath = files()
         }
     }
 
