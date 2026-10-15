@@ -198,7 +198,10 @@ dependencies {
     // Depths Update 1.0.0-a10 (issue #68: extends the world build height beyond 0-255; blocks outside the
     // vanilla range are not rendered -- its own celeritas compat mixins target pre-restructure class paths)
     // compileOnly exposes its public API (sayys.depthsupdate.api.DepthsUpdateAPI) for the compat shim.
-    implementation deobf('curse.maven:depths-update-1472501:8038246')
+    // Compile-only for now: Cleanroom 0.7.x dropped ViewFrustum.getRenderChunk, so depthsupdate's
+    // IMixinViewFrustum invoker fails to apply and the class lands in Foundation's invalid-class set,
+    // which then breaks RenderGlobal.loadRenderers outright. Restore runtime once it adapts.
+    compileOnly deobf('curse.maven:depths-update-1472501:8038246')
     runtimeOnly deobf('curse.maven:assetmover-571482:4430763')
 
     implementation deobf("curse.maven:extra-utilities-2-225561:2678374")
