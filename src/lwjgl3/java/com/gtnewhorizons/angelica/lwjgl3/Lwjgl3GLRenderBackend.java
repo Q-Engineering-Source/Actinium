@@ -5,13 +5,11 @@ import com.gtnewhorizons.angelica.glsm.GLESCaps;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.backend.DebugMessageHandler;
 import com.gtnewhorizons.angelica.glsm.backend.GLDebugMessageListener;
-import com.gtnewhorizons.angelica.glsm.backend.GlfwFileDropWatcher;
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
 import com.gtnewhorizons.angelica.glsm.backend.VSyncMode;
+import com.gtnewhorizons.angelica.glsm.backend.WindowSystem;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.lwjgl.glfw.GLFW;
-import org.lwjgl.glfw.GLFWVidMode;
 import org.lwjgl.opengl.ARBClearTexture;
 import org.lwjgl.opengl.ARBPolygonOffsetClamp;
 import org.lwjgl.opengl.EXTDirectStateAccess;
@@ -98,22 +96,22 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public boolean supportsFileDrop() {
-        return true;
+        return WindowSystem.supportsFileDrop();
     }
 
     @Override
     public void startFileDrop() {
-        GlfwFileDropWatcher.start();
+        WindowSystem.startFileDrop();
     }
 
     @Override
     public void stopFileDrop() {
-        GlfwFileDropWatcher.stop();
+        WindowSystem.stopFileDrop();
     }
 
     @Override
     public List<String> pollDroppedFiles() {
-        return GlfwFileDropWatcher.pollDroppedFiles();
+        return WindowSystem.pollDroppedFiles();
     }
 
     @Override
@@ -159,17 +157,13 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     @Override
     protected VSyncMode applyVSyncMode(VSyncMode preferred) {
         final boolean enabled = preferred.tearFree();
-        GLFW.glfwSwapInterval(enabled ? 1 : 0);
+        WindowSystem.swapInterval(enabled ? 1 : 0);
         return enabled ? VSyncMode.ON : VSyncMode.OFF;
     }
 
     @Override
     protected long queryRefreshPeriodNanos() {
-        final long monitor = GLFW.glfwGetPrimaryMonitor();
-        if (monitor == 0) return 0L;
-        final GLFWVidMode mode = GLFW.glfwGetVideoMode(monitor);
-        if (mode == null) return 0L;
-        return periodFromIntegerHz(mode.refreshRate());
+        return WindowSystem.queryRefreshPeriodNanos();
     }
 
     @Override
@@ -1406,7 +1400,7 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public long getContextHandle() {
-        return GLFW.glfwGetCurrentContext();
+        return WindowSystem.currentContext();
     }
 
     @Override

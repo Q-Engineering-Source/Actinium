@@ -34,6 +34,10 @@ dependencies {
     // GLFW: the file-drop watcher and the LWJGL3 render backend read the window and its video mode
     // through it. The host supplies the implementation; nothing is shipped by the mod.
     compileOnly "org.lwjgl:lwjgl-glfw:${lwjglVersion}"
+    // SDL (LWJGL 3's SDL3 binding): the same window-system calls for hosts whose window is an SDL
+    // window (LWJGLY), confined to the WindowSystem-gated classes. Compile-only like GLFW: the
+    // binding and its native ship with the host generation that runs on them.
+    compileOnly "org.lwjgl:lwjgl-sdl:${lwjglVersion}"
     // shaderc/spvc are used at compile time by the GLSL->SPIRV pipeline; the runtime
     // natives are provided by the sdl-gpu module.
     compileOnly "org.lwjgl:lwjgl-shaderc:${lwjglVersion}"
