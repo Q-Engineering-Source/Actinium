@@ -35,6 +35,24 @@ final class GlfwWindowing {
         return GLFW.glfwGetCurrentContext();
     }
 
+    static int framebufferWidth() {
+        return framebufferSize()[0];
+    }
+
+    static int framebufferHeight() {
+        return framebufferSize()[1];
+    }
+
+    private static int[] framebufferSize() {
+        // GLFW's current-context handle is the window handle.
+        final long window = GLFW.glfwGetCurrentContext();
+        if (window == 0) return new int[]{0, 0};
+        final int[] w = new int[1];
+        final int[] h = new int[1];
+        GLFW.glfwGetFramebufferSize(window, w, h);
+        return new int[]{w[0], h[0]};
+    }
+
     static void startFileDrop() {
         GlfwFileDropWatcher.start();
     }

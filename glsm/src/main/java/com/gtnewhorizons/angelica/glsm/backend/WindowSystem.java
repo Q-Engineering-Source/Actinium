@@ -87,6 +87,33 @@ public final class WindowSystem {
         return 0L;
     }
 
+    /**
+     * The framebuffer size in pixels: lwjglx's exact framebuffer query on the GLFW generation, the
+     * logical window size on LWJGLY (the two differ only on HiDPI hosts).
+     */
+    public static int framebufferWidth() {
+        if (GLFW_PRESENT) {
+            return GlfwWindowing.framebufferWidth();
+        }
+        if (SDL_PRESENT) {
+            return SdlWindowing.framebufferWidth();
+        }
+        unsupported("framebufferWidth");
+        return 0;
+    }
+
+    /** See {@link #framebufferWidth()}. */
+    public static int framebufferHeight() {
+        if (GLFW_PRESENT) {
+            return GlfwWindowing.framebufferHeight();
+        }
+        if (SDL_PRESENT) {
+            return SdlWindowing.framebufferHeight();
+        }
+        unsupported("framebufferHeight");
+        return 0;
+    }
+
     /** Whether files dropped onto the window can be watched on this host. */
     public static boolean supportsFileDrop() {
         return GLFW_PRESENT || SDL_PRESENT;

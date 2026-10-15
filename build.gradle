@@ -55,6 +55,24 @@ allprojects { evaluatedProject ->
     }
 }
 
+/**
+ * LWJGLY's jar as resolved off the given configuration, so it can be subtracted from a classpath.
+ *
+ * LWJGLY (com.cleanroommc:lwjgly) and lwjglx both ship org.lwjgl.**. javac and the test classloader take the
+ * class from the first jar that provides it, and only lwjglx's copy has the borderless extensions and the
+ * framebuffer-size query the mod compiles against and transforms. LWJGLY cannot be dropped from the
+ * dependency graph itself (it arrives with the userdev), so it is removed from these classpaths instead.
+ * Everything else keeps the resolved order, in which LWJGL3's core classes still precede lwjglx.
+ */
+def lwjglyJars = { Configuration configuration ->
+    configuration.incoming.artifactView { view ->
+        view.componentFilter { id ->
+            id instanceof ModuleComponentIdentifier &&
+                id.group == 'com.cleanroommc' && id.module == 'lwjgly'
+        }
+    }.files
+}
+
 assertProperty 'mod_version'
 assertProperty 'root_package'
 assertProperty 'mod_id'
@@ -664,24 +682,6 @@ tasks.withType(JavaCompile).configureEach {
     options.compilerArgs.add('-AMSG_NO_OBFDATA_FOR_TARGET=warning')
     options.compilerArgs.add('-AMSG_NO_OBFDATA_FOR_OVERWRITE=warning')
     options.compilerArgs.add('-AMSG_MIXIN_SOFT_TARGET_NOT_FOUND=warning')
-}
-
-/**
- * LWJGLY's jar as resolved off the given configuration, so it can be subtracted from a classpath.
- *
- * LWJGLY (com.cleanroommc:lwjgly) and lwjglx both ship org.lwjgl.**. javac and the test classloader take the
- * class from the first jar that provides it, and only lwjglx's copy has the borderless extensions and the
- * GLFW-backed Display.create() the mod compiles against and transforms. LWJGLY cannot be dropped from the
- * dependency graph itself (it arrives with the userdev), so it is removed from these classpaths instead.
- * Everything else keeps the resolved order, in which LWJGL3's core classes still precede lwjglx.
- */
-def lwjglyJars = { Configuration configuration ->
-    configuration.incoming.artifactView { view ->
-        view.componentFilter { id ->
-            id instanceof ModuleComponentIdentifier &&
-                id.group == 'com.cleanroommc' && id.module == 'lwjgly'
-        }
-    }.files
 }
 
 tasks.named('compileJava', JavaCompile).configure {

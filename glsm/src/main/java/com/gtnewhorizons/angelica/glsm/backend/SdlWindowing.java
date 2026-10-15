@@ -2,6 +2,7 @@ package com.gtnewhorizons.angelica.glsm.backend;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.lwjgl.opengl.Display;
 import org.lwjgl.sdl.SDLError;
 import org.lwjgl.sdl.SDLVideo;
 import org.lwjgl.sdl.SDL_DisplayMode;
@@ -45,6 +46,16 @@ final class SdlWindowing {
 
     static long currentContext() {
         return SDLVideo.SDL_GL_GetCurrentContext();
+    }
+
+    // LWJGLY 2.0 has no framebuffer-size query; the logical size equals the framebuffer size except
+    // on HiDPI hosts (pixel scale factor), which the LWJGL2 compile surface cannot express.
+    static int framebufferWidth() {
+        return Display.getWidth();
+    }
+
+    static int framebufferHeight() {
+        return Display.getHeight();
     }
 
     static void startFileDrop() {
