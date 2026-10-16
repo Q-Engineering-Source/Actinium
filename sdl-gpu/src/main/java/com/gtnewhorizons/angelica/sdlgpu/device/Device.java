@@ -25,7 +25,10 @@ import org.lwjgl.system.Platform;
 
 import java.nio.IntBuffer;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 import static org.lwjgl.sdl.SDLGPU.*;
@@ -59,6 +62,7 @@ public final class Device {
     private String driverVersion;
     private String driverInfo;
     private VSyncMode vsyncMode = VSyncMode.ON;
+    private final EnumMap<VSyncMode, Boolean> presentModeSupport = new EnumMap<>(VSyncMode.class);
     private volatile Thread windowThread;
     private SDL_LogOutputFunction logCallback; // prevent GC
 
@@ -278,6 +282,7 @@ public final class Device {
         claimed = true;
         sdlWindowHandle = window;
         windowThread = Thread.currentThread();
+        presentModeSupport.clear();
 
         if (!SDL_SetGPUAllowedFramesInFlight(device, FRAMES_IN_FLIGHT)) {
             LOG.warn("SDL_SetGPUAllowedFramesInFlight({}) failed: {}", FRAMES_IN_FLIGHT, SDLError.SDL_GetError());
@@ -343,6 +348,7 @@ public final class Device {
         fenceQueryInverted = false;
         defaultMslVersion = 0;
         imageAtomicsBySize.clear();
+        presentModeSupport.clear();
         deviceName = null;
         driverVersion = null;
         driverInfo = null;
@@ -494,7 +500,18 @@ public final class Device {
     }
 
     public boolean supportsVSyncMode(VSyncMode mode) {
-        return device != 0 && claimed && SDL_WindowSupportsGPUPresentMode(device, getSdlWindowHandle(), toSdl(mode));
+        if (device == 0 || !claimed) return false;
+        return cachedPresentModeSupport(presentModeSupport, mode,
+            () -> SDL_WindowSupportsGPUPresentMode(device, getSdlWindowHandle(), toSdl(mode)));
+    }
+
+    /** Present-mode support is a window+device property, so query it natively once per claim. */
+    static boolean cachedPresentModeSupport(Map<VSyncMode, Boolean> cache, VSyncMode mode, BooleanSupplier query) {
+        final Boolean cached = cache.get(mode);
+        if (cached != null) return cached;
+        final boolean supported = query.getAsBoolean();
+        cache.put(mode, supported);
+        return supported;
     }
 
     public long getClaimedWindow() {
