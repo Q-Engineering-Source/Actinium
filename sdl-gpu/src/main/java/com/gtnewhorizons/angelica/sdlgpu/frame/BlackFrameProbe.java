@@ -12,6 +12,7 @@ import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 
 import java.util.ArrayDeque;
+import java.util.Arrays;
 
 import static org.lwjgl.sdl.SDLGPU.SDL_AcquireGPUCommandBuffer;
 import static org.lwjgl.sdl.SDLGPU.SDL_BeginGPUCopyPass;
@@ -44,7 +45,49 @@ public final class BlackFrameProbe {
         long xfer;
         long fence;
         long frameNumber;
+        Stats stats;
+    }
+
+    /** Frame counters captured before FrameManager.endFrame resets them, reported on probe hits. */
+    private static final class Stats {
+        long frameNumber;
         int boundFbo;
+        int swapchainPasses;
+        int clearPasses;
+        int inPassClears;
+        int materializedClears;
+        int fboPasses;
+        int blits;
+        int submits;
+        int midFrameSubmits;
+        int emptyFrames;
+        int stateApplies;
+        long gpuWaitNanos;
+        final int[] passEndCauses = new int[FrameManager.PASS_END_CAUSE_COUNT];
+
+        Stats(FrameManager.FrameState f, int boundFbo) {
+            frameNumber = f.frameNumber;
+            this.boundFbo = boundFbo;
+            swapchainPasses = f.swapchainPassesThisFrame;
+            clearPasses = f.clearPassesThisFrame;
+            inPassClears = f.inPassClearsThisFrame;
+            materializedClears = f.materializedClearPassesThisFrame;
+            fboPasses = f.fboPassesThisFrame;
+            blits = f.blitsThisFrame;
+            submits = f.submitsThisFrame;
+            midFrameSubmits = f.midFrameSubmitsThisFrame;
+            emptyFrames = f.emptyFramesThisFrame;
+            stateApplies = f.stateAppliesThisFrame;
+            gpuWaitNanos = f.gpuWaitNanosThisFrame;
+            System.arraycopy(f.passEndCauseCountsThisFrame, 0, passEndCauses, 0, passEndCauses.length);
+        }
+    }
+
+    private Stats pending;
+
+    /** Snapshots the frame's counters; call before FrameManager.endFrame resets them. */
+    public void captureStats(FrameManager.FrameState f, int boundFbo) {
+        pending = new Stats(f, boundFbo);
     }
 
     /** Turns the pixel stream into report decisions: only an isolated single black frame reports. */
@@ -77,13 +120,13 @@ public final class BlackFrameProbe {
         this.device = device;
     }
 
-    public void tick(long frameNumber, long finalTargetTex, int width, int height, int boundFbo) {
+    public void tick(long finalTargetTex, int width, int height) {
         drainSignaled();
-        if (finalTargetTex == 0 || slots.size() >= MAX_IN_FLIGHT) return;
-        enqueue(frameNumber, finalTargetTex, width / 2, height / 2, boundFbo);
+        if (finalTargetTex == 0 || pending == null || slots.size() >= MAX_IN_FLIGHT) return;
+        enqueue(finalTargetTex, width / 2, height / 2);
     }
 
-    private void enqueue(long frameNumber, long tex, int x, int y, int boundFbo) {
+    private void enqueue(long tex, int x, int y) {
         try (var stack = stackPush()) {
             final SDL_GPUTransferBufferCreateInfo xferCi = SDL_GPUTransferBufferCreateInfo.calloc(stack)
                 .usage(SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD)
@@ -117,8 +160,8 @@ public final class BlackFrameProbe {
             final Slot slot = new Slot();
             slot.xfer = xfer;
             slot.fence = fence;
-            slot.frameNumber = frameNumber;
-            slot.boundFbo = boundFbo;
+            slot.frameNumber = pending.frameNumber;
+            slot.stats = pending;
             slots.add(slot);
         }
     }
@@ -139,7 +182,11 @@ public final class BlackFrameProbe {
             if (pixel == -1) continue;
             final long report = tracker.onPixel(s.frameNumber, isBlack(pixel));
             if (report != 0) {
-                LOG.warn("black frame probe: frame {} presented with a black finalTarget center pixel (isolated, boundFbo={})", report, s.boundFbo);
+                final Stats st = s.stats;
+                LOG.warn("black frame probe: frame {} black center pixel (boundFbo={} swapchainPasses={} clearPasses={} inPassClears={} matClears={} fboPasses={} blits={} submits={} midSubmits={} empty={} stateApplies={} gpuWaitUs={} passEnds={})",
+                    report, st.boundFbo, st.swapchainPasses, st.clearPasses, st.inPassClears, st.materializedClears,
+                    st.fboPasses, st.blits, st.submits, st.midFrameSubmits, st.emptyFrames, st.stateApplies,
+                    st.gpuWaitNanos / 1000L, Arrays.toString(st.passEndCauses));
             }
         }
     }

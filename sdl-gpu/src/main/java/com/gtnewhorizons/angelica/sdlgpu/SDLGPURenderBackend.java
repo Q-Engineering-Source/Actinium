@@ -820,11 +820,12 @@ public class SDLGPURenderBackend extends RenderBackend {
         awaitUploadFlush();
         if (SystemProperties.FFP_TRACE) ffpTrace.frameEnd(f);
         final long frameSync = f.frameActive ? fenceTracker.fenceSync() : 0L;
+        if (blackFrameProbe != null) blackFrameProbe.captureStats(f, s().boundFboId);
         frameManager.endFrame();
         frameManager.presentFinalTarget();
         if (blackFrameProbe != null) {
             final OffscreenTarget ft = frameManager.finalTarget();
-            if (ft.hasContent()) blackFrameProbe.tick(frameManager.getFrameNumber(), ft.colorTexture(), ft.width(), ft.height(), s().boundFboId);
+            if (ft.hasContent()) blackFrameProbe.tick(ft.colorTexture(), ft.width(), ft.height());
         }
         fenceTracker.resolvePendingFences();
         device.fenceReleaser().drain();
