@@ -25,6 +25,7 @@ import com.gtnewhorizons.angelica.sdlgpu.frame.FenceTracker;
 import com.gtnewhorizons.angelica.sdlgpu.frame.FrameManager;
 import com.gtnewhorizons.angelica.sdlgpu.frame.FrameManager.FrameState;
 import com.gtnewhorizons.angelica.sdlgpu.frame.Presenter;
+import com.gtnewhorizons.angelica.sdlgpu.frame.BlackFrameProbe;
 import com.gtnewhorizons.angelica.sdlgpu.pipeline.DrawDispatch;
 import com.gtnewhorizons.angelica.sdlgpu.pipeline.FFPTrace;
 import com.gtnewhorizons.angelica.sdlgpu.pipeline.PipelineApplier;
@@ -189,6 +190,7 @@ public class SDLGPURenderBackend extends RenderBackend {
     private volatile boolean shutdown;
 
     private volatile OffscreenTarget splashTarget;
+    private volatile BlackFrameProbe blackFrameProbe;
     private volatile boolean splashTeardownPending;
 
     private static final ThreadRegistry<ContextState> registeredStates = new ThreadRegistry<>(new ContextState[0]);
@@ -365,6 +367,9 @@ public class SDLGPURenderBackend extends RenderBackend {
             frameManager.setPresenter(presenter);
             LOG.info("SDL presenter thread enabled: presents run on '{}'", device.getWindowThread() != null ? device.getWindowThread().getName() : "window thread");
         }
+        if (Boolean.getBoolean("actinium.sdlgpu.blackprobe")) {
+            blackFrameProbe = new BlackFrameProbe(device);
+        }
 
         if (hasWindow()) {
             final int splashW = Math.max(1, LwjglyWindowHost.width());
@@ -504,6 +509,10 @@ public class SDLGPURenderBackend extends RenderBackend {
         if (shutdown) return;
         shutdown = true;
         if (presenter != null) presenter.drain();
+        if (blackFrameProbe != null) {
+            blackFrameProbe.shutdown();
+            blackFrameProbe = null;
+        }
         frameManager.destroyFinalTarget();
         if (splashTarget != null) {
             splashTarget.destroy(resourceManager);
@@ -813,6 +822,10 @@ public class SDLGPURenderBackend extends RenderBackend {
         final long frameSync = f.frameActive ? fenceTracker.fenceSync() : 0L;
         frameManager.endFrame();
         frameManager.presentFinalTarget();
+        if (blackFrameProbe != null) {
+            final OffscreenTarget ft = frameManager.finalTarget();
+            if (ft.hasContent()) blackFrameProbe.tick(frameManager.getFrameNumber(), ft.colorTexture(), ft.width(), ft.height());
+        }
         fenceTracker.resolvePendingFences();
         device.fenceReleaser().drain();
         if (frameSync != 0L) {
