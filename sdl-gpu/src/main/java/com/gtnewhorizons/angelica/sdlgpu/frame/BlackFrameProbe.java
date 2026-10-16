@@ -5,6 +5,7 @@ import com.gtnewhorizons.angelica.sdlgpu.device.FenceWait;
 import com.gtnewhorizons.angelica.sdlgpu.device.Submits;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.lwjgl.sdl.SDLError;
 import org.lwjgl.sdl.SDL_GPUTextureRegion;
 import org.lwjgl.sdl.SDL_GPUTextureTransferInfo;
 import org.lwjgl.sdl.SDL_GPUTransferBufferCreateInfo;
@@ -40,6 +41,7 @@ public final class BlackFrameProbe {
     private final Device device;
     private final ArrayDeque<Slot> slots = new ArrayDeque<>();
     private final RunTracker tracker = new RunTracker();
+    private int probeCopyFailures;
 
     private static final class Slot {
         long xfer;
@@ -134,6 +136,14 @@ public final class BlackFrameProbe {
             final long xfer = SDL_CreateGPUTransferBuffer(device.getDevice(), xferCi);
             if (xfer == 0) return;
 
+            // Pre-fill a sentinel so a copy that silently did not run reads differently from a
+            // genuinely black pixel.
+            final long prefill = nSDL_MapGPUTransferBuffer(device.getDevice(), xfer, false);
+            if (prefill != 0) {
+                MemoryUtil.memSet(prefill, 0xEE, 4);
+                SDL_UnmapGPUTransferBuffer(device.getDevice(), xfer);
+            }
+
             final long cb = SDL_AcquireGPUCommandBuffer(device.getDevice());
             if (cb == 0) {
                 SDL_ReleaseGPUTransferBuffer(device.getDevice(), xfer);
@@ -180,6 +190,13 @@ public final class BlackFrameProbe {
             SDL_ReleaseGPUTransferBuffer(device.getDevice(), s.xfer);
             device.fenceReleaser().release(s.fence);
             if (pixel == -1) continue;
+            if (pixel == 0xEEEEEEEE) {
+                probeCopyFailures++;
+                if (probeCopyFailures <= 20 || probeCopyFailures % 60 == 0) {
+                    LOG.warn("black frame probe: frame {} download did not land (sentinel intact, #{}); err={}", s.frameNumber, probeCopyFailures, SDLError.SDL_GetError());
+                }
+                continue;
+            }
             final long report = tracker.onPixel(s.frameNumber, isBlack(pixel));
             if (report != 0) {
                 final Stats st = s.stats;
