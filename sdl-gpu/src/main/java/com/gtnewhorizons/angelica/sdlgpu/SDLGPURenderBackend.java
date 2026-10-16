@@ -25,7 +25,6 @@ import com.gtnewhorizons.angelica.sdlgpu.frame.FenceTracker;
 import com.gtnewhorizons.angelica.sdlgpu.frame.FrameManager;
 import com.gtnewhorizons.angelica.sdlgpu.frame.FrameManager.FrameState;
 import com.gtnewhorizons.angelica.sdlgpu.frame.Presenter;
-import com.gtnewhorizons.angelica.sdlgpu.frame.BlackFrameProbe;
 import com.gtnewhorizons.angelica.sdlgpu.pipeline.DrawDispatch;
 import com.gtnewhorizons.angelica.sdlgpu.pipeline.FFPTrace;
 import com.gtnewhorizons.angelica.sdlgpu.pipeline.PipelineApplier;
@@ -190,8 +189,6 @@ public class SDLGPURenderBackend extends RenderBackend {
     private volatile boolean shutdown;
 
     private volatile OffscreenTarget splashTarget;
-    private volatile BlackFrameProbe blackFrameProbe;
-    private static volatile long lastMidFrameClearLogNanos;
     private volatile boolean splashTeardownPending;
 
     private static final ThreadRegistry<ContextState> registeredStates = new ThreadRegistry<>(new ContextState[0]);
@@ -368,9 +365,6 @@ public class SDLGPURenderBackend extends RenderBackend {
             frameManager.setPresenter(presenter);
             LOG.info("SDL presenter thread enabled: presents run on '{}'", device.getWindowThread() != null ? device.getWindowThread().getName() : "window thread");
         }
-        if (Boolean.getBoolean("actinium.sdlgpu.blackprobe")) {
-            blackFrameProbe = new BlackFrameProbe(device);
-        }
 
         if (hasWindow()) {
             final int splashW = Math.max(1, LwjglyWindowHost.width());
@@ -510,10 +504,6 @@ public class SDLGPURenderBackend extends RenderBackend {
         if (shutdown) return;
         shutdown = true;
         if (presenter != null) presenter.drain();
-        if (blackFrameProbe != null) {
-            blackFrameProbe.shutdown();
-            blackFrameProbe = null;
-        }
         frameManager.destroyFinalTarget();
         if (splashTarget != null) {
             splashTarget.destroy(resourceManager);
@@ -821,13 +811,8 @@ public class SDLGPURenderBackend extends RenderBackend {
         awaitUploadFlush();
         if (SystemProperties.FFP_TRACE) ffpTrace.frameEnd(f);
         final long frameSync = f.frameActive ? fenceTracker.fenceSync() : 0L;
-        if (blackFrameProbe != null) blackFrameProbe.captureStats(f, s().boundFboId);
         frameManager.endFrame();
         frameManager.presentFinalTarget();
-        if (blackFrameProbe != null) {
-            final OffscreenTarget ft = frameManager.finalTarget();
-            if (ft.hasContent()) blackFrameProbe.tick(ft.colorTexture(), ft.width(), ft.height());
-        }
         fenceTracker.resolvePendingFences();
         device.fenceReleaser().drain();
         if (frameSync != 0L) {
@@ -1162,14 +1147,6 @@ public class SDLGPURenderBackend extends RenderBackend {
         // FBO0 path: just record pending state; ensureFbo0RenderPass consumes it lazily.
         if (st.boundFboId == 0) {
             if (wantColor) {
-                if (Boolean.getBoolean("actinium.sdlgpu.blackprobe")) {
-                    final FrameState fNow = frameManager.frame();
-                    if (fNow.frameActive && fNow.fbo0UsedThisFrame && System.nanoTime() - lastMidFrameClearLogNanos > 500_000_000L) {
-                        lastMidFrameClearLogNanos = System.nanoTime();
-                        LOG.warn("black frame probe: glClear on fbo0 mid-frame at frame {} (content already drawn), call site:",
-                            fNow.frameNumber, new Throwable("stack"));
-                    }
-                }
                 st.pendingSwapchainClear = true;
                 st.pendingSwapchainR = st.clearR;
                 st.pendingSwapchainG = st.clearG;

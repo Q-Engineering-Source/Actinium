@@ -615,18 +615,6 @@ public final class FrameManager {
 
         drainWindowPresentCounters(f);
 
-        final int dropped = f.droppedDrawsThisFrame + f.droppedFrameInactive + f.droppedUnsignedByte
-            + f.droppedRpInactive + f.droppedPipeline + f.droppedEboMissing + f.droppedFan + f.droppedOther;
-        if (dropped > 0) {
-            final long now = System.nanoTime();
-            if (now - lastDropLogNanos > 1_000_000_000L) {
-                lastDropLogNanos = now;
-                LOG.info("frame {} dropped {} draws (inactive={} ubyte={} rpInactive={} pipeline={} ebo={} fan={} other={})",
-                    f.frameNumber, f.droppedDrawsThisFrame, f.droppedFrameInactive, f.droppedUnsignedByte,
-                    f.droppedRpInactive, f.droppedPipeline, f.droppedEboMissing, f.droppedFan, f.droppedOther);
-            }
-        }
-
         if (Tracy.ENABLED && resourceManager != null) {
             SdlFramePlots.emit(f, resourceManager);
         }
@@ -986,7 +974,6 @@ public final class FrameManager {
     private final AtomicLong windowAcquireWaitNanos = new AtomicLong();
     private final AtomicLong windowGpuWaitNanos = new AtomicLong();
     private final AtomicInteger windowPresentSkips = new AtomicInteger();
-    private static volatile long lastDropLogNanos;
 
     private void drainWindowPresentCounters(FrameState f) {
         if (f == windowFrame) return;
