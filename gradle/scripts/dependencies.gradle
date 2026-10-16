@@ -84,7 +84,7 @@ dependencies {
 
 //    modRuntimeOnly 'curse.maven:catalogue-vintage-1465746:7872634'
 //    compileOnly 'maven.modrinth:DistantHorizonsApi:5.1.0'
-    implementation deobf("maven.modrinth:uCdwusMi:Sa0ttGJr")  // Distant Horizons 3.3.0-1.12.2 (first release with b15b57cf/ae21a1a0: DH binds IIrisAccessor itself and drives its own LOD passes)
+    implementation deobf("maven.modrinth:uCdwusMi:1PczaQGZ")  // Distant Horizons 3.3.3-1.12.2 (first release with b15b57cf/ae21a1a0: DH binds IIrisAccessor itself and drives its own LOD passes)
     // XaeroLib 1.7.3 + Xaero's Minimap 26.5.1 + Xaero's World Map 1.46.0 (issue #175: both maps
     // render their 64x64 terrain as flat colour, and the world map's GuiTexturedButton plates come
     // out opaque while the minimap's entity radar is on). Dev-runtime, not just compiled against:
