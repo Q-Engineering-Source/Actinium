@@ -376,6 +376,25 @@ class GLSMRedirectorTest {
             "()Lorg/lwjgl/opengl/ContextCapabilities;", "currentContextCapabilities");
     }
 
+    /**
+     * FluxLoading's loading shader queries GL directly during world load; all six calls must land
+     * on the GLSM entry points instead of the sentinel GL pointers.
+     */
+    @Test
+    void rewritesFluxLoadingShaderCallsToGlsm() {
+        String[][] cases = {
+            {"org/lwjgl/opengl/GL15", "glGetQueryObject", "(IILjava/nio/IntBuffer;)V", "glGetQueryObject"},
+            {"org/lwjgl/opengl/GL20", "glGetVertexAttrib", "(IILjava/nio/IntBuffer;)V", "glGetVertexAttrib"},
+            {"org/lwjgl/opengl/GL30", "glUniform2ui", "(III)V", "glUniform2ui"},
+            {"org/lwjgl/opengl/GL30", "glUniform3ui", "(IIII)V", "glUniform3ui"},
+            {"org/lwjgl/opengl/GL30", "glUniform4ui", "(IIIII)V", "glUniform4ui"},
+            {"org/lwjgl/opengl/GL40", "glUniform1d", "(ID)V", "glUniform1d"},
+        };
+        for (String[] c : cases) {
+            assertRedirectedToGlsm(c[0], c[1], c[2], c[3]);
+        }
+    }
+
     private static void assertRedirectedToGlsm(String owner, String name, String desc, String expectedName) {
         final String label = owner + "." + name + desc;
         byte[] classBytes = generateClassCallingGl(owner, name, desc);

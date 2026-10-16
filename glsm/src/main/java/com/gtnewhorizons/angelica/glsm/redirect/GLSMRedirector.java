@@ -463,6 +463,9 @@ public class GLSMRedirector {
             .add("glIsFramebuffer")
             .add("glIsRenderbuffer")
             .add("glUniform1ui")
+            .add("glUniform2ui")
+            .add("glUniform3ui")
+            .add("glUniform4ui")
             .add("glBindBufferBase");
         Map<String, String> gl31 = RedirectMap.newMap()
             .add("glDrawElementsInstanced")
@@ -485,6 +488,8 @@ public class GLSMRedirector {
             .add("glVertexAttribDivisor")
             .add("glQueryCounter")
             .add("glGetQueryObjectui64");
+        Map<String, String> gl40 = RedirectMap.newMap()
+            .add("glUniform1d");
         Map<String, String> gl42 = RedirectMap.newMap()
             .add("glBindImageTexture")
             .add("glMemoryBarrier")
@@ -532,6 +537,7 @@ public class GLSMRedirector {
         GL_METHOD_REDIRECTS.putAll(gl31);
         GL_METHOD_REDIRECTS.putAll(gl32);
         GL_METHOD_REDIRECTS.putAll(gl33);
+        GL_METHOD_REDIRECTS.putAll(gl40);
         GL_METHOD_REDIRECTS.putAll(gl42);
         GL_METHOD_REDIRECTS.putAll(gl43);
         GL_METHOD_REDIRECTS.putAll(gl44);
@@ -1054,6 +1060,9 @@ public class GLSMRedirector {
         // overloads stay unmapped on purpose
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/ARBVertexProgram glVertexAttribPointerARB(IIIZIJ)V", "glVertexAttribPointer");
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL13 glCompressedTexImage2D(IIIIIILjava/nio/ByteBuffer;)V", "glCompressedTexImage2D");
+        // FluxLoading's loading-shader state queries (owners have buffer-type overloads)
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL15 glGetQueryObject(IILjava/nio/IntBuffer;)V", "glGetQueryObject");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL20 glGetVertexAttrib(IILjava/nio/IntBuffer;)V", "glGetVertexAttrib");
 
         for (String owner : new String[]{"org/lwjgl/opengl/KHRDebug", "org/lwjgl/opengl/GL43", "org/lwjgl/opengl/GL43C"}) {
             GL_DESC_REDIRECTS.put(owner + " glObjectLabel(IILjava/lang/CharSequence;)V", "glObjectLabel");

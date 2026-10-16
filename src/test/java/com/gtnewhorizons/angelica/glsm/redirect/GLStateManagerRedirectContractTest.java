@@ -161,6 +161,25 @@ class GLStateManagerRedirectContractTest {
         }
     }
 
+    /** FluxLoading batch: every signature the redirector can produce must exist on GLStateManager. */
+    @Test
+    void fluxLoadingBatchEntryPointsExist() throws IOException {
+        String[][] sigs = {
+            {"glGetQueryObject", "(IILjava/nio/IntBuffer;)V"},
+            {"glGetVertexAttrib", "(IILjava/nio/IntBuffer;)V"},
+            {"glUniform2ui", "(III)V"},
+            {"glUniform3ui", "(IIII)V"},
+            {"glUniform4ui", "(IIIII)V"},
+            {"glUniform1d", "(ID)V"},
+        };
+        for (String[] sig : sigs) {
+            assertTrue(
+                methodDescriptors(sig[0]).contains(sig[1]),
+                "GLStateManager must expose " + sig[0] + sig[1] + ": the GL redirector rewrites calls to it"
+            );
+        }
+    }
+
     /**
      * Every signature the redirector can produce for the kirino/OpenGlHelper/IrisGlDebug batch
      * (SDL-GPU port) must exist on GLStateManager, or the rewritten call dies with

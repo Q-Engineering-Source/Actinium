@@ -79,6 +79,7 @@ import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL31;
 import org.lwjgl.opengl.GL32;
+import org.lwjgl.opengl.GL33;
 import org.lwjgl.opengl.GL42;
 import org.lwjgl.opengl.GL40;
 import org.lwjgl.opengl.GL43;
@@ -2809,6 +2810,42 @@ public class SDLGPURenderBackend extends RenderBackend {
         a[0] = Float.intBitsToFloat(v0);
         pipelineApplier.putUniform(st, location, a);
     }
+    @Override public void uniform2ui(int location, int v0, int v1) {
+        if (location < 0) return;
+        final ContextState st = s();
+        final float[] a = pipelineApplier.reuseOrAlloc(st, location, 2);
+        if (a == null) return;
+        a[0] = Float.intBitsToFloat(v0); a[1] = Float.intBitsToFloat(v1);
+        pipelineApplier.putUniform(st, location, a);
+    }
+    @Override public void uniform3ui(int location, int v0, int v1, int v2) {
+        if (location < 0) return;
+        final ContextState st = s();
+        final float[] a = pipelineApplier.reuseOrAlloc(st, location, 3);
+        if (a == null) return;
+        a[0] = Float.intBitsToFloat(v0); a[1] = Float.intBitsToFloat(v1); a[2] = Float.intBitsToFloat(v2);
+        pipelineApplier.putUniform(st, location, a);
+    }
+    @Override public void uniform4ui(int location, int v0, int v1, int v2, int v3) {
+        if (location < 0) return;
+        final ContextState st = s();
+        final float[] a = pipelineApplier.reuseOrAlloc(st, location, 4);
+        if (a == null) return;
+        a[0] = Float.intBitsToFloat(v0); a[1] = Float.intBitsToFloat(v1);
+        a[2] = Float.intBitsToFloat(v2); a[3] = Float.intBitsToFloat(v3);
+        pipelineApplier.putUniform(st, location, a);
+    }
+    @Override public void uniform1d(int location, double v0) {
+        if (location < 0) return;
+        final ContextState st = s();
+        // SDL GPU has no fp64 uniforms: keep the raw double bits in two 32-bit slots
+        final float[] a = pipelineApplier.reuseOrAlloc(st, location, 2);
+        if (a == null) return;
+        final long bits = Double.doubleToRawLongBits(v0);
+        a[0] = Float.intBitsToFloat((int) bits);
+        a[1] = Float.intBitsToFloat((int) (bits >>> 32));
+        pipelineApplier.putUniform(st, location, a);
+    }
     @Override public void uniform1f(int location, float v0) {
         if (location < 0) return;
         final ContextState st = s();
@@ -3693,6 +3730,9 @@ public class SDLGPURenderBackend extends RenderBackend {
     @Override public void getQueryObjectui(int id, int pname, IntBuffer params) {
         params.put(params.position(), queryResult(pname));
     }
+    @Override public void getQueryObjecti(int id, int pname, IntBuffer params) {
+        params.put(params.position(), queryResult(pname));
+    }
     @Override public int getQueryObjecti(int id, int pname) { return queryResult(pname); }
     @Override public long getQueryObjectui64(int id, int pname) { return queryResult(pname); }
 
@@ -3790,6 +3830,32 @@ public class SDLGPURenderBackend extends RenderBackend {
             cs.pipeline.markInputDirty();
             vao.invalidateInputHash();
         }
+    }
+
+    /** Answers from the VAO state this backend already tracks for pipeline building. */
+    @Override public void getVertexAttribi(int index, int pname, IntBuffer params) {
+        if (params == null || params.remaining() <= 0) return;
+        if (index < 0 || index >= ContextState.MAX_VERTEX_ATTRIBS) return;
+        final ContextState st = s();
+        final ContextState.VAOState vao = st.currentVao;
+        if (pname == GL20.GL_CURRENT_VERTEX_ATTRIB) {
+            if (params.remaining() < 4) return;
+            final int pos = params.position();
+            for (int c = 0; c < 4; c++) params.put(pos + c, (int) st.attribDefaults[index * 4 + c]);
+            return;
+        }
+        final int value = switch (pname) {
+            case GL20.GL_VERTEX_ATTRIB_ARRAY_ENABLED -> vao.attribEnabled[index] ? 1 : 0;
+            case GL20.GL_VERTEX_ATTRIB_ARRAY_SIZE -> vao.attribSize[index];
+            case GL20.GL_VERTEX_ATTRIB_ARRAY_STRIDE -> vao.attribStride[index];
+            case GL20.GL_VERTEX_ATTRIB_ARRAY_TYPE -> vao.attribType[index];
+            case GL20.GL_VERTEX_ATTRIB_ARRAY_NORMALIZED -> vao.attribNormalized[index] ? 1 : 0;
+            case GL20.GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING -> vao.attribVBO[index];
+            case GL30.GL_VERTEX_ATTRIB_ARRAY_INTEGER -> vao.attribIsInteger[index] ? 1 : 0;
+            case GL33.GL_VERTEX_ATTRIB_ARRAY_DIVISOR -> vao.bindingDivisor[vao.attribBinding[index]];
+            default -> 0;
+        };
+        params.put(params.position(), value);
     }
 
     @Override public void bindVertexBuffer(int bindingindex, int buffer, long offset, int stride) {

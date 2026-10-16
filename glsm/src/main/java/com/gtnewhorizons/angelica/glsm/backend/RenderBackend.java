@@ -591,6 +591,11 @@ public abstract class RenderBackend {
 
     public abstract void uniform1i(int location, int v0);
     public abstract void uniform1ui(int location, int v0);
+    public abstract void uniform2ui(int location, int v0, int v1);
+    public abstract void uniform3ui(int location, int v0, int v1, int v2);
+    public abstract void uniform4ui(int location, int v0, int v1, int v2, int v3);
+    /** GL40 double uniform; backends without fp64 keep the raw 8 bytes in the uniform store. */
+    public abstract void uniform1d(int location, double v0);
     public abstract void uniform1f(int location, float v0);
     public void uniform1fv(int location, FloatBuffer values) {}
     public void uniform1fv(int location, float[] values) {}
@@ -704,6 +709,7 @@ public abstract class RenderBackend {
     public abstract void vertexAttribIPointer(int index, int size, int type, int stride, long pointer);
     public abstract void enableVertexAttribArray(int index);
     public abstract void disableVertexAttribArray(int index);
+    public abstract void getVertexAttribi(int index, int pname, IntBuffer params);
     public abstract void vertexAttribDivisor(int index, int divisor);
     public abstract void bindVertexBuffer(int bindingindex, int buffer, long offset, int stride);
     public abstract void vertexAttribFormat(int attribindex, int size, int type, boolean normalized, int relativeoffset);
@@ -779,6 +785,7 @@ public abstract class RenderBackend {
     public void getQueryObjectui(int id, int pname, IntBuffer params) { throw new UnsupportedOperationException("occlusion queries unsupported"); }
     public int getQueryObjectui(int id, int pname) { throw new UnsupportedOperationException("occlusion queries unsupported"); }
     public int getQueryObjecti(int id, int pname) { throw new UnsupportedOperationException("occlusion queries unsupported"); }
+    public void getQueryObjecti(int id, int pname, IntBuffer params) { throw new UnsupportedOperationException("occlusion queries unsupported"); }
     public void queryCounter(int id, int target) { throw new UnsupportedOperationException("timer queries unsupported"); }
     public long getQueryObjectui64(int id, int pname) { throw new UnsupportedOperationException("timer queries unsupported"); }
 

@@ -639,6 +639,16 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void getQueryObjecti(int id, int pname, IntBuffer params) {
+        GL15C.glGetQueryObjectiv(id, pname, params);
+    }
+
+    @Override
+    public void getVertexAttribi(int index, int pname, IntBuffer params) {
+        GL20C.glGetVertexAttribiv(index, pname, params);
+    }
+
+    @Override
     public void texStorage3D(int target, int levels, int internalFormat, int width, int height, int depth) {
         GL42C.glTexStorage3D(target, levels, internalFormat, width, height, depth);
     }
@@ -1102,6 +1112,26 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     @Override
     public void uniform1ui(int location, int v0) {
         GL30C.glUniform1ui(location, v0);
+    }
+
+    @Override
+    public void uniform2ui(int location, int v0, int v1) {
+        GL30C.glUniform2ui(location, v0, v1);
+    }
+
+    @Override
+    public void uniform3ui(int location, int v0, int v1, int v2) {
+        GL30C.glUniform3ui(location, v0, v1, v2);
+    }
+
+    @Override
+    public void uniform4ui(int location, int v0, int v1, int v2, int v3) {
+        GL30C.glUniform4ui(location, v0, v1, v2, v3);
+    }
+
+    @Override
+    public void uniform1d(int location, double v0) {
+        GL40C.glUniform1d(location, v0);
     }
 
     @Override

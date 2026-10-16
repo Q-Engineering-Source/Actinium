@@ -249,6 +249,11 @@ public class StubRenderBackend extends RenderBackend {
     @Override public void getCompressedTextureImage(int texture, int level, ByteBuffer pixels) { throw new UnsupportedOperationException(); }
     @Override public void multiDrawArraysIndirect(int mode, long indirect, int drawcount, int stride) { throw new UnsupportedOperationException(); }
     @Override public void uniform1ui(int location, int v0) { throw new UnsupportedOperationException(); }
+    @Override public void uniform2ui(int location, int v0, int v1) { throw new UnsupportedOperationException(); }
+    @Override public void uniform3ui(int location, int v0, int v1, int v2) { throw new UnsupportedOperationException(); }
+    @Override public void uniform4ui(int location, int v0, int v1, int v2, int v3) { throw new UnsupportedOperationException(); }
+    @Override public void uniform1d(int location, double v0) { throw new UnsupportedOperationException(); }
+    @Override public void getVertexAttribi(int index, int pname, IntBuffer params) { throw new UnsupportedOperationException(); }
     @Override public int getInteger(int pname) { throw new UnsupportedOperationException(); }
     @Override public void getInteger(int pname, IntBuffer params) { throw new UnsupportedOperationException(); }
     @Override public int getIntegerIndexed(int pname, int index) { throw new UnsupportedOperationException(); }
