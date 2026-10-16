@@ -683,6 +683,7 @@ public final class FrameManager {
         } finally {
             Tracy.endZone();
         }
+        midFrameRenderSubmits.incrementAndGet();
         f.submitsThisFrame++;
         f.midFrameSubmitsThisFrame++;
         f.commandBuffer = 0;
@@ -975,6 +976,14 @@ public final class FrameManager {
     private final AtomicLong windowGpuWaitNanos = new AtomicLong();
     private final AtomicInteger windowPresentSkips = new AtomicInteger();
 
+    /** Counts render command-buffer submits outside a frame boundary; window-thread presents compare against it. */
+    private final AtomicLong midFrameRenderSubmits = new AtomicLong();
+    private volatile int stalePresentSkips;
+
+    public long midFrameRenderSubmits() {
+        return midFrameRenderSubmits.get();
+    }
+
     private void drainWindowPresentCounters(FrameState f) {
         if (f == windowFrame) return;
         f.acquireWaitNanosThisFrame += windowAcquireWaitNanos.getAndSet(0L);
@@ -997,7 +1006,17 @@ public final class FrameManager {
         else f.presentSkipsThisFrame++;
     }
 
-    public void presentOnWindowThread(long srcTexture, int srcW, int srcH, int flipMode) {
+    public void presentOnWindowThread(long srcTexture, int srcW, int srcH, int flipMode, long requestGen) {
+        if (midFrameRenderSubmits.get() != requestGen) {
+            // A mid-frame submit after the request pushed a partial frame into the GPU queue, so
+            // blitting now could read the cleared finalTarget. Skip: the previous frame stays up.
+            stalePresentSkips++;
+            if (stalePresentSkips <= 20 || stalePresentSkips % 60 == 0) {
+                LOG.info("present skipped: frame content was resubmitted mid-frame since the request (skip #{})", stalePresentSkips);
+            }
+            windowFrame.presentedThisFrame = false;
+            return;
+        }
         presentBlit(windowFrame, srcTexture, srcW, srcH, flipMode);
         windowFrame.presentedThisFrame = false;
         windowFrame.swapchainUnavailable = false;

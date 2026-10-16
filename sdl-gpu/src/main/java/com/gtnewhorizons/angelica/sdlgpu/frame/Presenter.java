@@ -17,6 +17,7 @@ public final class Presenter {
     private int srcW;
     private int srcH;
     private int flipMode;
+    private long requestGen;
 
     public Presenter(FrameManager frameManager, Executor windowThreadExecutor, MainThreadPump pump) {
         this.frameManager = frameManager;
@@ -25,7 +26,7 @@ public final class Presenter {
         this.task = () -> {
             try {
                 pump.runPresentPump();
-                frameManager.presentOnWindowThread(srcTexture, srcW, srcH, flipMode);
+                frameManager.presentOnWindowThread(srcTexture, srcW, srcH, flipMode, requestGen);
             } finally {
                 pump.endPresent();
                 pending.release();
@@ -49,6 +50,7 @@ public final class Presenter {
         this.srcW = srcW;
         this.srcH = srcH;
         this.flipMode = flipMode;
+        this.requestGen = frameManager.midFrameRenderSubmits();
         pump.beginPresent();
         boolean submitted = false;
         try {
