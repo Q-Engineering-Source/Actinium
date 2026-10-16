@@ -1088,6 +1088,13 @@ public final class FrameManager {
         BackendManager.RENDER_BACKEND.recordGate(tEnd - t0, tEnd);
         noteAcquireWait(f, tEnd - t1);
 
+        if (w <= 0 || h <= 0) {
+            LOG.warn("presentBlit: swapchain texture has invalid size {}x{}, skipping", w, h);
+            SDL_CancelGPUCommandBuffer(cb);
+            notePresentSkip(f);
+            return false;
+        }
+
         LOG.debug("presentBlit: blitting src={}x{} -> swapchain tex={} {}x{} (window {}x{})", srcW, srcH, tex, w, h, window, srcTexture);
         try (MemoryStack stack = stackPush()) {
             final long info = stack.ncalloc(SDL_GPUBlitInfo.ALIGNOF, 1, SDL_GPUBlitInfo.SIZEOF);
