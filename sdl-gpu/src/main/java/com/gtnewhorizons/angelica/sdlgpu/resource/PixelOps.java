@@ -37,6 +37,32 @@ public final class PixelOps {
             || sdlFormat == SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT;
     }
 
+    public static boolean isBcSdlFormat(int sdlFormat) {
+        return sdlFormat == SDL_GPU_TEXTUREFORMAT_BC1_RGBA_UNORM
+            || sdlFormat == SDL_GPU_TEXTUREFORMAT_BC1_RGBA_UNORM_SRGB
+            || sdlFormat == SDL_GPU_TEXTUREFORMAT_BC2_RGBA_UNORM
+            || sdlFormat == SDL_GPU_TEXTUREFORMAT_BC2_RGBA_UNORM_SRGB
+            || sdlFormat == SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM
+            || sdlFormat == SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM_SRGB;
+    }
+
+    /** Bytes per 4x4 block for a BC SDL format; 0 for non-BC formats. */
+    public static int bcBlockBytes(int sdlFormat) {
+        return switch (sdlFormat) {
+            case SDL_GPU_TEXTUREFORMAT_BC1_RGBA_UNORM, SDL_GPU_TEXTUREFORMAT_BC1_RGBA_UNORM_SRGB -> 8;
+            case SDL_GPU_TEXTUREFORMAT_BC2_RGBA_UNORM, SDL_GPU_TEXTUREFORMAT_BC2_RGBA_UNORM_SRGB,
+                 SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM, SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM_SRGB -> 16;
+            default -> 0;
+        };
+    }
+
+    /** Tightly packed byte size of a BC-compressed level region (texels, any dimension). */
+    public static long bcImageBytes(int blockBytes, int width, int height, int depth) {
+        final long blocksW = (width + 3L) >> 2;
+        final long blocksH = (height + 3L) >> 2;
+        return blocksW * blocksH * Math.max(1, depth) * blockBytes;
+    }
+
     public static boolean isDepthStencilFormat(int sdlFormat) {
         return sdlFormat == SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT || sdlFormat == SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT;
     }

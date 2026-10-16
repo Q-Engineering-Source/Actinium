@@ -24,9 +24,12 @@ class GLDebugTest {
         );
         assertTrue(missing.getMessage().contains("test backend"));
 
+        // 3 = the backend has no GL debug channel (e.g. SDL GPU); accepted, not an error
+        assertDoesNotThrow(() -> GLDebug.requireInstalledCallback(3, "test backend"));
+
         assertThrows(
             IllegalStateException.class,
-            () -> GLDebug.requireInstalledCallback(3, "test backend")
+            () -> GLDebug.requireInstalledCallback(4, "test backend")
         );
     }
 

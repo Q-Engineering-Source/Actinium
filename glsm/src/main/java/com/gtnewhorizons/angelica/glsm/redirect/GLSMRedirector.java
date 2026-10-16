@@ -191,6 +191,8 @@ public class GLSMRedirector {
             .add("glGetLight")
             .add("glGetMaterial")
             .add("glGetTexLevelParameteri")
+            .add("glGetTexLevelParameterf")
+            .add("glGetBooleanv", "glGetBoolean")
             .add("glGetTexParameterf")
             .add("glGetTexParameteri")
             .add("glIsEnabled")
@@ -390,6 +392,8 @@ public class GLSMRedirector {
             .add("glValidateProgram")
             .add("glGetUniformLocation")
             .add("glGetAttribLocation")
+            .add("glGetUniformf")
+            .add("glGetUniformi")
             .add("glIsShader")
             .add("glIsProgram")
             .add("glUniform1f")
@@ -455,6 +459,7 @@ public class GLSMRedirector {
             .add("glFramebufferRenderbuffer")
             .add("glIsFramebuffer")
             .add("glIsRenderbuffer")
+            .add("glUniform1ui")
             .add("glBindBufferBase");
         Map<String, String> gl31 = RedirectMap.newMap()
             .add("glDrawElementsInstanced")
@@ -480,7 +485,8 @@ public class GLSMRedirector {
         Map<String, String> gl42 = RedirectMap.newMap()
             .add("glBindImageTexture")
             .add("glMemoryBarrier")
-            .add("glTexStorage2D");
+            .add("glTexStorage2D")
+            .add("glTexStorage3D");
         Map<String, String> gl43 = RedirectMap.newMap()
             .add("glDispatchCompute")
             .add("glClearBufferSubData")
@@ -489,6 +495,7 @@ public class GLSMRedirector {
             .add("glVertexAttribFormat")
             .add("glVertexAttribIFormat")
             .add("glVertexAttribBinding")
+            .add("glCopyImageSubData")
             .add("glMultiDrawElementsIndirect");
         Map<String, String> gl44 = RedirectMap.newMap()
             .add("glBufferStorage")
@@ -497,7 +504,15 @@ public class GLSMRedirector {
         Map<String, String> gl45 = RedirectMap.newMap()
             .add("glCreateBuffers")
             .add("glNamedBufferData")
-            .add("glNamedBufferSubData");
+            .add("glNamedBufferSubData")
+            .add("glBindTextureUnit")
+            .add("glGenerateTextureMipmap")
+            .add("glGetTextureLevelParameterf")
+            .add("glGetTextureLevelParameteri")
+            .add("glTextureParameterf")
+            .add("glTextureParameteri")
+            .add("glTextureStorage3D")
+            .add("glCopyTextureSubImage3D");
         Map<String, String> gl46 = RedirectMap.newMap()
             .add("glPolygonOffsetClamp")
             .add("glMultiDrawArraysIndirectCount")
@@ -860,9 +875,20 @@ public class GLSMRedirector {
             .add("glUniform2ARB")
             .add("glUniform3ARB")
             .add("glUniform4ARB")
+            .add("glUniform1fvARB", "glUniform1ARB")
+            .add("glUniform2fvARB", "glUniform2ARB")
+            .add("glUniform3fvARB", "glUniform3ARB")
+            .add("glUniform4fvARB", "glUniform4ARB")
+            .add("glUniform1ivARB", "glUniform1ARB")
+            .add("glUniform2ivARB", "glUniform2ARB")
+            .add("glUniform3ivARB", "glUniform3ARB")
+            .add("glUniform4ivARB", "glUniform4ARB")
             .add("glUniformMatrix2ARB", "glUniformMatrix2")
             .add("glUniformMatrix3ARB", "glUniformMatrix3")
             .add("glUniformMatrix4ARB", "glUniformMatrix4")
+            .add("glUniformMatrix2fvARB", "glUniformMatrix2")
+            .add("glUniformMatrix3fvARB", "glUniformMatrix3")
+            .add("glUniformMatrix4fvARB", "glUniformMatrix4")
             .add("glGetActiveUniformARB", "glGetActiveUniform")
             .add("glGetAttachedObjectsARB", "glGetAttachedShaders")
             .add("glGetShaderSourceARB", "glGetShaderSource")
@@ -968,6 +994,34 @@ public class GLSMRedirector {
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL32C glDeleteSync(J)V", "glDeleteSync");
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL15C nglMapBuffer(II)J", "nglMapBuffer");
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL32C nglMultiDrawElementsBaseVertex(IJIJIJ)V", "nglMultiDrawElementsBaseVertex");
+
+        // Exact-signature entries for calls whose LWJGL owner has additional overloads; a
+        // name-only mapping would retarget those overloads to methods that do not exist.
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL13 glCompressedTexImage3D(IIIIIIILjava/nio/ByteBuffer;)V", "glCompressedTexImage3D");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL13 glCompressedTexSubImage3D(IIIIIIIIILjava/nio/ByteBuffer;)V", "glCompressedTexSubImage3D");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL13 glGetCompressedTexImage(IILjava/nio/ByteBuffer;)V", "glGetCompressedTexImage");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL20 glGetUniformfv(IILjava/nio/FloatBuffer;)V", "glGetUniform");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL20 glUniform1iv(ILjava/nio/IntBuffer;)V", "glUniform1");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL20 glUniform2iv(ILjava/nio/IntBuffer;)V", "glUniform2");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL20 glUniform3iv(ILjava/nio/IntBuffer;)V", "glUniform3");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL20 glUniform4iv(ILjava/nio/IntBuffer;)V", "glUniform4");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL20 glUniform2fv(ILjava/nio/FloatBuffer;)V", "glUniform2");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL20 glUniformMatrix2fv(IZLjava/nio/FloatBuffer;)V", "glUniformMatrix2");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL43 glMultiDrawArraysIndirect(IJII)V", "glMultiDrawArraysIndirect");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL45 glCreateTextures(I)I", "glCreateTextures");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL45 glTextureSubImage3D(IIIIIIIIIILjava/nio/ByteBuffer;)V", "glTextureSubImage3D");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL45 glCompressedTextureSubImage3D(IIIIIIIIILjava/nio/ByteBuffer;)V", "glCompressedTextureSubImage3D");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL45C glClearTexSubImage(IIIIIIIIIILjava/nio/ByteBuffer;)V", "glClearTexSubImage");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL45C glGetTextureImage(IIIILjava/nio/ByteBuffer;)V", "glGetTextureImage");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL45C glGetCompressedTextureImage(IILjava/nio/ByteBuffer;)V", "glGetCompressedTextureImage");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL11C glTexParameterfv(II[F)V", "glTexParameterfv");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL11C glTexParameteriv(II[I)V", "glTexParameteriv");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL30C glTexParameterIiv(II[I)V", "glTexParameterIiv");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL30C glTexParameterIuiv(II[I)V", "glTexParameterIuiv");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL45C glTextureParameteriv(II[I)V", "glTextureParameteriv");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL45C glTextureParameterfv(II[F)V", "glTextureParameterfv");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL45C glTextureParameterIiv(II[I)V", "glTextureParameterIiv");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL45C glTextureParameterIuiv(II[I)V", "glTextureParameterIuiv");
 
         for (String owner : new String[]{"org/lwjgl/opengl/KHRDebug", "org/lwjgl/opengl/GL43", "org/lwjgl/opengl/GL43C"}) {
             GL_DESC_REDIRECTS.put(owner + " glObjectLabel(IILjava/lang/CharSequence;)V", "glObjectLabel");

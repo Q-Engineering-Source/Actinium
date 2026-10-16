@@ -13,6 +13,8 @@ import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL21;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL31;
+import org.lwjgl.opengl.EXTTextureCompressionS3TC;
+import org.lwjgl.opengl.EXTTextureSRGB;
 import org.lwjgl.sdl.SDL_GPUBufferCreateInfo;
 import org.lwjgl.sdl.SDL_GPUSamplerCreateInfo;
 import org.lwjgl.sdl.SDL_GPUTextureCreateInfo;
@@ -224,6 +226,10 @@ public final class ResourceManager {
     private static int defaultUsage(int sdlFormat) {
         if (isDepthFormat(sdlFormat)) {
             return SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+        }
+        // BC formats cannot be render targets on any SDL GPU driver
+        if (isBcFormat(sdlFormat)) {
+            return SDL_GPU_TEXTUREUSAGE_SAMPLER;
         }
         if (isIntegerFormat(sdlFormat)) {
             return SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ
@@ -2540,8 +2546,25 @@ public final class ResourceManager {
             case GL31.GL_RGBA8_SNORM -> SDL_GPU_TEXTUREFORMAT_R8G8B8A8_SNORM;
             case GL31.GL_RGBA16_SNORM -> SDL_GPU_TEXTUREFORMAT_R16G16B16A16_SNORM;
             case GL31.GL_RGB16_SNORM -> SDL_GPU_TEXTUREFORMAT_R16G16B16A16_SNORM; // RGB SNORM -> RGBA SNORM promotion
+            case EXTTextureCompressionS3TC.GL_COMPRESSED_RGB_S3TC_DXT1_EXT,
+                 EXTTextureCompressionS3TC.GL_COMPRESSED_RGBA_S3TC_DXT1_EXT -> SDL_GPU_TEXTUREFORMAT_BC1_RGBA_UNORM;
+            case EXTTextureCompressionS3TC.GL_COMPRESSED_RGBA_S3TC_DXT3_EXT -> SDL_GPU_TEXTUREFORMAT_BC2_RGBA_UNORM;
+            case EXTTextureCompressionS3TC.GL_COMPRESSED_RGBA_S3TC_DXT5_EXT -> SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM;
+            case EXTTextureSRGB.GL_COMPRESSED_SRGB_S3TC_DXT1_EXT,
+                 EXTTextureSRGB.GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT -> SDL_GPU_TEXTUREFORMAT_BC1_RGBA_UNORM_SRGB;
+            case EXTTextureSRGB.GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT -> SDL_GPU_TEXTUREFORMAT_BC2_RGBA_UNORM_SRGB;
+            case EXTTextureSRGB.GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT -> SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM_SRGB;
             default -> SDL_GPU_TEXTUREFORMAT_INVALID;
         };
+    }
+
+    static boolean isBcFormat(int sdlFormat) {
+        return sdlFormat == SDL_GPU_TEXTUREFORMAT_BC1_RGBA_UNORM
+            || sdlFormat == SDL_GPU_TEXTUREFORMAT_BC1_RGBA_UNORM_SRGB
+            || sdlFormat == SDL_GPU_TEXTUREFORMAT_BC2_RGBA_UNORM
+            || sdlFormat == SDL_GPU_TEXTUREFORMAT_BC2_RGBA_UNORM_SRGB
+            || sdlFormat == SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM
+            || sdlFormat == SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM_SRGB;
     }
 
     private static boolean isDepthFormat(int sdlFormat) {

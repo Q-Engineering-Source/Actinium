@@ -207,6 +207,11 @@ public final class ContextState {
         return us;
     }
 
+    /** Lookup without allocating, for read-only paths (uniform value readback). */
+    public UniformStaging peekUniformStaging(ShaderManager.ProgramObject prog) {
+        return uniformStagingByProgram.get(prog);
+    }
+
     public void releaseUniformStaging(ShaderManager.ProgramObject prog) {
         final UniformStaging us = uniformStagingByProgram.remove(prog);
         if (us != null) us.free();

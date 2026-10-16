@@ -230,6 +230,24 @@ public class StubRenderBackend extends RenderBackend {
     @Override public int getTextureParameteri(int texture, int target, int pname) { throw new UnsupportedOperationException(); }
     @Override public float getTextureParameterf(int texture, int target, int pname) { throw new UnsupportedOperationException(); }
     @Override public int getTextureLevelParameteri(int texture, int level, int pname) { throw new UnsupportedOperationException(); }
+    @Override public void texStorage3D(int target, int levels, int internalFormat, int width, int height, int depth) { throw new UnsupportedOperationException(); }
+    @Override public void compressedTexImage3D(int target, int level, int internalFormat, int width, int height, int depth, int border, ByteBuffer pixels) { throw new UnsupportedOperationException(); }
+    @Override public void compressedTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, ByteBuffer pixels) { throw new UnsupportedOperationException(); }
+    @Override public void getCompressedTexImage(int target, int level, ByteBuffer pixels) { throw new UnsupportedOperationException(); }
+    @Override public void textureStorage3D(int texture, int levels, int internalFormat, int width, int height, int depth) { throw new UnsupportedOperationException(); }
+    @Override public void textureSubImage3D(int texture, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, int type, ByteBuffer pixels) { throw new UnsupportedOperationException(); }
+    @Override public void compressedTextureSubImage3D(int texture, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, ByteBuffer pixels) { throw new UnsupportedOperationException(); }
+    @Override public void copyTextureSubImage3D(int texture, int level, int xoffset, int yoffset, int zoffset, int x, int y, int width, int height) { throw new UnsupportedOperationException(); }
+    @Override public void clearTexSubImage(int texture, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, int type, ByteBuffer data) { throw new UnsupportedOperationException(); }
+    @Override public void textureParameterfv(int texture, int target, int pname, FloatBuffer params) { throw new UnsupportedOperationException(); }
+    @Override public void texParameterIiv(int target, int pname, IntBuffer params) { throw new UnsupportedOperationException(); }
+    @Override public void texParameterIuiv(int target, int pname, IntBuffer params) { throw new UnsupportedOperationException(); }
+    @Override public void textureParameterIiv(int texture, int target, int pname, IntBuffer params) { throw new UnsupportedOperationException(); }
+    @Override public void textureParameterIuiv(int texture, int target, int pname, IntBuffer params) { throw new UnsupportedOperationException(); }
+    @Override public void getTextureImage(int texture, int level, int format, int type, ByteBuffer pixels) { throw new UnsupportedOperationException(); }
+    @Override public void getCompressedTextureImage(int texture, int level, ByteBuffer pixels) { throw new UnsupportedOperationException(); }
+    @Override public void multiDrawArraysIndirect(int mode, long indirect, int drawcount, int stride) { throw new UnsupportedOperationException(); }
+    @Override public void uniform1ui(int location, int v0) { throw new UnsupportedOperationException(); }
     @Override public int getInteger(int pname) { throw new UnsupportedOperationException(); }
     @Override public void getInteger(int pname, IntBuffer params) { throw new UnsupportedOperationException(); }
     @Override public int getIntegerIndexed(int pname, int index) { throw new UnsupportedOperationException(); }

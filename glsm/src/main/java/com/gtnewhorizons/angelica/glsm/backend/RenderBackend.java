@@ -345,6 +345,7 @@ public abstract class RenderBackend {
     public void drawElements(int mode, ShortBuffer indices) {}
     public void drawElements(int mode, int count, int type, ByteBuffer indices) {}
     public abstract void multiDrawElementsIndirect(int mode, int type, long indirect, int drawcount, int stride);
+    public abstract void multiDrawArraysIndirect(int mode, long indirect, int drawcount, int stride);
     public void multiDrawArraysIndirectCount(int mode, long indirect, long drawcount, int maxdrawcount, int stride) { throw new UnsupportedOperationException(getName() + ": indirect draw-count buffers unsupported"); }
     public void multiDrawElementsIndirectCount(int mode, int type, long indirect, long drawcount, int maxdrawcount, int stride) { throw new UnsupportedOperationException(getName() + ": indirect draw-count buffers unsupported"); }
     public abstract void copyBufferSubData(int readTarget, int writeTarget, long readOffset, long writeOffset, long size);
@@ -463,6 +464,10 @@ public abstract class RenderBackend {
     public void copyTexImage2D(int target, int level, int internalFormat, int x, int y, int width, int height, int border) {}
     public void copyTexSubImage1D(int target, int level, int xoffset, int x, int y, int width) {}
     public void copyTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int x, int y, int width, int height) {}
+    public abstract void texStorage3D(int target, int levels, int internalFormat, int width, int height, int depth);
+    public abstract void compressedTexImage3D(int target, int level, int internalFormat, int width, int height, int depth, int border, ByteBuffer pixels);
+    public abstract void compressedTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, ByteBuffer pixels);
+    public abstract void getCompressedTexImage(int target, int level, ByteBuffer pixels);
     public abstract void texParameteri(int target, int pname, int param);
     public abstract void texParameterf(int target, int pname, float param);
     public abstract void texParameteriv(int target, int pname, IntBuffer params);
@@ -584,6 +589,7 @@ public abstract class RenderBackend {
     }
 
     public abstract void uniform1i(int location, int v0);
+    public abstract void uniform1ui(int location, int v0);
     public abstract void uniform1f(int location, float v0);
     public void uniform1fv(int location, FloatBuffer values) {}
     public void uniform1fv(int location, float[] values) {}
@@ -729,6 +735,21 @@ public abstract class RenderBackend {
     public abstract float getTextureParameterf(int texture, int target, int pname);
     public abstract int getTextureLevelParameteri(int texture, int level, int pname);
 
+    /** DSA immutable 3D storage allocation (GL45 glTextureStorage3D). */
+    public abstract void textureStorage3D(int texture, int levels, int internalFormat, int width, int height, int depth);
+    public abstract void textureSubImage3D(int texture, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, int type, ByteBuffer pixels);
+    public abstract void compressedTextureSubImage3D(int texture, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, ByteBuffer pixels);
+    public abstract void copyTextureSubImage3D(int texture, int level, int xoffset, int yoffset, int zoffset, int x, int y, int width, int height);
+    /** {@code data} holds a single clear pixel in {@code format}/{@code type}, or is null for zero. */
+    public abstract void clearTexSubImage(int texture, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, int type, ByteBuffer data);
+    public abstract void textureParameterfv(int texture, int target, int pname, FloatBuffer params);
+    public abstract void texParameterIiv(int target, int pname, IntBuffer params);
+    public abstract void texParameterIuiv(int target, int pname, IntBuffer params);
+    public abstract void textureParameterIiv(int texture, int target, int pname, IntBuffer params);
+    public abstract void textureParameterIuiv(int texture, int target, int pname, IntBuffer params);
+    public abstract void getTextureImage(int texture, int level, int format, int type, ByteBuffer pixels);
+    public abstract void getCompressedTextureImage(int texture, int level, ByteBuffer pixels);
+
     public abstract int getInteger(int pname);
     public abstract void getInteger(int pname, IntBuffer params);
     public void getInteger(int pname, int[] params) { if (params.length > 0) params[0] = getInteger(pname); }
@@ -781,6 +802,13 @@ public abstract class RenderBackend {
 
     // Debug output
     public boolean supportsDebugOutput() { return false; }
+
+    /**
+     * Installs a GL-style debug message callback.
+     *
+     * @return 1 = installed on a debug context, 2 = installed without the debug flag, 3 = the
+     * backend has no GL debug channel (not an error), anything else = installation failed
+     */
     public int setupDebugOutput(DebugMessageHandler handler) { return 0; }
     public int disableDebugOutput() { return 0; }
 
