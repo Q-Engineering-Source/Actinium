@@ -4377,6 +4377,11 @@ public class SDLGPURenderBackend extends RenderBackend {
         uploadCompressed2D(glId, level, 0, 0, width, height, pixels);
     }
 
+    @Override public void compressedTexImage2D(int target, int level, int internalFormat, int width, int height, int border, int imageSize, long data) {
+        compressedTexImage2D(target, level, internalFormat, width, height, border,
+            data != 0 && imageSize > 0 ? MemoryUtil.memByteBuffer(data, imageSize) : null);
+    }
+
     /** 2D BC payload: same block-packed layout as the SDL upload, no conversion. */
     private void uploadCompressed2D(int glId, int level, int x, int y, int w, int h, ByteBuffer pixels) {
         if (pixels == null) return;

@@ -1063,6 +1063,11 @@ public class GLSMRedirector {
         // FluxLoading's loading-shader state queries (owners have buffer-type overloads)
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL15 glGetQueryObject(IILjava/nio/IntBuffer;)V", "glGetQueryObject");
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL20 glGetVertexAttrib(IILjava/nio/IntBuffer;)V", "glGetVertexAttrib");
+        // LWJGL helper classes are core-excluded from transformation, so these fire at the call
+        // sites in mod classes (xaero, Distant Horizons) instead
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/Util checkGLError()V", "checkGLError");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GLUtil setupDebugMessageCallback(Ljava/io/PrintStream;)Lorg/lwjgl/system/Callback;", "setupDebugMessageCallback");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL13 glCompressedTexImage2D(IIIIIIIJ)V", "glCompressedTexImage2D");
 
         for (String owner : new String[]{"org/lwjgl/opengl/KHRDebug", "org/lwjgl/opengl/GL43", "org/lwjgl/opengl/GL43C"}) {
             GL_DESC_REDIRECTS.put(owner + " glObjectLabel(IILjava/lang/CharSequence;)V", "glObjectLabel");

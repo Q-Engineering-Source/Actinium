@@ -161,6 +161,22 @@ class GLStateManagerRedirectContractTest {
         }
     }
 
+    /** LWJGL helper call-site batch: redirect targets must exist on GLStateManager. */
+    @Test
+    void lwjglHelperBatchEntryPointsExist() throws IOException {
+        String[][] sigs = {
+            {"checkGLError", "()V"},
+            {"setupDebugMessageCallback", "(Ljava/io/PrintStream;)Lorg/lwjgl/system/Callback;"},
+            {"glCompressedTexImage2D", "(IIIIIIIJ)V"},
+        };
+        for (String[] sig : sigs) {
+            assertTrue(
+                methodDescriptors(sig[0]).contains(sig[1]),
+                "GLStateManager must expose " + sig[0] + sig[1] + ": the GL redirector rewrites calls to it"
+            );
+        }
+    }
+
     /** FluxLoading batch: every signature the redirector can produce must exist on GLStateManager. */
     @Test
     void fluxLoadingBatchEntryPointsExist() throws IOException {

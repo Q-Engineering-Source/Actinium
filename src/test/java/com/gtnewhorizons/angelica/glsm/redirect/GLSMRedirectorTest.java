@@ -377,6 +377,22 @@ class GLSMRedirectorTest {
     }
 
     /**
+     * LWJGL helper classes (Util/GLUtil) are core-excluded from transformation, so their GL-issuing
+     * calls are intercepted at the call sites inside mod classes (xaero, Distant Horizons).
+     */
+    @Test
+    void rewritesLwjglHelperCallSitesToGlsm() {
+        String[][] cases = {
+            {"org/lwjgl/opengl/Util", "checkGLError", "()V", "checkGLError"},
+            {"org/lwjgl/opengl/GLUtil", "setupDebugMessageCallback", "(Ljava/io/PrintStream;)Lorg/lwjgl/system/Callback;", "setupDebugMessageCallback"},
+            {"org/lwjgl/opengl/GL13", "glCompressedTexImage2D", "(IIIIIIIJ)V", "glCompressedTexImage2D"},
+        };
+        for (String[] c : cases) {
+            assertRedirectedToGlsm(c[0], c[1], c[2], c[3]);
+        }
+    }
+
+    /**
      * FluxLoading's loading shader queries GL directly during world load; all six calls must land
      * on the GLSM entry points instead of the sentinel GL pointers.
      */
