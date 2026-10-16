@@ -1022,6 +1022,12 @@ public class GLSMRedirector {
         // which crashes on backends that own no real GL context (com.hbm.render.GLCompat).
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GLContext getCapabilities()Lorg/lwjgl/opengl/ContextCapabilities;", "currentContextCapabilities");
 
+        // Display.update has an update(boolean) overload the game loop keeps using, so only the
+        // no-arg splash/mod call sites are retargeted: the backend claims the swap (SDL presents,
+        // including splash frames), GL backends fall through to the ordinary LWJGL update.
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/Display update()V", "glsmDisplayUpdate");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/Display swapBuffers()V", "glsmDisplaySwapBuffers");
+
         // Exact-signature entries for calls whose LWJGL owner has additional overloads; a
         // name-only mapping would retarget those overloads to methods that do not exist.
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL13 glCompressedTexImage3D(IIIIIIILjava/nio/ByteBuffer;)V", "glCompressedTexImage3D");

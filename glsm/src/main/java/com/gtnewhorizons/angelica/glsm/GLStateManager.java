@@ -3256,6 +3256,24 @@ public class GLStateManager {
         RENDER_BACKEND.pumpDisplayMessages();
     }
 
+    /**
+     * Rewritten target of no-arg {@code Display.update()} call sites (splash and mod code): the
+     * backend claims the swap (the SDL backend presents, including splash frames); otherwise the
+     * ordinary LWJGL update runs, swap plus message pump.
+     */
+    public static void glsmDisplayUpdate() {
+        if (!RENDER_BACKEND.handleSwapBuffers()) {
+            Display.update(true);
+        }
+    }
+
+    /** Rewritten target of {@code Display.swapBuffers()} call sites; same claim order, no pump. */
+    public static void glsmDisplaySwapBuffers() {
+        if (!RENDER_BACKEND.handleSwapBuffers()) {
+            Display.update(false);
+        }
+    }
+
     /** Full pre-draw preparation for an indexed/unprepared draw of the given GL primitive mode. */
     public static void preDraw(int drawMode) {
         prepareWideLineEmulation(drawMode);
