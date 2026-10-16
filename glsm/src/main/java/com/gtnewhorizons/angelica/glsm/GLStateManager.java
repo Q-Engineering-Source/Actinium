@@ -665,6 +665,11 @@ public class GLStateManager {
         }
     }
 
+    public static void requireContext(String call) {
+        if (Thread.currentThread() == MainThread || Thread.currentThread() == drawableGLHolder) return;
+        throw new IllegalStateException(call + " on thread " + Thread.currentThread().getName() + ", which has no GL context");
+    }
+
     public static boolean shouldBypassCache() {
         // Bypass cache when not using the main DrawableGL context
         return BYPASS_CACHE || !isCachingEnabled();
