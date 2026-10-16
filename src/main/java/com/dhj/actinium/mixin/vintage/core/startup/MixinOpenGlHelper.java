@@ -10,14 +10,19 @@ import com.gtnewhorizons.angelica.glsm.hooks.GLSMInitConfig;
 import com.gtnewhorizons.angelica.glsm.streaming.StreamingUploader;
 import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
 import com.dhj.actinium.config.ActiniumRuntimeOptions;
+import com.dhj.actinium.render.sdlgpu.SdlGpuHostGlCapabilities;
+import com.gtnewhorizons.angelica.sdlgpu.SDLGPUGate;
 import net.coderbot.iris.Iris;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.OpenGlHelper;
+import org.lwjgl.opengl.ContextCapabilities;
 import org.lwjgl.opengl.Display;
+import org.lwjgl.opengl.GLContext;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.render.BufferBuilderStreamingDrawer;
@@ -25,6 +30,29 @@ import com.dhj.actinium.render.EndPortalCompositeRenderer;
 
 @Mixin(value = OpenGlHelper.class, priority = 100)
 public class MixinOpenGlHelper {
+    /**
+     * SDL GPU: after the backend claims the window no usable GL context remains, and LWJGLY's
+     * {@link GLContext#getCapabilities()} probes the driver natively, which crashes the JVM. Answer
+     * vanilla's capability probe with the real host capabilities captured at display-creation time.
+     */
+    @Redirect(
+        method = "initializeTextures",
+        at = @At(
+            value = "INVOKE",
+            target = "Lorg/lwjgl/opengl/GLContext;getCapabilities()Lorg/lwjgl/opengl/ContextCapabilities;"
+        )
+    )
+    private static ContextCapabilities celeritas$sdlGpuHostCapabilities() {
+        if (!SDLGPUGate.isActive()) {
+            return GLContext.getCapabilities();
+        }
+        ContextCapabilities captured = SdlGpuHostGlCapabilities.captured();
+        if (captured == null) {
+            throw new IllegalStateException("SDL GPU is active but the host GL capabilities were never captured");
+        }
+        return captured;
+    }
+
     @Inject(method = "initializeTextures", at = @At("RETURN"))
     private static void celeritas$initializeGLStateManager(CallbackInfo ci) {
         final Minecraft mc = Minecraft.getMinecraft();

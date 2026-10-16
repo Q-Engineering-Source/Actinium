@@ -3,6 +3,7 @@ package com.dhj.actinium.mixin.vintage.core.startup;
 import com.dhj.actinium.debug.ActiniumStartupDebugConfig;
 import com.dhj.actinium.debug.CoreProfileContextAttributes;
 import com.dhj.actinium.debug.OpenGlVersion;
+import com.dhj.actinium.render.sdlgpu.SdlGpuHostGlCapabilities;
 import com.gtnewhorizons.angelica.sdlgpu.SDLGPUGate;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.client.ForgeHooksClient;
@@ -81,6 +82,9 @@ public abstract class MixinMinecraftCoreProfileDisplay {
                 );
                 continue;
             }
+            // The host GL context is still current here; capture its capabilities before the backend
+            // claims the window, so vanilla's own probe in initializeTextures can be answered later.
+            SdlGpuHostGlCapabilities.capture();
             SDLGPUGate.handOverWindow();
             celeritas$LOGGER.info("SDL GPU display is up; the OpenGL engine paths are replaced by the backend");
             ci.cancel();
