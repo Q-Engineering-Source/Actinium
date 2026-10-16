@@ -276,6 +276,7 @@ public final class Device {
             throw new RuntimeException("Failed to claim window for SDL GPU device: " + SDLError.SDL_GetError());
         }
         claimed = true;
+        sdlWindowHandle = window;
         windowThread = Thread.currentThread();
 
         if (!SDL_SetGPUAllowedFramesInFlight(device, FRAMES_IN_FLIGHT)) {
@@ -284,8 +285,8 @@ public final class Device {
             LOG.info("SDL frames-in-flight set to {}", FRAMES_IN_FLIGHT);
         }
 
-        // The SDL window wraps an external (GLFW-created) window; SDL does not know it is shown,
-        // and the Vulkan backend's swapchain acquire waits while the window is not marked visible.
+        // The host may have left its window hidden; the Vulkan backend's swapchain acquire waits
+        // while the window is not marked visible.
         if (!SDL_ShowWindow(window)) {
             LOG.warn("SDL_ShowWindow failed: {}", SDLError.SDL_GetError());
         }
