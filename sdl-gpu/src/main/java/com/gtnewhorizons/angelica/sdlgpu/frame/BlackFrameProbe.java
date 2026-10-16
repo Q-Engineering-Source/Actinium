@@ -65,6 +65,14 @@ public final class BlackFrameProbe {
         int emptyFrames;
         int stateApplies;
         long gpuWaitNanos;
+        long uniformPushBytes;
+        int uniformPushes;
+        int uniformPushSkips;
+        int externalUboPushes;
+        int externalUboPushSkips;
+        int perFrameBlockPassBreaks;
+        final int[] uniformBlockFlushes = new int[2];
+        final long[] uniformBlockBytes = new long[2];
         final int[] passEndCauses = new int[FrameManager.PASS_END_CAUSE_COUNT];
 
         Stats(FrameManager.FrameState f, int boundFbo) {
@@ -81,6 +89,14 @@ public final class BlackFrameProbe {
             emptyFrames = f.emptyFramesThisFrame;
             stateApplies = f.stateAppliesThisFrame;
             gpuWaitNanos = f.gpuWaitNanosThisFrame;
+            uniformPushBytes = f.uniformPushBytesThisFrame;
+            uniformPushes = f.uniformPushesThisFrame;
+            uniformPushSkips = f.uniformPushSkipsThisFrame;
+            externalUboPushes = f.externalUboPushesThisFrame;
+            externalUboPushSkips = f.externalUboPushSkipsThisFrame;
+            perFrameBlockPassBreaks = f.perFrameBlockPassBreaksThisFrame;
+            System.arraycopy(f.uniformBlockFlushesThisFrame, 0, uniformBlockFlushes, 0, 2);
+            System.arraycopy(f.uniformBlockBytesThisFrame, 0, uniformBlockBytes, 0, 2);
             System.arraycopy(f.passEndCauseCountsThisFrame, 0, passEndCauses, 0, passEndCauses.length);
         }
     }
@@ -200,10 +216,12 @@ public final class BlackFrameProbe {
             final long report = tracker.onPixel(s.frameNumber, isBlack(pixel));
             if (report != 0) {
                 final Stats st = s.stats;
-                LOG.warn("black frame probe: frame {} black center pixel (boundFbo={} swapchainPasses={} clearPasses={} inPassClears={} matClears={} fboPasses={} blits={} submits={} midSubmits={} empty={} stateApplies={} gpuWaitUs={} passEnds={})",
+                LOG.warn("black frame probe: frame {} black center pixel (boundFbo={} swapchainPasses={} clearPasses={} inPassClears={} matClears={} fboPasses={} blits={} submits={} midSubmits={} empty={} stateApplies={} gpuWaitUs={} uboPushes={} uboSkips={} extUbo={} extSkips={} blockBreaks={} blockFlushes={} passEnds={})",
                     report, st.boundFbo, st.swapchainPasses, st.clearPasses, st.inPassClears, st.materializedClears,
                     st.fboPasses, st.blits, st.submits, st.midFrameSubmits, st.emptyFrames, st.stateApplies,
-                    st.gpuWaitNanos / 1000L, Arrays.toString(st.passEndCauses));
+                    st.gpuWaitNanos / 1000L, st.uniformPushes, st.uniformPushSkips, st.externalUboPushes,
+                    st.externalUboPushSkips, st.perFrameBlockPassBreaks, Arrays.toString(st.uniformBlockFlushes),
+                    Arrays.toString(st.passEndCauses));
             }
         }
     }
