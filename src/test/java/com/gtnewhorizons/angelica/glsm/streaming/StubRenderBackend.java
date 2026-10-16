@@ -232,6 +232,7 @@ public class StubRenderBackend extends RenderBackend {
     @Override public int getTextureLevelParameteri(int texture, int level, int pname) { throw new UnsupportedOperationException(); }
     @Override public void texStorage3D(int target, int levels, int internalFormat, int width, int height, int depth) { throw new UnsupportedOperationException(); }
     @Override public void compressedTexImage3D(int target, int level, int internalFormat, int width, int height, int depth, int border, ByteBuffer pixels) { throw new UnsupportedOperationException(); }
+    @Override public void compressedTexImage2D(int target, int level, int internalFormat, int width, int height, int border, ByteBuffer pixels) { throw new UnsupportedOperationException(); }
     @Override public void compressedTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, ByteBuffer pixels) { throw new UnsupportedOperationException(); }
     @Override public void getCompressedTexImage(int target, int level, ByteBuffer pixels) { throw new UnsupportedOperationException(); }
     @Override public void textureStorage3D(int texture, int levels, int internalFormat, int width, int height, int depth) { throw new UnsupportedOperationException(); }

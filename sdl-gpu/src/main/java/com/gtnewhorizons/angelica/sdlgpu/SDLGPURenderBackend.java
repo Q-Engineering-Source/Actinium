@@ -4295,6 +4295,33 @@ public class SDLGPURenderBackend extends RenderBackend {
         }
         uploadCompressed3D(glId, level, 0, 0, 0, width, height, depth, pixels);
     }
+    @Override public void compressedTexImage2D(int target, int level, int internalFormat, int width, int height, int border, ByteBuffer pixels) {
+        final ContextState st = s();
+        if (isProxyTarget(target)) {
+            recordProxyTexImage(st, target, level, internalFormat, width, height, 1);
+            return;
+        }
+        final int glId = st.boundTextures[st.activeTextureUnit];
+        if (glId == 0) return;
+        if (level == 0) {
+            ensureLevel0Storage(st, glId, target, internalFormat, width, height, 1, GL11.GL_NONE, true);
+        } else if (!growForLevel(glId, level)) {
+            return;
+        }
+        uploadCompressed2D(glId, level, 0, 0, width, height, pixels);
+    }
+
+    /** 2D BC payload: same block-packed layout as the SDL upload, no conversion. */
+    private void uploadCompressed2D(int glId, int level, int x, int y, int w, int h, ByteBuffer pixels) {
+        if (pixels == null) return;
+        final long texHandle = resourceManager.getTextureHandle(glId);
+        if (texHandle == 0 || frameManager.getCommandBuffer() == 0) return;
+        final ResourceManager.TextureMeta meta = resourceManager.getTextureMeta(glId);
+        if (meta == null || level >= meta.levels()) return;
+        final long cp = frameManager.ensureCopyPass();
+        if (cp == 0) return;
+        resourceManager.uploadToTexture(cp, pixels, texHandle, x, y, w, h, level);
+    }
     @Override public void compressedTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, ByteBuffer pixels) {
         uploadCompressed3D(boundTextureFor(s(), target), level, xoffset, yoffset, zoffset, width, height, depth, pixels);
     }

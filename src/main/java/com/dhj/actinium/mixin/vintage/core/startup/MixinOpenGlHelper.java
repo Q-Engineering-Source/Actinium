@@ -13,14 +13,11 @@ import com.dhj.actinium.config.ActiniumRuntimeOptions;
 import net.coderbot.iris.Iris;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.OpenGlHelper;
-import org.lwjgl.opengl.ContextCapabilities;
 import org.lwjgl.opengl.Display;
-import org.lwjgl.opengl.GLContext;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.render.BufferBuilderStreamingDrawer;
@@ -28,21 +25,9 @@ import com.dhj.actinium.render.EndPortalCompositeRenderer;
 
 @Mixin(value = OpenGlHelper.class, priority = 100)
 public class MixinOpenGlHelper {
-    /**
-     * SDL GPU: after the backend claims the window no usable GL context remains, and LWJGLY's
-     * {@link GLContext#getCapabilities()} probes the driver natively, which crashes the JVM. Such a
-     * backend supplies a capabilities override captured while the host context was still current.
-     */
-    @Redirect(
-        method = "initializeTextures",
-        at = @At(
-            value = "INVOKE",
-            target = "Lorg/lwjgl/opengl/GLContext;getCapabilities()Lorg/lwjgl/opengl/ContextCapabilities;"
-        )
-    )
-    private static ContextCapabilities celeritas$backendCapabilities() {
-        return GLStateManager.currentContextCapabilities();
-    }
+    // GLContext.getCapabilities() call sites (including the one in initializeTextures) are rewritten
+    // to GLStateManager.currentContextCapabilities() by the GLSM ASM redirector, so no @Redirect is
+    // needed here — and keeping one would fail injection once the ASM pass removes its target.
 
     @Inject(method = "initializeTextures", at = @At("RETURN"))
     private static void celeritas$initializeGLStateManager(CallbackInfo ci) {

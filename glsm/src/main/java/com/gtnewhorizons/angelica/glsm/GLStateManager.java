@@ -5755,6 +5755,16 @@ public class GLStateManager {
         gpuCheckpoint(GpuCommandType.TEX_SUB_IMAGE_3D);
     }
 
+    public static void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height, int border, ByteBuffer pixels) {
+        final int texture = getBoundTextureForGpuDiagnostics();
+        recordGpuCommand(GpuCommandType.TEX_IMAGE_2D, GpuCommandPhase.BEGIN, texture, packDimensions(width, height));
+        suspendPixelUnpackBuffer();
+        RENDER_BACKEND.compressedTexImage2D(target, level, internalFormat, width, height, border, pixels);
+        restorePixelUnpackBuffer();
+        recordGpuCommand(GpuCommandType.TEX_IMAGE_2D, GpuCommandPhase.END, texture, packDimensions(width, height));
+        gpuCheckpoint(GpuCommandType.TEX_IMAGE_2D);
+    }
+
     public static void glCompressedTexImage3D(int target, int level, int internalFormat, int width, int height, int depth, int border, ByteBuffer pixels) {
         final int texture = getBoundTextureForGpuDiagnostics();
         recordGpuCommand(GpuCommandType.TEX_IMAGE_3D, GpuCommandPhase.BEGIN, texture, packDimensions(width, height));

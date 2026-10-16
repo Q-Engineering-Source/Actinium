@@ -465,6 +465,7 @@ public abstract class RenderBackend {
     public void copyTexSubImage1D(int target, int level, int xoffset, int x, int y, int width) {}
     public void copyTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int x, int y, int width, int height) {}
     public abstract void texStorage3D(int target, int levels, int internalFormat, int width, int height, int depth);
+    public abstract void compressedTexImage2D(int target, int level, int internalFormat, int width, int height, int border, ByteBuffer pixels);
     public abstract void compressedTexImage3D(int target, int level, int internalFormat, int width, int height, int depth, int border, ByteBuffer pixels);
     public abstract void compressedTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, ByteBuffer pixels);
     public abstract void getCompressedTexImage(int target, int level, ByteBuffer pixels);
