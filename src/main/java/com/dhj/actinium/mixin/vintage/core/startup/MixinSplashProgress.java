@@ -5,7 +5,6 @@ import com.gtnewhorizons.angelica.glsm.recording.ImmediateModeRecorder;
 import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
 import com.dhj.actinium.render.BufferBuilderStreamingDrawer;
 import com.dhj.actinium.render.VanillaVertexBufferRenderer;
-import com.gtnewhorizons.angelica.sdlgpu.SDLGPUGate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11;
@@ -39,24 +38,6 @@ public class MixinSplashProgress {
     @Inject(method = "start", at = @At("HEAD"))
     private static void celeritas$initSplashTessellator(CallbackInfo ci) {
         ImmediateModeRecorder.initSplashTessellator();
-    }
-
-    /**
-     * Disables the FML splash on the SDL backend.
-     *
-     * <p>Forge's splash renders through a GL shared context, which does not exist once the SDL
-     * backend owns the window. Cancelling {@code start()} at HEAD leaves {@code enabled} at its
-     * false default, so {@code finish()}, {@code drawVanillaScreen()} and friends all take
-     * Forge's own {@code !enabled} early returns. A HEAD inject is used instead of redirecting
-     * the {@code getBool("enabled")} read because splash replacers like ModernSplash swap the
-     * whole class body (their {@code CustomSplash.start()} has no such call), and a HEAD inject
-     * has no instruction target to miss. The SDL backend presents its own startup screen.</p>
-     */
-    @Inject(method = "start", at = @At("HEAD"), cancellable = true)
-    private static void celeritas$sdlDisableSplash(CallbackInfo ci) {
-        if (SDLGPUGate.isEngaged()) {
-            ci.cancel();
-        }
     }
 
     @Inject(method = "finish", at = @At("RETURN"))
