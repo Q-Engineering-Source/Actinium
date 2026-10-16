@@ -200,6 +200,40 @@ class GLSMRedirectorTest {
         assertEquals(false, driverCallSurvived, "no driver-side EXTTimerQuery call may survive the rewrite");
     }
 
+    /**
+     * Distant Horizons probes the current GL context through GLFW's static entry point, which does
+     * not exist on LWJGLY-era runtimes; the call has to land on the window-system facade instead.
+     */
+    @Test
+    void rewritesGlfwCurrentContextProbeToTheWindowSystemFacade() {
+        byte[] classBytes = generateClassCallingGlfwCurrentContext();
+        GLSMRedirector redirector = new GLSMRedirector();
+
+        assertTrue(redirector.shouldTransform(classBytes), "class referencing GLFW.glfwGetCurrentContext must be a redirect candidate");
+
+        ClassNode cn = new ClassNode();
+        new ClassReader(classBytes).accept(cn, 0);
+        assertTrue(redirector.transformClassNode("sample/GLProxy", cn), "GLFW.glfwGetCurrentContext must be rewritten");
+
+        MethodNode probe = cn.methods.stream()
+            .filter(m -> m.name.equals("probe"))
+            .findFirst()
+            .orElseThrow();
+        boolean redirected = false;
+        boolean glfwCallSurvived = false;
+        for (AbstractInsnNode node : probe.instructions) {
+            if (node instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESTATIC) {
+                if (call.owner.equals(GLSM_GL_STATE_MANAGER) && call.name.equals("currentContext") && call.desc.equals("()J")) {
+                    redirected = true;
+                } else if (call.owner.equals("org/lwjgl/glfw/GLFW")) {
+                    glfwCallSurvived = true;
+                }
+            }
+        }
+        assertTrue(redirected, "GLFW.glfwGetCurrentContext must be redirected to GLSM GLStateManager.currentContext");
+        assertEquals(false, glfwCallSurvived, "no GLFW call may survive the rewrite");
+    }
+
     @Test
     void untouchedClassWithoutGlReferencesIsNotTransformed() {
         ClassWriter cw = new ClassWriter(0);
@@ -273,6 +307,20 @@ class GLSMRedirectorTest {
         mv.visitInsn(Opcodes.POP2);
         mv.visitInsn(Opcodes.RETURN);
         mv.visitMaxs(2, 1);
+        mv.visitEnd();
+        cw.visitEnd();
+        return cw.toByteArray();
+    }
+
+    private static byte[] generateClassCallingGlfwCurrentContext() {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "sample/GLProxy", null, "java/lang/Object", null);
+        MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "probe", "()V", null, null);
+        mv.visitCode();
+        mv.visitMethodInsn(Opcodes.INVOKESTATIC, "org/lwjgl/glfw/GLFW", "glfwGetCurrentContext", "()J", false);
+        mv.visitInsn(Opcodes.POP2);
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(2, 0);
         mv.visitEnd();
         cw.visitEnd();
         return cw.toByteArray();

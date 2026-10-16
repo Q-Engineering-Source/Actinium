@@ -65,6 +65,7 @@ public class GLSMRedirector {
 
     private static final String DRAWABLE = "org/lwjgl/opengl/Drawable";
     private static final String GL_STATE_MANAGER = "com/gtnewhorizons/angelica/glsm/GLStateManager";
+    private static final String GLFW = "org/lwjgl/glfw/GLFW";
     private static final String GL_PREFIX = "org/lwjgl/opengl/GL";
     private static final String ARB_VERTEX_ARRAY_OBJECT = "org/lwjgl/opengl/ARBVertexArrayObject";
     private static final String APPLE_VERTEX_ARRAY_OBJECT = "org/lwjgl/opengl/APPLEVertexArrayObject";
@@ -211,6 +212,7 @@ public class GLSMRedirector {
             .add("glLogicOp")
             .add("glMatrixMode")
             .add("glMultMatrix")
+            .add("glMultMatrixf", "glMultMatrix")
             .add("glNewList")
             .add("glNormal3b")
             .add("glNormal3d")
@@ -532,6 +534,11 @@ public class GLSMRedirector {
             .add("func_77475_a", "setLightmapTextureCoords")
             .add("isFramebufferEnabled")
             .add("func_148822_b", "isFramebufferEnabled")
+        );
+        // LWJGLY-era runtimes carry no org.lwjgl.glfw classes at all, so third-party GLFW probes
+        // (Distant Horizons' GLProxy.runningOnRenderThread) would NoClassDefFoundError there.
+        METHOD_REDIRECTS.put(GLFW, RedirectMap.newMap()
+            .add("glfwGetCurrentContext", "currentContext")
         );
         METHOD_REDIRECTS.put(VANILLA_GL_STATE_MANAGER, RedirectMap.newMap()
             .add("pushAttrib", "glPushAttrib")

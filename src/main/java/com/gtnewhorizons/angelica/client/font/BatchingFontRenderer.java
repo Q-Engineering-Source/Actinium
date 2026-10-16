@@ -4,6 +4,7 @@ import com.gtnewhorizon.gtnhlib.bytebuf.MemoryStack;
 import com.gtnewhorizon.gtnhlib.client.renderer.vao.IndexBuffer;
 import com.gtnewhorizons.angelica.config.FontConfig;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.backend.WindowSystem;
 import com.gtnewhorizons.angelica.glsm.streaming.StreamingUploader;
 import com.gtnewhorizons.angelica.glsm.states.Color4;
 import com.gtnewhorizons.angelica.mixins.interfaces.FontRendererAccessor;
@@ -22,7 +23,6 @@ import dhj.embeddedt.embeddium.impl.render.shader.ShaderLoader;
 import org.joml.Matrix4f;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
@@ -175,13 +175,13 @@ public class BatchingFontRenderer {
 
 
     private static boolean hasCurrentGlContext() {
-        // The SDL backend presents without a GL context, so the GLFW query below would always fail
-        // and the batcher would refuse to draw. Gated on the engaged window so the GL path keeps
-        // its context check.
+        // The SDL backend presents without a GL context, so the window-system query below would
+        // always fail and the batcher would refuse to draw. Gated on the engaged window so the GL
+        // path keeps its context check.
         if (SDLGPUGate.isEngaged()) {
             return true;
         }
-        final boolean current = GLFW.glfwGetCurrentContext() != 0L;
+        final boolean current = WindowSystem.currentContext() != 0L;
         if (!current) {
             LOGGER.error("Font rendering attempted without a current OpenGL context on thread {}", Thread.currentThread().getName());
         }

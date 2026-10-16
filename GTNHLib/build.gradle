@@ -2,6 +2,7 @@ import java.util.Locale
 
 plugins {
     id 'java-library'
+    id 'com.cleanroommc.cleanroomgradle'
 }
 
 repositories {
@@ -60,11 +61,20 @@ if (lwjglNatives == null) {
     throw new GradleException("Unsupported test platform: ${osName}/${osArchitecture}")
 }
 
+def lwjglVersion = rootProject.ext.lwjglVersion
+
 dependencies {
+    // Minecraft, the loader and the Mixin runtime, materialized from Cleanroom by the userdev.
+    compileOnly cleanroom.userdev(rootProject.property('cleanroom_version')) {
+        if (rootProject.ext.actiniumAccessTransformer != null) {
+            accessTransformers.from(rootProject.ext.actiniumAccessTransformer)
+        }
+    }
+
     testImplementation 'org.junit.jupiter:junit-jupiter:6.0.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-    testImplementation 'org.lwjgl:lwjgl:3.4.1'
-    testRuntimeOnly "org.lwjgl:lwjgl:3.4.1:${lwjglNatives}"
+    testImplementation "org.lwjgl:lwjgl:${lwjglVersion}"
+    testRuntimeOnly "org.lwjgl:lwjgl:${lwjglVersion}:${lwjglNatives}"
 }
 
 tasks.named('test', Test).configure {

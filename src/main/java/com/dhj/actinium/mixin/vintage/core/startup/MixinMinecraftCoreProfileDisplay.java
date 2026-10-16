@@ -97,8 +97,10 @@ public abstract class MixinMinecraftCoreProfileDisplay {
             for (int minor = startMinor; minor >= endMinor; --minor) {
                 // LWJGLXX ignores ContextAttribs and reads these fields instead, so keep them in sync on every platform.
                 CoreProfileContextAttributes.applyForgeEarlyCoreProfile(major, minor, lwjglDebug);
-                ContextAttribs attribs = CoreProfileContextAttributes.create(major, minor, lwjglDebug);
                 try {
+                    // LWJGLY 2.0 caps ContextAttribs at GL 4.5 and throws on construction, so a rejected
+                    // version must fall through to the next candidate exactly like a driver failure.
+                    ContextAttribs attribs = CoreProfileContextAttributes.create(major, minor, lwjglDebug);
                     celeritas$createDisplay(format, attribs);
                 } catch (Exception e) {
                     lastException = e;

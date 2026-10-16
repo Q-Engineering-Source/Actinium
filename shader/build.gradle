@@ -1,9 +1,39 @@
 plugins {
     id 'java-library'
+    id 'com.cleanroommc.cleanroomgradle'
+}
+
+repositories {
+    // org.taumc:glsl-transformation-lib and com.github.GTNewHorizons:jabel-stubs
+    maven { url = 'https://nexus.gtnewhorizons.com/repository/public/' }
+    // maven.modrinth (Distant Horizons API)
+    maven { url = 'https://api.modrinth.com/maven' }
 }
 
 dependencies {
+    // Minecraft, the loader and the Mixin runtime, materialized from Cleanroom by the userdev.
+    compileOnly cleanroom.userdev(rootProject.property('cleanroom_version')) {
+        if (rootProject.ext.actiniumAccessTransformer != null) {
+            accessTransformers.from(rootProject.ext.actiniumAccessTransformer)
+        }
+    }
+
     api project(':glsm')
     api project(':GTNHLib')
     api project(':celeritas-common')
+
+    // GLSL preprocessor (org.anarres.cpp) and the transformation library, both of which also ship inside
+    // the mod jar body through the contain configuration.
+    compileOnly 'org.anarres:jcpp:1.4.14'
+    compileOnly('org.taumc:glsl-transformation-lib:0.2.0-32.g7dd88a4-GTNH') {
+        transitive = false
+        exclude module: 'antlr4'
+    }
+    compileOnly 'org.antlr:antlr4-runtime:4.13.2'
+
+    // Distant Horizons 3.3.0-1.12.2: the Iris DH integration compiles against its API. The root project
+    // declares the same artifact for the dev runtime.
+    compileOnly deobf('maven.modrinth:uCdwusMi:Sa0ttGJr')
+    // Annotation-only stub for the @Desugar markers several Iris expression classes carry.
+    compileOnly 'com.github.GTNewHorizons:jabel-stubs:1.0.0'
 }

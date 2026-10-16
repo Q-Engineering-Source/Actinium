@@ -5,13 +5,11 @@ import com.gtnewhorizons.angelica.glsm.GLESCaps;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.backend.DebugMessageHandler;
 import com.gtnewhorizons.angelica.glsm.backend.GLDebugMessageListener;
-import com.gtnewhorizons.angelica.glsm.backend.GlfwFileDropWatcher;
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
 import com.gtnewhorizons.angelica.glsm.backend.VSyncMode;
+import com.gtnewhorizons.angelica.glsm.backend.WindowSystem;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.lwjgl.glfw.GLFW;
-import org.lwjgl.glfw.GLFWVidMode;
 import org.lwjgl.opengl.ARBClearTexture;
 import org.lwjgl.opengl.ARBPolygonOffsetClamp;
 import org.lwjgl.opengl.EXTDirectStateAccess;
@@ -98,22 +96,22 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public boolean supportsFileDrop() {
-        return true;
+        return WindowSystem.supportsFileDrop();
     }
 
     @Override
     public void startFileDrop() {
-        GlfwFileDropWatcher.start();
+        WindowSystem.startFileDrop();
     }
 
     @Override
     public void stopFileDrop() {
-        GlfwFileDropWatcher.stop();
+        WindowSystem.stopFileDrop();
     }
 
     @Override
     public List<String> pollDroppedFiles() {
-        return GlfwFileDropWatcher.pollDroppedFiles();
+        return WindowSystem.pollDroppedFiles();
     }
 
     @Override
@@ -159,17 +157,13 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     @Override
     protected VSyncMode applyVSyncMode(VSyncMode preferred) {
         final boolean enabled = preferred.tearFree();
-        GLFW.glfwSwapInterval(enabled ? 1 : 0);
+        WindowSystem.swapInterval(enabled ? 1 : 0);
         return enabled ? VSyncMode.ON : VSyncMode.OFF;
     }
 
     @Override
     protected long queryRefreshPeriodNanos() {
-        final long monitor = GLFW.glfwGetPrimaryMonitor();
-        if (monitor == 0) return 0L;
-        final GLFWVidMode mode = GLFW.glfwGetVideoMode(monitor);
-        if (mode == null) return 0L;
-        return periodFromIntegerHz(mode.refreshRate());
+        return WindowSystem.queryRefreshPeriodNanos();
     }
 
     @Override
@@ -455,6 +449,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public void multiDrawArrays(int mode, IntBuffer firsts, IntBuffer counts) {
+        GL14C.glMultiDrawArrays(mode, firsts, counts);
+    }
+
+    @Override
+    public void multiDrawArrays(int mode, int[] firsts, int[] counts) {
         GL14C.glMultiDrawArrays(mode, firsts, counts);
     }
 
@@ -755,6 +754,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void drawBuffers(int[] bufs) {
+        GL20C.glDrawBuffers(bufs);
+    }
+
+    @Override
     public void readBuffer(int mode) {
         GL11C.glReadBuffer(mode);
     }
@@ -873,12 +877,22 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void getShaderInfoLog(int shader, int[] length, ByteBuffer infoLog) {
+        GL20C.glGetShaderInfoLog(shader, length, infoLog);
+    }
+
+    @Override
     public String getProgramInfoLog(int program, int maxLength) {
         return GL20C.glGetProgramInfoLog(program, maxLength);
     }
 
     @Override
     public void getProgramInfoLog(int program, IntBuffer length, ByteBuffer infoLog) {
+        GL20C.glGetProgramInfoLog(program, length, infoLog);
+    }
+
+    @Override
+    public void getProgramInfoLog(int program, int[] length, ByteBuffer infoLog) {
         GL20C.glGetProgramInfoLog(program, length, infoLog);
     }
 
@@ -915,6 +929,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void getActiveUniform(int program, int index, int[] length, int[] size, int[] type, ByteBuffer name) {
+        GL20C.glGetActiveUniform(program, index, length, size, type, name);
+    }
+
+    @Override
     public void getActiveAttrib(int program, int index, IntBuffer length, IntBuffer size, IntBuffer type, ByteBuffer name) {
         final String nameStr = GL20C.glGetActiveAttrib(program, index, size, type);
         if (name != null && nameStr != null) {
@@ -923,6 +942,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
             name.put(bytes, 0, n);
             if (length != null && length.remaining() > 0) length.put(0, n);
         }
+    }
+
+    @Override
+    public void getActiveAttrib(int program, int index, int[] length, int[] size, int[] type, ByteBuffer name) {
+        GL20C.glGetActiveAttrib(program, index, length, size, type, name);
     }
 
     @Override
@@ -1011,12 +1035,22 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void getAttachedShaders(int program, int[] count, int[] shaders) {
+        GL20C.glGetAttachedShaders(program, count, shaders);
+    }
+
+    @Override
     public String getShaderSource(int shader, int maxLength) {
         return GL20C.glGetShaderSource(shader, maxLength);
     }
 
     @Override
     public void getShaderSource(int shader, IntBuffer length, ByteBuffer source) {
+        GL20C.glGetShaderSource(shader, length, source);
+    }
+
+    @Override
+    public void getShaderSource(int shader, int[] length, ByteBuffer source) {
         GL20C.glGetShaderSource(shader, length, source);
     }
 
@@ -1032,6 +1066,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public void uniform1fv(int location, FloatBuffer values) {
+        GL20C.glUniform1fv(location, values);
+    }
+
+    @Override
+    public void uniform1fv(int location, float[] values) {
         GL20C.glUniform1fv(location, values);
     }
 
@@ -1116,8 +1155,18 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void uniformMatrix3(int location, boolean transpose, float[] matrices) {
+        GL20C.glUniformMatrix3fv(location, transpose, matrices);
+    }
+
+    @Override
     public void uniformMatrix4(int location, boolean transpose, FloatBuffer value) {
         GL20C.glUniformMatrix4fv(location, transpose, value);
+    }
+
+    @Override
+    public void uniformMatrix4(int location, boolean transpose, float[] matrices) {
+        GL20C.glUniformMatrix4fv(location, transpose, matrices);
     }
 
     @Override
@@ -1182,6 +1231,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public int getUniformBlockIndex(int program, CharSequence name) {
+        return GL31C.glGetUniformBlockIndex(program, name);
+    }
+
+    @Override
+    public int getUniformBlockIndex(int program, ByteBuffer name) {
         return GL31C.glGetUniformBlockIndex(program, name);
     }
 
@@ -1406,7 +1460,7 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public long getContextHandle() {
-        return GLFW.glfwGetCurrentContext();
+        return WindowSystem.currentContext();
     }
 
     @Override
@@ -1717,6 +1771,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     @Override
     public void getQueryObjectui(int id, int pname, IntBuffer params) {
         GL15C.glGetQueryObjectuiv(id, pname, params);
+    }
+
+    @Override
+    public int getQueryObjectui(int id, int pname) {
+        return GL15C.glGetQueryObjectui(id, pname);
     }
 
     @Override

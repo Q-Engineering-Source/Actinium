@@ -14,13 +14,14 @@ publishing {
 }
 
 tasks.named('generateMetadataFileForMavenJavaPublication') {
-    dependsOn tasks.named('remapJar')
+    dependsOn tasks.named('shadowRemapJar')
 }
 
 // The published jar path (build/libs/<archivesName>-<version>.jar with an empty classifier) is
-// written by both 'jar' (raw namespace output) and 'shadowRemapJar' (the production shadow-layout
-// jar, which wins by running later). Publish tasks consume that file, and Gradle 9 fails the build
-// on its implicit-dependency validation unless the producing task is declared here.
+// written by 'shadowRemapJar' (the production shadow-layout jar), while the plain 'jar' task writes
+// the MCP-classified build/libs/<archivesName>-<version>-mcp.jar and 'reobfJar' the SRG intermediate
+// under -reobf. Publish tasks consume the distributed file, and Gradle 9 fails the build on its
+// implicit-dependency validation unless the producing task is declared here.
 tasks.matching { it.name.startsWith('publishMavenJavaPublicationTo') }.configureEach {
     dependsOn tasks.named('shadowRemapJar')
 }

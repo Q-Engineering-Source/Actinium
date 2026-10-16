@@ -1,15 +1,13 @@
 plugins {
     id 'java-library'
     id 'java-test-fixtures'
+    id 'com.cleanroommc.cleanroomgradle'
 }
 
 repositories {
     mavenCentral()
-    maven { url = 'https://maven.cleanroommc.com' }
+    // org.taumc:glsl-transformation-lib
     maven { url = 'https://nexus.gtnewhorizons.com/repository/public/' }
-    // com.cleanroommc:lwjglx:1.0.0 (LWJGL2 compatibility layer used by test fixtures)
-    maven { url = 'https://maven.arcseekers.com/releases' }
-    mavenLocal()
 }
 
 sourceSets {
@@ -22,15 +20,39 @@ sourceSets {
     }
 }
 
+def lwjglVersion = rootProject.ext.lwjglVersion
+
 dependencies {
+    // Minecraft, the loader and the Mixin runtime, materialized from Cleanroom by the userdev.
+    compileOnly cleanroom.userdev(rootProject.property('cleanroom_version')) {
+        if (rootProject.ext.actiniumAccessTransformer != null) {
+            accessTransformers.from(rootProject.ext.actiniumAccessTransformer)
+        }
+    }
+
     api project(':GTNHLib')
+    // GLFW: the file-drop watcher and the LWJGL3 render backend read the window and its video mode
+    // through it. The host supplies the implementation; nothing is shipped by the mod.
+    compileOnly "org.lwjgl:lwjgl-glfw:${lwjglVersion}"
+    // SDL (LWJGL 3's SDL3 binding): the same window-system calls for hosts whose window is an SDL
+    // window (LWJGLY), confined to the WindowSystem-gated classes. Compile-only like GLFW: the
+    // binding and its native ship with the host generation that runs on them.
+    compileOnly "org.lwjgl:lwjgl-sdl:${lwjglVersion}"
     // shaderc/spvc are used at compile time by the GLSL->SPIRV pipeline; the runtime
     // natives are provided by the sdl-gpu module.
-    compileOnly 'org.lwjgl:lwjgl-shaderc:3.4.1'
-    compileOnly 'org.lwjgl:lwjgl-spvc:3.4.1'
+    compileOnly "org.lwjgl:lwjgl-shaderc:${lwjglVersion}"
+    compileOnly "org.lwjgl:lwjgl-spvc:${lwjglVersion}"
+    // GLSL source transformation, same artifact the mod ships in its jar body.
+    compileOnly('org.taumc:glsl-transformation-lib:0.2.0-32.g7dd88a4-GTNH') {
+        transitive = false
+        exclude module: 'antlr4'
+    }
+    compileOnly 'org.antlr:antlr4-runtime:4.13.2'
 
     testFixturesImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
-    testFixturesImplementation 'org.lwjgl:lwjgl-opengl:3.4.1'
-    testFixturesImplementation 'org.lwjgl:lwjgl:3.4.1'
-    testFixturesImplementation 'com.cleanroommc:lwjglx:1.0.0'
+    testFixturesImplementation "org.lwjgl:lwjgl-opengl:${lwjglVersion}"
+    testFixturesImplementation "org.lwjgl:lwjgl:${lwjglVersion}"
+    // LWJGL2 API (org.lwjgl.opengl.Display, PixelFormat, ContextAttribs, ...) that the GL context
+    // fixtures create their window with; the same compile-time surface the modules use.
+    testFixturesImplementation 'lwjglx.compat:lwjglx:1.0.0'
 }

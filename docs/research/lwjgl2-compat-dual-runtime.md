@@ -34,6 +34,15 @@
    `runtimeOnly` / `contain`；只有 lwjgl-sdl / lwjgl-spvc / lwjgl-shaderc 的 runtimeOnly
    保持原状（SDL 后端自带的三件套，与兼容层无关）。
 6. 属性 `enable_lwjgl_compat`（原 `enable_lwjglx`）语义 = 「编译期带上 LWJGL2 兼容面」。
+7. **`org.lwjgl.glfw.**`（仅老 CRL 存在）与 `org.lwjgl.sdl.**`（仅新 CRL 的运行时保证存在，
+   LWJGLY 自己的 `org.lwjgl` 适配层就在调它）同样只允许出现在探测后的隔离类里**。GL 渲染
+   路径的窗口系统调用（vsync、刷新率、当前上下文 handle、文件拖放）经 glsm
+   `backend/WindowSystem.java` 两代分派：`Class.forName("org.lwjgl.glfw.GLFW", false, loader)`
+   命中走 GLFW（`GlfwWindowing`/`GlfwFileDropWatcher`），未命中且
+   `Class.forName("org.lwjgl.sdl.SDLVideo", false, loader)` 命中走 SDL
+   （`SdlWindowing`/`SdlFileDropWatcher`）；两者皆无则 WARN 一次并降级。编译面：
+   `org.lwjgl:lwjgl-glfw` 与 `org.lwjgl:lwjgl-sdl` 均为 compileOnly，实现都由对应代的宿主
+   提供。（2026-10-15 补，见 §3.5）
 
 ## 3. 逐文件处置
 
@@ -70,6 +79,26 @@
 | `src/main/.../MacDisplayForwardCompatTransformer.java` | 见 §5 |
 | glsm 的 `testFixtures` 依赖 `com.cleanroommc:lwjglx:1.0.0` | 保留：它模拟老运行时（`org.lwjgl.opengl.Display` 的 `create`/`destroy`/`isCreated`），是 GL 类测试的既有约定 |
 | `sdl-gpu` 的 `Lwjgl3GLCapabilitiesShim` / `AwareGLDebugShim` | 与兼容层无关（SDL 后端自建的伪 capability 层） |
+
+### 3.5 窗口系统调用的两代分派（2026-10-15 补）
+
+GL 渲染路径（`Lwjgl3GLRenderBackend` + `BatchingFontRenderer`）原本直接调
+`org.lwjgl.glfw.GLFW`（`glfwSwapInterval`、`glfwGetVideoMode`、`glfwGetCurrentContext`、
+`glfwSetDropCallback`），在新 CRL 上会 `NoClassDefFoundError`。现按 §2 规则 7 隔离：
+
+| 文件 | 职责 | 加载时机依据 |
+|---|---|---|
+| `glsm/.../backend/WindowSystem.java` | 常驻门面：只按类名探测，自身不引 GLFW/SDL 类型；逐调用分派，探测不到任何一代时 WARN 一次并降级 | 常驻；门控第一道 |
+| `glsm/.../backend/GlfwWindowing.java` | GLFW 版 vsync / 刷新率（`periodFromIntegerHz`）/ 当前上下文 | 仅探测命中 `org.lwjgl.glfw.GLFW` 后触达 |
+| `glsm/.../backend/GlfwFileDropWatcher.java` | GLFW 版文件拖放（原有实现，未改） | 同上，仅经 `GlfwWindowing` 触达 |
+| `glsm/.../backend/SdlWindowing.java` | SDL 版：`SDL_GL_SetSwapInterval`、`SDL_GetCurrentDisplayMode(SDL_GetPrimaryDisplay())`（回落 `SDL_GetDesktopDisplayMode`，`periodFromRational`）、`SDL_GL_GetCurrentContext` | 仅 GLFW 缺席且 `org.lwjgl.sdl.SDLVideo` 在位时触达 |
+| `glsm/.../backend/SdlFileDropWatcher.java` | SDL 版文件拖放：`SDL_AddEventWatch` 观察 `SDL_EVENT_DROP_FILE`（只看不消费，返回 true 让事件留给宿主泵） | 同上，仅经 `SdlWindowing` 触达 |
+
+`SdlWindowing` 的 natives 依据：LWJGLY 的 `org.lwjgl.opengl.Display` 适配层自身调
+`SDLVideo.SDL_GetDesktopDisplayMode`（实测 lwjgly-1.0.2 常量池），故新 CRL 运行时必有
+lwjgl-sdl 类与 SDL3 native；dev 运行时另有 root `runtimeOnly lwjgl-sdl + natives` 兜底。
+**运行时验证待办**（同 §7 清单）：新 CRL 上确认 vsync/刷新率/拖放三项实际生效，尤其宿主的
+SDL 事件泵确实把 DROP 事件推过事件队列（event watch 才能观察到）。
 
 ## 4. lwjgl 3 版本决定：Actinium 保持 3.4.1
 
