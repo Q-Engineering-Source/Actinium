@@ -623,10 +623,10 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
 
     @Override public boolean handleMakeCurrent(Object drawable) {
-        // LWJGLY's host has one window and one GL context, and Display.getDrawable() returns null for
-        // it: that null is this backend's context, and it is the only context request that can be
-        // this backend's - a host running LWJGLY hands out no drawable object at all.
-        if (drawable != null) return false;
+        // Every drawable request names this backend's one virtual context: LWJGLY 2.0 hands out a
+        // real Display drawable and working SharedDrawable instances (the FML/ModernSplash splash
+        // thread uses the latter), and none of them owns a GL context here. What matters is the
+        // thread association - non-main threads render the splash through the offscreen target.
         Lwjgl3GLCapabilitiesShim.installOnCurrentThread(advertisedCapabilities());
         enterContext();
         return true;
@@ -659,8 +659,7 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
 
     @Override public boolean handleReleaseContext(Object drawable) {
-        // Same identity rule as handleMakeCurrent: only the null drawable is this backend's context.
-        if (drawable != null) return false;
+        // Same identity rule as handleMakeCurrent: any drawable names this backend's one context.
         if (Thread.currentThread() == GLStateManager.getMainThread()) return true;
         Lwjgl3GLCapabilitiesShim.clearOnCurrentThread();
         onRenderThreadReleased(Thread.currentThread());
