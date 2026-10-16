@@ -67,6 +67,7 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.lwjgl.opengl.ContextCapabilities;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
@@ -80,6 +81,7 @@ import org.lwjgl.opengl.GL42;
 import org.lwjgl.opengl.GL40;
 import org.lwjgl.opengl.GL43;
 import org.lwjgl.opengl.GL44;
+import org.lwjgl.opengl.GLContext;
 import org.lwjgl.opengl.EXTTextureFilterAnisotropic;
 
 import java.nio.ByteBuffer;
@@ -139,6 +141,7 @@ public class SDLGPURenderBackend extends RenderBackend {
     private String cachedVersion;
     private String cachedExtensions = "";
     private int[] cachedSwapchainFormatArray;
+    private ContextCapabilities hostCapabilities;
 
     private DebugLabels debugLabels;
 
@@ -256,7 +259,17 @@ public class SDLGPURenderBackend extends RenderBackend {
 
     @Override public void onPostWindowCreate(long window) {
         buildCachedStrings();
-        if (window != 0L) populateGLCapabilities();
+        if (window != 0L) {
+            // The host GL context is still current here; capture its real capabilities before the
+            // fabricated ones take over the thread binding, so LWJGL2-style capability probes
+            // never have to touch the driver again.
+            hostCapabilities = GLContext.getCapabilities();
+            populateGLCapabilities();
+        }
+    }
+
+    @Override public ContextCapabilities getCapabilitiesOverride() {
+        return hostCapabilities;
     }
 
     private boolean hasWindow() {

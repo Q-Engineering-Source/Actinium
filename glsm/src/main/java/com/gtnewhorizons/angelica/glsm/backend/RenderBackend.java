@@ -7,6 +7,7 @@ import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.texture.TextureStaging;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.lwjgl.opengl.ContextCapabilities;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
@@ -39,6 +40,13 @@ public abstract class RenderBackend {
 
     /** Returns true if the current thread has a valid render context. */
     public abstract boolean hasContext();
+
+    /**
+     * Capabilities to report instead of probing the GL driver, for backends that own no usable GL
+     * context (under LWJGLY the LWJGL2-style probe touches the driver natively and crashes). A null
+     * return keeps the ordinary driver probe.
+     */
+    public ContextCapabilities getCapabilitiesOverride() { return null; }
 
     /** Returns true if the calling thread may issue render commands. */
     public boolean hasContextOnThread() { return hasContext(); }

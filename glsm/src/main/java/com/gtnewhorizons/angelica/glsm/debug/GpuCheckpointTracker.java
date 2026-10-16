@@ -1,9 +1,9 @@
 package com.gtnewhorizons.angelica.glsm.debug;
 
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCheckpointType;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandRecorder;
 import org.lwjgl.opengl.GL32;
-import org.lwjgl.opengl.GLContext;
 
 /**
  * Maintains fixed per-thread, per-context rings of non-blocking GPU completion fences.
@@ -24,7 +24,7 @@ public final class GpuCheckpointTracker {
      * @param commandCode stable command or pass-boundary code
      */
     public static void checkpoint(GpuCommandRecorder recorder, int commandCode) {
-        STATE.get().checkpoint(recorder, commandCode, GLContext.getCapabilities(), LwjglGpuSyncOperations.INSTANCE);
+        STATE.get().checkpoint(recorder, commandCode, GLStateManager.currentContextCapabilities(), LwjglGpuSyncOperations.INSTANCE);
     }
 
     /**

@@ -662,13 +662,23 @@ public class GLStateManager {
         return GpuCommandDiagnostics.isCacheTrusted(
             isCachingEnabled(),
             BYPASS_CACHE,
-            GLContext.getCapabilities(),
+            currentContextCapabilities(),
             capabilities
         );
     }
 
+    /**
+     * The backend's capability override when it owns no usable GL context, otherwise the driver's
+     * own answer. Under LWJGLY {@link GLContext#getCapabilities()} probes the driver natively, so a
+     * backend without a real context must never reach it.
+     */
+    public static ContextCapabilities currentContextCapabilities() {
+        final ContextCapabilities override = RENDER_BACKEND.getCapabilitiesOverride();
+        return override != null ? override : GLContext.getCapabilities();
+    }
+
     static void preInit(int displayWidth, int displayHeight) {
-        capabilities = GLContext.getCapabilities();
+        capabilities = currentContextCapabilities();
         HAS_MULTIPLE_SET
             .addFeature(GL11.GL_ACCUM_CLEAR_VALUE)
             .addFeature(GL14.GL_BLEND_COLOR)
