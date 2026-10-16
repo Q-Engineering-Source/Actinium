@@ -27,6 +27,9 @@ public abstract class MixinMinecraftCoreProfileDisplay {
     @Unique
     private static final Logger celeritas$LOGGER = LogManager.getLogger("Celeritas");
 
+    @Unique
+    private static final int[][] celeritas$SDL_CONTEXT_VERSIONS = { { 4, 6 }, { 4, 5 }, { 3, 3 } };
+
     @Shadow
     private boolean fullscreen;
 
@@ -60,13 +63,39 @@ public abstract class MixinMinecraftCoreProfileDisplay {
     private void celeritas$createSdlDisplay(CallbackInfo ci) throws LWJGLException {
         Display.setResizable(true);
         Display.setTitle("Cleanroom");
-        // The window and its context belong to the host, so these only describe what the engine
-        // wants: LWJGLY turns them into a WindowBridge.ContextRequest and validates them against the
-        // context the host already created, and a host without that model ignores them as before.
-        Display.create(new PixelFormat().withDepthBits(24).withStencilBits(8), new ContextAttribs(4, 6));
-        SDLGPUGate.handOverWindow();
-        celeritas$LOGGER.info("SDL GPU display is up; the OpenGL engine paths are replaced by the backend");
-        ci.cancel();
+        PixelFormat format = new PixelFormat().withDepthBits(24).withStencilBits(8);
+        // The request is only validated against the context the host already created, so any version
+        // at or below it is accepted. LWJGLY caps ContextAttribs at GL 4.5, hence 4.5 and the engine
+        // floor 3.3 as fallbacks when 4.6 cannot even be constructed or is rejected by the host.
+        Exception lastException = null;
+        for (int[] version : celeritas$SDL_CONTEXT_VERSIONS) {
+            try {
+                celeritas$adoptSdlContext(format, version[0], version[1]);
+            } catch (IllegalArgumentException | LWJGLException e) {
+                lastException = e;
+                celeritas$LOGGER.debug(
+                    "SDL window host did not accept an OpenGL {}.{} context request",
+                    version[0],
+                    version[1],
+                    e
+                );
+                continue;
+            }
+            SDLGPUGate.handOverWindow();
+            celeritas$LOGGER.info("SDL GPU display is up; the OpenGL engine paths are replaced by the backend");
+            ci.cancel();
+            return;
+        }
+        throw new LWJGLException("The SDL window host accepted no OpenGL 3.3+ context request", lastException);
+    }
+
+    /**
+     * lwjglx's {@code Display.create} declares no checked exception, so the throws clause here keeps
+     * {@link LWJGLException} reachable for the caller's catch on every compile classpath.
+     */
+    @Unique
+    private static void celeritas$adoptSdlContext(PixelFormat format, int major, int minor) throws LWJGLException {
+        Display.create(format, new ContextAttribs(major, minor));
     }
 
     @Unique
