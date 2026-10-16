@@ -255,7 +255,7 @@ dependencies {
     // dev-verifies mixins.actinium.obscuretooltips.json)
     implementation deobf('curse.maven:obscure-tooltips-715660:8522661')
 
-    // CensoredASM / Chibi 5.33 (issue #159: its on-demand animated textures @Overwrite
+    // CensoredASM / Chibi 5.34 (issue #159: its on-demand animated textures @Overwrite
     // TextureMap.updateAnimations and BufferBuilder.tex -- the same members Actinium injects into
     // and overwrites -- and its BakedQuad squasher rewrites the fields MixinBakedQuad shadows.
     // LoliASM switches both features off by itself once it sees a Celeritas-family marker, so the
