@@ -191,6 +191,7 @@ public class SDLGPURenderBackend extends RenderBackend {
 
     private volatile OffscreenTarget splashTarget;
     private volatile BlackFrameProbe blackFrameProbe;
+    private static volatile long lastMidFrameClearLogNanos;
     private volatile boolean splashTeardownPending;
 
     private static final ThreadRegistry<ContextState> registeredStates = new ThreadRegistry<>(new ContextState[0]);
@@ -1161,6 +1162,14 @@ public class SDLGPURenderBackend extends RenderBackend {
         // FBO0 path: just record pending state; ensureFbo0RenderPass consumes it lazily.
         if (st.boundFboId == 0) {
             if (wantColor) {
+                if (Boolean.getBoolean("actinium.sdlgpu.blackprobe")) {
+                    final FrameState fNow = frameManager.frame();
+                    if (fNow.frameActive && fNow.fbo0UsedThisFrame && System.nanoTime() - lastMidFrameClearLogNanos > 500_000_000L) {
+                        lastMidFrameClearLogNanos = System.nanoTime();
+                        LOG.warn("black frame probe: glClear on fbo0 mid-frame at frame {} (content already drawn), call site:",
+                            fNow.frameNumber, new Throwable("stack"));
+                    }
+                }
                 st.pendingSwapchainClear = true;
                 st.pendingSwapchainR = st.clearR;
                 st.pendingSwapchainG = st.clearG;
