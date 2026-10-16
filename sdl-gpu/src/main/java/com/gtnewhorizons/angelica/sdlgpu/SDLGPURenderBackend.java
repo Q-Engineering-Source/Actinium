@@ -824,7 +824,7 @@ public class SDLGPURenderBackend extends RenderBackend {
         frameManager.presentFinalTarget();
         if (blackFrameProbe != null) {
             final OffscreenTarget ft = frameManager.finalTarget();
-            if (ft.hasContent()) blackFrameProbe.tick(frameManager.getFrameNumber(), ft.colorTexture(), ft.width(), ft.height());
+            if (ft.hasContent()) blackFrameProbe.tick(frameManager.getFrameNumber(), ft.colorTexture(), ft.width(), ft.height(), s().boundFboId);
         }
         fenceTracker.resolvePendingFences();
         device.fenceReleaser().drain();

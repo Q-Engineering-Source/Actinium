@@ -44,6 +44,7 @@ public final class BlackFrameProbe {
         long xfer;
         long fence;
         long frameNumber;
+        int boundFbo;
     }
 
     /** Turns the pixel stream into report decisions: only an isolated single black frame reports. */
@@ -76,13 +77,13 @@ public final class BlackFrameProbe {
         this.device = device;
     }
 
-    public void tick(long frameNumber, long finalTargetTex, int width, int height) {
+    public void tick(long frameNumber, long finalTargetTex, int width, int height, int boundFbo) {
         drainSignaled();
         if (finalTargetTex == 0 || slots.size() >= MAX_IN_FLIGHT) return;
-        enqueue(frameNumber, finalTargetTex, width / 2, height / 2);
+        enqueue(frameNumber, finalTargetTex, width / 2, height / 2, boundFbo);
     }
 
-    private void enqueue(long frameNumber, long tex, int x, int y) {
+    private void enqueue(long frameNumber, long tex, int x, int y, int boundFbo) {
         try (var stack = stackPush()) {
             final SDL_GPUTransferBufferCreateInfo xferCi = SDL_GPUTransferBufferCreateInfo.calloc(stack)
                 .usage(SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD)
@@ -117,6 +118,7 @@ public final class BlackFrameProbe {
             slot.xfer = xfer;
             slot.fence = fence;
             slot.frameNumber = frameNumber;
+            slot.boundFbo = boundFbo;
             slots.add(slot);
         }
     }
@@ -137,7 +139,7 @@ public final class BlackFrameProbe {
             if (pixel == -1) continue;
             final long report = tracker.onPixel(s.frameNumber, isBlack(pixel));
             if (report != 0) {
-                LOG.warn("black frame probe: frame {} presented with a black finalTarget center pixel (isolated)", report);
+                LOG.warn("black frame probe: frame {} presented with a black finalTarget center pixel (isolated, boundFbo={})", report, s.boundFbo);
             }
         }
     }

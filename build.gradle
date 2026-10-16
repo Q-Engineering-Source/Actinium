@@ -543,6 +543,7 @@ cleanroom {
             inherit = 'client'
             configure {
                 jvmArgs '-Dangelica.sdlgpu.enable=true'
+                jvmArgs '-Dactinium.sdlgpu.blackprobe=true'
             }
         }
         server {
