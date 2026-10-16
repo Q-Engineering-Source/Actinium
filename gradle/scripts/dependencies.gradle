@@ -260,7 +260,7 @@ dependencies {
     // and overwrites -- and its BakedQuad squasher rewrites the fields MixinBakedQuad shadows.
     // LoliASM switches both features off by itself once it sees a Celeritas-family marker, so the
     // org.taumc.celeritas.core marker class is what this dev entry exercises.)
-    runtimeOnly deobf('curse.maven:chibi-460609:8225778')
+    runtimeOnly deobf('curse.maven:chibi-460609:8957115')
 
     // Component Model Hider 1.0 (mod id component_model_hider, CurseForge project 940949 file
     // 4885858): the standalone extraction of Multiblocked's block-model hiding API that Modular
