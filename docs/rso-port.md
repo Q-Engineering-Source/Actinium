@@ -106,6 +106,10 @@ RSO 关闭时放行原版 `GuiVideoSettings`）、
 ActiniumApplyActions / OptionGUIConstructionBridge）、
 `net.irisshaders.iris.compat.sodium.IrisConfigEntryPoint`（embeddium 化并接入内置页面）。
 
+## 滑块精调
+
+RSO 整数滑块拖动期间按住 Shift，会将临时范围缩至按下时当前值的 ±2，并允许以 1 为步长调整；松开 Shift 后恢复选项声明的上下限和步长。范围在接近选项边界时限制在选项原有范围内。
+
 ## 视觉保真保障
 
 - 所有颜色常量、尺寸常量、布局计算（`LayoutBounds`/`ScrollFrameLayout`/`TabFrame` 常量、
@@ -120,4 +124,5 @@ ActiniumApplyActions / OptionGUIConstructionBridge）、
   remap Jar 结构，产物中已无 `net.caffeinemc` 类）。
 - 搜索逻辑（SearchIndex/SearchSession/NgramGenerator）与行分派（RsoOption）、
   option host 收集均有 JUnit 覆盖（349 项）。
+- 滑块精调已由用户于 2026-10-17 在客户端完成实机验证。
 - 视觉对比需运行客户端人工确认（记录到 compatibility-matrix）。
