@@ -197,6 +197,45 @@ class GLSMRedirectorTest {
         }
     }
 
+    /**
+     * NTM-CE's GLCompat ARB entry points, vanilla GlStateManager's FloatBuffer FFP setters, and
+     * xaero's compressed 2D upload must all land on the tracked GLStateManager paths.
+     */
+    @Test
+    void rewritesHbmCompatAndVanillaFfpCallsToGlsm() {
+        String[][] cases = {
+            {"org/lwjgl/opengl/ARBFramebufferObject", "glBlitFramebuffer", "(IIIIIIIIII)V", "glBlitFramebuffer"},
+            {"org/lwjgl/opengl/ARBImaging", "glBlendEquation", "(I)V", "glBlendEquation"},
+            {"org/lwjgl/opengl/ARBOcclusionQuery", "glDeleteQueriesARB", "(I)V", "glDeleteQueries"},
+            {"org/lwjgl/opengl/ARBOcclusionQuery", "glGetQueryObjectuiARB", "(II)I", "glGetQueryObjectui"},
+            {"org/lwjgl/opengl/ARBVertexProgram", "glDisableVertexAttribArrayARB", "(I)V", "glDisableVertexAttribArray"},
+            {"org/lwjgl/opengl/ARBVertexProgram", "glEnableVertexAttribArrayARB", "(I)V", "glEnableVertexAttribArray"},
+            {"org/lwjgl/opengl/ARBVertexProgram", "glVertexAttribPointerARB", "(IIIZIJ)V", "glVertexAttribPointer"},
+            {"org/lwjgl/opengl/ARBVertexShader", "glBindAttribLocationARB", "(IILjava/lang/CharSequence;)V", "glBindAttribLocation"},
+            {"org/lwjgl/opengl/EXTFramebufferBlit", "glBlitFramebufferEXT", "(IIIIIIIIII)V", "glBlitFramebuffer"},
+            {"org/lwjgl/opengl/GL11", "glFogfv", "(ILjava/nio/FloatBuffer;)V", "glFog"},
+            {"org/lwjgl/opengl/GL11", "glLightModelfv", "(ILjava/nio/FloatBuffer;)V", "glLightModel"},
+            {"org/lwjgl/opengl/GL11", "glLightfv", "(IILjava/nio/FloatBuffer;)V", "glLight"},
+            {"org/lwjgl/opengl/GL11", "glTexEnvfv", "(IILjava/nio/FloatBuffer;)V", "glTexEnv"},
+            {"org/lwjgl/opengl/GL11", "glTexGenfv", "(IILjava/nio/FloatBuffer;)V", "glTexGen"},
+            {"org/lwjgl/opengl/GL13", "glCompressedTexImage2D", "(IIIIIILjava/nio/ByteBuffer;)V", "glCompressedTexImage2D"},
+        };
+        for (String[] c : cases) {
+            assertRedirectedToGlsm(c[0], c[1], c[2], c[3]);
+        }
+    }
+
+    /**
+     * GLContext.getCapabilities() starts with the org/lwjgl/opengl/GL prefix, so only the desc-map
+     * entry can catch it; the call (com.hbm.render.GLCompat clinit, vanilla OpenGlHelper) must be
+     * rewritten to the GLSM facade.
+     */
+    @Test
+    void rewritesGlContextCapabilitiesProbeToGlsm() {
+        assertRedirectedToGlsm("org/lwjgl/opengl/GLContext", "getCapabilities",
+            "()Lorg/lwjgl/opengl/ContextCapabilities;", "currentContextCapabilities");
+    }
+
     private static void assertRedirectedToGlsm(String owner, String name, String desc, String expectedName) {
         final String label = owner + "." + name + desc;
         byte[] classBytes = generateClassCallingGl(owner, name, desc);

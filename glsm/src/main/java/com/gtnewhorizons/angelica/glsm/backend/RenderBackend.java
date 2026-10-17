@@ -167,6 +167,7 @@ public abstract class RenderBackend {
     public void copyTexImage2D(int target, int level, int internalFormat, int x, int y, int width, int height, int border) {}
     public void copyTexSubImage1D(int target, int level, int xoffset, int x, int y, int width) {}
     public void copyTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int x, int y, int width, int height) {}
+    public abstract void compressedTexImage2D(int target, int level, int internalFormat, int width, int height, int border, ByteBuffer pixels);
     public abstract void compressedTexImage2D(int target, int level, int internalFormat, int width, int height, int border, int imageSize, long data);
     public abstract void texParameteri(int target, int pname, int param);
     public abstract void texParameterf(int target, int pname, float param);

@@ -146,6 +146,37 @@ class GLStateManagerRedirectContractTest {
         }
     }
 
+    /**
+     * Signatures produced by the hbm/vanilla-FFP/xaero batch must exist on GLStateManager; the
+     * GLContext probe target is included since the redirector rewrites to it by desc.
+     */
+    @Test
+    void hbmCompatBatchEntryPointsExist() throws IOException {
+        String[][] sigs = {
+            {"currentContextCapabilities", "()Lorg/lwjgl/opengl/ContextCapabilities;"},
+            {"glBlitFramebuffer", "(IIIIIIIIII)V"},
+            {"glBlendEquation", "(I)V"},
+            {"glDeleteQueries", "(I)V"},
+            {"glGetQueryObjectui", "(II)I"},
+            {"glDisableVertexAttribArray", "(I)V"},
+            {"glEnableVertexAttribArray", "(I)V"},
+            {"glVertexAttribPointer", "(IIIZIJ)V"},
+            {"glBindAttribLocation", "(IILjava/lang/CharSequence;)V"},
+            {"glFog", "(ILjava/nio/FloatBuffer;)V"},
+            {"glLightModel", "(ILjava/nio/FloatBuffer;)V"},
+            {"glLight", "(IILjava/nio/FloatBuffer;)V"},
+            {"glTexEnv", "(IILjava/nio/FloatBuffer;)V"},
+            {"glTexGen", "(IILjava/nio/FloatBuffer;)V"},
+            {"glCompressedTexImage2D", "(IIIIIILjava/nio/ByteBuffer;)V"},
+        };
+        for (String[] sig : sigs) {
+            assertTrue(
+                methodDescriptors(sig[0]).contains(sig[1]),
+                "GLStateManager must expose " + sig[0] + sig[1] + ": the GL redirector rewrites calls to it"
+            );
+        }
+    }
+
     private static Set<String> methodDescriptors(String methodName) throws IOException {
         return loadClassNode().methods.stream()
             .filter(method -> method.name.equals(methodName))

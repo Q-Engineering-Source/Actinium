@@ -5072,6 +5072,16 @@ public class GLStateManager {
         gpuCheckpoint(GpuCommandType.CLEAR_TEX_IMAGE);
     }
 
+    public static void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height, int border, ByteBuffer pixels) {
+        final int texture = getBoundTextureForGpuDiagnostics();
+        recordGpuCommand(GpuCommandType.TEX_IMAGE_2D, GpuCommandPhase.BEGIN, texture, packDimensions(width, height));
+        suspendPixelUnpackBuffer();
+        RENDER_BACKEND.compressedTexImage2D(target, level, internalFormat, width, height, border, pixels);
+        restorePixelUnpackBuffer();
+        recordGpuCommand(GpuCommandType.TEX_IMAGE_2D, GpuCommandPhase.END, texture, packDimensions(width, height));
+        gpuCheckpoint(GpuCommandType.TEX_IMAGE_2D);
+    }
+
     public static void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height, int border, int imageSize, long data) {
         final int texture = getBoundTextureForGpuDiagnostics();
         recordGpuCommand(GpuCommandType.TEX_IMAGE_2D, GpuCommandPhase.BEGIN, texture, packDimensions(width, height));
@@ -5616,6 +5626,15 @@ public class GLStateManager {
         if (error != GL11.GL_NO_ERROR) {
             throw new OpenGLException(error);
         }
+    }
+
+    /**
+     * Redirect target for {@code GLContext.getCapabilities()} call sites: the ASM redirector
+     * rewrites them here so a backend can substitute its own capabilities view. The GL backend
+     * has no override, so this is a plain passthrough.
+     */
+    public static ContextCapabilities currentContextCapabilities() {
+        return GLContext.getCapabilities();
     }
 
     public static String glGetString(int pname) {
