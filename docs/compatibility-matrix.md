@@ -1,6 +1,6 @@
 # Actinium 兼容性矩阵
 
-最后更新：2026-10-10。
+最后更新：2026-10-17。
 
 状态定义：`已验证` 表示在记录的版本和场景中通过；`部分` 表示能运行但存在已知缺口；
 `无法启用` 表示光影包不能成功开启；`未验证` 不代表不兼容。更新记录时必须填写 Actinium commit、
@@ -9,6 +9,14 @@
 本轮验证环境：Actinium `30c7ffb`、Java 25.0.3、Cleanroom 0.5.12-alpha、Distant Horizons 3.1.2-b、
 Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 
+> 2026-10-17 追加：AE2 Unofficial Extended Life 0.56.6 的已供电 ME 控制器彩色光效随距离变淡、
+> 最终"像没通电"（issue #191）已修复并由用户实机确认——控制器是 `BlockRenderLayer.CUTOUT`，
+> vanilla 只给 `CUTOUT_MIPPED` 开 mip 采样（`EntityRenderer` 在 CUTOUT 层前后
+> `setBlurMipmap(false, false)`），而 Actinium 把两个 cutout 层并进同一个 mipmapped 通道，且
+> 着色器从未消费 `Material` 的 `useMip` 位，于是 1px 细线在 mip LOD 上升后被 alpha test 蚀掉。
+> 修复为 `CUTOUT` 材质 `mipped = false` + 着色器 `textureLod(..., 0.0)`，不增加 draw pass；
+> `./gradlew check` 通过，详见 [docs/compat/ae2.md](compat/ae2.md)。
+> 
 > 2026-10-07 追加：GVCLib 9.10 + GVCReversion2 alpha.10.2 第一人称持枪（issue #198）的模型/贴图
 > 错误与光影下亮度突变已修复并由用户实机确认——枪体/手臂模型不写逐顶点亮度，GLSM 的 lightmap
 > 属性默认值取全局残留值（实体、全亮 flash、GUI 240/240）所致；修复为逐帧钉住玩家亮度，并将
@@ -254,6 +262,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 |------------------|------|------------------------------------|------------------|
 | Cleanroom Loader | 必需   | Forge/Cleanroom 启动与 MixinBootstrap | 当前目标运行环境         |
 | Immersive Engineering | 部分（Solas V3.7b 场景已验证） | 无 Mixin（Iris `BlockTrans` 默认 blend 状态修正） | 0.12-98：Garden Cloche 玻璃不透明（issue #197）已由用户在 Solas V3.7b 下确认修复；ITT 3.2 与 Photon v1.3b 因各自 1.12.2 shader fallback 仍呈现泛白/发黑，详见 [docs/compat/immersiveengineering.md](compat/immersiveengineering.md) |
+| AE2 Unofficial Extended Life | 已验证 | 无 Mixin（`CUTOUT` 材质改为非 mipped + 地形着色器消费 `useMip` 位） | 0.56.6（CurseForge 570458:5411078，issue #191）：已供电 ME 控制器的彩色光效随距离变淡/消失已修复并经用户实机确认（`Render Pass 合并` 开/关、mipmap 等级 0 与 4 均通过），详见 [docs/compat/ae2.md](compat/ae2.md) |
 | LittleTiles      | 部分（Photon v1.3b 实测通过） | 条件 Mixin（shader quad context + 独立 AO 顶点通道） | 1.5.87 + CreativeCore 1.10.71（issue #193）：放置的微型方块在光影下比相邻原版方块暗；已修复并经用户确认，Solas 与其他 shader pack 待回归，详见 [docs/compat/littletiles.md](compat/littletiles.md) |
 | ArchitectureCraft | 部分（Photon v1.3b 实测通过） | 条件 Mixin（`RenderTargetWorld#setLight` 的 AO / 方向着色拆分） | 1.12-3.108：用户发现放置 shape 有同类偏暗现象；与原版木板、LittleTiles 同场验证，其他 shader pack 待回归，详见 [docs/compat/architecturecraft.md](compat/architecturecraft.md) |
 | ReplayMod        | 已验证（视频渲染） | 高优先级 selection-box outline scope + GLSM PBO offset readback | 1.12.2-2.6.13 在 BSL_v10.1p1 视频导出时的 G-buffer 状态崩溃及 PBO `glReadPixels(..., long)` 缺失重载已修复；Cleanroom 0.6.13-alpha 整合包实测确认，详见 [docs/compat/replaymod.md](compat/replaymod.md) |
