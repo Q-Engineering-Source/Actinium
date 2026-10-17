@@ -85,6 +85,8 @@ import org.lwjgl.opengl.ContextCapabilities;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.Drawable;
 import org.lwjgl.opengl.EXTTextureFilterAnisotropic;
+import org.lwjgl.opengl.GLUtil;
+import org.lwjgl.opengl.OpenGLException;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
@@ -99,11 +101,13 @@ import org.lwjgl.opengl.GL42;
 import org.lwjgl.opengl.GLContext;
 import org.lwjgl.opengl.KHRDebug;
 import org.lwjgl.opengl.KHRDebugCallback;
+import org.lwjgl.system.Callback;
 import org.lwjgl.util.glu.GLU;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Field;
+import java.io.PrintStream;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -5068,6 +5072,16 @@ public class GLStateManager {
         gpuCheckpoint(GpuCommandType.CLEAR_TEX_IMAGE);
     }
 
+    public static void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height, int border, int imageSize, long data) {
+        final int texture = getBoundTextureForGpuDiagnostics();
+        recordGpuCommand(GpuCommandType.TEX_IMAGE_2D, GpuCommandPhase.BEGIN, texture, packDimensions(width, height));
+        suspendPixelUnpackBuffer();
+        RENDER_BACKEND.compressedTexImage2D(target, level, internalFormat, width, height, border, imageSize, data);
+        restorePixelUnpackBuffer();
+        recordGpuCommand(GpuCommandType.TEX_IMAGE_2D, GpuCommandPhase.END, texture, packDimensions(width, height));
+        gpuCheckpoint(GpuCommandType.TEX_IMAGE_2D);
+    }
+
     public static int glGenSamplers() { return RENDER_BACKEND.genSamplers(); }
     public static void glDeleteSamplers(int sampler) { RENDER_BACKEND.deleteSamplers(sampler); }
     public static void glBindSampler(int unit, int sampler) { RENDER_BACKEND.bindSampler(unit, sampler); }
@@ -5594,6 +5608,14 @@ public class GLStateManager {
     public static int glGetError() {
         if (!RENDER_BACKEND.hasContext()) return 0;
         return RENDER_BACKEND.getError();
+    }
+
+    /** LWJGL2 {@code Util.checkGLError} semantics: throw on any pending GL error. */
+    public static void checkGLError() {
+        final int error = glGetError();
+        if (error != GL11.GL_NO_ERROR) {
+            throw new OpenGLException(error);
+        }
     }
 
     public static String glGetString(int pname) {
@@ -6869,6 +6891,15 @@ public class GLStateManager {
 
     public static void glDebugMessageCallback(KHRDebugCallback callback) {
         RENDER_BACKEND.debugMessageCallback(GLDebug.adaptDebugCallback(callback), 0L);
+    }
+
+    /**
+     * Redirect target for {@code org.lwjgl.opengl.GLUtil.setupDebugMessageCallback(PrintStream)}.
+     * GLUtil is core-excluded from transformation, so the call sites in mod classes (Distant
+     * Horizons' debug logger) are rewritten to this entry point instead.
+     */
+    public static Callback setupDebugMessageCallback(PrintStream stream) {
+        return GLUtil.setupDebugMessageCallback(stream);
     }
 
     public static void glGenerateMipmap(int target) {

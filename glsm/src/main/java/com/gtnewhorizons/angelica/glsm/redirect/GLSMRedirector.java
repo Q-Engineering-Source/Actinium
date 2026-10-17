@@ -947,6 +947,12 @@ public class GLSMRedirector {
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL15C nglMapBuffer(II)J", "nglMapBuffer");
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL32C nglMultiDrawElementsBaseVertex(IJIJIJ)V", "nglMultiDrawElementsBaseVertex");
 
+        // LWJGL helper classes are core-excluded from transformation, so these fire at the call
+        // sites in mod classes (xaero, Distant Horizons) instead
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/Util checkGLError()V", "checkGLError");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GLUtil setupDebugMessageCallback(Ljava/io/PrintStream;)Lorg/lwjgl/system/Callback;", "setupDebugMessageCallback");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL13 glCompressedTexImage2D(IIIIIIIJ)V", "glCompressedTexImage2D");
+
         for (String owner : new String[]{"org/lwjgl/opengl/KHRDebug", "org/lwjgl/opengl/GL43", "org/lwjgl/opengl/GL43C"}) {
             GL_DESC_REDIRECTS.put(owner + " glObjectLabel(IILjava/lang/CharSequence;)V", "glObjectLabel");
             GL_DESC_REDIRECTS.put(owner + " glGetObjectLabel(III)Ljava/lang/String;", "glGetObjectLabel");

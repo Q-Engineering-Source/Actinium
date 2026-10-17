@@ -1436,6 +1436,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void compressedTexImage2D(int target, int level, int internalFormat, int width, int height, int border, int imageSize, long data) {
+        GL13C.glCompressedTexImage2D(target, level, internalFormat, width, height, border, imageSize, data);
+    }
+
+    @Override
     public void textureStorage1D(int texture, int levels, int internalFormat, int width) {
         GL45C.glTextureStorage1D(texture, levels, internalFormat, width);
     }
