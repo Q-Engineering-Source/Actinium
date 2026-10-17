@@ -362,6 +362,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void multiDrawArraysIndirect(int mode, long indirect, int drawcount, int stride) {
+        GL43C.glMultiDrawArraysIndirect(mode, indirect, drawcount, stride);
+    }
+
+    @Override
     public void copyBufferSubData(int readTarget, int writeTarget, long readOffset, long writeOffset, long size) {
         GL31C.glCopyBufferSubData(readTarget, writeTarget, readOffset, writeOffset, size);
     }
@@ -960,6 +965,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void uniform1ui(int location, int v0) {
+        GL30C.glUniform1ui(location, v0);
+    }
+
+    @Override
     public void uniform2ui(int location, int v0, int v1) {
         GL30C.glUniform2ui(location, v0, v1);
     }
@@ -1451,6 +1461,16 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void texParameterIiv(int target, int pname, IntBuffer params) {
+        GL30C.glTexParameterIiv(target, pname, params);
+    }
+
+    @Override
+    public void texParameterIuiv(int target, int pname, IntBuffer params) {
+        GL30C.glTexParameterIuiv(target, pname, params);
+    }
+
+    @Override
     public void getQueryObjecti(int id, int pname, IntBuffer params) {
         GL15C.glGetQueryObjectiv(id, pname, params);
     }
@@ -1463,6 +1483,21 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     @Override
     public void texStorage3D(int target, int levels, int internalFormat, int width, int height, int depth) {
         GL42C.glTexStorage3D(target, levels, internalFormat, width, height, depth);
+    }
+
+    @Override
+    public void compressedTexImage3D(int target, int level, int internalFormat, int width, int height, int depth, int border, ByteBuffer pixels) {
+        GL13C.glCompressedTexImage3D(target, level, internalFormat, width, height, depth, border, pixels);
+    }
+
+    @Override
+    public void compressedTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, ByteBuffer pixels) {
+        GL13C.glCompressedTexSubImage3D(target, level, xoffset, yoffset, zoffset, width, height, depth, format, pixels);
+    }
+
+    @Override
+    public void getCompressedTexImage(int target, int level, ByteBuffer pixels) {
+        GL13C.glGetCompressedTexImage(target, level, pixels);
     }
 
     @Override
@@ -1578,6 +1613,51 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     @Override
     public int getTextureLevelParameteri(int texture, int level, int pname) {
         return GL45C.glGetTextureLevelParameteri(texture, level, pname);
+    }
+
+    @Override
+    public void textureSubImage3D(int texture, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, int type, ByteBuffer pixels) {
+        GL45C.glTextureSubImage3D(texture, level, xoffset, yoffset, zoffset, width, height, depth, format, type, pixels);
+    }
+
+    @Override
+    public void compressedTextureSubImage3D(int texture, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, ByteBuffer pixels) {
+        GL45C.glCompressedTextureSubImage3D(texture, level, xoffset, yoffset, zoffset, width, height, depth, format, pixels);
+    }
+
+    @Override
+    public void copyTextureSubImage3D(int texture, int level, int xoffset, int yoffset, int zoffset, int x, int y, int width, int height) {
+        GL45C.glCopyTextureSubImage3D(texture, level, xoffset, yoffset, zoffset, x, y, width, height);
+    }
+
+    @Override
+    public void clearTexSubImage(int texture, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, int type, ByteBuffer data) {
+        GL45C.glClearTexSubImage(texture, level, xoffset, yoffset, zoffset, width, height, depth, format, type, data);
+    }
+
+    @Override
+    public void textureParameterfv(int texture, int target, int pname, FloatBuffer params) {
+        GL45C.glTextureParameterfv(texture, pname, params);
+    }
+
+    @Override
+    public void textureParameterIiv(int texture, int target, int pname, IntBuffer params) {
+        GL45C.glTextureParameterIiv(texture, pname, params);
+    }
+
+    @Override
+    public void textureParameterIuiv(int texture, int target, int pname, IntBuffer params) {
+        GL45C.glTextureParameterIuiv(texture, pname, params);
+    }
+
+    @Override
+    public void getTextureImage(int texture, int level, int format, int type, ByteBuffer pixels) {
+        GL45C.glGetTextureImage(texture, level, format, type, pixels);
+    }
+
+    @Override
+    public void getCompressedTextureImage(int texture, int level, ByteBuffer pixels) {
+        GL45C.glGetCompressedTextureImage(texture, level, pixels);
     }
 
     @Override
