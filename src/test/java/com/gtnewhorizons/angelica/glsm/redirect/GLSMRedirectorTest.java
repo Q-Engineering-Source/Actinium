@@ -181,6 +181,70 @@ class GLSMRedirectorTest {
         assertEquals(false, redirector.shouldTransform(cw.toByteArray()));
     }
 
+    /**
+     * LWJGL helper classes (Util/GLUtil) are core-excluded from transformation, so their GL-issuing
+     * calls are intercepted at the call sites inside mod classes (xaero, Distant Horizons).
+     */
+    @Test
+    void rewritesLwjglHelperCallSitesToGlsm() {
+        String[][] cases = {
+            {"org/lwjgl/opengl/Util", "checkGLError", "()V", "checkGLError"},
+            {"org/lwjgl/opengl/GLUtil", "setupDebugMessageCallback", "(Ljava/io/PrintStream;)Lorg/lwjgl/system/Callback;", "setupDebugMessageCallback"},
+            {"org/lwjgl/opengl/GL13", "glCompressedTexImage2D", "(IIIIIIIJ)V", "glCompressedTexImage2D"},
+        };
+        for (String[] c : cases) {
+            assertRedirectedToGlsm(c[0], c[1], c[2], c[3]);
+        }
+    }
+
+    private static void assertRedirectedToGlsm(String owner, String name, String desc, String expectedName) {
+        final String label = owner + "." + name + desc;
+        byte[] classBytes = generateClassCallingGl(owner, name, desc);
+        GLSMRedirector redirector = new GLSMRedirector();
+        assertTrue(redirector.shouldTransform(classBytes), "class referencing " + label + " must be a redirect candidate");
+
+        ClassNode cn = new ClassNode();
+        new ClassReader(classBytes).accept(cn, 0);
+        assertTrue(redirector.transformClassNode("sample/GlCaller", cn), label + " must be rewritten");
+
+        MethodNode render = cn.methods.stream()
+            .filter(m -> m.name.equals("render"))
+            .findFirst()
+            .orElseThrow();
+        boolean redirected = false;
+        boolean originalSurvived = false;
+        for (AbstractInsnNode node : render.instructions) {
+            if (node instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESTATIC) {
+                if (call.owner.equals(GLSM_GL_STATE_MANAGER) && call.name.equals(expectedName) && call.desc.equals(desc)) {
+                    redirected = true;
+                } else if (call.owner.equals(owner) && call.name.equals(name)) {
+                    originalSurvived = true;
+                }
+            }
+        }
+        assertTrue(redirected, label + " must be redirected to GLSM GLStateManager." + expectedName + desc);
+        assertEquals(false, originalSurvived, "no driver-side " + label + " call may survive the rewrite");
+    }
+
+    private static byte[] generateClassCallingGl(String owner, String name, String desc) {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "sample/GlCaller", null, "java/lang/Object", null);
+        MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "render", "()V", null, null);
+        mv.visitCode();
+        mv.visitMethodInsn(Opcodes.INVOKESTATIC, owner, name, desc, false);
+        final String ret = desc.substring(desc.indexOf(')') + 1);
+        switch (ret) {
+            case "V" -> { }
+            case "J", "D" -> mv.visitInsn(Opcodes.POP2);
+            default -> mv.visitInsn(Opcodes.POP);
+        }
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(16, 0);
+        mv.visitEnd();
+        cw.visitEnd();
+        return cw.toByteArray();
+    }
+
     private static byte[] generateClassCallingDebugMessageCallback(String glOwner) {
         ClassWriter cw = new ClassWriter(0);
         cw.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "sample/DebugCallback", null, "java/lang/Object", null);
