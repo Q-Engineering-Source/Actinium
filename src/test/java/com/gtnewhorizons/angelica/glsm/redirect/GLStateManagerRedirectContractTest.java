@@ -196,6 +196,61 @@ class GLStateManagerRedirectContractTest {
         }
     }
 
+    /**
+     * Every signature the redirector can produce for the kirino/OpenGlHelper/IrisGlDebug batch
+     * must exist on GLStateManager, or the rewritten call dies with NoSuchMethodError at runtime.
+     */
+    @Test
+    void dsaUniformQueryBatchEntryPointsExist() throws IOException {
+        String[][] sigs = {
+            {"glCreateTextures", "(I)I"},
+            {"glBindTextureUnit", "(II)V"},
+            {"glTextureParameteri", "(III)V"},
+            {"glTextureParameterf", "(IIF)V"},
+            {"glTextureParameteriv", "(II[I)V"},
+            {"glTextureParameterfv", "(II[F)V"},
+            {"glTextureParameterIiv", "(II[I)V"},
+            {"glTextureParameterIuiv", "(II[I)V"},
+            {"glTexParameteriv", "(II[I)V"},
+            {"glTexParameterfv", "(II[F)V"},
+            {"glTexParameterIiv", "(II[I)V"},
+            {"glTexParameterIuiv", "(II[I)V"},
+            {"glTexStorage3D", "(IIIIII)V"},
+            {"glTextureStorage3D", "(IIIIII)V"},
+            {"glTextureSubImage3D", "(IIIIIIIIIILjava/nio/ByteBuffer;)V"},
+            {"glCompressedTexImage3D", "(IIIIIIILjava/nio/ByteBuffer;)V"},
+            {"glCompressedTexSubImage3D", "(IIIIIIIIILjava/nio/ByteBuffer;)V"},
+            {"glCompressedTextureSubImage3D", "(IIIIIIIIILjava/nio/ByteBuffer;)V"},
+            {"glCopyTextureSubImage3D", "(IIIIIIIII)V"},
+            {"glClearTexSubImage", "(IIIIIIIIIILjava/nio/ByteBuffer;)V"},
+            {"glGenerateTextureMipmap", "(I)V"},
+            {"glGetTextureLevelParameteri", "(III)I"},
+            {"glGetTextureLevelParameterf", "(III)F"},
+            {"glGetTexLevelParameterf", "(III)F"},
+            {"glGetTextureImage", "(IIIILjava/nio/ByteBuffer;)V"},
+            {"glGetCompressedTextureImage", "(IILjava/nio/ByteBuffer;)V"},
+            {"glGetCompressedTexImage", "(IILjava/nio/ByteBuffer;)V"},
+            {"glMultiDrawArraysIndirect", "(IJII)V"},
+            {"glUniform1ui", "(II)V"},
+            {"glGetUniformf", "(II)F"},
+            {"glGetUniformi", "(II)I"},
+            {"glGetUniform", "(IILjava/nio/FloatBuffer;)V"},
+            {"glUniform1", "(ILjava/nio/IntBuffer;)V"},
+            {"glUniform2", "(ILjava/nio/IntBuffer;)V"},
+            {"glUniform2", "(ILjava/nio/FloatBuffer;)V"},
+            {"glUniform3", "(ILjava/nio/IntBuffer;)V"},
+            {"glUniform4", "(ILjava/nio/IntBuffer;)V"},
+            {"glUniformMatrix2", "(IZLjava/nio/FloatBuffer;)V"},
+            {"glGetBoolean", "(ILjava/nio/ByteBuffer;)V"},
+        };
+        for (String[] sig : sigs) {
+            assertTrue(
+                methodDescriptors(sig[0]).contains(sig[1]),
+                "GLStateManager must expose " + sig[0] + sig[1] + ": the GL redirector rewrites calls to it"
+            );
+        }
+    }
+
     private static Set<String> methodDescriptors(String methodName) throws IOException {
         return loadClassNode().methods.stream()
             .filter(method -> method.name.equals(methodName))

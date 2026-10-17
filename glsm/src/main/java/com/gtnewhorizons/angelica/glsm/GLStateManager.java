@@ -2918,6 +2918,13 @@ public class GLStateManager {
         RENDER_BACKEND.multiDrawArraysIndirectCount(mode, indirect, drawcount, maxdrawcount, stride);
     }
 
+    public static void glMultiDrawArraysIndirect(int mode, long indirect, int drawcount, int stride) {
+        preDrawFFP();
+        prepareClientArrays();
+        recordGpuCommand(GpuCommandType.DRAW_ARRAYS, mode, drawcount);
+        RENDER_BACKEND.multiDrawArraysIndirect(mode, indirect, drawcount, stride);
+    }
+
     public static void glMultiDrawElementsIndirectCount(int mode, int type, long indirect, long drawcount, int maxdrawcount, int stride) {
         preDrawFFP();
         prepareClientArrays();
@@ -4798,6 +4805,23 @@ public class GLStateManager {
         RENDER_BACKEND.texParameterfv(target, pname, params);
     }
 
+    /** LWJGL3 array-signature variants used by kirino's texture accessors. */
+    public static void glTexParameteriv(int target, int pname, int[] params) {
+        glTexParameter(target, pname, IntBuffer.wrap(params));
+    }
+
+    public static void glTexParameterfv(int target, int pname, float[] params) {
+        glTexParameter(target, pname, FloatBuffer.wrap(params));
+    }
+
+    public static void glTexParameterIiv(int target, int pname, int[] params) {
+        RENDER_BACKEND.texParameterIiv(target, pname, IntBuffer.wrap(params));
+    }
+
+    public static void glTexParameterIuiv(int target, int pname, int[] params) {
+        RENDER_BACKEND.texParameterIuiv(target, pname, IntBuffer.wrap(params));
+    }
+
     public static void glTexParameteri(int target, int pname, int param) {
         if (handleRemovedTexParam(target, pname, param)) return;
         param = remapTexClamp(pname, param);
@@ -4953,6 +4977,10 @@ public class GLStateManager {
         };
     }
 
+    public static float glGetTexLevelParameterf(int target, int level, int pname) {
+        return glGetTexLevelParameteri(target, level, pname);
+    }
+
     public static void glGetTexImage(int target, int level, int format, int type, ByteBuffer pixels) {
         if (RenderSystem.isGLES()) {
             getTexImageViaFboReadPixels(target, level, format, type, pixels);
@@ -5074,6 +5102,98 @@ public class GLStateManager {
         gpuCheckpoint(GpuCommandType.CLEAR_TEX_IMAGE);
     }
 
+    public static void glClearTexSubImage(int texture, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, int type, ByteBuffer data) {
+        recordGpuCommand(GpuCommandType.CLEAR_TEX_IMAGE, GpuCommandPhase.BEGIN, texture, level);
+        RENDER_BACKEND.clearTexSubImage(texture, level, xoffset, yoffset, zoffset, width, height, depth, format, type, data);
+        recordGpuCommand(GpuCommandType.CLEAR_TEX_IMAGE, GpuCommandPhase.END, texture, level);
+        gpuCheckpoint(GpuCommandType.CLEAR_TEX_IMAGE);
+    }
+
+    // ===== GL45 DSA texture entry points (kirino texture accessors) =====
+
+    public static int glCreateTextures(int target) {
+        requireContext("glCreateTextures");
+        final int texture = RENDER_BACKEND.createTextures(target);
+        TextureInfoCache.INSTANCE.getInfo(texture).setTarget(target);
+        return texture;
+    }
+
+    public static void glBindTextureUnit(int unit, int texture) {
+        if (getBoundTextureForServerState(unit) == texture) return;
+        recordGpuCommand(GpuCommandType.TEXTURE_BIND, 0, texture);
+        RENDER_BACKEND.bindTextureUnit(unit, texture);
+        ctx().textures.getTextureUnitBindings(unit).setBinding(texture);
+        if (texture != 0 && unit > ctx().maxBoundTextureUnit) {
+            ctx().maxBoundTextureUnit = unit;
+        }
+    }
+
+    /** DSA texture parameter paths recover the target from the GLSM-side cache (set at glCreateTextures). */
+    private static int dsaTargetOf(int texture) {
+        final TextureInfo info = TextureInfoCache.INSTANCE.peekInfo(texture);
+        return info != null ? info.getTarget() : 0;
+    }
+
+    public static void glTextureParameteri(int texture, int pname, int param) {
+        param = remapTexClamp(pname, param);
+        final int target = dsaTargetOf(texture);
+        if (!updateTexParameteriCache(target, texture, pname, param)) return;
+        RENDER_BACKEND.textureParameteri(texture, target, pname, param);
+    }
+
+    public static void glTextureParameterf(int texture, int pname, float param) {
+        param = remapTexClamp(pname, param);
+        final int target = dsaTargetOf(texture);
+        if (!updateTexParameterfCache(target, texture, pname, param)) return;
+        RENDER_BACKEND.textureParameterf(texture, target, pname, param);
+    }
+
+    public static void glTextureParameteriv(int texture, int pname, int[] params) {
+        final IntBuffer buf = IntBuffer.wrap(params);
+        remapTexClampBuffer(pname, buf);
+        RENDER_BACKEND.textureParameteriv(texture, dsaTargetOf(texture), pname, buf);
+    }
+
+    public static void glTextureParameterfv(int texture, int pname, float[] params) {
+        if (params.length > 0) {
+            final float remapped = remapTexClamp(pname, params[0]);
+            if (remapped != params[0]) params[0] = remapped;
+        }
+        RENDER_BACKEND.textureParameterfv(texture, dsaTargetOf(texture), pname, FloatBuffer.wrap(params));
+    }
+
+    public static void glTextureParameterIiv(int texture, int pname, int[] params) {
+        RENDER_BACKEND.textureParameterIiv(texture, dsaTargetOf(texture), pname, IntBuffer.wrap(params));
+    }
+
+    public static void glTextureParameterIuiv(int texture, int pname, int[] params) {
+        RENDER_BACKEND.textureParameterIuiv(texture, dsaTargetOf(texture), pname, IntBuffer.wrap(params));
+    }
+
+    public static void glTexStorage3D(int target, int levels, int internalFormat, int width, int height, int depth) {
+        final int texture = getBoundTextureForGpuDiagnostics();
+        recordGpuCommand(GpuCommandType.TEX_STORAGE_3D, GpuCommandPhase.BEGIN, texture, packDimensions(width, height));
+        RENDER_BACKEND.texStorage3D(target, levels, internalFormat, width, height, depth);
+        recordGpuCommand(GpuCommandType.TEX_STORAGE_3D, GpuCommandPhase.END, texture, packDimensions(width, height));
+        gpuCheckpoint(GpuCommandType.TEX_STORAGE_3D);
+    }
+
+    public static void glTextureStorage3D(int texture, int levels, int internalFormat, int width, int height, int depth) {
+        recordGpuCommand(GpuCommandType.TEX_STORAGE_3D, GpuCommandPhase.BEGIN, texture, packDimensions(width, height));
+        RENDER_BACKEND.textureStorage3D(texture, levels, internalFormat, width, height, depth);
+        recordGpuCommand(GpuCommandType.TEX_STORAGE_3D, GpuCommandPhase.END, texture, packDimensions(width, height));
+        gpuCheckpoint(GpuCommandType.TEX_STORAGE_3D);
+    }
+
+    public static void glTextureSubImage3D(int texture, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, int type, ByteBuffer pixels) {
+        recordGpuCommand(GpuCommandType.TEX_SUB_IMAGE_3D, GpuCommandPhase.BEGIN, texture, packDimensions(width, height));
+        suspendPixelUnpackBuffer();
+        RENDER_BACKEND.textureSubImage3D(texture, level, xoffset, yoffset, zoffset, width, height, depth, format, type, pixels);
+        restorePixelUnpackBuffer();
+        recordGpuCommand(GpuCommandType.TEX_SUB_IMAGE_3D, GpuCommandPhase.END, texture, packDimensions(width, height));
+        gpuCheckpoint(GpuCommandType.TEX_SUB_IMAGE_3D);
+    }
+
     public static void glCompressedTexImage2D(int target, int level, int internalFormat, int width, int height, int border, ByteBuffer pixels) {
         final int texture = getBoundTextureForGpuDiagnostics();
         recordGpuCommand(GpuCommandType.TEX_IMAGE_2D, GpuCommandPhase.BEGIN, texture, packDimensions(width, height));
@@ -5092,6 +5212,75 @@ public class GLStateManager {
         restorePixelUnpackBuffer();
         recordGpuCommand(GpuCommandType.TEX_IMAGE_2D, GpuCommandPhase.END, texture, packDimensions(width, height));
         gpuCheckpoint(GpuCommandType.TEX_IMAGE_2D);
+    }
+
+    public static void glCompressedTexImage3D(int target, int level, int internalFormat, int width, int height, int depth, int border, ByteBuffer pixels) {
+        final int texture = getBoundTextureForGpuDiagnostics();
+        recordGpuCommand(GpuCommandType.TEX_IMAGE_3D, GpuCommandPhase.BEGIN, texture, packDimensions(width, height));
+        suspendPixelUnpackBuffer();
+        RENDER_BACKEND.compressedTexImage3D(target, level, internalFormat, width, height, depth, border, pixels);
+        restorePixelUnpackBuffer();
+        recordGpuCommand(GpuCommandType.TEX_IMAGE_3D, GpuCommandPhase.END, texture, packDimensions(width, height));
+        gpuCheckpoint(GpuCommandType.TEX_IMAGE_3D);
+    }
+
+    public static void glCompressedTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, ByteBuffer pixels) {
+        final int texture = getBoundTextureForGpuDiagnostics();
+        recordGpuCommand(GpuCommandType.TEX_SUB_IMAGE_3D, GpuCommandPhase.BEGIN, texture, packDimensions(width, height));
+        suspendPixelUnpackBuffer();
+        RENDER_BACKEND.compressedTexSubImage3D(target, level, xoffset, yoffset, zoffset, width, height, depth, format, pixels);
+        restorePixelUnpackBuffer();
+        recordGpuCommand(GpuCommandType.TEX_SUB_IMAGE_3D, GpuCommandPhase.END, texture, packDimensions(width, height));
+        gpuCheckpoint(GpuCommandType.TEX_SUB_IMAGE_3D);
+    }
+
+    public static void glCompressedTextureSubImage3D(int texture, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, ByteBuffer pixels) {
+        recordGpuCommand(GpuCommandType.TEX_SUB_IMAGE_3D, GpuCommandPhase.BEGIN, texture, packDimensions(width, height));
+        suspendPixelUnpackBuffer();
+        RENDER_BACKEND.compressedTextureSubImage3D(texture, level, xoffset, yoffset, zoffset, width, height, depth, format, pixels);
+        restorePixelUnpackBuffer();
+        recordGpuCommand(GpuCommandType.TEX_SUB_IMAGE_3D, GpuCommandPhase.END, texture, packDimensions(width, height));
+        gpuCheckpoint(GpuCommandType.TEX_SUB_IMAGE_3D);
+    }
+
+    public static void glCopyTextureSubImage3D(int texture, int level, int xoffset, int yoffset, int zoffset, int x, int y, int width, int height) {
+        recordGpuCommand(GpuCommandType.COPY_TEX_SUB_IMAGE_2D, GpuCommandPhase.BEGIN, texture, packDimensions(width, height));
+        RENDER_BACKEND.copyTextureSubImage3D(texture, level, xoffset, yoffset, zoffset, x, y, width, height);
+        recordGpuCommand(GpuCommandType.COPY_TEX_SUB_IMAGE_2D, GpuCommandPhase.END, texture, packDimensions(width, height));
+        gpuCheckpoint(GpuCommandType.COPY_TEX_SUB_IMAGE_2D);
+    }
+
+    public static void glGenerateTextureMipmap(int texture) {
+        recordGpuCommand(GpuCommandType.GENERATE_MIPMAP, GpuCommandPhase.BEGIN, texture, 0);
+        RENDER_BACKEND.generateTextureMipmap(texture);
+        recordGpuCommand(GpuCommandType.GENERATE_MIPMAP, GpuCommandPhase.END, texture, 0);
+        gpuCheckpoint(GpuCommandType.GENERATE_MIPMAP);
+    }
+
+    public static int glGetTextureLevelParameteri(int texture, int level, int pname) {
+        return RENDER_BACKEND.getTextureLevelParameteri(texture, level, pname);
+    }
+
+    public static float glGetTextureLevelParameterf(int texture, int level, int pname) {
+        return RENDER_BACKEND.getTextureLevelParameteri(texture, level, pname);
+    }
+
+    public static void glGetTextureImage(int texture, int level, int format, int type, ByteBuffer pixels) {
+        suspendPixelPackBuffer();
+        RENDER_BACKEND.getTextureImage(texture, level, format, type, pixels);
+        restorePixelPackBuffer();
+    }
+
+    public static void glGetCompressedTextureImage(int texture, int level, ByteBuffer pixels) {
+        suspendPixelPackBuffer();
+        RENDER_BACKEND.getCompressedTextureImage(texture, level, pixels);
+        restorePixelPackBuffer();
+    }
+
+    public static void glGetCompressedTexImage(int target, int level, ByteBuffer pixels) {
+        suspendPixelPackBuffer();
+        RENDER_BACKEND.getCompressedTexImage(target, level, pixels);
+        restorePixelPackBuffer();
     }
 
     public static int glGenSamplers() { return RENDER_BACKEND.genSamplers(); }
@@ -7716,6 +7905,10 @@ public class GLStateManager {
         RENDER_BACKEND.uniform1i(location, v0);
     }
 
+    public static void glUniform1ui(int location, int v0) {
+        RENDER_BACKEND.uniform1ui(location, v0);
+    }
+
     public static void glUniform2ui(int location, int v0, int v1) {
         RENDER_BACKEND.uniform2ui(location, v0, v1);
     }
@@ -7891,6 +8084,18 @@ public class GLStateManager {
 
     public static void glGetUniform(int program, int location, IntBuffer params) {
         RENDER_BACKEND.getUniformiv(program, location, params);
+    }
+
+    public static float glGetUniformf(int program, int location) {
+        final FloatBuffer buf = BufferUtils.createFloatBuffer(1);
+        RENDER_BACKEND.getUniformfv(program, location, buf);
+        return buf.get(0);
+    }
+
+    public static int glGetUniformi(int program, int location) {
+        final IntBuffer buf = BufferUtils.createIntBuffer(1);
+        RENDER_BACKEND.getUniformiv(program, location, buf);
+        return buf.get(0);
     }
 
     public static void glPushAttrib() {
