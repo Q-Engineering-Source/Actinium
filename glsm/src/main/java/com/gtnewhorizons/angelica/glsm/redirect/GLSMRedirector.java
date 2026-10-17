@@ -96,6 +96,9 @@ public class GLSMRedirector {
     private static final String EXTGPU_SHADER4 = "org/lwjgl/opengl/EXTGPUShader4";
     private static final String ARB_TIMER_QUERY = "org/lwjgl/opengl/ARBTimerQuery";
     private static final String EXT_TIMER_QUERY = "org/lwjgl/opengl/EXTTimerQuery";
+    private static final String ARB_IMAGING = "org/lwjgl/opengl/ARBImaging";
+    private static final String ARB_VERTEX_PROGRAM = "org/lwjgl/opengl/ARBVertexProgram";
+    private static final String EXT_FRAMEBUFFER_BLIT = "org/lwjgl/opengl/EXTFramebufferBlit";
     private static final String UNIVERSAL_VAO = "com/gtnewhorizon/gtnhlib/client/opengl/UniversalVAO";
     private static final String MINECRAFT_CLIENT = "net.minecraft.client";
     private static final String SPLASH_PROGRESS = "cpw.mods.fml.client.SplashProgress";
@@ -780,6 +783,17 @@ public class GLSMRedirector {
         );
         METHOD_REDIRECTS.put(ARB_VERTEX_SHADER, RedirectMap.newMap()
             .add("glGetAttribLocationARB", "glGetAttribLocation")
+            .add("glBindAttribLocationARB", "glBindAttribLocation")
+        );
+        METHOD_REDIRECTS.put(ARB_IMAGING, RedirectMap.newMap()
+            .add("glBlendEquation")
+        );
+        METHOD_REDIRECTS.put(ARB_VERTEX_PROGRAM, RedirectMap.newMap()
+            .add("glDisableVertexAttribArrayARB", "glDisableVertexAttribArray")
+            .add("glEnableVertexAttribArrayARB", "glEnableVertexAttribArray")
+        );
+        METHOD_REDIRECTS.put(EXT_FRAMEBUFFER_BLIT, RedirectMap.newMap()
+            .add("glBlitFramebufferEXT", "glBlitFramebuffer")
         );
         METHOD_REDIRECTS.put(ARB_FRAMEBUFFER_OBJECT, RedirectMap.newMap()
             .add("glBindFramebuffer")
@@ -792,6 +806,7 @@ public class GLSMRedirector {
             .add("glGenRenderbuffers")
             .add("glRenderbufferStorage")
             .add("glFramebufferRenderbuffer")
+            .add("glBlitFramebuffer")
         );
         METHOD_REDIRECTS.put(EXT_FRAMEBUFFER_OBJECT, RedirectMap.newMap()
             .add("glBindFramebufferEXT", "glBindFramebuffer")
@@ -807,9 +822,11 @@ public class GLSMRedirector {
         );
         METHOD_REDIRECTS.put(ARB_OCCLUSION_QUERY, RedirectMap.newMap()
             .add("glGenQueriesARB", "glGenQueries")
+            .add("glDeleteQueriesARB", "glDeleteQueries")
             .add("glBeginQueryARB", "glBeginQuery")
             .add("glEndQueryARB", "glEndQuery")
             .add("glGetQueryObjectuARB", "glGetQueryObjectui")
+            .add("glGetQueryObjectuiARB", "glGetQueryObjectui")
         );
         METHOD_REDIRECTS.put(ARB_TIMER_QUERY, RedirectMap.newMap()
             .add("glQueryCounter")
@@ -946,6 +963,22 @@ public class GLSMRedirector {
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL32C glDeleteSync(J)V", "glDeleteSync");
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL15C nglMapBuffer(II)J", "nglMapBuffer");
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL32C nglMultiDrawElementsBaseVertex(IJIJIJ)V", "nglMultiDrawElementsBaseVertex");
+
+        // GLContext starts with the org/lwjgl/opengl/GL prefix, so an owner map entry would never
+        // be consulted; the desc map is checked first.
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GLContext getCapabilities()Lorg/lwjgl/opengl/ContextCapabilities;", "currentContextCapabilities");
+
+        // Vanilla GlStateManager's fixed-function FloatBuffer setters (fv names also exist with
+        // array overloads on GL11C, hence exact descriptors)
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL11 glFogfv(ILjava/nio/FloatBuffer;)V", "glFog");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL11 glLightModelfv(ILjava/nio/FloatBuffer;)V", "glLightModel");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL11 glLightfv(IILjava/nio/FloatBuffer;)V", "glLight");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL11 glTexEnvfv(IILjava/nio/FloatBuffer;)V", "glTexEnv");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL11 glTexGenfv(IILjava/nio/FloatBuffer;)V", "glTexGen");
+        // (IIIZIJ)V matches glVertexAttribPointer(int,int,int,boolean,int,long); the ARB buffer
+        // overloads stay unmapped on purpose
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/ARBVertexProgram glVertexAttribPointerARB(IIIZIJ)V", "glVertexAttribPointer");
+        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL13 glCompressedTexImage2D(IIIIIILjava/nio/ByteBuffer;)V", "glCompressedTexImage2D");
 
         // LWJGL helper classes are core-excluded from transformation, so these fire at the call
         // sites in mod classes (xaero, Distant Horizons) instead
