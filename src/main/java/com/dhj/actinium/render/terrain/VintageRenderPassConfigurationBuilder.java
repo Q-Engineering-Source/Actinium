@@ -111,14 +111,16 @@ public class VintageRenderPassConfigurationBuilder {
         vanillaRenderStages.put(BlockRenderLayer.TRANSLUCENT, fluidPass);
         vanillaRenderStages.put(BlockRenderLayer.TRANSLUCENT, translucentPass);
 
+        // Vanilla samples BlockRenderLayer.CUTOUT at mip level 0 while CUTOUT_MIPPED is mipmapped.
+        // Both layers share the consolidated pass here, so the material carries that bit (#191).
         if (ActiniumRuntime.options().performance.useRenderPassConsolidation) {
-            cutoutMaterial = new Material(cutoutMippedPass, AlphaCutoffParameter.ONE_TENTH, mipEnabled);
+            cutoutMaterial = new Material(cutoutMippedPass, AlphaCutoffParameter.ONE_TENTH, false);
             vanillaRenderStages.put(BlockRenderLayer.CUTOUT, cutoutMippedPass);
             vanillaRenderStages.put(BlockRenderLayer.CUTOUT_MIPPED, cutoutMippedPass);
         } else {
             TerrainRenderPass cutoutPass;
 
-            cutoutPass = builderForRenderType(BlockRenderLayer.CUTOUT, vertexType, mipEnabled)
+            cutoutPass = builderForRenderType(BlockRenderLayer.CUTOUT, vertexType, false)
                     .name("cutout")
                     .fragmentDiscard(true)
                     .useReverseOrder(false)
@@ -126,7 +128,7 @@ public class VintageRenderPassConfigurationBuilder {
                     .writesDepth(true)
                     .build();
 
-            cutoutMaterial = new Material(cutoutPass, AlphaCutoffParameter.ONE_TENTH, mipEnabled);
+            cutoutMaterial = new Material(cutoutPass, AlphaCutoffParameter.ONE_TENTH, false);
             vanillaRenderStages.put(BlockRenderLayer.CUTOUT, cutoutPass);
             vanillaRenderStages.put(BlockRenderLayer.CUTOUT_MIPPED, cutoutMippedPass);
         }

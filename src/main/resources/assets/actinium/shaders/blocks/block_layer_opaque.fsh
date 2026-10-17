@@ -16,6 +16,7 @@ in float v_ChunkAgeMs;
 #ifdef USE_FRAGMENT_DISCARD
 in float v_MaterialAlphaCutoff;
 #endif
+in float v_MaterialUseMip;
 
 #if defined(USE_FOG_POSTMODERN)
 in float v_SphericalFragDistance;
@@ -55,7 +56,16 @@ void main() {
     // Two-argument sampling: the GL filter state picks the mip level instead of per-fragment
     // derivatives, so alpha-test fragments are not discarded at mip level boundaries where the
     // derivative-based bias would sample an undefined level and return an alpha of ~0.
+    //
+    // Vanilla samples BlockRenderLayer.CUTOUT at mip level 0, and every cutout layer shares one
+    // render pass here, so the material bit selects the level (#191).
+#ifdef LEGACY
     vec4 diffuseColor = texture(u_BlockTex, v_TexCoord);
+#else
+    vec4 diffuseColor = v_MaterialUseMip > 0.5
+            ? texture(u_BlockTex, v_TexCoord)
+            : textureLod(u_BlockTex, v_TexCoord, 0.0);
+#endif
 
 #ifdef USE_FRAGMENT_DISCARD
     if (diffuseColor.a < v_MaterialAlphaCutoff) {
