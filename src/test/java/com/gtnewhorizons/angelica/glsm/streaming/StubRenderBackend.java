@@ -145,6 +145,11 @@ class StubRenderBackend extends RenderBackend {
     @Override public int getUniformLocation(int program, ByteBuffer name) { throw new UnsupportedOperationException(); }
     @Override public void getShaderSource(int shader, IntBuffer length, ByteBuffer source) { throw new UnsupportedOperationException(); }
     @Override public void uniform1i(int location, int v0) { throw new UnsupportedOperationException(); }
+    @Override public void uniform2ui(int location, int v0, int v1) { throw new UnsupportedOperationException(); }
+    @Override public void uniform3ui(int location, int v0, int v1, int v2) { throw new UnsupportedOperationException(); }
+    @Override public void uniform4ui(int location, int v0, int v1, int v2, int v3) { throw new UnsupportedOperationException(); }
+    @Override public void uniform1d(int location, double v0) { throw new UnsupportedOperationException(); }
+    @Override public void getVertexAttribi(int index, int pname, IntBuffer params) { throw new UnsupportedOperationException(); }
     @Override public void uniform1f(int location, float v0) { throw new UnsupportedOperationException(); }
     @Override public void uniform2f(int location, float v0, float v1) { throw new UnsupportedOperationException(); }
     @Override public void uniform2i(int location, int v0, int v1) { throw new UnsupportedOperationException(); }

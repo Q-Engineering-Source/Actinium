@@ -3396,6 +3396,8 @@ public class GLStateManager {
 
     public static void glVertexAttribDivisor(int index, int divisor) { RENDER_BACKEND.vertexAttribDivisor(index, divisor); }
     public static void glVertexAttribDivisorARB(int index, int divisor) { RENDER_BACKEND.vertexAttribDivisor(index, divisor); }
+
+    public static void glGetVertexAttrib(int index, int pname, IntBuffer params) { RENDER_BACKEND.getVertexAttribi(index, pname, params); }
     public static void glBindVertexBuffer(int bindingindex, int buffer, long offset, int stride) { RENDER_BACKEND.bindVertexBuffer(bindingindex, buffer, offset, stride); }
     public static void glVertexAttribFormat(int attribindex, int size, int type, boolean normalized, int relativeoffset) { RENDER_BACKEND.vertexAttribFormat(attribindex, size, type, normalized, relativeoffset); }
     public static void glVertexAttribIFormat(int attribindex, int size, int type, int relativeoffset) { RENDER_BACKEND.vertexAttribIFormat(attribindex, size, type, relativeoffset); }
@@ -6834,6 +6836,8 @@ public class GLStateManager {
 
     public static void glGetQueryObjectui(int id, int pname, IntBuffer params) { RENDER_BACKEND.getQueryObjectui(id, pname, params); }
 
+    public static void glGetQueryObject(int id, int pname, IntBuffer params) { RENDER_BACKEND.getQueryObjecti(id, pname, params); }
+
     public static int glGetQueryObjectui(int id, int pname) { return RENDER_BACKEND.getQueryObjectui(id, pname); }
 
     public static int glGetQueryObjecti(int id, int pname) { return RENDER_BACKEND.getQueryObjecti(id, pname); }
@@ -7710,6 +7714,22 @@ public class GLStateManager {
 
     public static void glUniform1i(int location, int v0) {
         RENDER_BACKEND.uniform1i(location, v0);
+    }
+
+    public static void glUniform2ui(int location, int v0, int v1) {
+        RENDER_BACKEND.uniform2ui(location, v0, v1);
+    }
+
+    public static void glUniform3ui(int location, int v0, int v1, int v2) {
+        RENDER_BACKEND.uniform3ui(location, v0, v1, v2);
+    }
+
+    public static void glUniform4ui(int location, int v0, int v1, int v2, int v3) {
+        RENDER_BACKEND.uniform4ui(location, v0, v1, v2, v3);
+    }
+
+    public static void glUniform1d(int location, double v0) {
+        RENDER_BACKEND.uniform1d(location, v0);
     }
 
     public static void glUniform2i(int location, int v0, int v1) {
