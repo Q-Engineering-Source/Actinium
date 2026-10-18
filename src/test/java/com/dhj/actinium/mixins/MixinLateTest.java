@@ -62,6 +62,11 @@ class MixinLateTest {
         );
 
         assertEquals(
+            Set.of("mixins.actinium.dsurround.json"),
+            Set.copyOf(MixinLate.configsFor("dsurround"::equals, className -> false))
+        );
+
+        assertEquals(
             Set.of(
                 "mixins.actinium.gibbed.json",
                 "mixins.actinium.ichunutil.json",
@@ -81,7 +86,8 @@ class MixinLateTest {
                 "mixins.actinium.scannable.json",
                 "mixins.actinium.littletiles.json",
                 "mixins.actinium.architecturecraft.json",
-                "mixins.actinium.obscuretooltips.json"
+                "mixins.actinium.obscuretooltips.json",
+                "mixins.actinium.dsurround.json"
             ),
             Set.copyOf(MixinLate.configsFor(modId -> true, className -> true))
         );
