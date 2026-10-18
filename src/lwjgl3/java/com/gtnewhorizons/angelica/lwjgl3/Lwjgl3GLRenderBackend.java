@@ -362,6 +362,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void multiDrawArraysIndirect(int mode, long indirect, int drawcount, int stride) {
+        GL43C.glMultiDrawArraysIndirect(mode, indirect, drawcount, stride);
+    }
+
+    @Override
     public void copyBufferSubData(int readTarget, int writeTarget, long readOffset, long writeOffset, long size) {
         GL31C.glCopyBufferSubData(readTarget, writeTarget, readOffset, writeOffset, size);
     }
@@ -378,6 +383,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public void multiDrawArrays(int mode, IntBuffer firsts, IntBuffer counts) {
+        GL14C.glMultiDrawArrays(mode, firsts, counts);
+    }
+
+    @Override
+    public void multiDrawArrays(int mode, int[] firsts, int[] counts) {
         GL14C.glMultiDrawArrays(mode, firsts, counts);
     }
 
@@ -683,6 +693,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void drawBuffers(int[] bufs) {
+        GL20C.glDrawBuffers(bufs);
+    }
+
+    @Override
     public void readBuffer(int mode) {
         GL11C.glReadBuffer(mode);
     }
@@ -788,12 +803,22 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void getShaderInfoLog(int shader, int[] length, ByteBuffer infoLog) {
+        GL20C.glGetShaderInfoLog(shader, length, infoLog);
+    }
+
+    @Override
     public String getProgramInfoLog(int program, int maxLength) {
         return GL20C.glGetProgramInfoLog(program, maxLength);
     }
 
     @Override
     public void getProgramInfoLog(int program, IntBuffer length, ByteBuffer infoLog) {
+        GL20C.glGetProgramInfoLog(program, length, infoLog);
+    }
+
+    @Override
+    public void getProgramInfoLog(int program, int[] length, ByteBuffer infoLog) {
         GL20C.glGetProgramInfoLog(program, length, infoLog);
     }
 
@@ -830,6 +855,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void getActiveUniform(int program, int index, int[] length, int[] size, int[] type, ByteBuffer name) {
+        GL20C.glGetActiveUniform(program, index, length, size, type, name);
+    }
+
+    @Override
     public void getActiveAttrib(int program, int index, IntBuffer length, IntBuffer size, IntBuffer type, ByteBuffer name) {
         final String nameStr = GL20C.glGetActiveAttrib(program, index, size, type);
         if (name != null && nameStr != null) {
@@ -838,6 +868,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
             name.put(bytes, 0, n);
             if (length != null && length.remaining() > 0) length.put(0, n);
         }
+    }
+
+    @Override
+    public void getActiveAttrib(int program, int index, int[] length, int[] size, int[] type, ByteBuffer name) {
+        GL20C.glGetActiveAttrib(program, index, length, size, type, name);
     }
 
     @Override
@@ -905,6 +940,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void getAttachedShaders(int program, int[] count, int[] shaders) {
+        GL20C.glGetAttachedShaders(program, count, shaders);
+    }
+
+    @Override
     public String getShaderSource(int shader, int maxLength) {
         return GL20C.glGetShaderSource(shader, maxLength);
     }
@@ -915,8 +955,38 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void getShaderSource(int shader, int[] length, ByteBuffer source) {
+        GL20C.glGetShaderSource(shader, length, source);
+    }
+
+    @Override
     public void uniform1i(int location, int v0) {
         GL20C.glUniform1i(location, v0);
+    }
+
+    @Override
+    public void uniform1ui(int location, int v0) {
+        GL30C.glUniform1ui(location, v0);
+    }
+
+    @Override
+    public void uniform2ui(int location, int v0, int v1) {
+        GL30C.glUniform2ui(location, v0, v1);
+    }
+
+    @Override
+    public void uniform3ui(int location, int v0, int v1, int v2) {
+        GL30C.glUniform3ui(location, v0, v1, v2);
+    }
+
+    @Override
+    public void uniform4ui(int location, int v0, int v1, int v2, int v3) {
+        GL30C.glUniform4ui(location, v0, v1, v2, v3);
+    }
+
+    @Override
+    public void uniform1d(int location, double v0) {
+        GL40C.glUniform1d(location, v0);
     }
 
     @Override
@@ -926,6 +996,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public void uniform1fv(int location, FloatBuffer values) {
+        GL20C.glUniform1fv(location, values);
+    }
+
+    @Override
+    public void uniform1fv(int location, float[] values) {
         GL20C.glUniform1fv(location, values);
     }
 
@@ -1010,8 +1085,18 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void uniformMatrix3(int location, boolean transpose, float[] matrices) {
+        GL20C.glUniformMatrix3fv(location, transpose, matrices);
+    }
+
+    @Override
     public void uniformMatrix4(int location, boolean transpose, FloatBuffer value) {
         GL20C.glUniformMatrix4fv(location, transpose, value);
+    }
+
+    @Override
+    public void uniformMatrix4(int location, boolean transpose, float[] matrices) {
+        GL20C.glUniformMatrix4fv(location, transpose, matrices);
     }
 
     @Override
@@ -1076,6 +1161,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public int getUniformBlockIndex(int program, CharSequence name) {
+        return GL31C.glGetUniformBlockIndex(program, name);
+    }
+
+    @Override
+    public int getUniformBlockIndex(int program, ByteBuffer name) {
         return GL31C.glGetUniformBlockIndex(program, name);
     }
 
@@ -1371,8 +1461,53 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
+    public void texParameterIiv(int target, int pname, IntBuffer params) {
+        GL30C.glTexParameterIiv(target, pname, params);
+    }
+
+    @Override
+    public void texParameterIuiv(int target, int pname, IntBuffer params) {
+        GL30C.glTexParameterIuiv(target, pname, params);
+    }
+
+    @Override
+    public void getQueryObjecti(int id, int pname, IntBuffer params) {
+        GL15C.glGetQueryObjectiv(id, pname, params);
+    }
+
+    @Override
+    public void getVertexAttribi(int index, int pname, IntBuffer params) {
+        GL20C.glGetVertexAttribiv(index, pname, params);
+    }
+
+    @Override
     public void texStorage3D(int target, int levels, int internalFormat, int width, int height, int depth) {
         GL42C.glTexStorage3D(target, levels, internalFormat, width, height, depth);
+    }
+
+    @Override
+    public void compressedTexImage3D(int target, int level, int internalFormat, int width, int height, int depth, int border, ByteBuffer pixels) {
+        GL13C.glCompressedTexImage3D(target, level, internalFormat, width, height, depth, border, pixels);
+    }
+
+    @Override
+    public void compressedTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, ByteBuffer pixels) {
+        GL13C.glCompressedTexSubImage3D(target, level, xoffset, yoffset, zoffset, width, height, depth, format, pixels);
+    }
+
+    @Override
+    public void getCompressedTexImage(int target, int level, ByteBuffer pixels) {
+        GL13C.glGetCompressedTexImage(target, level, pixels);
+    }
+
+    @Override
+    public void compressedTexImage2D(int target, int level, int internalFormat, int width, int height, int border, ByteBuffer pixels) {
+        GL13C.glCompressedTexImage2D(target, level, internalFormat, width, height, border, pixels);
+    }
+
+    @Override
+    public void compressedTexImage2D(int target, int level, int internalFormat, int width, int height, int border, int imageSize, long data) {
+        GL13C.glCompressedTexImage2D(target, level, internalFormat, width, height, border, imageSize, data);
     }
 
     @Override
@@ -1478,6 +1613,51 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     @Override
     public int getTextureLevelParameteri(int texture, int level, int pname) {
         return GL45C.glGetTextureLevelParameteri(texture, level, pname);
+    }
+
+    @Override
+    public void textureSubImage3D(int texture, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, int type, ByteBuffer pixels) {
+        GL45C.glTextureSubImage3D(texture, level, xoffset, yoffset, zoffset, width, height, depth, format, type, pixels);
+    }
+
+    @Override
+    public void compressedTextureSubImage3D(int texture, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, ByteBuffer pixels) {
+        GL45C.glCompressedTextureSubImage3D(texture, level, xoffset, yoffset, zoffset, width, height, depth, format, pixels);
+    }
+
+    @Override
+    public void copyTextureSubImage3D(int texture, int level, int xoffset, int yoffset, int zoffset, int x, int y, int width, int height) {
+        GL45C.glCopyTextureSubImage3D(texture, level, xoffset, yoffset, zoffset, x, y, width, height);
+    }
+
+    @Override
+    public void clearTexSubImage(int texture, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, int type, ByteBuffer data) {
+        GL45C.glClearTexSubImage(texture, level, xoffset, yoffset, zoffset, width, height, depth, format, type, data);
+    }
+
+    @Override
+    public void textureParameterfv(int texture, int target, int pname, FloatBuffer params) {
+        GL45C.glTextureParameterfv(texture, pname, params);
+    }
+
+    @Override
+    public void textureParameterIiv(int texture, int target, int pname, IntBuffer params) {
+        GL45C.glTextureParameterIiv(texture, pname, params);
+    }
+
+    @Override
+    public void textureParameterIuiv(int texture, int target, int pname, IntBuffer params) {
+        GL45C.glTextureParameterIuiv(texture, pname, params);
+    }
+
+    @Override
+    public void getTextureImage(int texture, int level, int format, int type, ByteBuffer pixels) {
+        GL45C.glGetTextureImage(texture, level, format, type, pixels);
+    }
+
+    @Override
+    public void getCompressedTextureImage(int texture, int level, ByteBuffer pixels) {
+        GL45C.glGetCompressedTextureImage(texture, level, pixels);
     }
 
     @Override
@@ -1593,6 +1773,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     @Override
     public void getQueryObjectui(int id, int pname, IntBuffer params) {
         GL15C.glGetQueryObjectuiv(id, pname, params);
+    }
+
+    @Override
+    public int getQueryObjectui(int id, int pname) {
+        return GL15C.glGetQueryObjectui(id, pname);
     }
 
     @Override
