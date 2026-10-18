@@ -1,6 +1,6 @@
 # Actinium 兼容性矩阵
 
-最后更新：2026-10-10。
+最后更新：2026-10-18。
 
 状态定义：`已验证` 表示在记录的版本和场景中通过；`部分` 表示能运行但存在已知缺口；
 `无法启用` 表示光影包不能成功开启；`未验证` 不代表不兼容。更新记录时必须填写 Actinium commit、
@@ -8,6 +8,14 @@
 
 本轮验证环境：Actinium `30c7ffb`、Java 25.0.3、Cleanroom 0.5.12-alpha、Distant Horizons 3.1.2-b、
 Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
+
+> 2026-10-18 追加：Actinium 0.0.12 alpha + Cleanroom 0.6.13-alpha 下，Complementary Reimagined r5.9.3
+> 与 Derivative Main d24.4.14 手持火把完全没有动态光照。根因是 `ItemIrisMixin` 只把
+> `IrisItemLightProvider` 接口加到 `Item`，而 provider 默认恒返回 0；`IdMapUniforms` 因此每帧向
+> `heldBlockLightValue` / `heldBlockLightValue2` 提供 0。修复后 provider 默认实现按 `ItemBlock` 的栈元数据
+> 还原方块状态并读取其发光值；非方块物品保留 0，特殊物品可覆盖 provider。用户在 dev 环境确认手持动态光照
+> 已恢复；Gradle `compileJava` 与 IDEA 构建通过，JUnit/check 未运行。实现见
+> [IrisItemLightProvider](../shader/src/main/java/net/irisshaders/iris/api/v0/item/IrisItemLightProvider.java)。
 
 > 2026-10-07 追加：GVCLib 9.10 + GVCReversion2 alpha.10.2 第一人称持枪（issue #198）的模型/贴图
 > 错误与光影下亮度突变已修复并由用户实机确认——枪体/手臂模型不写逐顶点亮度，GLSM 的 lightmap
@@ -239,13 +247,13 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 |------------------------------------|---------------|------|----------------------------------------------------------------|-----------|-------------|
 | MakeUp Ultra Fast                  | 9.1f          | 已验证  | 世界加载、维度切换、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载、Distant Horizons LOD | -         | `f261611`   |
 | BSL                                | 10.0          | 已验证  | 世界加载、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载、Distant Horizons LOD      | -         | `f261611`   |
-| Complementary Reimagined / Unbound | r5.5.1        | 已验证  | 开启、世界渲染、Distant Horizons LOD、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载   | -         | `f261611`   |
+| Complementary Reimagined / Unbound | r5.5.1 / r5.9.3 | 已验证  | 开启、世界渲染、Distant Horizons LOD、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载；r5.9.3 手持动态光照（2026-10-18） | -         | `fix/held-light-source` |
 | Bliss                              | 2.1.2         | 已验证  | 开启、世界渲染、Distant Horizons LOD、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载   | -         | `28d976d`   |
 | iterationT                         | 3.2.0         | 部分    | 开启、世界渲染、Distant Horizons LOD、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载   | Immersive Engineering Garden Cloche 玻璃泛白；该包 block shader 将输出 alpha 固定为 1 | `fix/ie-cloche-transparency` (`c318ed54` 基线) |
 | iterationRP                        | 0.7.7 / 0.8.7 | 已验证  | 开启、世界渲染、Distant Horizons LOD、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载   | -         | `28d976d`   |
 | Photon                             | v1.3b         | 部分    | 开启、世界渲染、地形、水（2026-08-31 水面修复后）、GUI、LittleTiles/ArchitectureCraft 相邻方块光照（issue #193，2026-09-29） | IE Garden Cloche 玻璃发黑：1.12.2 配置禁用专用 `gbuffers_block_translucent` 程序并回退 solid block shader；阴影/实体/维度切换/重载等场景待补充验证；选项菜单部分元素缺失（GTAO 等 profile 项告警，与水面无关） | `fix/ie-cloche-transparency` (`c318ed54` 基线) |
 | Solas Shader                      | V3.7b         | 部分    | Immersive Engineering 0.12-98 Garden Cloche（泥土 + 种子）玻璃半透明，issue #197，用户确认（2026-09-30） | 其他渲染路径未验证 | `fix/ie-cloche-transparency` (`c318ed54` 基线) |
-| Derivative Main                  | d24.4.14      | 部分    | 开启、景深（DoF）开关与重复 Apply、维度切换、重载（2026-10-09 centerDepthSmooth 改写修复后用户实机确认） | 地形/实体/水/天空等完整场景清单与 Distant Horizons 组合未验证 | `fix/composite-center-depth-smooth`（`b40e8427`） |
+| Derivative Main                  | d24.4.14      | 部分    | 开启、景深（DoF）开关与重复 Apply、维度切换、重载（2026-10-09 centerDepthSmooth 改写修复后用户实机确认）；手持动态光照（2026-10-18） | 地形/实体/水/天空等完整场景清单与 Distant Horizons 组合未验证 | `fix/composite-center-depth-smooth`（`b40e8427`）、`fix/held-light-source` |
 | SEUS PTGI HRR                      | Test 2.1      | 无法启用 | -                                                              | 光影包不能成功开启 | `f261611`   |
 
 ## 模组与环境
