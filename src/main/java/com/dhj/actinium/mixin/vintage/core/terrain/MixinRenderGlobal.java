@@ -5,6 +5,7 @@ import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.dhj.actinium.compat.ichunutil.PortalViewportProvider;
 import com.dhj.actinium.debug.GlStateDiffProbe;
+import com.dhj.actinium.render.BoundingBoxOutline;
 import net.coderbot.iris.compat.rfp2.Rfp2Compat;
 import com.gtnewhorizons.angelica.glsm.shadow.InternalShadowRenderingState;
 import com.dhj.actinium.shadows.ShadowRenderingState;
@@ -52,6 +53,19 @@ import java.util.*;
 
 @Mixin(RenderGlobal.class)
 public abstract class MixinRenderGlobal implements SimpleWorldRenderer.Provider<ActiniumWorldRenderer> {
+
+    /** Removes the strip connectors that become visible under smooth shader interpolation. */
+    @Inject(method = "drawBoundingBox(DDDDDDFFFF)V", at = @At("HEAD"), cancellable = true)
+    private static void actinium$drawIndependentBoundingBoxEdges(
+        double minX, double minY, double minZ, double maxX, double maxY, double maxZ,
+        float red, float green, float blue, float alpha, CallbackInfo ci
+    ) {
+        Tessellator tessellator = Tessellator.getInstance();
+        BoundingBoxOutline.build(tessellator.getBuffer(), minX, minY, minZ, maxX, maxY, maxZ,
+            red, green, blue, alpha);
+        tessellator.draw();
+        ci.cancel();
+    }
 
     @Shadow
     @Final

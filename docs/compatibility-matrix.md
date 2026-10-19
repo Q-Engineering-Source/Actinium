@@ -1,6 +1,6 @@
 # Actinium 兼容性矩阵
 
-最后更新：2026-10-18。
+最后更新：2026-10-19。
 
 状态定义：`已验证` 表示在记录的版本和场景中通过；`部分` 表示能运行但存在已知缺口；
 `无法启用` 表示光影包不能成功开启；`未验证` 不代表不兼容。更新记录时必须填写 Actinium commit、
@@ -8,6 +8,17 @@
 
 本轮验证环境：Actinium `30c7ffb`、Java 25.0.3、Cleanroom 0.5.12-alpha、Distant Horizons 3.1.2-b、
 Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
+
+> 2026-10-19 追加：方块选择框在某些观察方向出现斜线（[issue #21](https://github.com/Q-Engineering-Source/Actinium/issues/21)）
+> 已修复，用户确认实机验证完成。原版 `RenderGlobal.drawBoundingBox` 用 `GL_LINE_STRIP` 串起包围框，
+> 并用透明端点隐藏连接段；Actinium shader 的平滑颜色插值使两条斜向连接段仍有可见透明度，
+> 随观察方向及深度遮挡显露。修复由 `BoundingBoxOutline` 生成 12 条独立的 `GL_LINES` 边，
+> 经现有 `MixinRenderGlobal` 接入独立包围框绘制入口，保留传入的边界、颜色和透明度。
+> 验证产物为 `Actinium-alpha-0.0.13-b99034f8.jar`（基于 `b99034f8` 的
+> `fix/block-selection-outline` 工作区）；用户未逐项记录光影包、模组、Java/Cleanroom 版本和硬件环境。
+> `./gradlew check build --no-daemon` 通过：791 项测试，0 失败、4 跳过；新增 4 项直接使用
+> `BufferBuilder` 验证原版斜向连接段、完整及非完整方块的 12 条独立边、颜色和透明度。
+> 测试用 `ClippingHelperImpl` 同步恢复原版继承关系和构造入口，保证可直接加载 `RenderGlobal`。
 
 > 2026-10-18 追加：Actinium 0.0.12 alpha + Cleanroom 0.6.13-alpha 下，Complementary Reimagined r5.9.3
 > 与 Derivative Main d24.4.14 手持火把完全没有动态光照。根因是 `ItemIrisMixin` 只把
