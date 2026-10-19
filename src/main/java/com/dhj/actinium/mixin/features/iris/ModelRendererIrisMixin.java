@@ -2,6 +2,7 @@ package com.dhj.actinium.mixin.features.iris;
 
 import com.dhj.actinium.config.ActiniumRuntimeOptions;
 import com.dhj.actinium.compat.gibbed.ActiniumModelRenderer;
+import com.dhj.actinium.mixinterface.features.iris.ModelRenderState;
 import com.gtnewhorizons.angelica.mixins.interfaces.IModelRenderer;
 import net.irisshaders.iris.api.v0.IrisApi;
 import net.minecraft.client.model.ModelBox;
@@ -24,7 +25,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.List;
 
 @Mixin(ModelRenderer.class)
-public abstract class ModelRendererIrisMixin implements IModelRenderer, ActiniumModelRenderer {
+public abstract class ModelRendererIrisMixin implements IModelRenderer, ActiniumModelRenderer, ModelRenderState {
     @Shadow public boolean isHidden;
     @Shadow public boolean showModel;
     @Shadow public float offsetX;
@@ -43,6 +44,15 @@ public abstract class ModelRendererIrisMixin implements IModelRenderer, Actinium
     private int actinium$displayList;
     @Unique
     private int actinium$displayListScaleBits;
+
+    /** Records rendered parts for geometry consumers that cannot rely on vanilla's compiled flag. */
+    @Unique
+    private boolean actinium$hasRenderedModel;
+
+    @Override
+    public boolean actinium$hasRenderedModel() {
+        return this.actinium$hasRenderedModel;
+    }
 
     @Inject(method = "render(F)V", at = @At("HEAD"), cancellable = true)
     private void actinium$renderWithoutDisplayList(float scale, CallbackInfo ci) {
@@ -185,6 +195,8 @@ public abstract class ModelRendererIrisMixin implements IModelRenderer, Actinium
 
     @Unique
     private void actinium$drawModel(float scale, boolean allowDisplayLists) {
+        // Empty parents must also qualify so geometry collectors can reach their rendered children.
+        this.actinium$hasRenderedModel = true;
         if (this.cubeList.isEmpty()) {
             return;
         }
