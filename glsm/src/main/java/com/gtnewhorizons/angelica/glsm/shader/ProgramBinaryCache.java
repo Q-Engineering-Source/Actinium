@@ -114,6 +114,22 @@ public final class ProgramBinaryCache {
     }
 
     /**
+     * Drops what this process learned about the driver of the display context that is gone.
+     *
+     * <p>A binary is only valid for the driver that produced it, and {@link #driverId()} reads that identity
+     * once. After a context migration the fingerprint has to be read again: otherwise every program linked
+     * on the new context would be keyed on the old driver's identity, so the entries the previous context
+     * wrote would come back as hits for a driver that never produced them - and every entry the new context
+     * writes would be looked up by the wrong name afterwards.</p>
+     *
+     * <p>The selected pack layer, the user's switch and the collected counters describe the session rather
+     * than the context, so they stay as they are.</p>
+     */
+    public static void invalidateContext() {
+        driverId = null;
+    }
+
+    /**
      * Starts a key for a program of the selected pack. The caller adds the attributes it binds and the
      * stage sources it links, because only it knows them.
      *

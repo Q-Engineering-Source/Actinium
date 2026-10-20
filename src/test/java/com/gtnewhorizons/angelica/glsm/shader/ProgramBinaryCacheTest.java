@@ -323,6 +323,29 @@ class ProgramBinaryCacheTest {
             "the key has to describe exactly the attribute bindings the linker applies");
     }
 
+    @Test
+    void aContextChangeDropsTheMemoizedDriverFingerprint() {
+        enableSaving();
+        final String before = programKey("void main() {}", "void main() {}").hex();
+
+        driver.fingerprint = "another-context-driver";
+        assertEquals(before, programKey("void main() {}", "void main() {}").hex(),
+            "the fingerprint is read once and reused for as long as the context it was read on survives");
+
+        ProgramBinaryCache.invalidateContext();
+
+        final String after = programKey("void main() {}", "void main() {}").hex();
+        assertNotEquals(before, after, "a binary saved by the previous context must not be looked up as a hit");
+        assertEquals(ShaderDiskCache.key(PACK_LAYER).str("another-context-driver")
+                .b(ShaderManager.getInstance().isEnabled())
+                .str("stage").i(ShaderType.VERTEX.id).str("void main() {}")
+                .str("stage").i(ShaderType.FRAGMENT.id).str("void main() {}")
+                .hex(),
+            after, "the key is rebuilt from the current fingerprint, on the pack layer that is still selected");
+        assertTrue(ProgramBinaryCache.isEnabled(),
+            "a context change neither deselects the pack nor turns saving off");
+    }
+
     /** Rebuilds the program-independent part of the key from its documented components. */
     private static String keyHexWithoutStages() {
         return ShaderDiskCache.key(PACK_LAYER)

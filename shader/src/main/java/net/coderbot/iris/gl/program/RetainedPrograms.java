@@ -21,7 +21,9 @@ import java.util.Map;
  * <p>Ownership: a program enters the pool through {@link #retain} (the destroying wrapper hands its GL name
  * over instead of deleting it), leaves it through {@link #take} (the new wrapper owns it from then on), and
  * is deleted by the pool when it is evicted, retired or exceeded. A name therefore has exactly one owner at
- * any time: either one {@link Program}/{@link ComputeProgram} wrapper or the pool.</p>
+ * any time: either one {@link Program}/{@link ComputeProgram} wrapper or the pool. The one exception is
+ * {@link #discardAll()}, where the pool forgets names of a context that is gone instead of deleting them,
+ * because on the new context those numbers may name something else.</p>
  *
  * <p>The pool is bounded twice: one {@link Sources} key keeps at most {@link #MAX_PROGRAMS_PER_SOURCES}
  * programs per batch, which covers several passes that happen to link identical sources, and both batches
@@ -77,6 +79,27 @@ public final class RetainedPrograms {
 		}
 
 		configuration = settings;
+	}
+
+	/**
+	 * Drops every kept program without deleting it, for the case where the GL context the names were created
+	 * on is gone.
+	 *
+	 * <p>The names are names in the old context. On the new one the same numbers may already refer to
+	 * unrelated objects, so deleting them could destroy a program that context owns; they are therefore
+	 * forgotten rather than freed - losing the context lost the objects behind them. The configuration goes
+	 * with them, because no kept program belongs to it any more.</p>
+	 *
+	 * @return the number of program names dropped, so the caller can report what the migration cost
+	 */
+	public static int discardAll() {
+		final int discarded = retained;
+		recent.clear();
+		older.clear();
+		retained = 0;
+		configuration = null;
+
+		return discarded;
 	}
 
 	/** Hands a program over to the pool instead of deleting it when its pipeline is destroyed. */

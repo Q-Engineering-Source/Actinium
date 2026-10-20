@@ -62,39 +62,45 @@ public class ProgramCreator {
 	public static int create(String name, @Nullable ProgramBinaryCache.Key cacheKey, GlShader... shaders) {
 		int program = GLStateManager.glCreateProgram();
 
-		for (int i = 0; i < ATTRIBUTE_NAMES.length; i++) {
-			RenderSystem.bindAttributeLocation(program, ATTRIBUTE_LOCATIONS[i], ATTRIBUTE_NAMES[i]);
+		try {
+			for (int i = 0; i < ATTRIBUTE_NAMES.length; i++) {
+				RenderSystem.bindAttributeLocation(program, ATTRIBUTE_LOCATIONS[i], ATTRIBUTE_NAMES[i]);
+			}
+
+			for (GlShader shader : shaders) {
+				GLStateManager.glAttachShader(program, shader.getHandle());
+			}
+
+			GLStateManager.glLinkProgram(program);
+
+			GLDebug.nameObject(KHRDebug.GL_PROGRAM, program, name);
+
+			//Always detach shaders according to https://www.khronos.org/opengl/wiki/Shader_Compilation#Cleanup
+			for (GlShader shader : shaders) {
+				RenderSystem.detachShader(program, shader.getHandle());
+			}
+
+			String log = RenderSystem.getProgramInfoLog(program);
+
+			if (!log.isEmpty()) {
+				LOGGER.warn("Program link log for " + name + ": " + log);
+			}
+
+			int result = GLStateManager.glGetProgrami(program, GL20.GL_LINK_STATUS);
+
+			if (result != GL11.GL_TRUE) {
+				throw new RuntimeException("Shader program linking failed, see log for details");
+			}
+
+			if (cacheKey != null) {
+				ProgramBinaryCache.save(cacheKey, program);
+			}
+
+			return program;
+		} catch (RuntimeException | Error failure) {
+			// The caller never sees this name, so nothing else can delete what was created here.
+			GLStateManager.glDeleteProgram(program);
+			throw failure;
 		}
-
-		for (GlShader shader : shaders) {
-            GLStateManager.glAttachShader(program, shader.getHandle());
-		}
-
-        GLStateManager.glLinkProgram(program);
-
-		GLDebug.nameObject(KHRDebug.GL_PROGRAM, program, name);
-
-		//Always detach shaders according to https://www.khronos.org/opengl/wiki/Shader_Compilation#Cleanup
-        for (GlShader shader : shaders) {
-            RenderSystem.detachShader(program, shader.getHandle());
-        }
-
-		String log = RenderSystem.getProgramInfoLog(program);
-
-		if (!log.isEmpty()) {
-			LOGGER.warn("Program link log for " + name + ": " + log);
-		}
-
-		int result = GLStateManager.glGetProgrami(program, GL20.GL_LINK_STATUS);
-
-		if (result != GL11.GL_TRUE) {
-			throw new RuntimeException("Shader program linking failed, see log for details");
-		}
-
-		if (cacheKey != null) {
-			ProgramBinaryCache.save(cacheKey, program);
-		}
-
-		return program;
 	}
 }

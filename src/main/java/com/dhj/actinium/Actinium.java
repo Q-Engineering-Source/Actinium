@@ -14,6 +14,7 @@ import com.dhj.actinium.mixin.vintage.core.terrain.AccessorEntityRenderer;
 import com.dhj.actinium.render.FastLitItemDisplayListCache;
 import com.dhj.actinium.render.terrain.ActiniumWorldRenderer;
 import com.dhj.actinium.runtime.ActiniumRuntime;
+import com.dhj.actinium.startup.ProgramCacheContextReset;
 import com.gtnewhorizons.angelica.proxy.ClientProxy;
 import com.gtnewhorizon.gtnhlib.compat.Mods;
 import net.coderbot.iris.debug.IrisDebugOptions;
@@ -170,6 +171,9 @@ public class Actinium {
         // link-time parameters it sets. The hook is installed from here because only the root module sees
         // both sides: celeritas must not reach into glsm, and glsm must not reach into celeritas.
         GlProgram.setLinkHook(ProgramBinaryCache::markRetrievable);
+
+        // Same reason: GLSM detects a display-context migration, the program caches live in glsm and shader.
+        ProgramCacheContextReset.install();
 
         ActiniumDiagnostics.logConstruction();
         initializeDistantHorizonsCompat();

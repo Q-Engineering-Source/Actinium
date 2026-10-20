@@ -18,6 +18,7 @@ import com.gtnewhorizons.angelica.glsm.ffp.VertexKey;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredAlphaHandler;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredBlendHandler;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredDepthColorHandler;
+import com.gtnewhorizons.angelica.glsm.hooks.DisplayContextIdentity;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMConfig;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMInitConfig;
@@ -654,10 +655,17 @@ public class GLStateManager {
         }
 
         defaultVAO = RENDER_BACKEND.genVertexArrays();
-        displayContextHandle = RENDER_BACKEND.getContextHandle();
+        final long contextHandle = RENDER_BACKEND.getContextHandle();
+        // A second init can land on another context (a splash replacement that already finished, issue
+        // #150); the first handle only says how the startup context identifies itself and is not a change.
+        final boolean contextChanged = DisplayContextIdentity.isContextChange(displayContextHandle, contextHandle);
+        displayContextHandle = contextHandle;
         RENDER_BACKEND.bindVertexArray(defaultVAO);
         ctx().boundVAO = defaultVAO;
         VertexAttribState.init(defaultVAO);
+        if (contextChanged) {
+            notifyDisplayContextChanged(contextHandle);
+        }
         if (initCallback != null) {
             initCallback.run();
         }
@@ -4074,8 +4082,24 @@ public class GLStateManager {
         VertexAttribState.init(defaultVAO);
         // Adopt the new context handle so displayContextMigrated() stops firing, then re-seed
         // every cached state value onto the fresh context (issue #150/#151).
-        displayContextHandle = RENDER_BACKEND.getContextHandle();
+        final long contextHandle = RENDER_BACKEND.getContextHandle();
+        final boolean contextChanged = DisplayContextIdentity.isContextChange(displayContextHandle, contextHandle);
+        displayContextHandle = contextHandle;
         replayStateToBackend();
+        if (contextChanged) {
+            notifyDisplayContextChanged(contextHandle);
+        }
+    }
+
+    /**
+     * Announces the identity the display context now has, so the host drops the driver fingerprint and the
+     * retained GL names that were only valid on the previous one. Only reachable from an observed change,
+     * which keeps the log at one line per migration instead of one per frame.
+     */
+    private static void notifyDisplayContextChanged(long contextHandle) {
+        LOGGER.info("Display context changed to handle 0x{}; invalidating the caches keyed on the previous context",
+            Long.toHexString(contextHandle));
+        GLSMHooks.notifyDisplayContextChange();
     }
 
     /**

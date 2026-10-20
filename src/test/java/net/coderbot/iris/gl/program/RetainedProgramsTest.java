@@ -169,6 +169,22 @@ class RetainedProgramsTest {
         assertEquals(5, RetainedPrograms.take(compute));
     }
 
+    @Test
+    void discardingEveryProgramForgetsItWithoutDeletingIt() {
+        RetainedPrograms.useConfiguration("pack|shaders");
+        RetainedPrograms.retain(graphics("vertex-a", "fragment"), 1);
+        RetainedPrograms.afterPipelineBuilt();
+        RetainedPrograms.retain(graphics("vertex-b", "fragment"), 2);
+
+        assertEquals(2, RetainedPrograms.discardAll(), "the caller is told how many names it gives up");
+
+        assertTrue(deleter.deleted.isEmpty(),
+            "the names were created on a context that is gone; deleting them could free its successor's program");
+        assertEquals(0, RetainedPrograms.take(graphics("vertex-a", "fragment")), "both batches are emptied");
+        assertEquals(0, RetainedPrograms.take(graphics("vertex-b", "fragment")));
+        assertEquals(0, RetainedPrograms.discardAll(), "the count is reset instead of staying at the discarded total");
+    }
+
     private static RetainedPrograms.Sources graphics(String vertex, String fragment) {
         return new RetainedPrograms.Sources(vertex, null, null, null, fragment, null);
     }
