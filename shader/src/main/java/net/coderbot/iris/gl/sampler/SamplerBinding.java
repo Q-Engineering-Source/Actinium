@@ -12,6 +12,7 @@ public class SamplerBinding {
 	private final IntSupplier texture;
 	private final int sampler;
 	private final ValueUpdateNotifier notifier;
+	private final Runnable updateListener = this::updateSampler;
 
 	public SamplerBinding(TextureType type, int textureUnit, IntSupplier texture, GlSampler sampler, ValueUpdateNotifier notifier) {
 		this.textureType = type;
@@ -25,7 +26,7 @@ public class SamplerBinding {
 		updateSampler();
 
 		if (notifier != null) {
-			notifier.setListener(this::updateSampler);
+			notifier.setListener(updateListener);
 		}
 	}
 

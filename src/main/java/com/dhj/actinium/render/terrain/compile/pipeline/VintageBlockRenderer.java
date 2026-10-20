@@ -343,7 +343,7 @@ public class VintageBlockRenderer {
 
         if (BlockRenderingSettings.INSTANCE.getBlockNbtMap() != null && block.hasTileEntity(state)) {
             TileEntity tileEntity = this.currentBlockAccess.getTileEntity(pos);
-            nbtBlockId = BlockRenderingSettings.INSTANCE.resolveBlockNbtId(block, tileEntity);
+            nbtBlockId = BlockRenderingSettings.INSTANCE.resolveBlockNbtId(block, this.currentMetadata, tileEntity);
             if (nbtBlockId != -1) {
                 shaderBlockId = nbtBlockId;
             }

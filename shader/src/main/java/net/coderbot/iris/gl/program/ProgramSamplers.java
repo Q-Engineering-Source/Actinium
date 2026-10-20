@@ -34,7 +34,7 @@ public class ProgramSamplers {
 	}
 
 	public void update() {
-		if (active != null) {
+		if (active != null && active != this) {
 			active.removeListeners();
 		}
 
@@ -60,6 +60,9 @@ public class ProgramSamplers {
 	}
 
 	public void removeListeners() {
+		if (active != this) {
+			return;
+		}
 		active = null;
 
 		for (ValueUpdateNotifier notifier : notifiersToReset) {

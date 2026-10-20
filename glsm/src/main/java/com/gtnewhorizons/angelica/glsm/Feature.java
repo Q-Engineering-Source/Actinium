@@ -294,7 +294,7 @@ public class Feature {
         ));
         attribToFeatures.put(GL11.GL_SCISSOR_BIT, ImmutableSet.of(
               GLStateManager.getScissorTest() // GL_SCISSOR_TEST enable bit
-            // Scissor box
+            , GLStateManager.getScissorState() // Scissor rectangle
         ));
         attribToFeatures.put(GL11.GL_STENCIL_BUFFER_BIT, ImmutableSet.of(
               GLStateManager.getStencilTest() // GL_STENCIL_TEST enable bit

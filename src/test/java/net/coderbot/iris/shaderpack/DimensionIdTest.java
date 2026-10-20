@@ -46,7 +46,8 @@ class DimensionIdTest {
             mappings,
             Set.of("world0", "world1"),
             "the_end",
-            1
+            1,
+            true
         ));
     }
 
@@ -59,8 +60,8 @@ class DimensionIdTest {
         );
         Set<String> folders = Set.of("world0", "world-1", "fallback");
 
-        assertEquals("world0", ShaderPack.resolveDimensionFolder(mappings, folders, "Overworld", 0));
-        assertEquals("world-1", ShaderPack.resolveDimensionFolder(mappings, folders, "Nether", -1));
+        assertEquals("world0", ShaderPack.resolveDimensionFolder(mappings, folders, "Overworld", 0, true));
+        assertEquals("world-1", ShaderPack.resolveDimensionFolder(mappings, folders, "Nether", -1, true));
     }
 
     @Test
@@ -69,7 +70,8 @@ class DimensionIdTest {
             Map.of(),
             Set.of("world0", "world-1", "world1"),
             "the_end",
-            1
+            1,
+            false
         ));
     }
 
@@ -79,7 +81,8 @@ class DimensionIdTest {
             Map.of("Aether", "custom_dim", "*", "world0"),
             Set.of("custom_dim", "world0"),
             "Aether",
-            7
+            7,
+            true
         ));
     }
 
@@ -89,7 +92,8 @@ class DimensionIdTest {
             Map.of("Custom End", "custom_dim", "*", "world0"),
             Set.of("custom_dim", "world0", "world1"),
             "Custom End",
-            1
+            1,
+            true
         ));
     }
 
@@ -103,23 +107,58 @@ class DimensionIdTest {
 
         assertEquals(Set.of("world0", "world-1", "world1"), ShaderPack.resolvePinnedDimensionFolders(
             mappings,
-            Set.of("world0", "world-1", "world1")
+            Set.of("world0", "world-1", "world1"),
+            true
         ));
     }
 
     @Test
-    void unknownDimensionsUseWildcardThenBase() {
+    void mappedUnknownDimensionsUseWildcardThenBase() {
         assertEquals("world0", ShaderPack.resolveDimensionFolder(
             Map.of("*", "world0"),
             Set.of("world0"),
             "Unknown Dimension",
-            42
+            42,
+            true
         ));
         assertNull(ShaderPack.resolveDimensionFolder(
             Map.of(),
             Set.of("world0"),
             "Unknown Dimension",
-            42
+            42,
+            true
         ));
+    }
+
+    @Test
+    void legacyUnknownDimensionUsesWorldZeroDefault() {
+        assertEquals("world0", ShaderPack.resolveDimensionFolder(
+            Map.of("minecraft:overworld", "world0"), Set.of("world0"), "Twilight Forest", 7, false));
+    }
+
+    @Test
+    void legacyExactNumericFolderWinsOverWorldZeroDefault() {
+        assertEquals("world7", ShaderPack.resolveDimensionFolder(
+            Map.of(), Set.of("world0", "world7"), "Twilight Forest", 7, false));
+    }
+
+    @Test
+    void legacyPackWithoutWorldZeroUsesBase() {
+        assertNull(ShaderPack.resolveDimensionFolder(
+            Map.of(), Set.of("world-1", "world1"), "Twilight Forest", 7, false));
+    }
+
+    @Test
+    void missingExplicitFolderDoesNotSelectLegacyDefaultOrWildcard() {
+        assertNull(ShaderPack.resolveDimensionFolder(
+            Map.of("Twilight Forest", "missing", "*", "world0"), Set.of("world0", "world7"),
+            "Twilight Forest", 7, true));
+        assertNull(ShaderPack.resolveDimensionFolder(
+            Map.of("*", "missing"), Set.of("world0", "world7"), "Twilight Forest", 7, true));
+    }
+
+    @Test
+    void legacyDefaultIsPinnedForVanillaDimensionsMissingTheirOwnFolder() {
+        assertEquals(Set.of("world0"), ShaderPack.resolvePinnedDimensionFolders(Map.of(), Set.of("world0"), false));
     }
 }

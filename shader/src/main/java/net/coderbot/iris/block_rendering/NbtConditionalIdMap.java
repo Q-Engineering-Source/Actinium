@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Maps objects with specific NBT properties to shader IDs.
@@ -30,12 +31,17 @@ public class NbtConditionalIdMap<K> {
 		}
 	}
 
-	private record NbtCondition(PropertyMatcher[] matchers, int shaderId) {
+	private record NbtCondition(PropertyMatcher[] matchers, Set<Integer> metas, int shaderId) {
 	}
 
 	private final Map<K, List<NbtCondition>> conditionsByKey = new HashMap<>();
 
 	public void addCondition(K key, Map<String, PropertiesTokenizer.NbtValue> nbtProperties, int shaderId) {
+		addCondition(key, nbtProperties, shaderId, Set.of());
+	}
+
+	/** Registers an NBT rule whose nonempty metadata set also restricts block matching. */
+	public void addCondition(K key, Map<String, PropertiesTokenizer.NbtValue> nbtProperties, int shaderId, Set<Integer> metas) {
 		PropertyMatcher[] matchers = new PropertyMatcher[nbtProperties.size()];
 		int i = 0;
 
@@ -85,7 +91,7 @@ public class NbtConditionalIdMap<K> {
 				expectedDouble, hasExpectedDouble);
 		}
 
-		conditionsByKey.computeIfAbsent(key, ignored -> new ArrayList<>()).add(new NbtCondition(matchers, shaderId));
+		conditionsByKey.computeIfAbsent(key, ignored -> new ArrayList<>()).add(new NbtCondition(matchers, Set.copyOf(metas), shaderId));
 	}
 
 	public boolean hasConditions(K key) {
@@ -97,12 +103,20 @@ public class NbtConditionalIdMap<K> {
 	}
 
 	public int resolve(K key, NBTTagCompound nbt) {
+		return resolve(key, nbt, null);
+	}
+
+	/** Resolves block rules against metadata; null preserves entity and item NBT-only matching. */
+	public int resolve(K key, NBTTagCompound nbt, Integer metadata) {
 		List<NbtCondition> conditions = conditionsByKey.get(key);
 		if (conditions == null) {
 			return -1;
 		}
 
 		for (NbtCondition condition : conditions) {
+			if (metadata != null && !condition.metas().isEmpty() && !condition.metas().contains(metadata)) {
+				continue;
+			}
 			if (matchesNbt(nbt, condition.matchers())) {
 				return condition.shaderId();
 			}

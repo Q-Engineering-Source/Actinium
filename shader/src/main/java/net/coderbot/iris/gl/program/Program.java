@@ -39,6 +39,8 @@ public final class Program extends GlResource {
 
 	@Override
     public void destroyInternal() {
+		uniforms.removeListeners();
+		samplers.removeListeners();
 		DepthColorStorage.unregisterOwnedProgram(getGlId());
 		GLStateManager.glDeleteProgram(getGlId());
 	}

@@ -350,7 +350,7 @@ public class RenderSystem {
     }
 
     public static void bindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) {
-        RENDER_BACKEND.bindImageTexture(unit, texture, level, layered, layer, access, format);
+        GLStateManager.glBindImageTexture(unit, texture, level, layered, layer, access, format);
     }
 
     public static int getMaxImageUnits() {

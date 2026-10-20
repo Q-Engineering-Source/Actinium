@@ -6,6 +6,7 @@ import com.gtnewhorizons.angelica.glsm.stacks.BlendStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.BooleanStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.Color4Stack;
 import com.gtnewhorizons.angelica.glsm.stacks.ColorMaskStack;
+import com.gtnewhorizons.angelica.glsm.stacks.ClientAttribStack;
 import com.gtnewhorizons.angelica.glsm.stacks.DepthStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.FogStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.IntegerStateStack;
@@ -16,12 +17,14 @@ import com.gtnewhorizons.angelica.glsm.stacks.MaterialStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.MatrixModeStack;
 import com.gtnewhorizons.angelica.glsm.stacks.PointStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.PolygonStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.ScissorStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.StencilStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.ViewPortStateStack;
 import com.gtnewhorizons.angelica.glsm.states.BlendState;
 import com.gtnewhorizons.angelica.glsm.states.ClipPlaneState;
 import com.gtnewhorizons.angelica.glsm.states.Color4;
 import com.gtnewhorizons.angelica.glsm.states.ImageUnitArray;
+import com.gtnewhorizons.angelica.glsm.states.PixelPackState;
 import com.gtnewhorizons.angelica.glsm.states.PixelUnpackState;
 import com.gtnewhorizons.angelica.glsm.states.TextureUnitArray;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
@@ -116,6 +119,7 @@ class GLContextState {
     public final BlendState vanillaBlendAfter = new BlendState();
     public boolean vanillaBlendEnabledBefore;
     public final BooleanStateStack scissorTest = track(new BooleanStateStack(GL11.GL_SCISSOR_TEST));
+    public final ScissorStateStack scissorState = new ScissorStateStack();
     public final DepthStateStack depthState = new DepthStateStack();
     public final BooleanStateStack depthTest = track(new BooleanStateStack(GL11.GL_DEPTH_TEST));
     public final FogStateStack fogState = new FogStateStack();
@@ -198,11 +202,10 @@ class GLContextState {
     public int boundPixelUnpackBuffer;
     public int boundPixelPackBuffer;
     public PixelUnpackState pixelUnpackState = PixelUnpackState.DEFAULT;
+    public PixelPackState pixelPackState = PixelPackState.DEFAULT;
     public int drawFramebuffer = 0;
     public int readFramebuffer = 0;
-    public final int[] clientAttribSavedTextureUnit = new int[GLStateManager.CLIENT_ATTRIB_STACK_DEPTH];
-    public final int[] clientAttribSavedVertexFlags = new int[GLStateManager.CLIENT_ATTRIB_STACK_DEPTH];
-    public int clientAttribStackPointer = 0;
+    public final ClientAttribStack clientAttribStack = new ClientAttribStack();
 
     GLContextState() {
         for (int i = 0; i < GLStateManager.MAX_ATTRIB_STACK_DEPTH; i++) modifiedAtDepth[i] = new ArrayList<>();

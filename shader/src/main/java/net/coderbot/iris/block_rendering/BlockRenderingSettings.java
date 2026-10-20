@@ -16,6 +16,7 @@ import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.ref.WeakReference;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -26,9 +27,14 @@ public class BlockRenderingSettings {
 	private static final int NBT_CACHE_INTERVAL_TICKS = 20;
 	private static final int TE_NBT_CACHE_MAX = 8192;
 	private static final Object TE_NBT_CACHE_LOCK = new Object();
-	private static final Map<Long, Long> TE_NBT_ID_CACHE = new LinkedHashMap<Long, Long>(256, 0.75F, true) {
+	/** Keeps cached IDs specific to the TE instance and block metadata without retaining old worlds. */
+	private record TeNbtIdCacheEntry(WeakReference<TileEntity> tileEntity, Block block, int metadata,
+	                                 int shaderId, long tick) {
+	}
+
+	private static final Map<Long, TeNbtIdCacheEntry> TE_NBT_ID_CACHE = new LinkedHashMap<>(256, 0.75F, true) {
 		@Override
-		protected boolean removeEldestEntry(Map.Entry<Long, Long> eldest) {
+		protected boolean removeEldestEntry(Map.Entry<Long, TeNbtIdCacheEntry> eldest) {
 			return size() > TE_NBT_CACHE_MAX;
 		}
 	};
@@ -114,7 +120,7 @@ public class BlockRenderingSettings {
 		return -1;
 	}
 
-	public int resolveBlockNbtId(Block block, @Nullable TileEntity tileEntity) {
+	public int resolveBlockNbtId(Block block, int metadata, @Nullable TileEntity tileEntity) {
 		if (blockNbtMap == null || tileEntity == null || !blockNbtMap.hasConditions(block)) {
 			return -1;
 		}
@@ -122,15 +128,15 @@ public class BlockRenderingSettings {
 		BlockPos pos = tileEntity.getPos();
 		long packedPos = packBlockPos(pos.getX(), pos.getY(), pos.getZ());
 		long currentTick = tileEntity.getWorld() != null ? tileEntity.getWorld().getTotalWorldTime() : 0L;
-		int cachedId = getCachedTeNbtId(packedPos, currentTick);
+		int cachedId = getCachedTeNbtId(packedPos, block, metadata, tileEntity, currentTick);
 		if (cachedId != CACHE_MISS) {
 			return cachedId;
 		}
 
 		NBTTagCompound nbt = new NBTTagCompound();
 		tileEntity.writeToNBT(nbt);
-		int resolvedId = blockNbtMap.resolve(block, nbt);
-		cacheTeNbtId(packedPos, resolvedId, currentTick);
+		int resolvedId = blockNbtMap.resolve(block, nbt, metadata);
+		cacheTeNbtId(packedPos, block, metadata, tileEntity, resolvedId, currentTick);
 		return resolvedId;
 	}
 
@@ -240,27 +246,27 @@ public class BlockRenderingSettings {
 		}
 	}
 
-	private static int getCachedTeNbtId(long packedPos, long currentTick) {
+	private static int getCachedTeNbtId(long packedPos, Block block, int metadata, TileEntity tileEntity, long currentTick) {
 		synchronized (TE_NBT_CACHE_LOCK) {
-			Long entry = TE_NBT_ID_CACHE.get(packedPos);
+			TeNbtIdCacheEntry entry = TE_NBT_ID_CACHE.get(packedPos);
 			if (entry == null) {
 				return CACHE_MISS;
 			}
 
-			long entryTick = entry >>> 32;
-			if (currentTick - entryTick >= NBT_CACHE_INTERVAL_TICKS) {
+			if (entry.tileEntity().get() != tileEntity || entry.block() != block || entry.metadata() != metadata
+				|| currentTick < entry.tick() || currentTick - entry.tick() >= NBT_CACHE_INTERVAL_TICKS) {
 				TE_NBT_ID_CACHE.remove(packedPos);
 				return CACHE_MISS;
 			}
 
-			return (int) (long) entry;
+			return entry.shaderId();
 		}
 	}
 
-	private static void cacheTeNbtId(long packedPos, int shaderId, long currentTick) {
-		long packedValue = ((currentTick & 0x7FFFFFFFL) << 32) | (shaderId & 0xFFFFFFFFL);
+	private static void cacheTeNbtId(long packedPos, Block block, int metadata, TileEntity tileEntity, int shaderId, long currentTick) {
+		TeNbtIdCacheEntry entry = new TeNbtIdCacheEntry(new WeakReference<>(tileEntity), block, metadata, shaderId, currentTick);
 		synchronized (TE_NBT_CACHE_LOCK) {
-			TE_NBT_ID_CACHE.put(packedPos, packedValue);
+			TE_NBT_ID_CACHE.put(packedPos, entry);
 		}
 	}
 }

@@ -27,6 +27,34 @@ next bulk upstream refresh.
 
 ## Additional incorporated work
 
+- The 2026-10-20 selective upstream adaptations retain the existing source licenses;
+  they do not advance the full-tree synchronization baselines:
+  - Celeritas `48eb54f5c616834567cda4bc23334b301a94daa0` (bitraster near clipping,
+    `celeritas-common/src/main/java/grondag/bitraster/`, Apache-2.0) and
+    `98c1af3357572ec0b1dc0050176723accf2d6296` (terrain shader conditional varying,
+    `src/main/resources/assets/actinium/shaders/blocks/block_layer_opaque.vsh`).
+  - Angelica `b76284048aa754b9f95fae25d3ae8d0584c17ca6`,
+    `cbd16b1a761fe61d84fd1b95014cff40c0c25a42`,
+    `69019b9a6204ea58e27162d309b84a84dad3a271`,
+    `fe67a22d5aa42035f834c07974960e0ae155de8f`, and
+    `85892c0f7fedc58783b04d847cab21f781db7898` (dimension selection, shadow inputs,
+    metadata-aware NBT material rules, custom-quad alpha, dynamic uniform notifications,
+    and DSA texture binding restoration; `shader/`, root terrain/bridge code, and
+    `glsm/.../dsa/`, under the existing Angelica/Iris LGPL-3.0 notices).
+  - Angelica `44c930f4abbd17b96dc172edbcbd4cfc630cd219` and
+    `e98c927a93530ca94547ace22f7045e08eedb8e6` (scissor rectangle tracking and image
+    binding defaults/deletion, `glsm/`, LGPL-3.0); image bind/cache wiring also restores
+    behavior present in the previously referenced Angelica `02f0b0fc` baseline.
+  - Angelica `6dfb0312b13c8ff2b7a2d6cd84fbbf3a22da24b9` and selected query fixes from
+    `3978be161d5743942674db61c52a0997e6dde3f8` (legacy state queries, buffer-position
+    semantics, and mask-aware client pixel-store/PBO restoration, `glsm/`, LGPL-3.0).
+    This adaptation preserves Actinium's existing vertex-array model rather than importing
+    the upstream client-array rewrite.
+  - Angelica `01ff612d1dc639964669ccb61a98e53400076714` (alpha-aware animated sprite
+    interpolation, adapted into `src/main/java/com/dhj/actinium/texture/SpriteInterpolation.java`
+    and the existing sprite Mixin). The upstream `InterpolatedIcon` credits ganymedes01
+    for the original Et Futurum implementation and Roadhog360 for its NotFine port.
+    Those credits are preserved in the adapted helper.
 - Parts of the renderer retain package names and implementation ideas from Embeddium and Sodium.
 - Several GTNHLib byte-buffer files carry explicit LWJGL copyright and license notices.
 - `MergeSort.java` carries Apache-2.0 and CERN notices in its source header.

@@ -8,7 +8,8 @@ public interface ValueUpdateNotifier {
 	ValueUpdateNotifier NONE = listener -> {};
 
 	/**
-	 * Sets up a listener with this notifier.
+	 * Registers a stable listener for the active program. A null listener clears all registrations
+	 * when that program is deactivated. Re-registering the same listener must not duplicate it.
 	 */
 	void setListener(Runnable listener);
 }

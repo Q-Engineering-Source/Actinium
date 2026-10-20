@@ -2,6 +2,7 @@ package com.gtnewhorizons.angelica.glsm.backend;
 
 import com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.states.PixelStoreAccess;
 import org.lwjgl.opengl.GL20;
 
 import java.nio.ByteBuffer;
@@ -16,7 +17,7 @@ import java.util.List;
 /**
  * Abstract rendering backend.
  */
-public abstract class RenderBackend {
+public abstract class RenderBackend implements PixelStoreAccess {
 
     public abstract void init();
     public abstract void shutdown();

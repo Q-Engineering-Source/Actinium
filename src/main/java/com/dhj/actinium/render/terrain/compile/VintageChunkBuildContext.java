@@ -181,18 +181,12 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         }
     }
 
-    private Material selectMaterial(Material material, TextureAtlasSprite sprite) {
+    private Material selectMaterial(Material material, TextureAtlasSprite sprite, ChunkVertexEncoder.Vertex[] quad) {
+        SpriteTransparencyLevel transparencyLevel = null;
         if (sprite != null && sprite.getClass() == TextureAtlasSprite.class && !sprite.hasAnimationMetadata() && this.useRenderPassOptimization) {
-            var transparencyLevel = ((SpriteTransparencyLevel.Holder)sprite).embeddium$getTransparencyLevel();
-            if (transparencyLevel == SpriteTransparencyLevel.OPAQUE) {
-                // Downgrade to solid
-                return this.renderPassConfiguration.defaultSolidMaterial();
-            } else if (material == this.renderPassConfiguration.defaultTranslucentMaterial() && transparencyLevel != SpriteTransparencyLevel.TRANSLUCENT) {
-                // Downgrade to cutout
-                return this.renderPassConfiguration.defaultCutoutMippedMaterial();
-            }
+            transparencyLevel = ((SpriteTransparencyLevel.Holder)sprite).embeddium$getTransparencyLevel();
         }
-        return material;
+        return VanillaQuadMaterial.select(material, this.renderPassConfiguration, transparencyLevel, quad);
     }
 
     private static final int BLOCK_VERTEX_FORMAT_SIZE;
@@ -244,15 +238,9 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
                 quadContext = resolveDeferredBlockContext(quadContext);
             }
             boolean isFluidQuad = quadContext != null && quadContext.renderType() == ExtendedDataHelper.FLUID_RENDER_TYPE;
-            Material optimizedMaterial = selectMaterial(material, sprite);
-            Material correctMaterial;
-            if (isFluidQuad) {
-                correctMaterial = layer == BlockRenderLayer.TRANSLUCENT
-                        ? buffers.getRenderPassConfiguration().defaultFluidMaterial()
-                        : material;
-            } else {
-                correctMaterial = optimizedMaterial;
-            }
+            Material correctMaterial = isFluidQuad
+                    ? VanillaQuadMaterial.selectFluid(material, buffers.getRenderPassConfiguration(), layer)
+                    : selectMaterial(material, sprite, quad);
 
             ChunkModelBuilder builder = buffers.get(correctMaterial);
             ContextAwareChunkVertexEncoder encoder = this.prepareVanillaEncoder(builder, quadContext);
@@ -335,7 +323,7 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         }
 
         TileEntity tileEntity = this.worldSlice.getTileEntity(pos);
-        return BlockRenderingSettings.INSTANCE.resolveBlockNbtId(state.getBlock(), tileEntity);
+        return BlockRenderingSettings.INSTANCE.resolveBlockNbtId(state.getBlock(), state.getBlock().getMetaFromState(state), tileEntity);
     }
 }
 

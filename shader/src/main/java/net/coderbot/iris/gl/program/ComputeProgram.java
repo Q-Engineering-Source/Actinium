@@ -87,11 +87,14 @@ public final class ComputeProgram extends GlResource {
 
 	public static void unbind() {
 		ProgramUniforms.clearActiveUniforms();
+		ProgramSamplers.clearActiveSamplers();
 		GLStateManager.glUseProgram(0);
 	}
 
 	@Override
     public void destroyInternal() {
+		uniforms.removeListeners();
+		samplers.removeListeners();
 		DepthColorStorage.unregisterOwnedProgram(getGlId());
 		GLStateManager.glDeleteProgram(getGlId());
 	}

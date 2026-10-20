@@ -16,6 +16,7 @@ import net.coderbot.iris.Iris;
 import net.coderbot.iris.gl.state.ValueUpdateNotifier;
 import net.coderbot.iris.gl.uniform.DynamicLocationalUniformHolder;
 import net.coderbot.iris.gl.uniform.Uniform;
+import net.coderbot.iris.gl.uniform.MatrixUniform;
 import net.coderbot.iris.gl.uniform.UniformHolder;
 import net.coderbot.iris.gl.uniform.UniformType;
 import net.coderbot.iris.gl.uniform.UniformUpdateFrequency;
@@ -58,7 +59,12 @@ public class ProgramUniforms {
 	}
 
 	public void update() {
-		if (active != null) {
+		update(getCurrentTick(), SystemTimeUniforms.COUNTER.getAsInt());
+	}
+
+	/** Updates against the frame's captured clocks, independently of world lookup. */
+	void update(long currentTick, int currentFrame) {
+		if (active != null && active != this) {
 			active.removeListeners();
 		}
 
@@ -70,22 +76,17 @@ public class ProgramUniforms {
 			updateStage(once);
 			updateStage(perTick);
 			updateStage(perFrame);
-			lastTick = getCurrentTick();
+			lastTick = currentTick;
 
 			once = null;
 			return;
 		}
-
-		long currentTick = getCurrentTick();
 
 		if (lastTick != currentTick) {
 			lastTick = currentTick;
 
 			updateStage(perTick);
 		}
-
-		// TODO: Move the frame counter to a different place?
-		int currentFrame = SystemTimeUniforms.COUNTER.getAsInt();
 
 		if (lastFrame != currentFrame) {
 			lastFrame = currentFrame;
@@ -95,6 +96,9 @@ public class ProgramUniforms {
 	}
 
 	public void removeListeners() {
+		if (active != this) {
+			return;
+		}
 		active = null;
 
 		for (ValueUpdateNotifier notifier : notifiersToReset) {
@@ -116,7 +120,7 @@ public class ProgramUniforms {
 
 	private void updateMatrixUniforms(ImmutableList<Uniform> uniforms) {
 		for (Uniform uniform : uniforms) {
-			if (uniform instanceof net.coderbot.iris.gl.uniform.MatrixUniform) {
+			if (uniform instanceof MatrixUniform) {
 				uniform.update();
 			}
 		}
