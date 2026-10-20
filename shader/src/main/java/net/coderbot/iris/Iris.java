@@ -153,6 +153,13 @@ public class Iris {
     private static boolean loadShaderPackWhenPossible = false;
     private static boolean renderSystemInitialized = false;
     private static boolean runtimeGlInitialized = false;
+    /**
+     * Whether {@link ShaderTransformer#init()} has run. The transform cache does not key on the version
+     * hoisting that initialization decides, so a transform that runs before it caches products the
+     * initialized transformer would not produce; this is what lets a read-ahead that runs while no pack
+     * is loaded hold its transforms back instead of poisoning that cache.
+     */
+    private static boolean warmupPrepared = false;
 
     /**
      * The transform warmup of the pack that was just loaded, if one is still running. Completed by
@@ -1046,12 +1053,20 @@ public class Iris {
      * requires would describe a pack nothing renders with.</p>
      *
      * <p>Public because the caller that reads the pack ahead lives outside this module: it reads the pack on
-     * its own thread and hands the resulting program set here.</p>
+     * its own thread and hands the resulting program set here. It has to have called {@link
+     * #prepareShaderWarmup()} on the main thread first; without it the transforms are refused, because what
+     * they would cache is not what the pipeline builds.</p>
      *
      * @param packName the pack the program set belongs to, for the log
      * @param programs the program set to warm, resolved on the calling thread
      */
     public static void warmupPreparedTransforms(String packName, ProgramSet programs) {
+        if (!warmupPrepared) {
+            logger.warn("[ShaderTransformCache] not warming the transforms of \"{}\": the shader transformer is not initialized yet,"
+                + " so the products it would cache are not the ones the pipeline builds", packName);
+            return;
+        }
+
         logger.info("[ShaderTransformCache] warmup submitted source=readAheadPack pack={}", packName);
         reportWarmup("readAheadPack", packName,
             ShaderTransformExecutor.submitTracked(() -> DeferredWorldRenderingPipeline.warmupTransforms(programs)));
@@ -1071,6 +1086,43 @@ public class Iris {
         return properties;
     }
 
+    /**
+     * Initializes the state every shader transform depends on, on the calling thread, and does so at most
+     * once.
+     *
+     * <p>{@link ShaderTransformer#init()} decides the GLSL version hoisting a transform applies, from the
+     * capabilities glsm cached when the render system initialized. The transform cache does not key on
+     * that state, so a transform that runs before it caches products the initialized transformer does not
+     * produce - which is why this has to happen before a pack is read ahead of time, while {@link
+     * #loadShaderpack()} has not run yet.</p>
+     *
+     * <p>Public because the main menu read-ahead lives outside this module: it is the step that has to
+     * run on the main thread, before the read-ahead submits any transform to the pool. Idempotent, so the
+     * pack load that follows calls it again without doing the work twice.</p>
+     *
+     * <p>Main thread only, and only after {@link #onRenderSystemInit()}.</p>
+     */
+    public static void prepareShaderWarmup() {
+        if (!renderSystemInitialized) {
+            throw new IllegalStateException("Shader warmup preparation was requested before RenderSystem initialization completed,"
+                + " so the GLSL capabilities it hoists for are not known yet");
+        }
+
+        if (warmupPrepared) {
+            return;
+        }
+
+        // Before anything transforms: the warmup below is only representative of the pipeline when the
+        // hoisting state it caches against is already final.
+        ShaderTransformer.init();
+        warmupPrepared = true;
+    }
+
+    /** {@return whether {@link #prepareShaderWarmup()} has run, which gates the transform warmups} */
+    static boolean isShaderWarmupPrepared() {
+        return warmupPrepared;
+    }
+
     private static void ensureRuntimeGlInitialized() {
         if (runtimeGlInitialized) {
             return;
@@ -1084,8 +1136,9 @@ public class Iris {
             ShaderProviderHolder.setProvider(new IrisCeleritasShaderProvider());
         }
 
+        // Both of these transform shaders, so the transformer has to be initialized first.
+        prepareShaderWarmup();
         ShaderTransformExecutor.warmup();
-        ShaderTransformer.init();
         PBRTextureManager.INSTANCE.init();
         runtimeGlInitialized = true;
     }
@@ -1568,6 +1621,11 @@ public class Iris {
     private static WorldRenderingPipeline createPipeline(String dimensionName) {
         // Read the transforms of the pack just warmed instead of transforming on the frame that opens
         // the world. A warmup that already ran only means the joins below are cheap.
+        //
+        // Only this pack's warmup is joined, not the one a pack read ahead of time started: both submit the
+        // same transforms, so waiting for the older one would put an unbounded wait on the main thread at
+        // the exact moment this exists to shorten, and a transform is a pure function of its inputs, so a
+        // duplicate that still runs only costs the CPU it had left to run anyway.
         awaitProgramSetWarmup();
 
         if (currentPack == null) {
