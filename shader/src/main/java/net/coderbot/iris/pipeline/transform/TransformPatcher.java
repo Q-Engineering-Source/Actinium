@@ -260,7 +260,8 @@ public class TransformPatcher {
         return immutable;
     }
 
-    private static int cacheSize() {
+    /** {@return the number of source sets currently cached} */
+    public static int cacheSize() {
         synchronized (cache) {
             return cache.size();
         }

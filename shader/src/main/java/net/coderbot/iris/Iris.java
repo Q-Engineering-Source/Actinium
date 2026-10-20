@@ -61,11 +61,14 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
@@ -117,6 +120,13 @@ public class Iris {
     private static boolean loadShaderPackWhenPossible = false;
     private static boolean renderSystemInitialized = false;
     private static boolean runtimeGlInitialized = false;
+
+    /**
+     * The transform warmup of the pack that was just loaded, if one is still running. Completed by
+     * {@link #warmupShaderTransforms()}, awaited and cleared by {@link #awaitProgramSetWarmup()}.
+     * Package private so the handshake with pipeline creation is testable without a render context.
+     */
+    static CompletableFuture<Void> programSetWarmup;
 
     private static String IRIS_VERSION;
     @Getter
@@ -302,6 +312,14 @@ public class Iris {
                     idleCheckScheduled = false;
 
                     // Clear transformation caches - no longer needed after loading
+                    //
+                    // This also discards what warmupShaderTransforms() cached, so a warmup whose
+                    // results are still wanted has to be consumed well within IDLE_TIMEOUT_SECONDS.
+                    // An installed jar recovers those results from the transform disk layer, which
+                    // keys them on content; a classes-directory deployment has no disk layer, so it
+                    // transforms again on the frame that opens the world. Not worked around here: a
+                    // pool kept alive for a warmup that may never be consumed costs more than the
+                    // transforms it would save.
                     TransformPatcher.clearCache();
                 } else {
                     // Still active (or in-flight), schedule another check.
@@ -604,6 +622,10 @@ public class Iris {
 
         logger.info("Using shaderpack: " + name);
 
+        // Start the transforms the pipeline for the current dimension will need while the world is
+        // still loading, instead of on the frame that opens it.
+        warmupShaderTransforms();
+
         return true;
     }
 
@@ -656,6 +678,94 @@ public class Iris {
         ShaderTransformer.init();
         PBRTextureManager.INSTANCE.init();
         runtimeGlInitialized = true;
+    }
+
+    /**
+     * Starts transforming the loaded pack's shaders on the worker pool, so the pipeline built next
+     * hits {@link TransformPatcher}'s cache instead of transforming on the frame that opens the world.
+     *
+     * <p>The program set is resolved here, on the calling thread, and only the transforms are handed
+     * to the pool: resolving it writes to the pack's access-ordered dimension map, which must not be
+     * written from the pool while the pipeline of the current dimension is being built. The transforms
+     * themselves read immutable program sources and the shared transform cache, so they are safe to
+     * run off-thread and across a reload.</p>
+     *
+     * <p>Requires {@link ShaderTransformer#init()} to have run, since it decides the GLSL hoisting the
+     * transforms cache their results against and the transform cache does not key on that state:
+     * transforming first would cache products the initialized transformer does not produce. {@link
+     * #loadShaderpack()} initializes it before loading the pack, so this only has to gate, not
+     * initialize.</p>
+     *
+     * <p>The warmup is an optional optimization, so a failure is logged and dropped instead of being
+     * propagated: the transforms it was going to cache run again at pipeline creation, which is
+     * correct, just slower.</p>
+     */
+    static void warmupShaderTransforms() {
+        final ShaderPack pack = currentPack;
+        if (pack == null) {
+            return;
+        }
+
+        if (!runtimeGlInitialized) {
+            logger.debug("Skipping the shader transform warmup because the runtime GL state is not initialized yet");
+            return;
+        }
+
+        final String packName = currentPackName;
+        final String dimensionName = lastDimensionName != null ? lastDimensionName : DimensionId.OVERWORLD.getCanonicalId();
+        try {
+            final ProgramSet programs = pack.getProgramSet(dimensionName);
+            logger.info("[ShaderTransformCache] warmup submitted source=loadedPack pack={} dimension={}", packName, dimensionName);
+            programSetWarmup = reportWarmup("loadedPack", packName,
+                ShaderTransformExecutor.submitTracked(() -> DeferredWorldRenderingPipeline.warmupTransforms(programs)));
+        } catch (RuntimeException e) {
+            logger.warn("Early shader transform warmup failed; transforms will run at pipeline creation", e);
+        }
+    }
+
+    /**
+     * Reports how a transform warmup ended, once the transforms it submitted have finished: the cache
+     * size at submission time says nothing, because none of the submitted work has run yet. A warmup
+     * that submits but never fills the cache is worth a report, since the pipeline built next then
+     * transforms on the frame that opens the world.
+     *
+     * @param submitted the future of the warmup's submission step, carrying the transforms it submitted
+     * @return a future that completes once every submitted transform has finished, and exceptionally if
+     *         the submission or any of the transforms failed
+     */
+    private static CompletableFuture<Void> reportWarmup(String source, String packName,
+                                                        CompletableFuture<List<CompletableFuture<?>>> submitted) {
+        return submitted
+            .thenCompose(transforms -> CompletableFuture
+                .allOf(transforms.toArray(new CompletableFuture<?>[0]))
+                .thenRun(() -> logger.info("[ShaderTransformCache] warmup done source={} pack={} submitted={} cacheSizeAfter={}",
+                    source, packName, transforms.size(), TransformPatcher.cacheSize())))
+            .whenComplete((ignored, failure) -> {
+                if (failure != null) {
+                    logger.warn("Early shader transform warmup failed; transforms will run at pipeline creation", failure);
+                }
+            });
+    }
+
+    /**
+     * Waits for the transform warmup that is still running, if any, and clears it so it is only
+     * awaited once. A failed warmup is logged and swallowed: the transforms it was going to cache run
+     * again at pipeline creation, which is correct, just slower, and a warmup must never take the game
+     * down with it.
+     */
+    static void awaitProgramSetWarmup() {
+        final CompletableFuture<Void> warmup = programSetWarmup;
+        if (warmup == null) {
+            return;
+        }
+        // Cleared before joining, so a warmup that already ran is never joined twice and a late
+        // failure of it cannot be read as the next pack's.
+        programSetWarmup = null;
+        try {
+            warmup.join();
+        } catch (CompletionException | CancellationException e) {
+            logger.warn("Early shader transform warmup failed; transforms will run at pipeline creation", e);
+        }
     }
 
     private static Optional<Properties> tryReadConfigProperties(Path path) {
@@ -806,6 +916,11 @@ public class Iris {
      * Destroys and deallocates all created OpenGL resources. Useful as part of a reload.
      */
     private static void destroyEverything() {
+        // The warmup of the pack being dropped may still be filling the transform cache. Let it end
+        // here, before the pipeline and the zip file system go, so nothing of this pack's is still
+        // running when the next one is loaded.
+        awaitProgramSetWarmup();
+
         currentPack = null;
 
         getPipelineManager().destroyPipeline();
@@ -873,6 +988,10 @@ public class Iris {
      * Program selection supports exact dimension.properties mappings and wildcard fallback.
      */
     private static WorldRenderingPipeline createPipeline(String dimensionName) {
+        // Read the transforms of the pack just warmed instead of transforming on the frame that opens
+        // the world. A warmup that already ran only means the joins below are cheap.
+        awaitProgramSetWarmup();
+
         if (currentPack == null) {
             // Completely disables shader-based rendering
             return new FixedFunctionWorldRenderingPipeline();
