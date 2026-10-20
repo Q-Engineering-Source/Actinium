@@ -23,11 +23,15 @@ import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
 import com.gtnewhorizons.angelica.glsm.compat.FogDistanceModeBridge;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.iris.IrisGLSMBridge;
+import com.gtnewhorizons.angelica.utils.AngelicaJar;
 import com.mojang.realmsclient.gui.ChatFormatting;
 import net.coderbot.iris.Iris;
+import net.coderbot.iris.celeritas.WorldRendererCompatBridge;
 import net.coderbot.iris.pipeline.AdaptiveShadowBoundsStats;
 import net.coderbot.iris.compat.dh.DHCompat;
 import net.coderbot.iris.rendertarget.IRenderTargetExt;
+import net.coderbot.iris.texture.pbr.PBRResourceIndex;
+import net.coderbot.iris.texture.pbr.PBRTextureManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.resources.IReloadableResourceManager;
@@ -75,8 +79,7 @@ public class Actinium {
         PostProcessingBridge.setNightVisionBrightnessInvoker(
             (entity, partialTicks) -> ((AccessorEntityRenderer) Minecraft.getMinecraft().entityRenderer)
                 .invokeGetNightVisionBrightness(entity, partialTicks));
-        net.coderbot.iris.celeritas.WorldRendererCompatBridge.setProvider(
-            com.dhj.actinium.render.terrain.ActiniumWorldRenderer::instanceNullable);
+        WorldRendererCompatBridge.setProvider(ActiniumWorldRenderer::instanceNullable);
         IrisDebugOptions.setBridge(new IrisDebugOptions.Bridge() {
             @Override
             public boolean pbrDebugEnabled() {
@@ -161,6 +164,7 @@ public class Actinium {
 
         GLSMHooks.textureBindSyncCallback = VanillaTextureMirrorCompat.createCallback();
 
+
         ActiniumDiagnostics.logConstruction();
         initializeDistantHorizonsCompat();
         MinecraftForge.EVENT_BUS.register(this);
@@ -183,6 +187,12 @@ public class Actinium {
         }
 
         if (Iris.enabled) {
+            // Configure before pack parsing; classes directories keep the on-disk cache disabled.
+            AngelicaJar.configureShaderDiskCache();
+            // Registration immediately observes the loaded packs and later invalidates on every reload.
+            ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
+                    .registerReloadListener(PBRTextureManager.INSTANCE::onResourceManagerReload);
+            GLSMPerfDebugHooks.addStatsProvider(PBRResourceIndex::statsSummary);
             IrisGLSMBridge.register();
             Iris.INSTANCE.fmlInitEvent();
             MinecraftForge.EVENT_BUS.register(Iris.INSTANCE);

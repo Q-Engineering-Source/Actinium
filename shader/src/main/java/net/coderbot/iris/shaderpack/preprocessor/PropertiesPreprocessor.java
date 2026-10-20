@@ -1,5 +1,6 @@
 package net.coderbot.iris.shaderpack.preprocessor;
 
+import com.gtnewhorizons.angelica.glsm.shader.ShaderDiskCache;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.shaderpack.StringPair;
 import net.coderbot.iris.shaderpack.option.ShaderPackOptions;
@@ -28,6 +29,20 @@ public class PropertiesPreprocessor {
 
 		final List<String> booleanValues = getBooleanValues(shaderPackOptions);
 		final Map<String, String> stringValues = getStringValues(shaderPackOptions);
+		final List<StringPair> environmentMacroList = new ArrayList<>();
+		environmentDefines.forEach(environmentMacroList::add);
+		final List<StringPair> cacheDefines = new ArrayList<>();
+		for (String value : booleanValues) {
+			cacheDefines.add(new StringPair(value, ""));
+		}
+		cacheDefines.addAll(environmentMacroList);
+		stringValues.forEach((name, value) -> cacheDefines.add(new StringPair(name, value)));
+
+		ShaderDiskCache.Key cacheKey = PreprocessedSourceCache.key("properties", source, cacheDefines);
+		String cached = PreprocessedSourceCache.get(cacheKey);
+		if (cached != null) {
+			return cached;
+		}
 
 		try (Preprocessor pp = new Preprocessor()) {
 			// jcpp lexes macro values inside addMacro through an internal lexer source that has
@@ -40,7 +55,7 @@ public class PropertiesPreprocessor {
 				pp.addMacro(value);
 			}
 
-			for (StringPair envDefine : environmentDefines) {
+			for (StringPair envDefine : environmentMacroList) {
 				try {
 					pp.addMacro(envDefine.getKey(), envDefine.getValue());
 				} catch (LexerException e) {
@@ -56,7 +71,9 @@ public class PropertiesPreprocessor {
 				}
 			});
 
-			return process(pp, source);
+			String preprocessed = process(pp, source);
+			PreprocessedSourceCache.put(cacheKey, preprocessed);
+			return preprocessed;
 		} catch (IOException e) {
 			throw new RuntimeException("Unexpected IOException while processing macros", e);
 		} catch (LexerException e) {
@@ -69,11 +86,19 @@ public class PropertiesPreprocessor {
 			throw new RuntimeException("Some shader author is trying to exploit internal Iris implementation details, stop!");
 		}
 
+		final List<StringPair> defines = new ArrayList<>();
+		environmentDefines.forEach(defines::add);
+		ShaderDiskCache.Key cacheKey = PreprocessedSourceCache.key("properties", source, defines);
+		String cached = PreprocessedSourceCache.get(cacheKey);
+		if (cached != null) {
+			return cached;
+		}
+
 		final Preprocessor preprocessor = new Preprocessor();
 
 		// See the comment in the other preprocessSource overload: addMacro throws on lexer
 		// warnings regardless of any listener, so skip the offending macro instead of failing.
-		for (StringPair envDefine : environmentDefines) {
+		for (StringPair envDefine : defines) {
 			try {
 				preprocessor.addMacro(envDefine.getKey(), envDefine.getValue());
 			} catch (LexerException e) {
@@ -81,7 +106,9 @@ public class PropertiesPreprocessor {
 			}
 		}
 
-		return process(preprocessor, source);
+		String preprocessed = process(preprocessor, source);
+		PreprocessedSourceCache.put(cacheKey, preprocessed);
+		return preprocessed;
 	}
 
 	private static String process(Preprocessor preprocessor, String source) {

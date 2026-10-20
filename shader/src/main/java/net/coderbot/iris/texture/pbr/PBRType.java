@@ -1,6 +1,7 @@
 package net.coderbot.iris.texture.pbr;
 
 import net.coderbot.iris.Iris;
+import net.minecraft.client.resources.IResource;
 import net.minecraft.client.resources.IResourceManager;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -120,8 +121,7 @@ public enum PBRType {
 
 	// 1.12.2 has no resource existence query; a missing resource surfaces as FileNotFoundException.
 	private static boolean resourceExists(IResourceManager resourceManager, ResourceLocation location) {
-		try {
-			resourceManager.getResource(location);
+		try (IResource resource = resourceManager.getResource(location)) {
 			return true;
 		} catch (FileNotFoundException e) {
 			return false;

@@ -13,6 +13,7 @@ import net.coderbot.iris.texture.pbr.loader.PBRTextureLoader.PBRTextureConsumer;
 import net.coderbot.iris.texture.pbr.loader.PBRTextureLoaderRegistry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.AbstractTexture;
+import net.minecraft.client.resources.IResourceManager;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.opengl.GL11;
 
@@ -107,6 +108,15 @@ public class PBRTextureManager {
 			}
 		}
 		holders.clear();
+	}
+
+	/**
+	 * Clears texture-id holders and starts a fresh resource index after the resource manager has loaded
+	 * its new pack list. Minecraft invokes this listener synchronously on the reload thread.
+	 */
+	public void onResourceManagerReload(IResourceManager resourceManager) {
+		clear();
+		PBRResourceIndex.start(resourceManager);
 	}
 
 	public void close() {
