@@ -76,6 +76,22 @@ public class IrisCeleritasShaderProvider implements ShaderProvider {
         overrides.deleteShaders();
     }
 
+    /**
+     * Compiles and discards the terrain programs of a pipeline that is never rendered with, so the
+     * saved-program cache covers them too.
+     *
+     * <p>Terrain programs are linked outside the pipeline's own program builder, so the full compile of a
+     * pack only saves them when it asks for them separately. A dedicated overrides instance is used so
+     * the terrain programs in use are left alone.</p>
+     *
+     * @param pipeline the terrain pipelines of the program set being compiled, or null when the set has no
+     *                 terrain shaders
+     */
+    public void compileTerrainPrograms(CeleritasTerrainPipeline pipeline) {
+        if (pipeline == null) return;
+        new IrisCeleritasChunkProgramOverrides().compileAndDiscard(pipeline, this.vertexType);
+    }
+
     public IrisCeleritasChunkProgramOverrides getOverrides() {
         return overrides;
     }

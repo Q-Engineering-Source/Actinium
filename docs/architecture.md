@@ -239,6 +239,18 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
   解析阶段不激活任何东西——required feature 不满足的包由主线程按原行为禁用。
   root 侧 `ShaderWarmup` 由 `MixinGuiMainMenu.initGui` 触发，单条低优先级 daemon 线程，
   失败只记日志；进入世界不等待预读预热（两边提交同一套 key，变换是输入的纯函数）。
+- **全目录预编译与「已编译」marker**：`saveCompiledShaders` 打开时，包加载完成后
+  `Iris.compileEveryShaderFolder` 按 `ShaderPack.getEveryProgramSet()`（每个含 shader 文件的
+  维度目录，加上某些维度会回退到的 base）逐个编译：每个目录建一次一次性 pipeline，
+  地形程序经 `IrisCeleritasShaderProvider.compileTerrainPrograms` 单独覆盖，随后立即
+  `PipelineManager.discardPipeline`，所以峰值只是「当前目录的 program + 上一批保留池」，
+  不随目录数线性增长。
+  批次开始调 `ProgramBinaryCache.beginFullCompile`，只有每个目录都成功才在磁盘写设置指纹
+  marker；任一目录失败只 WARN（带目录名）并跳过，包照常加载、marker 不写、下次进世界重试。
+  marker 键含驱动指纹、FFP 开关与内容指纹（`describeSettings(..., byContent=true)`，取自包
+  最终生效的选项值），因此改光影设置会重新全量编译；写盘前先比对批次代次，
+  `deleteAll()` 或更晚的批次会让晚到的旧写失效。日志只有开始/结束两条 INFO（包名、目录数、
+  耗时）：包在首个世界帧加载，1.12.2 在那里换帧会破坏当前帧，所以不做进度条。
 - **`pipeline/transform/`**（22+ 类）：GLSL 着色器源变换（属性、顶点格式、计算、DH、
   Celeritas 通道）—— `ShaderTransformer`、`AttributeTransformer`、`CeleritasTransformer`、
   `CommonTransformer`、`EntityPatcher`。

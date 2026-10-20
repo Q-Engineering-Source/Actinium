@@ -57,7 +57,22 @@ next bulk upstream refresh.
   root project on `celeritas-common/.../gl/shader/GlProgram`. Local deviations: the GL half sits
   behind a `ProgramBinaryOps` port instead of calling `RenderSystem` directly (upstream tests
   swap the backend singleton reflectively, which this repository forbids), keys use the local
-  `ShaderDiskCache.Key` encoding, and full-directory precompilation is not part of this batch.
+  `ShaderDiskCache.Key` encoding, and the full-directory precompile listed next is a separate
+  batch.
+- The full compile of every shader folder and the "compiled in full" marker follow
+  `compileEveryShaderFolder` from the same `d45f3b13` adaptation (its original form, not the
+  `6720f2d9` tip, which awaits a program-set warmup and harvests per-frame uniform blocks this
+  tree does not have), under the existing LGPL-3.0 notices. Local files:
+  `shader/.../{Iris,shaderpack/ShaderPack,pipeline/PipelineManager}.java`,
+  `shader/.../celeritas/{IrisCeleritasChunkProgramOverrides,IrisCeleritasShaderProvider}.java`
+  and the `ProgramBinaryCache::statsSummary` perf provider in the root `Actinium`. Local
+  deviations: the entry point takes the pipeline builder and the pipeline releaser as ports, so
+  the gates, the marker, the per-folder release and the failure handling are covered without a
+  render context; nothing runs when the driver offers no program binary or the pack cannot be
+  fingerprinted; the fingerprint is the existing `describeSettings(..., byContent=true)` over the
+  resolved option values rather than a new scheme; and progress is logged only, because 1.12.2
+  loads the pack inside the first world frame, where drawing the vanilla loading screen would
+  swap buffers mid-frame.
 - The unified program-transform submission follows Angelica work adapted in Actinium's
   `research/sdl-gpu-port` commits `5ec46f48` (single `ProgramTransforms.submit`), `6d338faf`
   (CPU transform warmup), and `f1f0abc9` (lightmap-only attribute availability variant), under

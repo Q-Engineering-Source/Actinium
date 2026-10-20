@@ -203,6 +203,9 @@ public class Actinium {
             ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
                     .registerReloadListener(PBRTextureManager.INSTANCE::onResourceManagerReload);
             GLSMPerfDebugHooks.addStatsProvider(PBRResourceIndex::statsSummary);
+            // Reports the saved-program cache once it has seen a program; before that the summary is empty
+            // and the perf report leaves it out.
+            GLSMPerfDebugHooks.addStatsProvider(ProgramBinaryCache::statsSummary);
             IrisGLSMBridge.register();
             Iris.INSTANCE.fmlInitEvent();
             MinecraftForge.EVENT_BUS.register(Iris.INSTANCE);

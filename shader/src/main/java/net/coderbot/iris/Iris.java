@@ -134,6 +134,16 @@ public class Iris {
      * across a reload that changed nothing.</p>
      */
     private static String currentPackState;
+    /**
+     * The fingerprint of the pack that was compiled in full for the saved-program cache, or null when
+     * saving compiled programs is off.
+     *
+     * <p>Described by content, because only a change of content can make a saved program stale: the
+     * fingerprint a prepared pack is validated against is taken from sizes and timestamps, which changes
+     * when a file is touched and not when it is edited in place. Taken from the option values the pack
+     * resolved to, so changing a pack option asks for another full compile.</p>
+     */
+    private static String currentPackSettings;
     @Getter
     private static boolean initialized;
     @Getter
@@ -743,6 +753,12 @@ public class Iris {
             changedConfigsValues.getStringValues().forEach(configsToSave::setProperty);
 
             tryUpdateConfigPropertiesFile(shaderPackConfigTxt, configsToSave);
+
+            // The fingerprint a full compile of every folder is marked with. Taken from the values the pack
+            // resolved to, so changing an option asks for another full compile, and by content, so a pack
+            // edited in place is not taken for the one that was compiled.
+            currentPackSettings = irisConfig.shouldSaveCompiledShaders()
+                ? describeSettings(name, shaderPackRoot, configsToSave, environmentDefines, true) : null;
         } catch (Exception e) {
             logger.error("Failed to load the shaderpack \"{}\"!", name);
             logger.error("", e);
@@ -755,6 +771,11 @@ public class Iris {
         ProgramBinaryCache.usePack(name);
 
         logger.info("Using shaderpack: " + name);
+
+        // Ahead of the pipeline that will render with the pack: every folder it can select from gets its
+        // programs linked once here, so the saved-program cache is not limited to the folder the first
+        // world opens with. Only does work when saving compiled programs is on.
+        compileEveryShaderFolder();
 
         // Start the transforms the pipeline for the current dimension will need while the world is
         // still loading, instead of on the frame that opens it.
@@ -793,6 +814,7 @@ public class Iris {
     private static void setShadersDisabled() {
         currentPack = null;
         currentPackState = null;
+        currentPackSettings = null;
         // No pack wants saved programs any more; keeping the layer would key later programs under it.
         ProgramBinaryCache.usePack(null);
         fallback = false;
@@ -1399,6 +1421,7 @@ public class Iris {
 
         currentPack = null;
         currentPackState = null;
+        currentPackSettings = null;
         // Everything this pack saved belongs to a pack that is no longer loaded.
         ProgramBinaryCache.usePack(null);
 
@@ -1613,6 +1636,160 @@ public class Iris {
         return settings.toString();
     }
 
+    /** Builds one program set of the current pack into a pipeline that is never rendered with. */
+    @FunctionalInterface
+    interface FolderPipelineBuilder {
+        WorldRenderingPipeline build(ProgramSet programs);
+    }
+
+    /** Destroys a pipeline that was built only to fill the saved-program cache. */
+    @FunctionalInterface
+    interface PipelineReleaser {
+        void release(WorldRenderingPipeline pipeline);
+    }
+
+    /**
+     * Compiles every dimension folder of the current pack ahead of time, so the saved-program cache covers
+     * the whole pack instead of the folder the first world happens to open with.
+     *
+     * <p>Main thread only: building a pipeline links programs through the GL context of the render
+     * thread. Progress is only logged, because the pack is loaded on the first world frame and drawing the
+     * vanilla loading screen there would swap buffers in the middle of that frame.</p>
+     */
+    private static void compileEveryShaderFolder() {
+        if (currentPack == null) {
+            return;
+        }
+
+        compileEveryShaderFolder(irisConfig.shouldSaveCompiledShaders(), currentPackName, currentPackSettings,
+            currentPack::getEveryProgramSet, Iris::buildFolderPipeline,
+            pipeline -> getPipelineManager().discardPipeline(pipeline));
+    }
+
+    /**
+     * Compiles every program set of one pack, so the saved-program cache is filled for all of them.
+     *
+     * <p>All-or-nothing for the cache: the fingerprint is marked as compiled in full only once every folder
+     * compiled. A folder that fails is reported and skipped, so the pack still loads - that folder simply
+     * compiles again when it is used - and the run is repeated on the next load, because a half-filled
+     * pack is never marked.</p>
+     *
+     * <p>Folders are compiled one at a time, each into a throwaway pipeline that is released before the
+     * next one is built, so a run never holds more than one folder's programs besides the batch the
+     * retained pool still keeps for reuse - not the whole pack's.</p>
+     *
+     * <p>Main thread only: {@code builder} links programs through the GL context.</p>
+     *
+     * @param saveCompiledShaders the configuration switch; with it off nothing is enumerated at all
+     * @param packName the pack being compiled, for the log
+     * @param settings the fingerprint to mark as compiled, or null when the pack cannot be described
+     * @param programSets the program sets to compile, enumerated only once the compile is certain to run
+     * @param builder builds one program set into a pipeline that is never rendered with
+     * @param releaser destroys the pipeline a program set was built into
+     * @return whether every folder compiled, which is when the fingerprint was marked as compiled
+     */
+    static boolean compileEveryShaderFolder(boolean saveCompiledShaders, String packName, @Nullable String settings,
+                                            Supplier<Map<String, ProgramSet>> programSets,
+                                            FolderPipelineBuilder builder, PipelineReleaser releaser) {
+        if (!saveCompiledShaders) {
+            return false;
+        }
+
+        if (settings == null) {
+            logger.warn("Not compiling every shader folder of shaderpack \"" + packName
+                + "\": the pack could not be described, so a full compile of it could never be marked as done");
+            return false;
+        }
+
+        if (!ProgramBinaryCache.isEnabled()) {
+            logger.info("Not compiling every shader folder of shaderpack \"{}\" ahead of time: no program binary can be saved for it"
+                + " (the driver offers none, saving is off, or the program cache is not configured)", packName);
+            return false;
+        }
+
+        if (ProgramBinaryCache.wasCompiledFor(settings)) {
+            logger.info("Every shader folder of shaderpack \"{}\" was already compiled for these settings, nothing to compile", packName);
+            return false;
+        }
+
+        final Map<String, ProgramSet> sets;
+        try {
+            sets = programSets.get();
+        } catch (Exception e) {
+            // A full compile is an optimization; failing to enumerate its folders must not fail the load
+            logger.warn("Could not enumerate the shader folders of shaderpack \"" + packName + "\" for saving", e);
+            return false;
+        }
+
+        final long startNanos = System.nanoTime();
+        logger.info("[Full compile] Compiling every shader folder of shaderpack \"{}\": {} folders", packName, sets.size());
+
+        boolean everyFolderCompiled = true;
+        boolean loopFinished = false;
+        ProgramBinaryCache.beginFullCompile();
+        try {
+            int index = 0;
+            for (Map.Entry<String, ProgramSet> entry : sets.entrySet()) {
+                final String folder = entry.getKey() != null ? entry.getKey() : "(base shaders)";
+                index++;
+                try {
+                    shaderPackLoadId++;
+                    logger.info("[Load #{}] Compiling shader folder {}/{}: {}", shaderPackLoadId, index, sets.size(), folder);
+                    releaser.release(builder.build(entry.getValue()));
+                } catch (Exception e) {
+                    everyFolderCompiled = false;
+                    logger.warn("Failed to compile the shader folder '" + folder + "' of shaderpack \"" + packName
+                        + "\" for saving; the pack still loads, and that folder is compiled again on the next load", e);
+                } finally {
+                    // The folder's programs are the current batch of kept programs from now on, so the ones
+                    // kept for the folder before it can no longer be taken and the pool retires them.
+                    RetainedPrograms.afterPipelineBuilt();
+                }
+            }
+            loopFinished = true;
+        } finally {
+            // A run that did not finish, or that left a folder out, must not claim the whole pack: the
+            // next load then retries instead of trusting a half-filled cache.
+            ProgramBinaryCache.finishFullCompile(loopFinished && everyFolderCompiled ? settings : null);
+        }
+
+        final long elapsedMillis = (System.nanoTime() - startNanos) / 1_000_000L;
+        if (everyFolderCompiled) {
+            logger.info("[Full compile] Compiled every shader folder of shaderpack \"{}\": {} folders in {} ms; the saved programs are reused on the next load",
+                packName, sets.size(), elapsedMillis);
+            return true;
+        }
+
+        logger.warn("[Full compile] Shaderpack \"" + packName
+            + "\": the folders that failed were skipped, so the pack is not marked as compiled in full and every folder is compiled again on the next load ("
+            + elapsedMillis + " ms)");
+        return false;
+    }
+
+    /**
+     * Builds one program set of the current pack into a pipeline that is never rendered with.
+     *
+     * <p>The terrain programs are built too: they are linked through celeritas rather than through the
+     * pipeline's own program builder, so a full compile that only built the pipeline's programs would
+     * leave them to be compiled when the world opens.</p>
+     *
+     * <p>Main thread only. A failure after the pipeline was created releases it before propagating, since
+     * the caller only ever sees a fully built pipeline: one that exists and is not handed back would leak
+     * every program it linked.</p>
+     */
+    private static WorldRenderingPipeline buildFolderPipeline(ProgramSet programs) {
+        ShaderTransformExecutor.prepare();
+        final DeferredWorldRenderingPipeline pipeline = new DeferredWorldRenderingPipeline(programs);
+        try {
+            if (ShaderProviderHolder.getProvider() instanceof IrisCeleritasShaderProvider terrain) {
+                terrain.compileTerrainPrograms(pipeline.getCeleritasTerrainPipeline());
+            }
+            return pipeline;
+        } catch (RuntimeException | Error e) {
+            getPipelineManager().discardPipeline(pipeline);
+            throw e;
+        }
+    }
 
     /**
      * Creates a pipeline for a canonical dimension key.

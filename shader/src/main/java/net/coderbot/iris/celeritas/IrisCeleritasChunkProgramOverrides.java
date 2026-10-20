@@ -98,9 +98,7 @@ public class IrisCeleritasChunkProgramOverrides {
     }
 
     @Nullable
-    private GlProgram<IrisCeleritasChunkShaderInterface> createShader(IrisTerrainPass pass, CeleritasTerrainPipeline pipeline, RenderPassConfiguration<?> configuration) {
-        // Resolved once so the cache key and the attribute bindings describe the same vertex format.
-        final ChunkVertexType vertexType = pass.toTerrainPass(configuration).vertexType();
+    private GlProgram<IrisCeleritasChunkShaderInterface> createShader(IrisTerrainPass pass, CeleritasTerrainPipeline pipeline, ChunkVertexType vertexType) {
         final CeleritasTerrainPipeline.PassInfo passInfo = pipeline.getPassInfo(pass);
         final String name = "iris:celeritas-chunk-" + pass.getName();
         final BlendModeOverride blendOverride = passInfo.blendModeOverride();
@@ -168,10 +166,33 @@ public class IrisCeleritasChunkProgramOverrides {
                     programs.put(pass, null);
                     continue;
                 }
-                programs.put(pass, createShader(pass, pipeline, configuration));
+                // Resolved per pass so the cache key and the attribute bindings describe the same vertex format.
+                programs.put(pass, createShader(pass, pipeline, pass.toTerrainPass(configuration).vertexType()));
             }
         }
         return programs;
+    }
+
+    /**
+     * Builds every terrain program of a pipeline and drops it again, filling the saved-program cache for a
+     * pipeline that is never rendered with.
+     *
+     * <p>Celeritas terrain programs are linked through {@link GlProgram} rather than through the gbuffer
+     * program builder, so a full compile of the pack only covers them when it is asked to build them
+     * here as well.</p>
+     *
+     * @param pipeline the pipeline to build the programs of, or null for a program set without terrain
+     *                 shaders
+     * @param vertexType the vertex format the programs are linked for; the caller owns it because only it
+     *                   knows which format the chunk renderer will use
+     */
+    public void compileAndDiscard(CeleritasTerrainPipeline pipeline, ChunkVertexType vertexType) {
+        if (pipeline == null) return;
+        for (IrisTerrainPass pass : IrisTerrainPass.VALUES) {
+            if (pass.isShadow() && !pipeline.hasShadowPass()) continue;
+            final GlProgram<IrisCeleritasChunkShaderInterface> program = createShader(pass, pipeline, vertexType);
+            if (program != null) program.delete();
+        }
     }
 
     @Nullable
