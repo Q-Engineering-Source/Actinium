@@ -270,6 +270,23 @@ public abstract class RenderBackend implements PixelStoreAccess {
     public abstract int getUniformLocation(int program, ByteBuffer name);
     public boolean isShader(int obj) { return false; }
     public boolean isProgram(int obj) { return false; }
+
+    /**
+     * Whether linked programs may be read back with {@code glGetProgramBinary} and restored with
+     * {@code glProgramBinary}. A backend that cannot hand out a usable binary (for example one that
+     * translates the shader sources itself) keeps the default and the saved-program cache stays off.
+     */
+    public boolean supportsProgramBinary() { return false; }
+
+    /** Sets a link-time program parameter such as {@code GL_PROGRAM_BINARY_RETRIEVABLE_HINT}. */
+    public void programParameteri(int program, int pname, int value) {}
+
+    /** Reads back the linked binary of {@code program}; only meaningful when {@link #supportsProgramBinary()}. */
+    public void getProgramBinary(int program, IntBuffer length, IntBuffer binaryFormat, ByteBuffer binary) {}
+
+    /** Restores a program from a binary produced by {@link #getProgramBinary}. */
+    public void programBinary(int program, int binaryFormat, ByteBuffer binary) {}
+
     public void validateProgram(int program) {}
     public void getAttachedShaders(int program, IntBuffer count, IntBuffer shaders) {
         if (count != null) count.put(0, 0);

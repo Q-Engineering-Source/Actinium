@@ -45,6 +45,8 @@ public class RenderSystem {
     private static boolean supportsClearTexture;
     private static boolean supportsTesselation;
     private static boolean supportsSamplerObjects;
+    /** Whether the driver can read linked programs back with {@code glGetProgramBinary}. */
+    private static boolean supportsProgramBinary;
     private static int maxImageUnits;
     private static int maxSSBOBindings;
     private static int maxGlslVersion;
@@ -155,11 +157,13 @@ public class RenderSystem {
 
         maxGlslVersion = Integer.parseInt(parseGlVersionString(RENDER_BACKEND.getString(GL20.GL_SHADING_LANGUAGE_VERSION)));
         supportsGpuShader4 = GLStateManager.capabilities.GL_EXT_gpu_shader4;
+        supportsProgramBinary = RENDER_BACKEND.supportsProgramBinary();
 
         GLStateManager.LOGGER.info("Max GLSL version: {}, GPU Shader4: {}", maxGlslVersion, supportsGpuShader4);
         GLStateManager.LOGGER.info("Image Load/Store: {}, Max Image Units: {}", supportsImageLoadStore, maxImageUnits);
         GLStateManager.LOGGER.info("SSBO: {}, Max SSBO Bindings: {}", supportsSSBO, maxSSBOBindings);
-        GLStateManager.LOGGER.info("Buffer Storage: {}, Clear Texture: {}, Sampler Objects: {}", supportsBufferStorage, supportsClearTexture, supportsSamplerObjects);
+        GLStateManager.LOGGER.info("Buffer Storage: {}, Clear Texture: {}, Sampler Objects: {}, Program Binary: {}",
+            supportsBufferStorage, supportsClearTexture, supportsSamplerObjects, supportsProgramBinary);
 
         if (isGLES) {
             GLStateManager.LOGGER.info("GL ES context detected, enabling shader transformer.");
@@ -625,6 +629,14 @@ public class RenderSystem {
         return supportsGpuShader4;
     }
 
+    /**
+     * Reports whether linked programs can be saved and restored as driver binaries. Selected once during
+     * renderer initialization from the active backend, so the saved-program cache can stay off on drivers
+     * that cannot produce a binary.
+     */
+    public static boolean supportsProgramBinary() {
+        return supportsProgramBinary;
+    }
 
     public static boolean supportsSnormFormats() {
         if (isGLES()) return false;

@@ -4,6 +4,7 @@ import net.coderbot.iris.debug.IrisDebugOptions;
 import com.google.common.base.Throwables;
 import dhj.embeddedt.embeddium.api.shader.ShaderProviderHolder;
 import com.gtnewhorizons.angelica.Tags;
+import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import it.unimi.dsi.fastutil.ints.Int2IntMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
 import lombok.Getter;
@@ -619,6 +620,7 @@ public class Iris {
 
         fallback = false;
         currentPackName = name;
+        ProgramBinaryCache.usePack(name);
 
         logger.info("Using shaderpack: " + name);
 
@@ -655,6 +657,8 @@ public class Iris {
 
     private static void setShadersDisabled() {
         currentPack = null;
+        // No pack wants saved programs any more; keeping the layer would key later programs under it.
+        ProgramBinaryCache.usePack(null);
         fallback = false;
         currentPackName = "(off)";
 
@@ -922,6 +926,8 @@ public class Iris {
         awaitProgramSetWarmup();
 
         currentPack = null;
+        // Everything this pack saved belongs to a pack that is no longer loaded.
+        ProgramBinaryCache.usePack(null);
 
         getPipelineManager().destroyPipeline();
 

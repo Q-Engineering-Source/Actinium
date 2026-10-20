@@ -1,5 +1,7 @@
 package net.coderbot.iris.celeritas;
 
+import com.gtnewhorizons.angelica.glsm.GLDebug;
+import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.debug.IrisGlDebug;
 import net.coderbot.iris.gl.blending.BlendModeOverride;
@@ -10,11 +12,14 @@ import net.coderbot.iris.shadows.ShadowRenderingState;
 import dhj.embeddedt.embeddium.impl.gl.GlObject;
 import dhj.embeddedt.embeddium.impl.gl.shader.GlProgram;
 import dhj.embeddedt.embeddium.impl.gl.shader.GlShader;
+import dhj.embeddedt.embeddium.impl.gl.shader.ShaderBindingContext;
 import dhj.embeddedt.embeddium.impl.gl.shader.ShaderType;
 import dhj.embeddedt.embeddium.impl.render.chunk.RenderPassConfiguration;
 import dhj.embeddedt.embeddium.impl.render.chunk.shader.ChunkShaderInterface;
 import dhj.embeddedt.embeddium.impl.render.chunk.terrain.TerrainRenderPass;
+import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.ChunkVertexType;
 import org.jetbrains.annotations.Nullable;
+import org.lwjgl.opengl.KHRDebug;
 
 import java.util.EnumMap;
 import java.util.IdentityHashMap;
@@ -22,6 +27,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 
 public class IrisCeleritasChunkProgramOverrides {
     // Programs embed per-pipeline state (custom uniforms, pass info), so each world pipeline gets
@@ -60,8 +66,59 @@ public class IrisCeleritasChunkProgramOverrides {
             .orElse(null);
     }
 
+    /**
+     * Builds the key a terrain program is saved under. The attribute bindings have to match the ones
+     * {@link GlProgram.Builder#link} links with exactly: a binary restored with a different attribute layout
+     * would feed the chunk vertex data into the wrong slots.
+     */
+    @Nullable
+    private static ProgramBinaryCache.Key cacheKey(CeleritasTerrainPipeline.PassInfo passInfo, ChunkVertexType vertexType) {
+        if (!ProgramBinaryCache.isEnabled()) return null;
+        final String vertex = passInfo.sources().get(PatchShaderType.VERTEX).orElse(null);
+        final String geometry = passInfo.sources().get(PatchShaderType.GEOMETRY).orElse(null);
+        final String fragment = passInfo.sources().get(PatchShaderType.FRAGMENT).orElse(null);
+        if (vertex == null || fragment == null) return null;
+
+        final ProgramBinaryCache.Key key = ProgramBinaryCache.key();
+        int attrIndex = 0;
+        for (var attr : vertexType.getVertexFormat().getAttributes()) {
+            key.attribute(attr.getName(), attrIndex++);
+        }
+        key.stage(ShaderType.VERTEX.id, vertex);
+        if (geometry != null) key.stage(ShaderType.GEOM.id, geometry);
+        key.stage(ShaderType.FRAGMENT.id, fragment);
+        return key;
+    }
+
+    /** A program restored from the saved-program cache instead of linked from source. */
+    private static final class SavedProgram extends GlProgram<IrisCeleritasChunkShaderInterface> {
+        SavedProgram(int program, Function<ShaderBindingContext, IrisCeleritasChunkShaderInterface> factory) {
+            super(program, factory);
+        }
+    }
+
     @Nullable
     private GlProgram<IrisCeleritasChunkShaderInterface> createShader(IrisTerrainPass pass, CeleritasTerrainPipeline pipeline, RenderPassConfiguration<?> configuration) {
+        // Resolved once so the cache key and the attribute bindings describe the same vertex format.
+        final ChunkVertexType vertexType = pass.toTerrainPass(configuration).vertexType();
+        final CeleritasTerrainPipeline.PassInfo passInfo = pipeline.getPassInfo(pass);
+        final String name = "iris:celeritas-chunk-" + pass.getName();
+        final BlendModeOverride blendOverride = passInfo.blendModeOverride();
+        final List<BufferBlendOverride> bufferOverrides = passInfo.bufferBlendOverrides();
+        final Function<ShaderBindingContext, IrisCeleritasChunkShaderInterface> factory = context -> {
+            IrisGlDebug.logCeleritasProgram(pass.getName(), ((GlObject) context).handle(), vertexType.getVertexFormat().getAttributes());
+            return new IrisCeleritasChunkShaderInterface(((GlObject) context).handle(), context, pipeline, pass.isShadow(), passInfo.alphaTestOverride(), passInfo.alphaReference(), blendOverride, bufferOverrides, pipeline.getCustomUniforms());
+        };
+
+        final ProgramBinaryCache.Key cacheKey = cacheKey(passInfo, vertexType);
+        if (cacheKey != null) {
+            final int saved = ProgramBinaryCache.load(cacheKey);
+            if (saved != 0) {
+                GLDebug.nameObject(KHRDebug.GL_PROGRAM, saved, name);
+                return new SavedProgram(saved, factory);
+            }
+        }
+
         final GlShader vertShader = createVertexShader(pass, pipeline);
         final GlShader geomShader = createGeometryShader(pass, pipeline);
         final GlShader fragShader = createFragmentShader(pass, pipeline);
@@ -74,7 +131,7 @@ public class IrisCeleritasChunkProgramOverrides {
         }
 
         try {
-            final GlProgram.Builder builder = GlProgram.builder("iris:celeritas-chunk-" + pass.getName());
+            final GlProgram.Builder builder = GlProgram.builder(name);
 
             builder.attachShader(vertShader);
             if (geomShader != null) {
@@ -83,20 +140,16 @@ public class IrisCeleritasChunkProgramOverrides {
             builder.attachShader(fragShader);
 
             // Bind all attributes from the vertex format (includes base + Iris extended attributes)
-            final var vertexType =pass.toTerrainPass(configuration).vertexType();
             int attrIndex = 0;
             for (var attr : vertexType.getVertexFormat().getAttributes()) {
                 builder.bindAttribute(attr.getName(), attrIndex++);
             }
 
-            final CeleritasTerrainPipeline.PassInfo passInfo = pipeline.getPassInfo(pass);
-            final BlendModeOverride blendOverride = passInfo.blendModeOverride();
-            final List<BufferBlendOverride> bufferOverrides = passInfo.bufferBlendOverrides();
-
-            return builder.link(context -> {
-                IrisGlDebug.logCeleritasProgram(pass.getName(), ((GlObject) context).handle(), vertexType.getVertexFormat().getAttributes());
-                return new IrisCeleritasChunkShaderInterface(((GlObject) context).handle(), context, pipeline, pass.isShadow(), passInfo.alphaTestOverride(), passInfo.alphaReference(), blendOverride, bufferOverrides, pipeline.getCustomUniforms());
-            });
+            final GlProgram<IrisCeleritasChunkShaderInterface> program = builder.link(factory);
+            if (cacheKey != null) {
+                ProgramBinaryCache.save(cacheKey, program.handle());
+            }
+            return program;
         } finally {
             vertShader.delete();
             if (geomShader != null) geomShader.delete();

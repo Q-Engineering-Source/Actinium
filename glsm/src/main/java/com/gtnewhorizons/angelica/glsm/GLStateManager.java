@@ -30,6 +30,7 @@ import com.gtnewhorizons.angelica.glsm.recording.ImmediateModeRecorder;
 import com.gtnewhorizons.angelica.glsm.recording.commands.IndexedDrawCapture;
 import com.gtnewhorizons.angelica.glsm.recording.commands.TexImage2DCmd;
 import com.gtnewhorizons.angelica.glsm.recording.commands.TexSubImage2DCmd;
+import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import com.gtnewhorizons.angelica.glsm.stacks.AlphaStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.BlendStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.BooleanStateStack;
@@ -7756,8 +7757,33 @@ public class GLStateManager {
         if (ShaderManager.getInstance().isEnabled()) {
             generateVertexShaderIfNeeded(program);
         }
+        ProgramBinaryCache.markRetrievable(program);
         long linkEpoch = CompatUniformManager.beforeLinkProgram(program);
         RENDER_BACKEND.linkProgram(program);
+        CompatUniformManager.onLinkProgram(program, linkEpoch);
+    }
+
+    /**
+     * Sets a link-time program parameter. Used to request {@code GL_PROGRAM_BINARY_RETRIEVABLE_HINT}
+     * before the link that decides whether the driver will hand the binary back afterwards.
+     */
+    public static void glProgramParameteri(int program, int pname, int value) {
+        RENDER_BACKEND.programParameteri(program, pname, value);
+    }
+
+    /** Reads back the linked binary of a program; see {@link #glProgramParameteri}. */
+    public static void glGetProgramBinary(int program, IntBuffer length, IntBuffer binaryFormat, ByteBuffer binary) {
+        RENDER_BACKEND.getProgramBinary(program, length, binaryFormat, binary);
+    }
+
+    /**
+     * Restores a program from a driver binary. The restore replaces the link, so it wraps the call in the
+     * same uniform-epoch protocol {@link #glLinkProgram} uses: the program's active uniform locations are
+     * re-read from the restored object rather than trusted from the ones the source compile produced.
+     */
+    public static void glProgramBinary(int program, int binaryFormat, ByteBuffer binary) {
+        final long linkEpoch = CompatUniformManager.beforeLinkProgram(program);
+        RENDER_BACKEND.programBinary(program, binaryFormat, binary);
         CompatUniformManager.onLinkProgram(program, linkEpoch);
     }
 

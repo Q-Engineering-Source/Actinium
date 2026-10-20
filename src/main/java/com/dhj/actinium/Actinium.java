@@ -22,6 +22,7 @@ import com.gtnewhorizon.gtnhlib.client.renderer.postprocessing.PostProcessingBri
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
 import com.gtnewhorizons.angelica.glsm.compat.FogDistanceModeBridge;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
+import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import com.gtnewhorizons.angelica.iris.IrisGLSMBridge;
 import com.gtnewhorizons.angelica.utils.AngelicaJar;
 import com.mojang.realmsclient.gui.ChatFormatting;
@@ -48,6 +49,7 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import dhj.embeddedt.embeddium.impl.common.util.MathUtil;
 import dhj.embeddedt.embeddium.impl.common.util.NativeBuffer;
 import dhj.embeddedt.embeddium.impl.gl.device.GLRenderDevice;
+import dhj.embeddedt.embeddium.impl.gl.shader.GlProgram;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
 import dhj.embeddedt.embeddium.impl.runtime.EmbeddiumRuntimeOptions;
 import java.io.IOException;
@@ -164,6 +166,10 @@ public class Actinium {
 
         GLSMHooks.textureBindSyncCallback = VanillaTextureMirrorCompat.createCallback();
 
+        // Celeritas links its own terrain programs, bypassing GLStateManager.glLinkProgram and the
+        // link-time parameters it sets. The hook is installed from here because only the root module sees
+        // both sides: celeritas must not reach into glsm, and glsm must not reach into celeritas.
+        GlProgram.setLinkHook(ProgramBinaryCache::markRetrievable);
 
         ActiniumDiagnostics.logConstruction();
         initializeDistantHorizonsCompat();
