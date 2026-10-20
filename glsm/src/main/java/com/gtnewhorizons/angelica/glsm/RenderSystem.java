@@ -611,9 +611,20 @@ public class RenderSystem {
         hasClipCullDistance = supported;
     }
 
+    /**
+     * Supplies deterministic shader storage and image load/store capabilities for headless shader transformation
+     * tests. Both flags change GLSL version hoisting and therefore belong to the transform cache key, so tests need
+     * to move them without an OpenGL context.
+     */
+    public static void initializeShaderFeatureSupportForTesting(boolean shaderStorageBuffers, boolean imageLoadStore) {
+        supportsSSBO = shaderStorageBuffers;
+        supportsImageLoadStore = imageLoadStore;
+    }
+
     public static boolean supportsGpuShader4() {
         return supportsGpuShader4;
     }
+
 
     public static boolean supportsSnormFormats() {
         if (isGLES()) return false;
