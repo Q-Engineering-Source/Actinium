@@ -6,7 +6,6 @@ import net.coderbot.iris.gl.state.ValueUpdateNotifier;
 import java.util.function.IntSupplier;
 
 public class IntUniform extends Uniform {
-	private final Runnable updateListener = this::updateValue;
 	private int cachedValue;
 	private final IntSupplier value;
 
@@ -22,15 +21,7 @@ public class IntUniform extends Uniform {
 	}
 
 	@Override
-	public void update() {
-		updateValue();
-
-		if (notifier != null) {
-			notifier.setListener(updateListener);
-		}
-	}
-
-	private void updateValue() {
+	protected void updateValue() {
 		int newValue = value.getAsInt();
 
 		if (cachedValue != newValue) {

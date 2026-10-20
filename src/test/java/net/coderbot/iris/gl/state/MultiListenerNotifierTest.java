@@ -60,4 +60,51 @@ class MultiListenerNotifierTest {
         notifier.run();
         assertEquals(List.of("old-first", "new-program"), notifications);
     }
+
+    @Test
+    void removingOneListenerKeepsTheOtherProgramsInOrder() {
+        MultiListenerNotifier notifier = new MultiListenerNotifier();
+        List<String> notifications = new ArrayList<>();
+        notifier.setListener(() -> notifications.add("first"));
+        Runnable second = () -> notifications.add("second");
+        notifier.setListener(second);
+        notifier.setListener(() -> notifications.add("third"));
+
+        notifier.removeListener(second);
+        notifier.run();
+
+        assertEquals(List.of("first", "third"), notifications);
+    }
+
+    @Test
+    void removingAListenerThatNeverRegisteredKeepsEveryOtherProgram() {
+        MultiListenerNotifier notifier = new MultiListenerNotifier();
+        AtomicInteger notifications = new AtomicInteger();
+        notifier.setListener(notifications::incrementAndGet);
+
+        notifier.removeListener(() -> {});
+        notifier.run();
+
+        assertEquals(1, notifications.get());
+    }
+
+    @Test
+    void aListenerRemovedDuringNotificationStopsTheRunningNotification() {
+        MultiListenerNotifier notifier = new MultiListenerNotifier();
+        List<String> notifications = new ArrayList<>();
+        Runnable[] first = new Runnable[1];
+        first[0] = () -> {
+            notifications.add("first");
+            notifier.removeListener(first[0]);
+        };
+        notifier.setListener(first[0]);
+        notifier.setListener(() -> notifications.add("second"));
+
+        notifier.run();
+        assertEquals(List.of("first"), notifications, "a change to the registrations ends the running notification");
+
+        notifier.run();
+        assertEquals(List.of("first", "second"), notifications,
+            "the other program's registration survives the removal, so the next notification reaches it");
+    }
 }

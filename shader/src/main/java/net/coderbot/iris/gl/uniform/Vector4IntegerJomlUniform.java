@@ -8,7 +8,6 @@ import org.joml.Vector4ic;
 import java.util.function.Supplier;
 
 public class Vector4IntegerJomlUniform extends Uniform {
-	private final Runnable updateListener = this::updateValue;
 	private final Vector4i cachedValue;
 	private final Supplier<Vector4ic> value;
 
@@ -24,15 +23,7 @@ public class Vector4IntegerJomlUniform extends Uniform {
 	}
 
 	@Override
-	public void update() {
-		updateValue();
-
-		if (notifier != null) {
-			notifier.setListener(updateListener);
-		}
-	}
-
-	private void updateValue() {
+	protected void updateValue() {
 		Vector4ic newValue = value.get();
 
 		if (!newValue.equals(cachedValue)) {

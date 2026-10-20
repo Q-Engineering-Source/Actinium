@@ -7,7 +7,6 @@ import java.util.Arrays;
 import java.util.function.Supplier;
 
 public class Vector4ArrayUniform extends Uniform {
-    private final Runnable updateListener = this::updateValue;
     private final Supplier<float[]> value;
     // Held by value, so that reused supplier arrays cannot alias the cache
     private final float[] cachedValue;
@@ -24,15 +23,7 @@ public class Vector4ArrayUniform extends Uniform {
     }
 
     @Override
-    public void update() {
-        updateValue();
-
-        if (notifier != null) {
-            notifier.setListener(updateListener);
-        }
-    }
-
-    private void updateValue() {
+    protected void updateValue() {
         float[] newValue = value.get();
 
         if (!Arrays.equals(newValue, cachedValue)) {

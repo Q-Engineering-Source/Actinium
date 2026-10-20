@@ -6,29 +6,31 @@ import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import net.coderbot.iris.gl.image.ImageHolder;
 import net.coderbot.iris.gl.sampler.GlSampler;
 import net.coderbot.iris.gl.sampler.SamplerHolder;
-import net.coderbot.iris.gl.shader.GlShader;
-import net.coderbot.iris.gl.shader.ProgramCreator;
-import net.coderbot.iris.gl.shader.ShaderType;
 import net.coderbot.iris.gl.state.ValueUpdateNotifier;
 import net.coderbot.iris.gl.texture.InternalTextureFormat;
 import net.coderbot.iris.gl.texture.TextureType;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.function.IntSupplier;
 
 public class ProgramBuilder extends ProgramUniforms.Builder implements SamplerHolder, ImageHolder {
+	private static final ProgramFallback FALLBACK = new ProgramFallbackImpl();
+
 	private final int program;
 	private final ProgramSamplers.Builder samplers;
 	private final ProgramImages.Builder images;
+	private final RetainedPrograms.Sources sources;
+	/** Set when this builder hands its program name to a wrapper; the name has one owner at a time. */
+	private boolean built;
 
-	private ProgramBuilder(String name, int program, ImmutableSet<Integer> reservedTextureUnits) {
+	private ProgramBuilder(String name, int program, ImmutableSet<Integer> reservedTextureUnits,
+						   RetainedPrograms.Sources sources) {
 		super(name, program);
 
 		this.program = program;
 		this.samplers = ProgramSamplers.builder(program, reservedTextureUnits);
 		this.images = ProgramImages.builder(program);
+		this.sources = sources;
 	}
 
 	public void bindAttributeLocation(int index, String name) {
@@ -43,51 +45,10 @@ public class ProgramBuilder extends ProgramUniforms.Builder implements SamplerHo
 	public static ProgramBuilder begin(String name, @Nullable String vertexSource, @Nullable String geometrySource,
 									   @Nullable String tessControlSource, @Nullable String tessEvalSource,
 									   @Nullable String fragmentSource, ImmutableSet<Integer> reservedTextureUnits) {
-		// The retained-program tier is looked up here before anything is read from disk: a program the
-		// pipeline already linked for the same sources needs neither a restore nor a compile.
-		final ProgramBinaryCache.Key cacheKey = ProgramCreator.cacheKey();
-		if (cacheKey != null) {
-			cacheKey.stage(ShaderType.VERTEX.id, vertexSource);
-			if (geometrySource != null) cacheKey.stage(ShaderType.GEOMETRY.id, geometrySource);
-			if (tessControlSource != null) cacheKey.stage(ShaderType.TESSELATION_CONTROL.id, tessControlSource);
-			if (tessEvalSource != null) cacheKey.stage(ShaderType.TESSELATION_EVAL.id, tessEvalSource);
-			cacheKey.stage(ShaderType.FRAGMENT.id, fragmentSource);
-		}
+		final RetainedPrograms.Sources sources = new RetainedPrograms.Sources(vertexSource, geometrySource,
+			tessControlSource, tessEvalSource, fragmentSource, null);
 
-		if (cacheKey != null) {
-			final int saved = ProgramCreator.load(name, cacheKey);
-			if (saved != 0) {
-				return new ProgramBuilder(name, saved, reservedTextureUnits);
-			}
-		}
-
-		// Everything from here to the link is the work a restored binary replaces, the stage compilations
-		// included, so this is what the program cache reports it saved.
-		final long buildStartNanos = cacheKey != null ? System.nanoTime() : 0L;
-		GlShader vertex = buildShader(ShaderType.VERTEX, name + ".vsh", vertexSource);
-		GlShader geometry = geometrySource != null ? buildShader(ShaderType.GEOMETRY, name + ".gsh", geometrySource) : null;
-		GlShader tessControl = tessControlSource != null ? buildShader(ShaderType.TESSELATION_CONTROL, name + ".tcs", tessControlSource) : null;
-		GlShader tessEval = tessEvalSource != null ? buildShader(ShaderType.TESSELATION_EVAL, name + ".tes", tessEvalSource) : null;
-		GlShader fragment = buildShader(ShaderType.FRAGMENT, name + ".fsh", fragmentSource);
-
-		List<GlShader> shaders = new ArrayList<>();
-		shaders.add(vertex);
-		if (geometry != null) shaders.add(geometry);
-		if (tessControl != null) shaders.add(tessControl);
-		if (tessEval != null) shaders.add(tessEval);
-		shaders.add(fragment);
-
-		int programId = ProgramCreator.create(name, cacheKey, shaders.toArray(new GlShader[0]));
-
-		for (GlShader shader : shaders) {
-			shader.destroy();
-		}
-
-		if (buildStartNanos != 0L) {
-			ProgramBinaryCache.recordMissBuild(System.nanoTime() - buildStartNanos);
-		}
-
-		return new ProgramBuilder(name, programId, reservedTextureUnits);
+		return new ProgramBuilder(name, acquire(name, sources, FALLBACK), reservedTextureUnits, sources);
 	}
 
 	public static ProgramBuilder beginCompute(String name, @Nullable String source, ImmutableSet<Integer> reservedTextureUnits) {
@@ -95,46 +56,56 @@ public class ProgramBuilder extends ProgramUniforms.Builder implements SamplerHo
 			throw new IllegalStateException("This PC does not support compute shaders, but it's attempting to be used???");
 		}
 
-		final ProgramBinaryCache.Key cacheKey = ProgramCreator.cacheKey();
-		if (cacheKey != null) {
-			cacheKey.stage(ShaderType.COMPUTE.id, source);
+		final RetainedPrograms.Sources sources = new RetainedPrograms.Sources(null, null, null, null, null, source);
+
+		return new ProgramBuilder(name, acquire(name, sources, FALLBACK), reservedTextureUnits, sources);
+	}
+
+	/**
+	 * Picks where the program for these stage sources comes from: the pool of programs a destroyed pipeline
+	 * kept, then the binary a previous run saved to disk, then a compile and link.
+	 *
+	 * <p>Each tier only runs when the one before it has nothing. A kept program therefore costs neither a
+	 * disk read nor a shader object, and a saved binary costs no compile.</p>
+	 *
+	 * @param fallback the disk and link tiers; production passes {@link ProgramFallbackImpl}
+	 * @return the program, never 0
+	 */
+	static int acquire(String name, RetainedPrograms.Sources sources, ProgramFallback fallback) {
+		final int retained = RetainedPrograms.take(sources);
+		if (retained != 0) {
+			return retained;
 		}
 
-		if (cacheKey != null) {
-			final int saved = ProgramCreator.load(name, cacheKey);
-			if (saved != 0) {
-				return new ProgramBuilder(name, saved, reservedTextureUnits);
-			}
+		final ProgramBinaryCache.Key cacheKey = fallback.cacheKey(sources);
+		final int restored = fallback.restore(name, cacheKey);
+		if (restored != 0) {
+			return restored;
 		}
 
-		final long buildStartNanos = cacheKey != null ? System.nanoTime() : 0L;
-		GlShader compute = buildShader(ShaderType.COMPUTE, name + ".csh", source);
-
-		int programId = ProgramCreator.create(name, cacheKey, compute);
-
-		compute.destroy();
-
-		if (buildStartNanos != 0L) {
-			ProgramBinaryCache.recordMissBuild(System.nanoTime() - buildStartNanos);
-		}
-
-		return new ProgramBuilder(name, programId, reservedTextureUnits);
+		return fallback.compile(name, cacheKey, sources);
 	}
 
 	public Program build() {
-		return new Program(program, super.buildUniforms(), this.samplers.build(), this.images.build());
+		return new Program(claimProgram(), sources, super.buildUniforms(), this.samplers.build(), this.images.build());
 	}
 
 	public ComputeProgram buildCompute() {
-		return new ComputeProgram(program, super.buildUniforms(), this.samplers.build(), this.images.build());
+		return new ComputeProgram(claimProgram(), sources, super.buildUniforms(), this.samplers.build(), this.images.build());
 	}
 
-	private static GlShader buildShader(ShaderType shaderType, String name, @Nullable String source) {
-		try {
-			return new GlShader(shaderType, name, source);
-		} catch (RuntimeException e) {
-			throw new RuntimeException("Failed to compile " + shaderType + " shader for program " + name, e);
+	/**
+	 * Hands the program name to the wrapper that is being built. A builder names exactly one program, and a
+	 * program name can have only one owner: once the pool is in play, a second wrapper for the same name would
+	 * let two wrappers keep and reuse it independently.
+	 */
+	private int claimProgram() {
+		if (built) {
+			throw new IllegalStateException("This program builder already gave its program to a wrapper");
 		}
+
+		built = true;
+		return program;
 	}
 
 	@Override

@@ -16,6 +16,7 @@ import net.coderbot.iris.config.IrisConfig;
 import net.coderbot.iris.celeritas.IrisCeleritasShaderProvider;
 import net.coderbot.iris.client.IrisDebugScreenHandler;
 import net.coderbot.iris.gbuffer_overrides.matching.InputAvailability;
+import net.coderbot.iris.gl.program.RetainedPrograms;
 import net.coderbot.iris.gl.shader.StandardMacros;
 import net.coderbot.iris.gui.screen.ShaderPackScreen;
 import net.coderbot.iris.pipeline.DeferredWorldRenderingPipeline;
@@ -603,6 +604,12 @@ public class Iris {
         try {
             currentPack = new ShaderPack(shaderPackPath, changedConfigs, StandardMacros.createStandardEnvironmentDefines());
 
+            // Programs kept from a destroyed pipeline may only be reused inside one pack configuration, so
+            // the pack that just loaded owns the pool from now on. The identity is the pack name and its
+            // resolved shaders directory - stable across reloads of this pack, different for another one -
+            // until the settings fingerprint replaces it.
+            RetainedPrograms.useConfiguration(name + "|" + shaderPackPath + "|retained");
+
             final MutableOptionValues changedConfigsValues = currentPack.getShaderPackOptions().getOptionValues().mutableCopy();
 
             // Store changed values from those currently in use by the shader pack
@@ -1019,6 +1026,10 @@ public class Iris {
             notifyPlayer(I18n.format("iris.shaders.pipelineFailed", Throwables.getRootCause(e).getMessage()));
 
             return new FixedFunctionWorldRenderingPipeline();
+        } finally {
+            // The pipeline that was just built is the current batch of kept programs; the one before it can
+            // no longer be taken, so the pool retires it.
+            RetainedPrograms.afterPipelineBuilt();
         }
     }
 

@@ -19,7 +19,7 @@ public class Vector2Uniform extends Uniform {
 	}
 
 	@Override
-	public void update() {
+	protected void updateValue() {
 		Vector2f newValue = value.get();
 
 		if (!newValue.equals(cachedValue)) {

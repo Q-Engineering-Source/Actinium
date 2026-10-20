@@ -28,6 +28,28 @@ public final class MultiListenerNotifier implements ValueUpdateNotifier {
         listeners[count++] = listener;
     }
 
+    /**
+     * Removes one program's registration by listener identity, keeping every other program's registration and
+     * the registration order. The generation bump stops a notification that is already running from
+     * continuing over the compacted array.
+     */
+    @Override
+    public void removeListener(Runnable listener) {
+        for (int i = 0; i < count; i++) {
+            if (listeners[i] != listener) {
+                continue;
+            }
+
+            final int moved = count - i - 1;
+            if (moved > 0) {
+                System.arraycopy(listeners, i + 1, listeners, i, moved);
+            }
+            listeners[--count] = null;
+            generation++;
+            return;
+        }
+    }
+
     /** Notifies listeners in registration order on the render thread. */
     public void run() {
         final Runnable[] currentListeners = listeners;

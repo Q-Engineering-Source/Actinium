@@ -6,6 +6,7 @@ import net.coderbot.iris.gl.GlResource;
 import net.coderbot.iris.gl.blending.DepthColorStorage;
 import net.coderbot.iris.pipeline.WorldRenderingPipeline;
 import net.coderbot.iris.shaderpack.FilledIndirectPointer;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Vector2f;
 import org.joml.Vector3i;
 import org.lwjgl.BufferUtils;
@@ -26,10 +27,15 @@ public final class ComputeProgram extends GlResource {
 	private float cachedWidth;
 	private float cachedHeight;
 	private Vector3i cachedWorkGroups;
+	/** The compute stage this program was linked from, or null when it must be deleted with its wrapper. */
+	@Nullable
+	private final RetainedPrograms.Sources sources;
 
-	ComputeProgram(int program, ProgramUniforms uniforms, ProgramSamplers samplers, ProgramImages images) {
+	ComputeProgram(int program, @Nullable RetainedPrograms.Sources sources, ProgramUniforms uniforms,
+				   ProgramSamplers samplers, ProgramImages images) {
 		super(program);
 
+		this.sources = sources;
         localSizeBuffer = BufferUtils.createIntBuffer(3);
 		RenderSystem.getProgramiv(program, GL43.GL_COMPUTE_WORK_GROUP_SIZE, localSizeBuffer);
 		this.uniforms = uniforms;
@@ -96,7 +102,13 @@ public final class ComputeProgram extends GlResource {
 		uniforms.removeListeners();
 		samplers.removeListeners();
 		DepthColorStorage.unregisterOwnedProgram(getGlId());
-		GLStateManager.glDeleteProgram(getGlId());
+
+		if (sources != null) {
+			// The program name outlives this wrapper: a later pipeline with the same stages takes it over.
+			RetainedPrograms.retain(sources, getGlId());
+		} else {
+			GLStateManager.glDeleteProgram(getGlId());
+		}
 	}
 
 	/**

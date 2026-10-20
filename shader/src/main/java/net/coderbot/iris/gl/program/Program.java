@@ -1,9 +1,10 @@
 package net.coderbot.iris.gl.program;
 
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import net.coderbot.iris.gl.GlResource;
 import net.coderbot.iris.gl.blending.DepthColorStorage;
-import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL42;
 import org.lwjgl.opengl.GL43;
 
@@ -11,10 +12,15 @@ public final class Program extends GlResource {
 	private final ProgramUniforms uniforms;
 	private final ProgramSamplers samplers;
 	private final ProgramImages images;
+	/** The stages this program was linked from, or null when it must be deleted with its wrapper. */
+	@Nullable
+	private final RetainedPrograms.Sources sources;
 
-	Program(int program, ProgramUniforms uniforms, ProgramSamplers samplers, ProgramImages images) {
+	Program(int program, @Nullable RetainedPrograms.Sources sources, ProgramUniforms uniforms, ProgramSamplers samplers,
+			ProgramImages images) {
 		super(program);
 
+		this.sources = sources;
 		this.uniforms = uniforms;
 		this.samplers = samplers;
 		this.images = images;
@@ -42,7 +48,13 @@ public final class Program extends GlResource {
 		uniforms.removeListeners();
 		samplers.removeListeners();
 		DepthColorStorage.unregisterOwnedProgram(getGlId());
-		GLStateManager.glDeleteProgram(getGlId());
+
+		if (sources != null) {
+			// The program name outlives this wrapper: a later pipeline with the same stages takes it over.
+			RetainedPrograms.retain(sources, getGlId());
+		} else {
+			GLStateManager.glDeleteProgram(getGlId());
+		}
 	}
 
 	/**

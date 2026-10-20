@@ -21,7 +21,7 @@ public class MatrixUniform extends Uniform {
 	}
 
 	@Override
-	public void update() {
+	protected void updateValue() {
         final Matrix4fc newValue = value.get();
         if( newValue == null ){
             throw new RuntimeException("MatrixUniform value is null");

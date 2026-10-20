@@ -30,6 +30,16 @@ public class SamplerBinding {
 		}
 	}
 
+	/**
+	 * Takes this sampler's push notification back from its notifier, leaving the registrations other programs
+	 * made on the same notifier alone. Safe to call when the sampler never registered.
+	 */
+	public void removeListener() {
+		if (notifier != null) {
+			notifier.removeListener(updateListener);
+		}
+	}
+
 	private void updateSampler() {
 		RenderSystem.bindSamplerToUnit(textureUnit, sampler);
 		RenderSystem.bindTextureToUnit(textureType.getGlType(), textureUnit, texture.getAsInt());

@@ -5,9 +5,7 @@ import com.google.common.collect.ImmutableList;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import java.nio.IntBuffer;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalInt;
@@ -33,19 +31,35 @@ public class ProgramUniforms {
 	private final ImmutableList<Uniform> perTick;
 	private final ImmutableList<Uniform> perFrame;
 	private final ImmutableList<Uniform> dynamic;
-	private final ImmutableList<ValueUpdateNotifier> notifiersToReset;
+	/** Every uniform of this program that has a notifier, so destruction takes back all its registrations. */
+	private final ImmutableList<Uniform> notifiableUniforms;
 
 	private ImmutableList<Uniform> once;
 	long lastTick = -1;
 	int lastFrame = -1;
 
 	public ProgramUniforms(ImmutableList<Uniform> once, ImmutableList<Uniform> perTick, ImmutableList<Uniform> perFrame,
-						   ImmutableList<Uniform> dynamic, ImmutableList<ValueUpdateNotifier> notifiersToReset) {
+						   ImmutableList<Uniform> dynamic) {
 		this.once = once;
 		this.perTick = perTick;
 		this.perFrame = perFrame;
 		this.dynamic = dynamic;
-		this.notifiersToReset = notifiersToReset;
+		this.notifiableUniforms = notifiable(once, perTick, perFrame, dynamic);
+	}
+
+	/** Collects the uniforms a push registration can be held for; the rest have nothing to remove. */
+	private static ImmutableList<Uniform> notifiable(ImmutableList<Uniform> once, ImmutableList<Uniform> perTick,
+													 ImmutableList<Uniform> perFrame, ImmutableList<Uniform> dynamic) {
+		final ImmutableList.Builder<Uniform> notifiable = ImmutableList.builder();
+		for (ImmutableList<Uniform> uniforms : ImmutableList.of(once, perTick, perFrame, dynamic)) {
+			for (Uniform uniform : uniforms) {
+				if (uniform.getNotifier() != null) {
+					notifiable.add(uniform);
+				}
+			}
+		}
+
+		return notifiable.build();
 	}
 
 	private void updateStage(ImmutableList<Uniform> uniforms) {
@@ -95,14 +109,21 @@ public class ProgramUniforms {
 		}
 	}
 
+	/**
+	 * Takes back every push notification this program registered, whether or not it is the active program.
+	 *
+	 * <p>A program that is destroyed while another one is bound must still remove its own registrations: its
+	 * listeners write to a uniform location of whatever program is bound, so a leftover registration would
+	 * write this program's values into the next program. Notifiers are shared between programs, which is why
+	 * this removes one registration at a time instead of clearing the notifier.</p>
+	 */
 	public void removeListeners() {
-		if (active != this) {
-			return;
+		if (active == this) {
+			active = null;
 		}
-		active = null;
 
-		for (ValueUpdateNotifier notifier : notifiersToReset) {
-			notifier.setListener(null);
+		for (Uniform uniform : notifiableUniforms) {
+			uniform.removeListener();
 		}
 	}
 
@@ -141,7 +162,6 @@ public class ProgramUniforms {
 		private final Map<String, Uniform> dynamic;
 		private final Map<String, UniformType> uniformNames;
 		private final Map<String, UniformType> externalUniformNames;
-		private final List<ValueUpdateNotifier> notifiersToReset;
 
 		protected Builder(String name, int program) {
 			this.name = name;
@@ -154,7 +174,6 @@ public class ProgramUniforms {
 			dynamic = new HashMap<>();
 			uniformNames = new HashMap<>();
 			externalUniformNames = new HashMap<>();
-			notifiersToReset = new ArrayList<>();
 		}
 
 		@Override
@@ -272,7 +291,7 @@ public class ProgramUniforms {
 			}
 
 			return new ProgramUniforms(ImmutableList.copyOf(once.values()), ImmutableList.copyOf(perTick.values()), ImmutableList.copyOf(perFrame.values()),
-					ImmutableList.copyOf(dynamic.values()), ImmutableList.copyOf(notifiersToReset));
+					ImmutableList.copyOf(dynamic.values()));
 		}
 
 		@Override
@@ -285,7 +304,6 @@ public class ProgramUniforms {
 			Objects.requireNonNull(notifier);
 
 			dynamic.put(locations.get(uniform.getLocation()), uniform);
-			notifiersToReset.add(notifier);
 
 			return this;
 		}

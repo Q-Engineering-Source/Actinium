@@ -93,7 +93,7 @@ class ProgramUniformListenerLifecycleTest {
             holder.uniform1f("uniform" + i, value, notifier);
         }
         return new ProgramUniforms(ImmutableList.of(), ImmutableList.of(), ImmutableList.of(),
-            ImmutableList.copyOf(holder.uniforms), ImmutableList.of(notifier));
+            ImmutableList.copyOf(holder.uniforms));
     }
 
     private static final class CountingNotifier implements ValueUpdateNotifier {
@@ -106,6 +106,11 @@ class ProgramUniformListenerLifecycleTest {
                 clears++;
             }
             delegate.setListener(listener);
+        }
+
+        @Override
+        public void removeListener(Runnable listener) {
+            delegate.removeListener(listener);
         }
 
         private void run() {
