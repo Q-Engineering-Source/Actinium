@@ -37,8 +37,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Covers the full compile of every shader folder of a pack: when it is allowed to run, what it does to the
- * folders it visits, when the fingerprint it was run for is marked, and what a folder that fails leaves
- * behind.
+ * folders it visits, when the fingerprint it was run for is marked, what a folder that fails leaves behind,
+ * and what deleting the saved programs does to the marker of a run that already finished or is still in
+ * flight.
  *
  * <p>The pipeline that a folder is compiled into needs a GL context, so building one is a port installed by
  * the caller; everything else - the gates, the marker, the per-folder release and the failure handling - is
@@ -243,6 +244,49 @@ class IrisFullShaderCompileTest {
         assertEquals(0, enumerations.get());
     }
 
+    @Test
+    void deletingTheSavedProgramsMakesTheNextLoadCompileEveryFolderAgain() throws IOException, InterruptedException {
+        final Map<String, ProgramSet> sets = readPackWithEveryFolder();
+        final AtomicInteger builds = new AtomicInteger();
+
+        assertTrue(compile(sets, builds), "the first load compiles every folder of the pack");
+        awaitCompiled(SETTINGS);
+        assertEquals(sets.size(), builds.get(), "every folder was built once");
+
+        assertFalse(compile(sets, builds), "a fingerprint that was compiled in full is not compiled again");
+        assertEquals(sets.size(), builds.get(), "the marked fingerprint skips every folder");
+
+        // What the delete button of the shader pack screen runs
+        ProgramBinaryCache.deleteAll();
+
+        assertFalse(ProgramBinaryCache.wasCompiledFor(SETTINGS),
+            "the marker records its fingerprint inside the layer the deletion removes, so it has to be gone");
+        assertFalse(savedProgramLayerExists(),
+            "the whole saved-program layer has to be gone, or a half cache would look complete");
+
+        assertTrue(compile(sets, builds), "the next load compiles every folder again instead of trusting the deleted cache");
+        assertEquals(2 * sets.size(), builds.get(), "every folder is visited once more");
+    }
+
+    @Test
+    void aFullCompileThatWasInterruptedByTheDeletionDoesNotMarkItselfCompiled() {
+        ProgramBinaryCache.beginFullCompile();
+        ProgramBinaryCache.finishFullCompile(SETTINGS);
+        assertTrue(ProgramBinaryCache.wasCompiledFor(SETTINGS),
+            "a run that nobody deleted marks the fingerprint it compiled as soon as its writes are done");
+
+        ProgramBinaryCache.deleteAll();
+        assertFalse(ProgramBinaryCache.wasCompiledFor(SETTINGS),
+            "the deletion drops the marker, which is what makes the next load compile every folder again");
+
+        ProgramBinaryCache.beginFullCompile();
+        ProgramBinaryCache.deleteAll();
+        ProgramBinaryCache.finishFullCompile(SETTINGS);
+
+        assertFalse(ProgramBinaryCache.wasCompiledFor(SETTINGS),
+            "the deletion invalidated the run, so finishing it must not re-create the marker and skip the next load");
+    }
+
     /** Reads a pack with two dimension folders and shader files in the base folder. */
     private Map<String, ProgramSet> readPackWithEveryFolder() throws IOException {
         final Path shaders = Files.createDirectories(tempDir.resolve("Pack/shaders"));
@@ -262,6 +306,20 @@ class IrisFullShaderCompileTest {
     /** Runs the full compile for {@link #SETTINGS} against the given folders and the given pipeline source. */
     private boolean compile(Map<String, ProgramSet> sets, Iris.FolderPipelineBuilder builder) {
         return compile(SETTINGS, sets, builder);
+    }
+
+    /** Runs the full compile for {@link #SETTINGS}, counting the folders that were built. */
+    private boolean compile(Map<String, ProgramSet> sets, AtomicInteger builds) {
+        return compile(SETTINGS, sets, programs -> {
+            builds.incrementAndGet();
+            return new FixedFunctionWorldRenderingPipeline();
+        });
+    }
+
+    /** {@return whether the saved-program layer of the test cache is still on disk} */
+    private boolean savedProgramLayerExists() {
+        // The layer the program cache writes into, as named by ProgramBinaryCache
+        return Files.isDirectory(tempDir.resolve("cache").resolve("gl-program"));
     }
 
     private boolean compile(String settings, Map<String, ProgramSet> sets, Iris.FolderPipelineBuilder builder) {

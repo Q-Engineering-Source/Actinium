@@ -2,7 +2,9 @@ package net.coderbot.iris.gui.screen;
 
 import com.gtnewhorizons.angelica.AngelicaMod;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
+import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.gui.GuiUtil;
 import net.coderbot.iris.gui.NavigationController;
@@ -51,6 +53,14 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
     private static final String SELECT_TITLE = I18n.format("pack.iris.select.title");
     private static final String CONFIGURE_TITLE = I18n.format("pack.iris.configure.title");
     private static final int COMMENT_PANEL_WIDTH = 314;
+    /** Width the saved-program tooltips wrap at, so their panels fit a 320 pixel wide screen. */
+    private static final int TOOLTIP_WIDTH = 300;
+    /** Distance from the screen centre to the outer edge of the saved-program row. */
+    private static final int CACHE_ROW_HALF_WIDTH = 154;
+    /** Height of the saved-program row above the bottom of the screen. */
+    private static final int CACHE_ROW_FROM_BOTTOM = 75;
+    /** How many ticks the delete button waits for its confirmation press before it disarms again. */
+    private static final int DELETE_CONFIRM_TICKS = 100;
 
     private final GuiScreen parent;
     private final String title;
@@ -62,6 +72,12 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
     private @Nullable ShaderPackOptionList shaderOptionList = null;
     private @Nullable NavigationController navigation = null;
     private GuiButton screenSwitchButton;
+    private @Nullable GuiButton saveCompiledButton;
+    private @Nullable GuiButton deleteCachedProgramsButton;
+
+    /** Whether the delete button is waiting for the press that confirms the deletion. */
+    private boolean deleteConfirmationPending = false;
+    private int deleteConfirmationTimer = 0;
 
     private String notificationDialog = null;
     private int notificationDialogTimer = 0;
@@ -166,6 +182,8 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
                     this.fontRenderer.drawStringWithShadow(this.hoveredElementCommentBody.get(i), x + 4, (y + 16) + (i * 10), 0xFFFFFF);
                 }
             }
+
+            drawCacheControlTooltip(mouseX, mouseY);
         }
 
         // Render everything queued to drawScreen last
@@ -197,12 +215,12 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
         final int topCenter = this.width / 2 - 76;
         final boolean inWorld = this.mc.world != null;
 
-        this.shaderPackList = new ShaderPackSelectionList(this, this.mc, this.width, this.height, 32, this.height - 58, 0, this.width);
+        this.shaderPackList = new ShaderPackSelectionList(this, this.mc, this.width, this.height, 32, this.height - 82, 0, this.width);
 
         if (Iris.getCurrentPack().isPresent() && this.navigation != null) {
             final ShaderPack currentPack = Iris.getCurrentPack().get();
 
-            this.shaderOptionList = new ShaderPackOptionList(this, this.navigation, currentPack, this.mc, this.width, this.height, 32, this.height - 58, 0, this.width);
+            this.shaderOptionList = new ShaderPackOptionList(this, this.navigation, currentPack, this.mc, this.width, this.height, 32, this.height - 82, 0, this.width);
             this.navigation.setActiveOptionList(this.shaderOptionList);
 
             this.shaderOptionList.rebuild();
@@ -219,8 +237,16 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
         }
 
         this.buttonList.clear();
+        this.saveCompiledButton = null;
+        this.deleteCachedProgramsButton = null;
+        // A rebuilt screen starts with the delete button disarmed, so a resize cannot carry a pending
+        // deletion over to the next layout.
+        this.deleteConfirmationPending = false;
+        this.deleteConfirmationTimer = 0;
 
         if (!this.guiHidden) {
+
+            addCacheControlButtons(this.width / 2 - CACHE_ROW_HALF_WIDTH, this.height - CACHE_ROW_FROM_BOTTOM);
 
             this.buttonList.add(new IrisButton(bottomCenter + 104, this.height - 27, 100, 20,
                 I18n.format("gui.done"), button -> this.onClose()));
@@ -374,6 +400,123 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
         }
     }
 
+    /**
+     * Adds the saved-program switch and the delete button as one row of their own and fills in their state.
+     *
+     * <p>The row sits above the existing button row, at {@link #CACHE_ROW_FROM_BOTTOM}: the gap between the
+     * pack list and that row is 7 pixels, which cannot hold a 20 pixel control, so the list gives up one row
+     * of height instead and the two controls keep the exact footprint of the row below them.</p>
+     *
+     * @param left the left edge of the row
+     * @param top the top edge of the row
+     */
+    private void addCacheControlButtons(int left, int top) {
+        // Labels and clickability come from refreshCacheControlButtons(), which also runs whenever the
+        // configuration or the driver state may have changed since the button was created.
+        this.saveCompiledButton = new IrisButton(left, top, 152, 20, "", button -> this.toggleSaveCompiledShaders());
+        this.buttonList.add(this.saveCompiledButton);
+
+        // 152 wide plus the same 4 pixel gap the two buttons of the row below leave between them
+        this.deleteCachedProgramsButton = new IrisButton(left + 156, top, 152, 20, "", button -> this.deleteCachedPrograms());
+        this.buttonList.add(this.deleteCachedProgramsButton);
+
+        refreshCacheControlButtons();
+    }
+
+    /** Follows the stored switch, the driver and the pending confirmation in the two cache controls. */
+    private void refreshCacheControlButtons() {
+        final boolean driverSupportsProgramBinary = RenderSystem.supportsProgramBinary();
+
+        if (this.saveCompiledButton != null) {
+            final ShaderPackCacheLogic.Toggle toggle = ShaderPackCacheLogic.savedProgramsToggle(
+                driverSupportsProgramBinary, Iris.getIrisConfig().shouldSaveCompiledShaders());
+            this.saveCompiledButton.displayString = I18n.format(toggle.labelKey());
+            this.saveCompiledButton.enabled = toggle.clickable();
+        }
+
+        if (this.deleteCachedProgramsButton != null) {
+            this.deleteCachedProgramsButton.displayString = I18n.format(
+                ShaderPackCacheLogic.deleteButtonLabelKey(this.deleteConfirmationPending));
+            this.deleteCachedProgramsButton.enabled = ShaderPackCacheLogic.deleteAvailable(driverSupportsProgramBinary);
+        }
+    }
+
+    /**
+     * Stores the opposite of the current saved-program value and follows it in the label.
+     *
+     * <p>Nothing is reloaded here. The configuration is written immediately, and the prefetch of every
+     * shader folder that the switch also enables is work of the next pack load, which the tooltip announces
+     * with {@link ShaderPackCacheLogic#takesEffectOnNextPackLoad(boolean)}.</p>
+     */
+    private void toggleSaveCompiledShaders() {
+        final boolean save = ShaderPackCacheLogic.nextSaveCompiledShaders(
+            Iris.getIrisConfig().shouldSaveCompiledShaders());
+        try {
+            Iris.getIrisConfig().setSaveCompiledShaders(save);
+        } catch (IOException e) {
+            Iris.logger.error("Failed to store the \"save compiled shaders\" setting", e);
+            displayNotification(I18n.format("iris.shaders.configSaveFailed"));
+            return;
+        }
+        refreshCacheControlButtons();
+    }
+
+    /**
+     * Deletes every program the cache saved to disk, after a confirmation press.
+     *
+     * <p>The deletion also drops the marker that records which pack settings were compiled in full and
+     * invalidates a full compile that is still in flight, so the next load compiles every folder again
+     * instead of trusting a cache that is gone - see {@code ProgramBinaryCache#deleteAll()}.</p>
+     */
+    private void deleteCachedPrograms() {
+        final ShaderPackCacheLogic.DeleteAction action = ShaderPackCacheLogic.deleteCachedPrograms(
+            RenderSystem.supportsProgramBinary(), this.deleteConfirmationPending);
+
+        this.deleteConfirmationPending = action == ShaderPackCacheLogic.DeleteAction.CONFIRM;
+        this.deleteConfirmationTimer = this.deleteConfirmationPending ? DELETE_CONFIRM_TICKS : 0;
+
+        if (action == ShaderPackCacheLogic.DeleteAction.DELETE) {
+            ProgramBinaryCache.deleteAll();
+            displayNotification(I18n.format(ShaderPackCacheLogic.deletedNotificationKey()));
+        }
+
+        refreshCacheControlButtons();
+    }
+
+    /**
+     * Draws the tooltip of whichever saved-program control the pointer is over.
+     *
+     * <p>The panel is anchored to the left edge of the row rather than to the button, so a long tooltip
+     * cannot run off the right side of a narrow screen, and it opens upwards over the pack list. When the
+     * screen is too short for it, it stops at the top edge instead of leaving it.</p>
+     */
+    private void drawCacheControlTooltip(int mouseX, int mouseY) {
+        final List<String> translationKeys;
+        if (isHovered(this.saveCompiledButton, mouseX, mouseY)) {
+            translationKeys = ShaderPackCacheLogic.savedProgramsToggle(RenderSystem.supportsProgramBinary(),
+                Iris.getIrisConfig().shouldSaveCompiledShaders()).tooltipKeys();
+        } else if (isHovered(this.deleteCachedProgramsButton, mouseX, mouseY)) {
+            translationKeys = ShaderPackCacheLogic.deleteTooltipKeys();
+        } else {
+            return;
+        }
+
+        final List<String> lines = new ArrayList<>();
+        for (String translationKey : translationKeys) {
+            lines.addAll(this.fontRenderer.listFormattedStringToWidth(I18n.format(translationKey), TOOLTIP_WIDTH));
+        }
+
+        final int x = this.width / 2 - CACHE_ROW_HALF_WIDTH;
+        final int y = Math.max(4, this.height - CACHE_ROW_FROM_BOTTOM - (lines.size() * 10 + 6) - 4);
+        GuiUtil.drawTextPanel(this.fontRenderer, lines, x, y);
+    }
+
+    /** {@return whether the pointer is inside the given control} */
+    private static boolean isHovered(@Nullable GuiButton button, int mouseX, int mouseY) {
+        return button != null && mouseX >= button.x && mouseY >= button.y
+            && mouseX < button.x + button.width && mouseY < button.y + button.height;
+    }
+
     @Override
     protected void keyTyped(char typedChar, int keyCode) throws IOException {
         if (keyCode == Keyboard.KEY_ESCAPE) {
@@ -406,6 +549,14 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
             this.notificationDialogTimer--;
         } else if (this.notificationDialog != null) {
             this.notificationDialog = null;
+        }
+
+        // An armed delete button disarms itself, so a press that was meant for something else can never
+        // delete the saved programs later on.
+        if (this.deleteConfirmationPending && --this.deleteConfirmationTimer <= 0) {
+            this.deleteConfirmationPending = false;
+            this.deleteConfirmationTimer = 0;
+            refreshCacheControlButtons();
         }
     }
 
