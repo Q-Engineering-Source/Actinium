@@ -39,6 +39,7 @@ import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACK
 public class RenderSystem {
     private static DSAAccess dsaState;
     private static boolean supportsCompute;
+    private static boolean supportsBufferBlending;
     private static boolean supportsImageLoadStore;
     private static boolean supportsSSBO;
     private static boolean supportsBufferStorage;
@@ -105,7 +106,8 @@ public class RenderSystem {
 
         BackendManager.init();
 
-        supportsCompute = supportsCompute();
+        supportsCompute = probeComputeSupport();
+        supportsBufferBlending = GLStateManager.capabilities.GL_ARB_draw_buffers_blend || GLStateManager.capabilities.OpenGL40;
         supportsTesselation = GLStateManager.capabilities.GL_ARB_tessellation_shader || GLStateManager.capabilities.OpenGL40;
 
         supportsImageLoadStore = GLStateManager.capabilities.OpenGL42
@@ -473,8 +475,14 @@ public class RenderSystem {
         }
     }
 
+    /**
+     * Reports whether per-buffer blending is available. Selected once during renderer initialization
+     * from the context capabilities: the flag is read by shader pack parsing, which also runs on the
+     * read-ahead thread, where the mutable {@link GLStateManager#capabilities} object must not be
+     * touched.
+     */
     public static boolean supportsBufferBlending() {
-        return GLStateManager.capabilities.GL_ARB_draw_buffers_blend || GLStateManager.capabilities.OpenGL40;
+        return supportsBufferBlending;
     }
 
     public static void disableBufferBlend(int buffer) {
@@ -531,13 +539,18 @@ public class RenderSystem {
         return dsaState.createTexture(target);
     }
 
-    // TODO: Proper notification of compute support
+    /**
+     * Reports whether compute shaders are available. Selected once during renderer initialization, like the
+     * other capabilities: shader pack parsing reads it through {@code FeatureFlags.COMPUTE_SHADERS}, and the
+     * mutable {@link GLStateManager#capabilities} object must not be read from a parsing thread - nor before
+     * renderer initialization has run at all, where touching {@code GLStateManager} would issue GL calls.
+     */
     public static boolean supportsCompute() {
-        try {
-            return GLStateManager.capabilities.GL_ARB_compute_shader;
-        } catch (Exception ignored) {
-            return false;
-        }
+        return supportsCompute;
+    }
+
+    private static boolean probeComputeSupport() {
+        return GLStateManager.capabilities.GL_ARB_compute_shader;
     }
 
     public static int createBuffers() {
@@ -623,6 +636,15 @@ public class RenderSystem {
     public static void initializeShaderFeatureSupportForTesting(boolean shaderStorageBuffers, boolean imageLoadStore) {
         supportsSSBO = shaderStorageBuffers;
         supportsImageLoadStore = imageLoadStore;
+    }
+
+    /**
+     * Supplies a deterministic per-buffer blending capability for headless shader pack tests. Parsing a
+     * pack consults this flag through {@code FeatureFlags.PER_BUFFER_BLENDING}, which used to read the
+     * context capabilities object and therefore could not run without a context.
+     */
+    public static void initializeBufferBlendingSupportForTesting(boolean supported) {
+        supportsBufferBlending = supported;
     }
 
     public static boolean supportsGpuShader4() {

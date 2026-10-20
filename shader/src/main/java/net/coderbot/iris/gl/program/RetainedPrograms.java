@@ -66,9 +66,9 @@ public final class RetainedPrograms {
 	 * Selects the pack configuration the kept programs belong to. A configuration that differs from the
 	 * previous one retires every kept program, because programs linked for another pack must never be used.
 	 *
-	 * <p>The identity is supplied by {@code Iris} and currently describes the pack that was just loaded. It
-	 * is replaced by the pack settings fingerprint once that fingerprint exists; a reload of the same pack
-	 * therefore keeps its programs, and a pack switch drops them.</p>
+	 * <p>The identity is the pack settings fingerprint supplied by {@code Iris}: the pack file, the files it
+	 * contains, the options applied to it and the environment defines it was parsed under. A reload of an
+	 * unchanged pack therefore keeps its programs, and a pack switch or an option change drops them.</p>
 	 *
 	 * @param settings identity of the configuration, or null to retire everything without selecting one
 	 */

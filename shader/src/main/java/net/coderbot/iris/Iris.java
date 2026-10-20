@@ -5,6 +5,7 @@ import com.google.common.base.Throwables;
 import dhj.embeddedt.embeddium.api.shader.ShaderProviderHolder;
 import com.gtnewhorizons.angelica.Tags;
 import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
+import com.gtnewhorizons.angelica.glsm.threading.AngelicaWorkers;
 import it.unimi.dsi.fastutil.ints.Int2IntMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
 import lombok.Getter;
@@ -15,6 +16,7 @@ import net.coderbot.iris.compat.dh.DHCompat;
 import net.coderbot.iris.config.IrisConfig;
 import net.coderbot.iris.celeritas.IrisCeleritasShaderProvider;
 import net.coderbot.iris.client.IrisDebugScreenHandler;
+import net.coderbot.iris.features.FeatureFlags;
 import net.coderbot.iris.gbuffer_overrides.matching.InputAvailability;
 import net.coderbot.iris.gl.program.RetainedPrograms;
 import net.coderbot.iris.gl.shader.StandardMacros;
@@ -29,12 +31,14 @@ import net.coderbot.iris.shaderpack.DimensionId;
 import net.coderbot.iris.shaderpack.OptionalBoolean;
 import net.coderbot.iris.shaderpack.ProgramSet;
 import net.coderbot.iris.shaderpack.ShaderPack;
+import net.coderbot.iris.shaderpack.StringPair;
 import net.coderbot.iris.shaderpack.discovery.ShaderpackDirectoryManager;
 import net.coderbot.iris.shaderpack.option.OptionSet;
 import net.coderbot.iris.shaderpack.option.Profile;
 import net.coderbot.iris.shaderpack.option.values.MutableOptionValues;
 import net.coderbot.iris.shaderpack.option.values.OptionValues;
 import net.coderbot.iris.texture.pbr.PBRTextureManager;
+import net.irisshaders.iris.api.v0.IrisApi;
 import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiScreen;
@@ -49,28 +53,42 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.InputEvent;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.input.Keyboard;
 import dhj.embeddedt.embeddium.api.debug.RenderDebugHooksHolder;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
+import java.lang.ref.SoftReference;
+import java.nio.file.DirectoryStream;
 import java.nio.file.FileSystem;
+import java.nio.file.FileSystemLoopException;
 import java.nio.file.FileSystemNotFoundException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
@@ -78,7 +96,9 @@ import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.ZipError;
 import java.util.zip.ZipException;
@@ -103,6 +123,17 @@ public class Iris {
     private static ShaderPack currentPack;
     @Getter
     private static String currentPackName;
+    /**
+     * The fingerprint the current pack was read from, or null when no pack is loaded. It is the
+     * identity of a pack configuration: everything a parsed pack depends on - the pack file, its files,
+     * the options applied to it and the environment defines it was built with - described in a fixed
+     * order, so two packs with equal fingerprints are interchangeable once parsed.
+     *
+     * <p>Read by {@link #takePreparedPack(String, String)} to decide whether a pack read ahead still
+     * describes this selection, and reused by {@link #destroyEverything()} to keep the parsed pack
+     * across a reload that changed nothing.</p>
+     */
+    private static String currentPackState;
     @Getter
     private static boolean initialized;
     @Getter
@@ -129,6 +160,45 @@ public class Iris {
      * Package private so the handshake with pipeline creation is testable without a render context.
      */
     static CompletableFuture<Void> programSetWarmup;
+
+    /**
+     * A pack read ahead of time, holding the fingerprint it was read from and the invalidation generation
+     * it was read under, so a read that no longer describes the selection is never taken.
+     */
+    record PreparedPack(String settings, ShaderPack pack, long generation) {}
+
+    /** A pack a pre-read produced, with the program set that should be warmed before it is loaded. */
+    record PreRead(PreparedPack pack, ProgramSet programs) {}
+
+    /**
+     * The pack the config has selected, as a reader that reads it: the name it will be loaded under and
+     * the supplier that performs the read. Built on the calling thread, since the environment defines it
+     * captures are read from the GL context; the read itself only touches files, so a background thread
+     * can run it while the game sits at the main menu.
+     *
+     * <p>Public because the read-ahead is driven from outside this module: the caller reads the pack on
+     * its own thread, then hands the program set to {@link #warmupPreparedTransforms(String, ProgramSet)}.</p>
+     *
+     * @param name the name the pack will be loaded under
+     * @param read the read to perform, returning the program set to warm, or null when nothing was read
+     */
+    public record SelectedPackReader(String name, Supplier<ProgramSet> read) {}
+
+    /**
+     * The pack read ahead of time, if one was read and not taken yet. Softly referenced: a pack nobody got
+     * around to loading before memory ran short is worth collecting, and taking one that was collected is a
+     * reported miss, not an error.
+     */
+    private static volatile SoftReference<PreparedPack> preparedPack;
+    /**
+     * Incremented whenever the selection is invalidated, so a pack read ahead of the invalidation is
+     * refused even when its fingerprint still matches: the fingerprint only sees file size and
+     * timestamp, and an explicit reload or pack switch has to be authoritative over a stat that cannot
+     * tell an edit from a touch.
+     */
+    private static final AtomicLong preparedPackGeneration = new AtomicLong();
+    /** Whether the read-ahead has already run for the current pack selection. */
+    private static boolean shaderWarmupClaimed;
 
     private static String IRIS_VERSION;
     @Getter
@@ -536,62 +606,9 @@ public class Iris {
             return false;
         }
 
-        final Path shaderPackPath;
-
-        if (shaderPackRoot.toString().endsWith(".zip")) {
-            final Optional<Path> optionalPath;
-
-            try {
-                optionalPath = loadExternalZipShaderpack(shaderPackRoot);
-            } catch (FileSystemNotFoundException | NoSuchFileException e) {
-                logger.error("Failed to load the shaderpack \"{}\" because it does not exist in your shaderpacks folder!", name);
-
-                return false;
-            } catch (ZipException e) {
-                logger.error("The shaderpack \"{}\" appears to be corrupted, please try downloading it again!", name);
-
-                return false;
-            } catch (IOException e) {
-                logger.error("Failed to load the shaderpack \"{}\"!", name);
-                logger.error("", e);
-
-                return false;
-            }
-
-            if (optionalPath.isPresent()) {
-                shaderPackPath = optionalPath.get();
-            } else {
-                logger.error("Could not load the shaderpack \"{}\" because it appears to lack a \"shaders\" directory", name);
-
-                if (zipFileSystem != null) {
-                    try {
-                        zipFileSystem.close();
-                    } catch (IOException e) {
-                        logger.error("Failed to close zip file system?", e);
-                    }
-                    zipFileSystem = null;
-                }
-
-                return false;
-            }
-        } else {
-            if (!Files.exists(shaderPackRoot)) {
-                logger.error("Failed to load the shaderpack \"{}\" because it does not exist!", name);
-                return false;
-            }
-
-            // If it's a folder-based shaderpack, just use the shaders subdirectory
-            shaderPackPath = shaderPackRoot.resolve("shaders");
-        }
-
-        if (!Files.exists(shaderPackPath)) {
-            logger.error("Could not load the shaderpack \"{}\" because it appears to lack a \"shaders\" directory", name);
-            return false;
-        }
-
         @SuppressWarnings("unchecked")
-        final Map<String, String> changedConfigs = tryReadConfigProperties(shaderPackConfigTxt).map(properties -> (Map<String, String>) (Map<?, ?>) properties)
-            .orElse(new HashMap<>());
+        final Map<String, String> changedConfigs = new HashMap<>(tryReadConfigProperties(shaderPackConfigTxt)
+            .map(properties -> (Map<String, String>) (Map<?, ?>) properties).orElse(new HashMap<>()));
 
         changedConfigs.putAll(shaderPackOptionQueue);
         clearShaderPackOptionQueue();
@@ -601,16 +618,117 @@ public class Iris {
         }
         resetShaderPackOptions = false;
 
+        // The environment defines are read from the GL context, so they are captured here on the main
+        // thread and reused both for the fingerprint and for the pack read ahead of time.
+        final List<StringPair> environmentDefines = new ArrayList<>();
+        StandardMacros.createStandardEnvironmentDefines().forEach(environmentDefines::add);
+
+        // Fingerprint the pack as it is on disk right now, then take the pack that was read ahead when it
+        // still describes exactly that. Only the fingerprint decides: a prepared pack is immutable once
+        // parsed, so a matching fingerprint makes it interchangeable with reading it again.
+        final String packState = describeSettings(name, shaderPackRoot, toProperties(changedConfigs), environmentDefines, false);
+        final ShaderPack prepared = packState != null ? takePreparedPack(name, packState) : null;
+
+        final ShaderPack pack;
+
+        if (prepared != null) {
+            pack = prepared;
+        } else {
+            final Path shaderPackPath;
+
+            if (shaderPackRoot.toString().endsWith(".zip")) {
+                final Optional<Path> optionalPath;
+
+                try {
+                    optionalPath = loadExternalZipShaderpack(shaderPackRoot);
+                } catch (FileSystemNotFoundException | NoSuchFileException e) {
+                    logger.error("Failed to load the shaderpack \"{}\" because it does not exist in your shaderpacks folder!", name);
+
+                    return false;
+                } catch (ZipException e) {
+                    logger.error("The shaderpack \"{}\" appears to be corrupted, please try downloading it again!", name);
+
+                    return false;
+                } catch (IOException e) {
+                    logger.error("Failed to load the shaderpack \"{}\"!", name);
+                    logger.error("", e);
+
+                    return false;
+                }
+
+                if (optionalPath.isPresent()) {
+                    shaderPackPath = optionalPath.get();
+                } else {
+                    logger.error("Could not load the shaderpack \"{}\" because it appears to lack a \"shaders\" directory", name);
+
+                    if (zipFileSystem != null) {
+                        try {
+                            zipFileSystem.close();
+                        } catch (IOException e) {
+                            logger.error("Failed to close zip file system?", e);
+                        }
+                        zipFileSystem = null;
+                    }
+
+                    return false;
+                }
+            } else {
+                if (!Files.exists(shaderPackRoot)) {
+                    logger.error("Failed to load the shaderpack \"{}\" because it does not exist!", name);
+                    return false;
+                }
+
+                // If it's a folder-based shaderpack, just use the shaders subdirectory
+                shaderPackPath = shaderPackRoot.resolve("shaders");
+            }
+
+            if (!Files.exists(shaderPackPath)) {
+                logger.error("Could not load the shaderpack \"{}\" because it appears to lack a \"shaders\" directory", name);
+                return false;
+            }
+
+            try {
+                pack = new ShaderPack(shaderPackPath, changedConfigs, environmentDefines);
+            } catch (Exception e) {
+                logger.error("Failed to load the shaderpack \"{}\"!", name);
+                logger.error("", e);
+
+                return false;
+            }
+        }
+
+        // A pack that requires a feature this context cannot provide is not adopted. The decision belongs
+        // here, on the main thread, and not in the parser: parsing also runs off the main thread, where
+        // reloading the pipeline and touching the config are not allowed - and reloading from inside the
+        // constructor closed the very zip file system the pack was still being read from.
+        final List<FeatureFlags> missingFeatures = pack.getMissingRequiredFeatures();
+        if (!missingFeatures.isEmpty()) {
+            final String missing = missingFeatures.stream()
+                .map(FeatureFlags::getHumanReadableName)
+                .collect(Collectors.joining(", "));
+            logger.warn("The shaderpack \"" + name + "\" requires " + missing
+                + ", which this system does not support; disabling shaders");
+
+            // The same effect the parser used to have, applied here instead: the switch goes off and the
+            // reload it runs rebuilds the pipeline without shaders. Reported as loaded rather than failed,
+            // because the pack did switch rendering back to vanilla and the failure branch would tell the
+            // player the pack could not be loaded, which is not what happened.
+            IrisApi.getInstance().getConfig().setShadersEnabledAndApply(false);
+
+            return true;
+        }
+
+        currentPack = pack;
+        currentPackState = packState;
+
+        // Programs kept from a destroyed pipeline may only be reused inside one pack configuration, so the
+        // pack that just loaded owns the pool from now on. The fingerprint describes the pack file, its
+        // files, the options applied to it and the environment defines, so a reload of the same pack keeps
+        // its programs and a pack switch drops them.
+        RetainedPrograms.useConfiguration(packState);
+
         try {
-            currentPack = new ShaderPack(shaderPackPath, changedConfigs, StandardMacros.createStandardEnvironmentDefines());
-
-            // Programs kept from a destroyed pipeline may only be reused inside one pack configuration, so
-            // the pack that just loaded owns the pool from now on. The identity is the pack name and its
-            // resolved shaders directory - stable across reloads of this pack, different for another one -
-            // until the settings fingerprint replaces it.
-            RetainedPrograms.useConfiguration(name + "|" + shaderPackPath + "|retained");
-
-            final MutableOptionValues changedConfigsValues = currentPack.getShaderPackOptions().getOptionValues().mutableCopy();
+            final MutableOptionValues changedConfigsValues = pack.getShaderPackOptions().getOptionValues().mutableCopy();
 
             // Store changed values from those currently in use by the shader pack
             final Properties configsToSave = new Properties();
@@ -641,7 +759,10 @@ public class Iris {
     private static Optional<Path> loadExternalZipShaderpack(Path shaderpackPath) throws IOException {
         final FileSystem zipSystem = FileSystems.newFileSystem(shaderpackPath, Iris.class.getClassLoader());
         zipFileSystem = zipSystem;
+        return findShadersDirectory(zipSystem);
+    }
 
+    private static Optional<Path> findShadersDirectory(FileSystem zipSystem) throws IOException {
         // Should only be one root directory for a zip shaderpack
         final Path root = zipSystem.getRootDirectories().iterator().next();
 
@@ -664,12 +785,290 @@ public class Iris {
 
     private static void setShadersDisabled() {
         currentPack = null;
+        currentPackState = null;
         // No pack wants saved programs any more; keeping the layer would key later programs under it.
         ProgramBinaryCache.usePack(null);
         fallback = false;
         currentPackName = "(off)";
 
         logger.info("Shaders are disabled");
+    }
+
+    /**
+     * {@return whether this caller should read the selected pack ahead of time}
+     *
+     * <p>True once per selection: reading the pack only has to happen for the title screen shown for that
+     * selection. {@link #invalidatePreparedPack()} hands the claim back, so a pack selected later is read
+     * too.</p>
+     *
+     * <p>The claim lives here rather than in the warmup that takes it, because the code that hands it back
+     * is part of this module and the warmup is not.</p>
+     *
+     * <p>Main thread only.</p>
+     */
+    public static boolean claimShaderWarmup() {
+        if (shaderWarmupClaimed) {
+            return false;
+        }
+        shaderWarmupClaimed = true;
+        return true;
+    }
+
+    /**
+     * Drops the pack read ahead of time and lets {@link #claimShaderWarmup()} succeed again: the selection
+     * just changed, so what was read describes a pack that is not going to be loaded. Also advances the
+     * generation, so a read that is still in flight publishes nothing and a read that already completed
+     * cannot be taken.
+     *
+     * <p>Main thread only.</p>
+     */
+    public static void invalidatePreparedPack() {
+        preparedPack = null;
+        shaderWarmupClaimed = false;
+        preparedPackGeneration.incrementAndGet();
+    }
+
+    /**
+     * {@return a reader that reads the selected pack into the read-ahead slot, or null when there is
+     * nothing useful to read}
+     *
+     * <p>Built on the calling thread: the environment defines it captures are read from the GL context.
+     * The reader itself only reads files, so a background thread can run it while the game sits at the
+     * main menu, and the program set it returns is the one to warm before the pack is really loaded.</p>
+     *
+     * <p>Public because the main menu hook lives outside this module; reading the pack is shader-side work
+     * and stays here.</p>
+     */
+    @Nullable
+    public static SelectedPackReader prepareSelectedShaderPack() {
+        if (!renderSystemInitialized || irisConfig == null || currentPack != null) {
+            // Nothing worth reading yet, or a pack is already in use: this has to stay silent, since the
+            // caller asks on every menu it builds.
+            return null;
+        }
+
+        final Optional<String> selected = irisConfig.getShaderPackName();
+        if (selected.isEmpty()) {
+            return null;
+        }
+
+        final String packName = selected.get();
+        final List<StringPair> environmentDefines = new ArrayList<>();
+        StandardMacros.createStandardEnvironmentDefines().forEach(environmentDefines::add);
+        final long generation = preparedPackGeneration.get();
+
+        return new SelectedPackReader(packName, () -> {
+            final PreRead read = readPreparedPack(packName, environmentDefines, generation);
+            if (read == null) {
+                return null;
+            }
+            if (!publishPreparedPack(read.pack())) {
+                return null;
+            }
+            return read.programs();
+        });
+    }
+
+    /**
+     * Publishes a pack that was read ahead of time, unless the selection was invalidated while it was being
+     * read: a pack read for a selection that no longer applies must not replace the one read for the
+     * selection that does.
+     *
+     * @return whether the pack was published
+     */
+    static boolean publishPreparedPack(PreparedPack prepared) {
+        final long generation = preparedPackGeneration.get();
+        if (prepared.generation() != generation) {
+            logger.info("Dropping the shaderpack \"{}\" read ahead of time: it was read for an earlier selection",
+                nameOfPreparedPack(prepared));
+            return false;
+        }
+
+        preparedPack = new SoftReference<>(prepared);
+        return true;
+    }
+
+    /**
+     * Reads a pack into the read-ahead slot: fingerprint, parse, and resolve the program set a world will
+     * most likely open with.
+     *
+     * <p>A zip pack is parsed inside a temporary file system that is closed as soon as this returns. That is
+     * safe because {@link ShaderPack} keeps nothing but parsed data: every program source comes from the
+     * include graph the constructor read into memory, and every texture is read into a byte array there.</p>
+     *
+     * @return what was read, or null when the pack cannot be read ahead and the caller should read it the
+     *         normal way
+     */
+    @Nullable
+    static PreRead readPreparedPack(String name, List<StringPair> environmentDefines, long generation) {
+        try {
+            final Path shaderPackRoot = getShaderpacksDirectory().resolve(name);
+            final Map<String, String> changedConfigs = readChangedConfigs(getShaderpacksDirectory().resolve(name + ".txt"));
+            final String settings = describeSettings(name, shaderPackRoot, toProperties(changedConfigs), environmentDefines, false);
+            if (settings == null) {
+                // Nothing can be gained here, and the load that follows reports the pack properly, with the
+                // message the player expects: a pack that is not there is a normal state, not a failure.
+                logger.debug("Not reading shaderpack \"{}\" ahead of time: it could not be described", name);
+                return null;
+            }
+
+            if (Files.isDirectory(shaderPackRoot)) {
+                final Path shadersDirectory = shaderPackRoot.resolve("shaders");
+                if (!Files.exists(shadersDirectory)) {
+                    // Rejected so the load path reports the missing directory itself instead of adopting a
+                    // pack with no programs in it
+                    logger.debug("Not reading shaderpack \"{}\" ahead of time: it has no \"shaders\" directory", name);
+                    return null;
+                }
+                return parsePack(settings, generation, shadersDirectory, changedConfigs, environmentDefines);
+            }
+
+            try (FileSystem zipSystem = FileSystems.newFileSystem(shaderPackRoot, Iris.class.getClassLoader())) {
+                final Optional<Path> shadersDirectory = findShadersDirectory(zipSystem);
+                if (shadersDirectory.isEmpty()) {
+                    logger.debug("Not reading shaderpack \"{}\" ahead of time: it has no \"shaders\" directory", name);
+                    return null;
+                }
+                return parsePack(settings, generation, shadersDirectory.get(), changedConfigs, environmentDefines);
+            }
+        } catch (ZipError e) {
+            // A zip that was truncated, or is not a zip at all, surfaces as an Error on some runtimes
+            logger.warn("The shaderpack \"" + name + "\" appears to be corrupted, so it cannot be read ahead of time", e);
+            return null;
+        } catch (ZipException e) {
+            logger.warn("The shaderpack \"" + name + "\" appears to be corrupted, so it cannot be read ahead of time", e);
+            return null;
+        } catch (IOException | RuntimeException e) {
+            logger.warn("Could not read the shaderpack \"" + name + "\" ahead of time", e);
+            return null;
+        }
+    }
+
+    private static PreRead parsePack(String settings, long generation, Path shadersDirectory,
+                                     Map<String, String> changedConfigs, List<StringPair> environmentDefines) throws IOException {
+        final ShaderPack pack = new ShaderPack(shadersDirectory, changedConfigs, environmentDefines);
+        // The world a player opens after the main menu is the overworld far more often than not, and the
+        // dimension is named explicitly rather than read from the last world this client was in: on the
+        // menu there is no world, and the last one may well have been the nether.
+        //
+        // Resolving it writes the pack's access-ordered dimension cache, which is why this happens here,
+        // where the pack is still owned by this thread alone: publishing it below is what lets another
+        // thread read it, and only after every write to it has finished.
+        final ProgramSet programs = pack.getProgramSet(DimensionId.OVERWORLD.getCanonicalId(), DimensionId.OVERWORLD.getNumericId());
+        return new PreRead(new PreparedPack(settings, pack, generation), programs);
+    }
+
+    /**
+     * {@return the pack read ahead of time, or null when it cannot be reused}
+     *
+     * <p>Only the fingerprint and the generation decide: a changed pack file, option or environment define
+     * makes a prepared pack stale, and so does an invalidation, since the fingerprint cannot see an edit
+     * that kept the file's size and timestamp. Every rejection is reported with its cause - a pack that is
+     * read twice is exactly what the read-ahead exists to avoid, so a load whose log does not say it reused
+     * the pack has to say why it could not.</p>
+     */
+    @Nullable
+    static ShaderPack takePreparedPack(String name, @Nullable String packState) {
+        final SoftReference<PreparedPack> reference = preparedPack;
+        preparedPack = null;
+        if (reference == null) {
+            logger.debug("Shaderpack \"{}\": nothing was read ahead of this load", name);
+            return null;
+        }
+
+        final PreparedPack prepared = reference.get();
+        if (prepared == null) {
+            logger.info("Shaderpack \"{}\": the pack read ahead was reclaimed before this load", name);
+            return null;
+        }
+
+        if (prepared.generation() != preparedPackGeneration.get()) {
+            logger.info("Shaderpack \"{}\": the pack read ahead was invalidated before this load", name);
+            return null;
+        }
+
+        if (!Objects.equals(prepared.settings(), packState)) {
+            logger.info("Shaderpack \"{}\": the pack read ahead no longer matches the selection, {}",
+                name, firstDifferingLine(prepared.settings(), packState));
+            return null;
+        }
+
+        logger.info("Reusing shaderpack \"{}\" read earlier, nothing it was read from has changed", name);
+        return prepared.pack();
+    }
+
+    /**
+     * {@return the line two pack fingerprints first differ in, or a description of which one is missing}
+     *
+     * <p>A fingerprint lists the pack file, its files, its options and its environment defines in a fixed
+     * order, so naming the first line that differs names what made the pack read ahead stale.</p>
+     */
+    static String firstDifferingLine(@Nullable String read, @Nullable String selected) {
+        if (read == null) {
+            return "nothing was read ahead";
+        }
+        if (selected == null) {
+            return "the selection could not be described";
+        }
+
+        final Iterator<String> readLines = read.lines().iterator();
+        final Iterator<String> selectedLines = selected.lines().iterator();
+        int line = 1;
+        while (readLines.hasNext() && selectedLines.hasNext()) {
+            final String left = readLines.next();
+            final String right = selectedLines.next();
+            if (!left.equals(right)) {
+                return "line " + line + ": read=\"" + left + "\" selected=\"" + right + "\"";
+            }
+            line++;
+        }
+
+        return "the fingerprints have different lengths from line " + line;
+    }
+
+    /** {@return the fingerprint a pack read ahead of time was described with}, for reporting only. */
+    private static String nameOfPreparedPack(PreparedPack prepared) {
+        final String settings = prepared.settings();
+        final int newline = settings.indexOf('\n');
+        return newline < 0 ? settings : settings.substring(0, newline);
+    }
+
+    /** {@return the current invalidation generation of the read-ahead slot} */
+    static long preparedPackGeneration() {
+        return preparedPackGeneration.get();
+    }
+
+    /**
+     * Starts transforming a pack that was read ahead of time on the worker pool, so the pipeline built for
+     * it hits {@link TransformPatcher}'s cache instead of transforming on the frame that opens the world.
+     *
+     * <p>No pack is current yet, so this only fills the transform cache: publishing anything the pack
+     * requires would describe a pack nothing renders with.</p>
+     *
+     * <p>Public because the caller that reads the pack ahead lives outside this module: it reads the pack on
+     * its own thread and hands the resulting program set here.</p>
+     *
+     * @param packName the pack the program set belongs to, for the log
+     * @param programs the program set to warm, resolved on the calling thread
+     */
+    public static void warmupPreparedTransforms(String packName, ProgramSet programs) {
+        logger.info("[ShaderTransformCache] warmup submitted source=readAheadPack pack={}", packName);
+        reportWarmup("readAheadPack", packName,
+            ShaderTransformExecutor.submitTracked(() -> DeferredWorldRenderingPipeline.warmupTransforms(programs)));
+    }
+
+    private static Map<String, String> readChangedConfigs(Path shaderPackConfigTxt) {
+        @SuppressWarnings("unchecked")
+        final Map<String, String> changedConfigs = tryReadConfigProperties(shaderPackConfigTxt)
+            .map(properties -> (Map<String, String>) (Map<?, ?>) properties)
+            .orElse(new HashMap<>());
+        return new HashMap<>(changedConfigs);
+    }
+
+    private static Properties toProperties(Map<String, String> values) {
+        final Properties properties = new Properties();
+        properties.putAll(values);
+        return properties;
     }
 
     private static void ensureRuntimeGlInitialized() {
@@ -899,6 +1298,12 @@ public class Iris {
     }
 
     public static void reload() throws IOException {
+        // A reload is the user asking for the pack as it is on disk now. The fingerprint a read-ahead was
+        // taken against only describes size and timestamp, so it cannot tell an edit from a touch: dropping
+        // the read-ahead here, at the head of every reload entry point, makes the user's explicit request
+        // decisive instead of the stat.
+        invalidatePreparedPack();
+
         // allows shaderpacks to be changed at runtime
         irisConfig.initialize();
 
@@ -932,7 +1337,15 @@ public class Iris {
         // running when the next one is loaded.
         awaitProgramSetWarmup();
 
+        if (currentPack != null && currentPackState != null) {
+            // The pack is still valid, only its programs are being rebuilt: keep the parse so the load that
+            // follows does not repeat it. Stamped with the current generation, because this is the pack the
+            // game is using, not an older read of it.
+            publishPreparedPack(new PreparedPack(currentPackState, currentPack, preparedPackGeneration.get()));
+        }
+
         currentPack = null;
+        currentPackState = null;
         // Everything this pack saved belongs to a pack that is no longer loaded.
         ProgramBinaryCache.usePack(null);
 
@@ -993,6 +1406,158 @@ public class Iris {
     public static boolean isWorldReadyForShaderpackLoad() {
         final Minecraft minecraft = Minecraft.getMinecraft();
         return minecraft != null && minecraft.world != null && minecraft.world.provider != null;
+    }
+
+    /** A file's content hash, keyed on the size and timestamp it was taken at so an unchanged file is hashed once. */
+    private record HashedFile(long size, long modified, String hash) {}
+
+    /**
+     * Content hashes of the files that were described by content, so repeatedly fingerprinting a pack -
+     * every option the screen applies, for instance - only reads the files that changed.
+     */
+    private static final Map<Path, HashedFile> contentHashes = new ConcurrentHashMap<>();
+
+    private static String contentHash(Path file, BasicFileAttributes attributes) throws IOException {
+        final long size = attributes.size();
+        final long modified = attributes.lastModifiedTime().toMillis();
+        final HashedFile known = contentHashes.get(file);
+        if (known != null && known.size() == size && known.modified() == modified) {
+            return known.hash();
+        }
+
+        final String hash;
+        try {
+            hash = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is not available", e);
+        }
+
+        contentHashes.put(file, new HashedFile(size, modified, hash));
+        return hash;
+    }
+
+    /**
+     * A folder being described, with the identity used to detect a symlink loop. The key is the platform's
+     * file key, or null on platforms that do not expose one, in which case the paths are compared.
+     */
+    private record VisitedFolder(Path path, @Nullable Object key) {}
+
+    /**
+     * {@return every regular file below a folder, keyed by its path relative to the pack root}
+     *
+     * <p>Subfolders are described in parallel: a pack is thousands of files, and this runs on the render
+     * thread when shaders turn on.</p>
+     *
+     * @param byContent whether to hash file contents instead of trusting size and timestamp
+     */
+    private static Map<String, String> describeFolder(Path root, VisitedFolder folder, List<VisitedFolder> ancestors, boolean byContent) {
+        final Map<String, String> files = new HashMap<>();
+        final List<Supplier<Map<String, String>>> subfolders = new ArrayList<>();
+        final List<VisitedFolder> lineage = new ArrayList<>(ancestors);
+        lineage.add(folder);
+
+        try (DirectoryStream<Path> entries = Files.newDirectoryStream(folder.path())) {
+            for (Path entry : entries) {
+                BasicFileAttributes attributes;
+                try {
+                    attributes = Files.readAttributes(entry, BasicFileAttributes.class);
+                } catch (IOException e) {
+                    // A broken symlink still has to be described: it is part of the pack's state, and
+                    // following it would fail the whole fingerprint
+                    attributes = Files.readAttributes(entry, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                }
+
+                if (attributes.isDirectory()) {
+                    final VisitedFolder subfolder = new VisitedFolder(entry, attributes.fileKey());
+                    for (VisitedFolder ancestor : lineage) {
+                        final boolean same = subfolder.key() != null && ancestor.key() != null
+                            ? subfolder.key().equals(ancestor.key())
+                            : Files.isSameFile(ancestor.path(), entry);
+                        if (same) {
+                            throw new FileSystemLoopException(entry.toString());
+                        }
+                    }
+                    subfolders.add(() -> describeFolder(root, subfolder, lineage, byContent));
+                } else if (attributes.isRegularFile()) {
+                    files.put(relativePath(root, entry),
+                        byContent ? contentHash(entry, attributes) : attributes.size() + "|" + attributes.lastModifiedTime().toMillis());
+                }
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+
+        for (Map<String, String> nested : AngelicaWorkers.invokeAll(subfolders)) {
+            files.putAll(nested);
+        }
+
+        return files;
+    }
+
+    /**
+     * {@return a path relative to the pack root, always separated by forward slashes}
+     *
+     * <p>The separator is normalized so the same pack fingerprints the same on every platform, which keeps
+     * the description readable in a log and makes the comparison a property of the pack rather than of the
+     * machine it was read on.</p>
+     */
+    private static String relativePath(Path root, Path entry) {
+        final StringBuilder path = new StringBuilder();
+        for (Path element : root.relativize(entry)) {
+            if (!path.isEmpty()) {
+                path.append('/');
+            }
+            path.append(element);
+        }
+
+        return path.toString();
+    }
+
+    /**
+     * {@return a fingerprint of everything a loaded pack depends on, or null when the pack cannot be
+     * described}
+     *
+     * <p>{@code byContent} hashes file contents instead of trusting size and timestamp. The fingerprint that
+     * gates reusing a parsed pack is taken without it, because it runs on the render thread and a pack is
+     * thousands of files; what keeps the stat from being the last word is the generation that
+     * {@link #invalidatePreparedPack()} advances.</p>
+     *
+     * <p>Package private so the fingerprint rules are testable without a render context.</p>
+     */
+    @Nullable
+    static String describeSettings(String packName, Path packRoot, Properties options, Iterable<StringPair> environmentDefines, boolean byContent) {
+        final StringBuilder settings = new StringBuilder(packName).append('\n');
+
+        if (Files.isRegularFile(packRoot)) {
+            // A zip pack is one file: its size and timestamp describe everything inside it
+            try {
+                settings.append(Files.size(packRoot)).append('|').append(Files.getLastModifiedTime(packRoot).toMillis());
+            } catch (IOException e) {
+                logger.warn("Could not describe the shaderpack file \"" + packRoot + "\"", e);
+                return null;
+            }
+        } else if (Files.isDirectory(packRoot)) {
+            final TreeMap<String, String> files = new TreeMap<>();
+            try {
+                final Object rootKey = Files.readAttributes(packRoot, BasicFileAttributes.class).fileKey();
+                files.putAll(describeFolder(packRoot, new VisitedFolder(packRoot, rootKey), List.of(), byContent));
+            } catch (IOException | UncheckedIOException e) {
+                logger.warn("Could not describe the shaderpack folder \"" + packRoot + "\"", e);
+                return null;
+            }
+            files.forEach((file, state) -> settings.append(file).append('|').append(state).append('\n'));
+        } else {
+            return null;
+        }
+
+        // A blank line separates the pack's files from the settings that select what is read out of them
+        settings.append('\n');
+        new TreeMap<>(options).forEach((key, value) -> settings.append(key).append('=').append(value).append('\n'));
+        for (StringPair define : environmentDefines) {
+            settings.append('#').append(define.getKey()).append(' ').append(define.getValue()).append('\n');
+        }
+
+        return settings.toString();
     }
 
 

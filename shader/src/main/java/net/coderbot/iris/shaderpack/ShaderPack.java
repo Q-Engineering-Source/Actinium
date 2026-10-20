@@ -30,7 +30,6 @@ import net.coderbot.iris.shaderpack.texture.CustomTextureData;
 import net.coderbot.iris.shaderpack.texture.TextureFilteringData;
 import net.coderbot.iris.shaderpack.texture.TextureStage;
 import net.coderbot.iris.uniforms.custom.CustomUniforms;
-import net.irisshaders.iris.api.v0.IrisApi;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.BufferedReader;
@@ -76,6 +75,13 @@ public class ShaderPack {
 
 	private final ProgramSet base;
 	private final Set<FeatureFlags> activeFeatures;
+	/**
+	 * The features this pack requires that the current context cannot provide, in the order the pack
+	 * declares them. Recorded instead of acted on: parsing also runs on the read-ahead thread, so what a
+	 * missing feature means for the player is decided by {@code Iris} on the main thread, where the pack
+	 * is actually taken into use.
+	 */
+	private final List<FeatureFlags> missingRequiredFeatures;
 
 	private final Map<String, String> dimensionMap;
 	private final boolean mappedByDimensionProperties;
@@ -104,6 +110,11 @@ public class ShaderPack {
 
 	/**
 	 * Reads a shader pack from the disk.
+	 *
+	 * <p>Reading is pure: the constructor resolves files, options and programs, and records what this
+	 * pack requires, but it never enables or disables shaders, reloads the pipeline or touches any global
+	 * renderer state. That is what allows a pack to be read ahead of time on a background thread, and it
+	 * keeps a missing required feature from destroying the very pack that is being read.</p>
 	 *
 	 * @param root The path to the "shaders" directory within the shader pack. The created ShaderPack will not retain
 	 *             this path in any form; once the constructor exits, all disk I/O needed to load this shader pack will
@@ -245,17 +256,13 @@ public class ShaderPack {
 			activeFeatures.add(FeatureFlags.getValue(flag));
 		}
 
-		List<FeatureFlags> invalidFlagList = shaderProperties.getRequiredFeatureFlags().stream().filter(FeatureFlags::isInvalid).map(FeatureFlags::getValue).collect(Collectors.toList());
-		List<String> invalidFeatureFlags = invalidFlagList.stream().map(FeatureFlags::getHumanReadableName).collect(Collectors.toList());
-
-		if (!invalidFeatureFlags.isEmpty()) {
-            // TODO: GUI
-//			if (Minecraft.getMinecraft().screen instanceof ShaderPackScreen) {
-//				Minecraft.getMinecraft().setScreen(new FeatureMissingErrorScreen(Minecraft.getMinecraft().screen, I18n.format("iris.unsupported.pack"), I18n.format("iris.unsupported.pack.description", FeatureFlags.getInvalidStatus(invalidFlagList), invalidFeatureFlags.stream()
-//					.collect(Collectors.joining(", ", ": ", ".")))));
-//			}
-			IrisApi.getInstance().getConfig().setShadersEnabledAndApply(false);
-		}
+		// A pack whose required features are missing is still parsed in full: the caller needs the rest of
+		// the pack to decide what to do, and reporting the missing features is what makes that decision
+		// possible. Nothing is enabled, disabled or reloaded here.
+		this.missingRequiredFeatures = shaderProperties.getRequiredFeatureFlags().stream()
+			.filter(FeatureFlags::isInvalid)
+			.map(FeatureFlags::getValue)
+			.collect(Collectors.toUnmodifiableList());
 
 		ProfileSet profiles = ProfileSet.fromTree(shaderProperties.getProfiles(), this.shaderPackOptions.getOptionSet());
 		this.profile = profiles.scan(this.shaderPackOptions.getOptionSet(), this.shaderPackOptions.getOptionValues());
@@ -463,6 +470,10 @@ public class ShaderPack {
 
 	/**
 	 * Reads a texture from a TextureDefinition. Handles both PNG and raw texture types.
+	 *
+	 * <p>Only the constructor may call this: a pack read from a zip is parsed inside a temporary file
+	 * system that is closed as soon as the constructor returns, so the pack's textures have to be read
+	 * into memory before that. The result is a byte array or a resource location, never a path.</p>
 	 */
 	public CustomTextureData readTexture(Path root, TextureDefinition definition) throws IOException {
 		if (definition instanceof TextureDefinition.RawDefinition rawDef) {
@@ -653,7 +664,21 @@ public class ShaderPack {
     /**
      * Gets or creates the appropriate ProgramSet for the given dimension.
      *
-     * Resolution order:
+     * <p>Resolves the dimension from the world the client is in, which is null on the main menu: callers
+     * that already know the dimension - a pack read ahead of time, for instance - must use {@link
+     * #getProgramSet(String, int)} so the answer does not depend on the last world this client was in.</p>
+     *
+     * @param dimensionName The canonical dimension key returned by Iris
+     * @return The ProgramSet for this dimension, or base ProgramSet if no override exists
+     */
+    public ProgramSet getProgramSet(String dimensionName) {
+		return getProgramSet(dimensionName, Iris.getCurrentDimensionId());
+	}
+
+    /**
+     * Gets or creates the appropriate ProgramSet for the given dimension, named explicitly.
+     *
+     * <p>Resolution order:
      *
      *   Exact match in dimension.properties (dimension.<folder> = dimensionName)
      *   Wildcard match (dimension.<folder> = *)
@@ -661,15 +686,19 @@ public class ShaderPack {
      *   Legacy world0 default when no valid dimension.properties mappings exist
      *   Fallback to base ProgramSet
      *
+     * <p>ProgramSets are lazily created and cached. When cache exceeds limit, least recently used
+     * non-vanilla dimensions are evicted.</p>
      *
-     * ProgramSets are lazily created and cached. When cache exceeds limit,
-     * least recently used non-vanilla dimensions are evicted.
+     * <p>Must be called from the thread that owns the pack: creating a ProgramSet writes the pack's
+     * access-ordered dimension cache, which is not synchronized. The program sources it reads are all in
+     * memory by the time the constructor has returned.</p>
      *
-     * @param dimensionName The canonical dimension key returned by Iris
+     * @param dimensionName The canonical dimension key
+     * @param dimensionId The numeric dimension ID, used for the legacy world{ID} folder lookup and for
+     *                    canonicalizing a name the pack supplies without a namespace
      * @return The ProgramSet for this dimension, or base ProgramSet if no override exists
      */
-    public ProgramSet getProgramSet(String dimensionName) {
-		int dimensionId = Iris.getCurrentDimensionId();
+    public ProgramSet getProgramSet(String dimensionName, int dimensionId) {
 		String canonicalDimension = DimensionId.canonicalize(dimensionName, dimensionId);
 
 		String folderName = resolveDimensionFolder(
@@ -782,6 +811,19 @@ public class ShaderPack {
 
 	public Set<FeatureFlags> getActiveFeatures() {
 		return activeFeatures;
+	}
+
+	/**
+	 * Returns the features this pack requires that this context cannot provide.
+	 *
+	 * <p>Reading a pack never acts on this: whether a pack with a missing required feature is used, and
+	 * what the player is told, is a decision for the code that takes the pack into use, on the thread
+	 * that owns the renderer. An empty list means every required feature is available.</p>
+	 *
+	 * @return the missing required features, in the order the pack declared them
+	 */
+	public List<FeatureFlags> getMissingRequiredFeatures() {
+		return missingRequiredFeatures;
 	}
 
 	public boolean hasFeature(FeatureFlags feature) {
