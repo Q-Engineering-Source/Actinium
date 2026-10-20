@@ -224,6 +224,21 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
   直接命中缓存；`Iris.warmupShaderTransforms()` 在包加载后复用同一套 key 预热，并由
   `awaitProgramSetWarmup()` 等到真实变换完成。availability 集合是 `InputAvailability.unpackAll()`
   加 `NO_COLOR`，取代了原先会漏掉 lightmap-only 组合的手写清单。
+  `createPass` 在动手构建前查 `SharedProgramKey`（源码名、实际变换输入、pass 声明的输入、
+  是否 shadow 四元组）：命中即用已有 program 只建 `Pass`，不再 `begin`/注册 uniform/sampler；
+  `createPassInner` 因此拆成「负责 build 与 program 侧装配的 `wireGbufferProgram`」与
+  「负责 framebuffer/alpha/blend 的 `createPassInner`」。构造失败会 `destroy()` 后重抛，
+  `destroy()` 对每个字段做空值守卫。
+- **`gl/program/RetainedPrograms`**：pipeline 销毁时把已链接 program 交给保留池而不是删除，
+  开关光影、重载未改动的包、跨维度时可复用。两批 `recent`/`older` 轮换，配置标识（现在是
+  包指纹）变化即整体退役；单键 4 个、两批合计 512 个上限，淘汰与退役都是真删除。
+  `ProgramBuilder` 的回退顺序是「保留池 → 程序二进制磁盘 → 编译链接」，命中即短路。
+- **主菜单预读**：`Iris.prepareSelectedShaderPack` 在主线程捕获环境宏，后台线程完成包解析与
+  `Overworld` ProgramSet，经 `preparedPack` 的软引用 + 代次发布；`invalidatePreparedPack`
+  在显式 reload 与「选择变了但未应用」时递增代次，晚到的读取既不能发布也不能被取用。
+  解析阶段不激活任何东西——required feature 不满足的包由主线程按原行为禁用。
+  root 侧 `ShaderWarmup` 由 `MixinGuiMainMenu.initGui` 触发，单条低优先级 daemon 线程，
+  失败只记日志；进入世界不等待预读预热（两边提交同一套 key，变换是输入的纯函数）。
 - **`pipeline/transform/`**（22+ 类）：GLSL 着色器源变换（属性、顶点格式、计算、DH、
   Celeritas 通道）—— `ShaderTransformer`、`AttributeTransformer`、`CeleritasTransformer`、
   `CommonTransformer`、`EntityPatcher`。

@@ -57,18 +57,28 @@ next bulk upstream refresh.
   root project on `celeritas-common/.../gl/shader/GlProgram`. Local deviations: the GL half sits
   behind a `ProgramBinaryOps` port instead of calling `RenderSystem` directly (upstream tests
   swap the backend singleton reflectively, which this repository forbids), keys use the local
-  `ShaderDiskCache.Key` encoding, and `RetainedPrograms` plus full-directory precompilation are
-  not part of this batch.
+  `ShaderDiskCache.Key` encoding, and full-directory precompilation is not part of this batch.
 - The unified program-transform submission follows Angelica work adapted in Actinium's
   `research/sdl-gpu-port` commits `5ec46f48` (single `ProgramTransforms.submit`), `6d338faf`
   (CPU transform warmup), and `f1f0abc9` (lightmap-only attribute availability variant), under
   the existing Angelica/Iris LGPL-3.0 notices. Local files:
   `shader/.../gbuffer_overrides/matching/{InputAvailability,TransformInputs}.java`,
   `shader/.../pipeline/DeferredWorldRenderingPipeline.java`, and `shader/.../Iris.java`. This
-  batch takes only the CPU-side transform warmup and the availability fix; the main-menu read-ahead
-  chain (`ShaderWarmup`, prepared packs, pack fingerprints) is not included, and the SDL
-  uniform-block harvesting/warming pieces are deliberately left out because the OpenGL path never
-  consumes them.
+  batch takes the CPU-side transform warmup and the availability fix; the SDL uniform-block
+  harvesting/warming pieces are deliberately left out because the OpenGL path never consumes them.
+- The retained program pool, the same-source program sharing and the main-menu read-ahead follow the
+  same downstream adaptation: `d45f3b13` (retain/shared parts), `e955a06d`, `899f6a98` and
+  `005b8fd9` (read-ahead trigger, completion reporting and re-arm) via
+  `research/sdl-gpu-port`, under the existing LGPL-3.0 notices. Local files:
+  `shader/.../gl/program/{RetainedPrograms,ProgramDeleter,ProgramFallback}.java`,
+  `shader/.../pipeline/DeferredWorldRenderingPipeline.java`,
+  `shader/.../{Iris,shaderpack/ShaderPack}.java`, and root
+  `com/gtnewhorizons/angelica/iris/ShaderWarmup.java` with its main-menu mixin. Local deviations:
+  the pool is bounded by an explicit budget and keyed on the pack fingerprint, same-source sharing
+  keeps this project's four-dimensional key instead of the upstream three, the read-ahead thread
+  parses only and leaves feature validation to the main thread, and the reflective class preloading
+  plus the SDL uniform-block harvest are not carried over. Display-context invalidation
+  (`DisplayContextIdentity`, `ProgramCacheContextReset`) is local work with no upstream counterpart.
 - The 2026-10-20 selective upstream adaptations retain the existing source licenses;
   they do not advance the full-tree synchronization baselines:
   - Celeritas `48eb54f5c616834567cda4bc23334b301a94daa0` (bitraster near clipping,
