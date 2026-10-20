@@ -27,6 +27,48 @@ next bulk upstream refresh.
 
 ## Additional incorporated work
 
+- The shader-loading backport selectively reuses the already adapted OpenGL-path work from
+  Actinium's `research/sdl-gpu-port` commits `b1e91a17`, `de9b99e2`, `b245191a`, and
+  the common cache/layer helpers in `d45f3b13`. The original upstream sources are Angelica
+  `38b1d9a0c37b4e94fe3f63d4879ba1941fa8f25a` (#2190),
+  `37afddab5d6546313a10bc862c3e72d7ea46d034` (#2194), and
+  `38af64f10cc2d9410a38e60984df0440488e82ae` (#2213), under the existing LGPL-3.0 notices.
+  Local paths are `glsm/.../shader/{ShaderCacheIO,ShaderDiskCache}.java`,
+  `glsm/.../threading/AngelicaWorkers.java`, root `.../utils/AngelicaJar.java`,
+  `shader/.../shaderpack/{include,preprocessor}/`, `ShaderPack.java`, and
+  `shader/.../texture/pbr/`. This batch includes PBR resource indexing and include/preprocessor
+  disk caching; it does not represent a full-tree sync or the Iris AST/program-binary cache ports.
+- The `iris-transform` AST disk layer is a local adaptation informed by Angelica
+  `37afddab5d6546313a10bc862c3e72d7ea46d034` (#2194), not a direct port. Upstream serializes the
+  stage maps inside `ShaderTransformer` through `diskOrCompute` and `Parameters.appendDiskKey`;
+  Actinium instead keys the result map already published by `TransformPatcher`, contributes the
+  local `AdaptiveShadowBoundsStats` instrumentation inputs and the OpenGL capability inputs that
+  drive version hoisting, and leaves out the SDL RW-image/`StageArtifact` pipeline that upstream's
+  key also covers. Files: `shader/.../pipeline/transform/{TransformPatcher,TransformDiskCache}.java`
+  and `RenderSystem` test capability hooks.
+- The GL program binary cache follows Angelica `0a4d48964edc7a20c0a93c456123860a4a9e16de` (#2206)
+  as adapted in Actinium's `research/sdl-gpu-port` commit `d45f3b13`, together with the terrain
+  link-hint fix in `f9e6531e` and selected cache metrics/tests from `b665f73b`, under the
+  existing LGPL-3.0 notices. Local files: `glsm/.../shader/{ProgramBinaryCache,ProgramBinaryOps,
+  ProgramBinaryOpsImpl}.java`, the program-binary surface in `backend/RenderBackend`,
+  `src/lwjgl3/.../Lwjgl3GLRenderBackend`, `RenderSystem` and `GLStateManager`,
+  `shader/.../gl/shader/ProgramCreator`, `shader/.../gl/program/ProgramBuilder`, and
+  `shader/.../celeritas/IrisCeleritasChunkProgramOverrides`, plus the `LinkHook` installed by the
+  root project on `celeritas-common/.../gl/shader/GlProgram`. Local deviations: the GL half sits
+  behind a `ProgramBinaryOps` port instead of calling `RenderSystem` directly (upstream tests
+  swap the backend singleton reflectively, which this repository forbids), keys use the local
+  `ShaderDiskCache.Key` encoding, and `RetainedPrograms` plus full-directory precompilation are
+  not part of this batch.
+- The unified program-transform submission follows Angelica work adapted in Actinium's
+  `research/sdl-gpu-port` commits `5ec46f48` (single `ProgramTransforms.submit`), `6d338faf`
+  (CPU transform warmup), and `f1f0abc9` (lightmap-only attribute availability variant), under
+  the existing Angelica/Iris LGPL-3.0 notices. Local files:
+  `shader/.../gbuffer_overrides/matching/{InputAvailability,TransformInputs}.java`,
+  `shader/.../pipeline/DeferredWorldRenderingPipeline.java`, and `shader/.../Iris.java`. This
+  batch takes only the CPU-side transform warmup and the availability fix; the main-menu read-ahead
+  chain (`ShaderWarmup`, prepared packs, pack fingerprints) is not included, and the SDL
+  uniform-block harvesting/warming pieces are deliberately left out because the OpenGL path never
+  consumes them.
 - The 2026-10-20 selective upstream adaptations retain the existing source licenses;
   they do not advance the full-tree synchronization baselines:
   - Celeritas `48eb54f5c616834567cda4bc23334b301a94daa0` (bitraster near clipping,

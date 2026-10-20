@@ -58,6 +58,9 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
    `PostProcessingBridge`、`WorldRendererCompatBridge`、`IrisDebugOptions.Bridge`、
    `GLSMPerfDebugHooks`）；初始化 DH / NeoFontRender 兼容。
 4. **`onInit`**：NeoFontRender 初始化、dev 命令注册、Iris fmlInitEvent。
+   Iris 启用时先由根项目 `AngelicaJar` 配置磁盘缓存位置与当前 Jar 的 build salt，
+   再注册 `PBRTextureManager` 的资源重载监听。listener 注册会立即观察已加载的资源包；
+   后续每次资源重载同步释放旧 PBR holder，并启动新一代资源名字索引。
 
 `ActiniumRuntime`（`runtime/` 包）在类加载时静态装载 `SodiumGameOptions` 配置与版本信息，
 失败时降级为只读默认值，是全局状态的静态持有者。
@@ -207,14 +210,28 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
   材质 ID 映射、include 处理、C 预处理器（jcpp）、选项系统与选项菜单、纹理定义、
   字符串变换（`ShaderPack`、`ProgramSource`、`PackDirectives`、`ShaderProperties`、
   `OptionSet`、`IncludeGraph`、`JcppProcessor`、`FlatteningMap`）。
+  `IncludeGraph` 并行读取源码，`IncludeProcessor` 对应用选项后的 include 图计算递归内容 hash；
+  `ShaderPack` 实际调用 hash + Supplier 的 Jcpp 入口，命中 `iris-preprocess` 磁盘层时跳过
+  include 展开和预处理。键包含全部环境宏，properties 路径包含最终选项宏。
 - **`parsing/`**：Iris 自定义函数/向量类型解析（`IrisFunctions`、`VectorConstructor`、
   `SmoothFloat`）。
 - **`pipeline/`**（15 类）：渲染管线主体 —— 世界渲染、天空、手持物品、阴影、clear pass
   调度（`DeferredWorldRenderingPipeline`、`FixedFunctionWorldRenderingPipeline`、
   `PipelineManager`、`ShadowRenderer`、`HandRenderer`）。
+  `DeferredWorldRenderingPipeline.ProgramTransforms.submit` 把 begin/prepare/deferred/
+  composite/final/shadowcomp、attributes（按 `TransformInputs.availabilities()` 的 5 个输入
+  组合）、terrain 与全部 compute 变换统一提交到 `ShaderTransformExecutor`，构造期同步消费时
+  直接命中缓存；`Iris.warmupShaderTransforms()` 在包加载后复用同一套 key 预热，并由
+  `awaitProgramSetWarmup()` 等到真实变换完成。availability 集合是 `InputAvailability.unpackAll()`
+  加 `NO_COLOR`，取代了原先会漏掉 lightmap-only 组合的手写清单。
 - **`pipeline/transform/`**（22+ 类）：GLSL 着色器源变换（属性、顶点格式、计算、DH、
   Celeritas 通道）—— `ShaderTransformer`、`AttributeTransformer`、`CeleritasTransformer`、
   `CommonTransformer`、`EntityPatcher`。
+  `TransformPatcher` 先查 400 项内存 LRU，未命中再查 `iris-transform` 磁盘层；键覆盖五个
+  stage 源码、patch 与参数族（`InputAvailability`、纹理 stage 映射）、adaptive shadow
+  instrumentation 绑定，以及决定版本提升与 clip distance 注入的 GL 能力
+  （max GLSL、SSBO、image load/store、clip cull distance）。磁盘命中会回填内存缓存并返回
+  同一实例；参数族按类型穷举，新增子类未接入键会立刻失败而不是产出错误命中。
 - **`postprocess/`**：后处理合成（composite/final pass）—— `CompositeRenderer`、
   `FinalPassRenderer`、`FullScreenQuadRenderer`、`CenterDepthSampler`。
 - **`rendertarget/`**（10 类）：render target 管理与帧缓冲（`RenderTargets`、`ColorTexture`、
@@ -238,6 +255,9 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
   `BufferBuilderPolygonView`、`ImmediateState`）。
 - **`texture.*/`**：PBR 纹理系统（LabPBR）、mipmap、纹理导出（`PBRAtlasTexture`、
   `LabPBRTextureFormat`、`AbstractMipmapGenerator`）。
+  `PBRResourceIndex` 在 worker 上枚举已知资源包的 ZIP/文件夹名字，供两个 PBR loader
+  提前跳过确定不存在的资源；未知资源包继续使用原来的资源查询协议。
+  同一 resource manager 重载也创建新 generation，旧扫描不能发布到新索引；ZIP 由资源包持有。
 - **`fantastic/`**：粒子渲染封装（`IrisParticleRenderTypes`、`PhasedParticleEngine`）。
 - **`layer/`**：gbuffer 层枚举（`GbufferPrograms`、`RenderLayer`）。
 - **`config/`**：本地配置持久化（`IrisConfig`）。
@@ -347,6 +367,17 @@ bounded ByteBuffer 视图由 drawRaw 统一创建。此改动已通过自动化�
 - **`ffp/`**（固定管线模拟）：`ShaderManager`、`Program`/`ProgramUniformState`、
   `VertexKey`/`FragmentKey`、`Vertex/Fragment/GeometryShaderGenerator`、`ShaderCache`、
   `Uniforms` —— 由固定管线状态生成 shader。
+- **`shader/`**（上限为 GLSL 与程序缓存）：`ShaderDiskCache`（磁盘缓存底座：CRC32 envelope、
+  临时文件 + 原子替换、build salt 代次、容量上限、layer 保留/删除 API）、`ShaderCacheIO`
+  （typed payload 编解码）、`ProgramBinaryCache`（`gl-program/<净化包名>` 层；键 = 驱动指纹
+  + FFP 位 + 实际预链接的 attribute 绑定 + 各 stage 完整源码；命中经 `glProgramBinary` 还原，
+  驱动拒绝时删除条目并回退编译）、`ProgramBinaryOps`/`ProgramBinaryOpsImpl`（需要 GL 上下文的
+  操作端口，生产实现转发 `RenderSystem`/`GLStateManager`，使拒绝状态机可无上下文测试）、
+  `GlslVulkanPreprocess`/`SpirvCompiler`/`SpirvShaderTranslator`（SPIR-V 侧工具）。
+  celeritas-common 的 `GlProgram` 只暴露 `LinkHook`，由根项目安装为
+  `ProgramBinaryCache::markRetrievable`，子项目不反向引用。
+- **`threading/`**：`AngelicaWorkers`（后台 worker 池，`submit`/`run`/`invokeAll`；资源扫描、
+  程序二进制落盘与预读都走这里，worker 上不碰 GL）。
 - **`hooks/`**：`GLSMHooks`（静态事件总线集合：纹理绑定/删除、program 切换、blend、fog、
   lightmap 等）、`DeferredAlpha/Blend/DepthColorHandler`（延迟状态应用）、`GLSMConfig`/
   `GLSMInitConfig`、`GpuCommandRecorder/Phase/Type`、`GpuCheckpointType`；`hooks/events/`
