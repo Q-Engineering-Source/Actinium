@@ -7,6 +7,8 @@ import lombok.Getter;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.texture.util.TextureExporter;
 import net.coderbot.iris.texture.util.TextureManipulationUtil;
+import dhj.embeddedt.embeddium.impl.texture.SpritePadding;
+import dhj.embeddedt.embeddium.impl.texture.SpritePaddingExtension;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.client.renderer.texture.TextureUtil;
@@ -111,18 +113,21 @@ public class PBRAtlasTexture extends AutoClosableAbstractTexture {
     }
 
     protected void uploadSprite(TextureAtlasSprite sprite) {
+		final int gutter = ((SpritePaddingExtension) sprite).angelica$getGutterWidth();
 		final AnimationMetadataSection metadata = sprite.animationMetadata;
 		if (metadata != null && metadata.getFrameCount() > 0) {
 			final int frameCount = sprite.getFrameCount();
 			for (int frame = Math.min(sprite.frameCounter, metadata.getFrameCount() - 1); frame >= 0; frame--) {
 				final int frameIndex = metadata.getFrameIndex(frame);
 				if (frameIndex >= 0 && frameIndex < frameCount) {
-                    TextureUtil.uploadTextureMipmap(sprite.getFrameTextureData(frameIndex), sprite.getIconWidth(), sprite.getIconHeight(), sprite.getOriginX(), sprite.getOriginY(), false, false);
+					SpritePadding.uploadPadded(sprite.getFrameTextureData(frameIndex), sprite.getIconWidth(),
+						sprite.getIconHeight(), sprite.getOriginX(), sprite.getOriginY(), gutter, false, false);
 					return;
 				}
 			}
 		}
-		TextureUtil.uploadTextureMipmap(sprite.getFrameTextureData(0), sprite.getIconWidth(), sprite.getIconHeight(), sprite.getOriginX(), sprite.getOriginY(), false, false);
+		SpritePadding.uploadPadded(sprite.getFrameTextureData(0), sprite.getIconWidth(), sprite.getIconHeight(),
+			sprite.getOriginX(), sprite.getOriginY(), gutter, false, false);
 	}
 
 	private static boolean isAnimated(TextureAtlasSprite sprite) {

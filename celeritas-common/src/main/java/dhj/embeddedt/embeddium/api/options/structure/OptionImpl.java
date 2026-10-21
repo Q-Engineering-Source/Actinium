@@ -14,6 +14,7 @@ import java.util.Objects;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 public class OptionImpl<S, T> implements Option<T> {
 
@@ -22,7 +23,7 @@ public class OptionImpl<S, T> implements Option<T> {
     private final OptionBinding<S, T> binding;
     private final Control<T> control;
 
-    private final EnumSet<OptionFlag> flags;
+    private final Supplier<EnumSet<OptionFlag>> flags;
 
     private final OptionIdentifier<T> id;
     private final TextComponent name;
@@ -49,7 +50,7 @@ public class OptionImpl<S, T> implements Option<T> {
                        TextComponent tooltip,
                        OptionBinding<S, T> binding,
                        Function<OptionImpl<S, T>, Control<T>> control,
-                       EnumSet<OptionFlag> flags,
+                       Supplier<EnumSet<OptionFlag>> flags,
                        OptionImpact impact,
                        BooleanSupplier enabled) {
         this.id = id;
@@ -146,7 +147,7 @@ public class OptionImpl<S, T> implements Option<T> {
 
     @Override
     public Collection<OptionFlag> getFlags() {
-        return this.flags;
+        return this.flags.get();
     }
 
     public static <S, T> OptionImpl.Builder<S, T> createBuilder(@SuppressWarnings("unused") Class<T> type, OptionStorage<S> storage) {
@@ -163,6 +164,7 @@ public class OptionImpl<S, T> implements Option<T> {
         private Function<OptionImpl<S, T>, Control<T>> control;
         private OptionImpact impact;
         private final EnumSet<OptionFlag> flags = EnumSet.noneOf(OptionFlag.class);
+        private Supplier<EnumSet<OptionFlag>> flagsSupplier = () -> this.flags;
         private static final BooleanSupplier ALWAYS_ENABLED = () -> true;
         private static final BooleanSupplier ALWAYS_DISABLED = () -> false;
         private BooleanSupplier enabled = ALWAYS_ENABLED;
@@ -258,6 +260,12 @@ public class OptionImpl<S, T> implements Option<T> {
             return this;
         }
 
+        /** Recomputes reload flags from the current value of related options. */
+        public Builder<S, T> setFlags(Supplier<EnumSet<OptionFlag>> flags) {
+            this.flagsSupplier = Objects.requireNonNull(flags, "Flags supplier must not be null");
+            return this;
+        }
+
         public OptionImpl<S, T> build() {
             if (this.id == null) {
                 // FIXME enforce IDs and make nullable
@@ -278,7 +286,7 @@ public class OptionImpl<S, T> implements Option<T> {
             Objects.requireNonNull(this.binding, "Option binding must be specified");
             Objects.requireNonNull(this.control, "Control must be specified");
 
-            OptionImpl<S, T> impl = new OptionImpl<>(this.storage, this.id, this.name, this.tooltip, this.binding, this.control, this.flags, this.impact, this.enabled);
+            OptionImpl<S, T> impl = new OptionImpl<>(this.storage, this.id, this.name, this.tooltip, this.binding, this.control, this.flagsSupplier, this.impact, this.enabled);
             impl.defaultValue = this.defaultValue;
             return impl;
         }

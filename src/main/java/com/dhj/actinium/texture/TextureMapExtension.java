@@ -11,4 +11,6 @@ public interface TextureMapExtension {
     int celeritas$getAtlasWidth();
 
     int celeritas$getAtlasHeight();
+
+    int celeritas$getAtlasGutter();
 }

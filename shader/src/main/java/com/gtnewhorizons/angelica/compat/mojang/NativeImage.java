@@ -16,7 +16,7 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 
 // TBD
-public class NativeImage extends BufferedImage {
+public class NativeImage extends BufferedImage implements AutoCloseable {
     @Getter
     private final Format format;
     @Getter
@@ -106,6 +106,11 @@ public class NativeImage extends BufferedImage {
 
     public void setPixelRGBA(int x, int y, int rgb) {
         setRGB(x, y, rgb);
+    }
+
+    @Override
+    public void close() {
+        flush();
     }
 
 

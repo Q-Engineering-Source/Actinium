@@ -14,6 +14,12 @@ import java.util.List;
  * @author Roadhog360
  */
 public final class SpriteInterpolation {
+    /** Defines whether ARGB bytes describe opacity or independent texture data. */
+    public enum Mode {
+        ALPHA_WEIGHTED_RGB,
+        INDEPENDENT_CHANNELS
+    }
+
     private SpriteInterpolation() {
     }
 
@@ -23,6 +29,16 @@ public final class SpriteInterpolation {
      */
     public static int[][] interpolate(List<int[][]> frames, AnimationMetadataSection metadata,
                                       int frameCounter, int tickCounter, int[][] output) {
+        return interpolate(frames, metadata, frameCounter, tickCounter, output, Mode.ALPHA_WEIGHTED_RGB);
+    }
+
+    /** Interpolates an animated pixel chain, optionally treating alpha as an independent data channel. */
+    public static int[][] interpolate(List<int[][]> frames, AnimationMetadataSection metadata,
+                                      int frameCounter, int tickCounter, int[][] output,
+                                      Mode mode) {
+        if (mode == null) {
+            throw new NullPointerException("mode");
+        }
         int currentFrame = metadata.getFrameIndex(frameCounter);
         int frameCount = metadata.getFrameCount() == 0 ? frames.size() : metadata.getFrameCount();
         int nextFrame = metadata.getFrameIndex((frameCounter + 1) % frameCount);
@@ -42,7 +58,9 @@ public final class SpriteInterpolation {
             }
             if (mip < next.length && current[mip].length == next[mip].length) {
                 for (int pixel = 0; pixel < current[mip].length; pixel++) {
-                    output[mip][pixel] = mix(current[mip][pixel], next[mip][pixel], nextWeight);
+                    output[mip][pixel] = mode == Mode.INDEPENDENT_CHANNELS
+                            ? mixChannelsIndependently(current[mip][pixel], next[mip][pixel], nextWeight)
+                            : mix(current[mip][pixel], next[mip][pixel], nextWeight);
                 }
             }
         }
@@ -63,5 +81,19 @@ public final class SpriteInterpolation {
                 + ((next >>> 8) & 255) * colorNextWeight);
         int blue = (int) Math.round((current & 255) * colorCurrentWeight + (next & 255) * colorNextWeight);
         return (int) Math.round(alpha) << 24 | red << 16 | green << 8 | blue;
+    }
+
+    /** Interpolates ARGB channels as independent data rather than treating alpha as pixel opacity. */
+    static int mixChannelsIndependently(int current, int next, double nextWeight) {
+        final double currentWeight = 1.0 - nextWeight;
+        final int alpha = interpolateChannel(current >>> 24, next >>> 24, currentWeight, nextWeight);
+        final int red = interpolateChannel((current >>> 16) & 255, (next >>> 16) & 255, currentWeight, nextWeight);
+        final int green = interpolateChannel((current >>> 8) & 255, (next >>> 8) & 255, currentWeight, nextWeight);
+        final int blue = interpolateChannel(current & 255, next & 255, currentWeight, nextWeight);
+        return alpha << 24 | red << 16 | green << 8 | blue;
+    }
+
+    private static int interpolateChannel(int current, int next, double currentWeight, double nextWeight) {
+        return (int) Math.round(current * currentWeight + next * nextWeight);
     }
 }
