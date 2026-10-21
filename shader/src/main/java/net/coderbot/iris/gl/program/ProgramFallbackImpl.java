@@ -1,6 +1,7 @@
 package net.coderbot.iris.gl.program;
 
 import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import net.coderbot.iris.gl.shader.GlShader;
 import net.coderbot.iris.gl.shader.ProgramCreator;
 import net.coderbot.iris.gl.shader.ShaderType;
@@ -57,26 +58,46 @@ final class ProgramFallbackImpl implements ProgramFallback {
 		final long buildStartNanos = cacheKey != null ? System.nanoTime() : 0L;
 
 		final List<GlShader> shaders = new ArrayList<>();
-		if (sources.compute() != null) {
-			shaders.add(buildShader(ShaderType.COMPUTE, name + ".csh", sources.compute()));
-		} else {
-			shaders.add(buildShader(ShaderType.VERTEX, name + ".vsh", sources.vertex()));
-			if (sources.geometry() != null) {
-				shaders.add(buildShader(ShaderType.GEOMETRY, name + ".gsh", sources.geometry()));
+		int programId = 0;
+		Throwable compileFailure = null;
+		try {
+			if (sources.compute() != null) {
+				shaders.add(buildShader(ShaderType.COMPUTE, name + ".csh", sources.compute()));
+			} else {
+				shaders.add(buildShader(ShaderType.VERTEX, name + ".vsh", sources.vertex()));
+				if (sources.geometry() != null) {
+					shaders.add(buildShader(ShaderType.GEOMETRY, name + ".gsh", sources.geometry()));
+				}
+				if (sources.tessControl() != null) {
+					shaders.add(buildShader(ShaderType.TESSELATION_CONTROL, name + ".tcs", sources.tessControl()));
+				}
+				if (sources.tessEval() != null) {
+					shaders.add(buildShader(ShaderType.TESSELATION_EVAL, name + ".tes", sources.tessEval()));
+				}
+				shaders.add(buildShader(ShaderType.FRAGMENT, name + ".fsh", sources.fragment()));
 			}
-			if (sources.tessControl() != null) {
-				shaders.add(buildShader(ShaderType.TESSELATION_CONTROL, name + ".tcs", sources.tessControl()));
-			}
-			if (sources.tessEval() != null) {
-				shaders.add(buildShader(ShaderType.TESSELATION_EVAL, name + ".tes", sources.tessEval()));
-			}
-			shaders.add(buildShader(ShaderType.FRAGMENT, name + ".fsh", sources.fragment()));
-		}
 
-		final int programId = ProgramCreator.create(name, cacheKey, shaders.toArray(new GlShader[0]));
-
-		for (GlShader shader : shaders) {
-			shader.destroy();
+			programId = ProgramCreator.create(name, cacheKey, shaders.toArray(new GlShader[0]));
+		} catch (RuntimeException | Error failure) {
+			compileFailure = failure;
+			throw failure;
+		} finally {
+			try {
+				destroyShaders(shaders);
+			} catch (RuntimeException | Error cleanupFailure) {
+				if (compileFailure != null) {
+					compileFailure.addSuppressed(cleanupFailure);
+				} else {
+					if (programId != 0) {
+						try {
+							deleteProgram(programId);
+						} catch (RuntimeException | Error programCleanupFailure) {
+							cleanupFailure.addSuppressed(programCleanupFailure);
+						}
+					}
+					throw cleanupFailure;
+				}
+			}
 		}
 
 		if (buildStartNanos != 0L) {
@@ -84,6 +105,32 @@ final class ProgramFallbackImpl implements ProgramFallback {
 		}
 
 		return programId;
+	}
+
+	private static void destroyShaders(List<GlShader> shaders) {
+		Throwable failure = null;
+		for (GlShader shader : shaders) {
+			try {
+				shader.destroy();
+			} catch (RuntimeException | Error exception) {
+				if (failure == null) {
+					failure = exception;
+				} else {
+					failure.addSuppressed(exception);
+				}
+			}
+		}
+		if (failure instanceof RuntimeException runtimeException) {
+			throw runtimeException;
+		}
+		if (failure instanceof Error error) {
+			throw error;
+		}
+	}
+
+	@Override
+	public void deleteProgram(int program) {
+		GLStateManager.glDeleteProgram(program);
 	}
 
 	private static GlShader buildShader(ShaderType shaderType, String name, @Nullable String source) {

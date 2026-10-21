@@ -137,7 +137,7 @@ public final class ProgramBinaryCache {
      */
     public static Key key() {
         final String layer = packLayer;
-        return new Key(layer, ShaderDiskCache.key(packLayer).str(driverId()).b(ShaderManager.getInstance().isEnabled()));
+        return new Key(layer, ShaderDiskCache.key(packLayer).str(driverId()).b(ShaderManager.isGloballyEnabled()));
     }
 
     /**
@@ -446,7 +446,7 @@ public final class ProgramBinaryCache {
 
     private static ShaderDiskCache.Key compiledSettingsKey(String layer, String settings) {
         return ShaderDiskCache.key(layer + "/settings").str(driverId())
-            .b(ShaderManager.getInstance().isEnabled()).str(settings);
+            .b(ShaderManager.isGloballyEnabled()).str(settings);
     }
 
     private static String folderName(String packName) {

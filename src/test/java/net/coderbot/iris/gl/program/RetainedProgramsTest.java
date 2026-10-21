@@ -1,5 +1,7 @@
 package net.coderbot.iris.gl.program;
 
+import com.dhj.actinium.startup.ProgramCacheContextReset;
+import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,9 +28,13 @@ class RetainedProgramsTest {
     private static final int MAX_RETAINED = 512;
 
     private RecordingDeleter deleter;
+    private TestProgramContextProvider contextProvider;
 
     @BeforeEach
     void resetPool() {
+        contextProvider = new TestProgramContextProvider();
+        RetainedPrograms.setContextProviderForTesting(contextProvider);
+        RetainedPrograms.discardAll();
         deleter = new RecordingDeleter();
         RetainedPrograms.setDeleterForTesting(deleter);
         RetainedPrograms.useConfiguration(null);
@@ -38,7 +44,9 @@ class RetainedProgramsTest {
     @AfterEach
     void releasePool() {
         RetainedPrograms.useConfiguration(null);
+        RetainedPrograms.discardAll();
         RetainedPrograms.setDeleterForTesting(null);
+        RetainedPrograms.setContextProviderForTesting(null);
     }
 
     @Test
@@ -183,6 +191,99 @@ class RetainedProgramsTest {
         assertEquals(0, RetainedPrograms.take(graphics("vertex-a", "fragment")), "both batches are emptied");
         assertEquals(0, RetainedPrograms.take(graphics("vertex-b", "fragment")));
         assertEquals(0, RetainedPrograms.discardAll(), "the count is reset instead of staying at the discarded total");
+    }
+
+    @Test
+    void identicalSourcesAreOnlyReusedInsideTheirOwnerShareGroup() {
+        final RetainedPrograms.Sources sources = graphics("vertex", "fragment");
+        RetainedPrograms.retain(sources, 31);
+
+        contextProvider.makeCurrent(2L);
+        RetainedPrograms.retain(sources, 32);
+        assertEquals(32, RetainedPrograms.take(sources));
+        assertEquals(0, RetainedPrograms.take(sources));
+
+        contextProvider.makeCurrent(1L);
+        assertEquals(31, RetainedPrograms.take(sources));
+    }
+
+    @Test
+    void deletionFromAnotherShareGroupWaitsForAnOwnerGroupContext() {
+        contextProvider.makeCurrent(2L);
+
+        RetainedPrograms.deleteProgram(1L, 71);
+
+        assertTrue(deleter.deleted.isEmpty(), "a different share group cannot delete this name");
+        contextProvider.makeCurrent(1L);
+        assertEquals(0, RetainedPrograms.take(graphics("not present", "not present")));
+        assertEquals(List.of(71), deleter.deleted, "the owner group drains its pending deletes before reuse");
+    }
+
+    @Test
+    void retiringTheLastOwnerContextDiscardsCachedAndQueuedNames() {
+        final RetainedPrograms.Sources sources = graphics("vertex", "fragment");
+        RetainedPrograms.retain(sources, 81);
+        contextProvider.makeCurrent(2L);
+        RetainedPrograms.deleteProgram(1L, 82);
+
+        contextProvider.retireShareGroup(1L);
+        RetainedPrograms.onContextRetired(new GLContextIdentity(1L, 101L, 1L));
+
+        assertTrue(deleter.deleted.isEmpty(), "native context retirement already released these names");
+        assertEquals(0, RetainedPrograms.discardAll(), "retired-group names are no longer held by the pool");
+    }
+
+    @Test
+    void aWrapperFromAnOlderConfigurationCannotReturnToThePool() {
+        final RetainedPrograms.Sources sources = graphics("vertex", "fragment");
+        final long oldEpoch = RetainedPrograms.configurationEpoch();
+        RetainedPrograms.useConfiguration("pack|shader-state");
+
+        RetainedPrograms.retain(1L, sources, 91, oldEpoch);
+
+        assertEquals(List.of(91), deleter.deleted);
+        assertEquals(0, RetainedPrograms.take(sources));
+    }
+
+    @Test
+    void configurationChangeQueuesOtherShareGroupsProgramsUntilTheirOwnerIsCurrent() {
+        final RetainedPrograms.Sources sources = graphics("vertex", "fragment");
+        RetainedPrograms.retain(sources, 101);
+        contextProvider.makeCurrent(2L);
+
+        RetainedPrograms.useConfiguration("new-pack|new-options");
+
+        assertTrue(deleter.deleted.isEmpty(), "configuration invalidation must not delete another group's name here");
+        contextProvider.makeCurrent(1L);
+        assertEquals(0, RetainedPrograms.take(sources));
+        assertEquals(List.of(101), deleter.deleted);
+    }
+
+    @Test
+    void displayContextChangePreservesEveryLiveShareGroupAndDrainsOnlyTheCurrentGroup() {
+        final RetainedPrograms.Sources groupOneSources = graphics("vertex-one", "fragment");
+        final RetainedPrograms.Sources groupTwoSources = graphics("vertex-two", "fragment");
+        RetainedPrograms.retain(groupOneSources, 111);
+
+        contextProvider.makeCurrent(2L);
+        RetainedPrograms.retain(groupTwoSources, 222);
+        RetainedPrograms.deleteProgram(1L, 301);
+
+        contextProvider.makeCurrent(1L);
+        RetainedPrograms.deleteProgram(2L, 302);
+        ProgramCacheContextReset.onDisplayContextChange();
+
+        assertEquals(List.of(301), deleter.deleted,
+            "only deletes queued for the current share group are drained during migration");
+        assertEquals(111, RetainedPrograms.take(groupOneSources),
+            "the current live group's cached program remains reusable");
+
+        contextProvider.makeCurrent(2L);
+        ProgramCacheContextReset.onDisplayContextChange();
+        assertEquals(List.of(301, 302), deleter.deleted,
+            "pending deletes drain when their own group becomes current");
+        assertEquals(222, RetainedPrograms.take(groupTwoSources),
+            "a second live share group's cached program survives the same callback");
     }
 
     private static RetainedPrograms.Sources graphics(String vertex, String fragment) {

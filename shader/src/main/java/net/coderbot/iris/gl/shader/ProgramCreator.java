@@ -13,6 +13,8 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.KHRDebug;
 
+import java.util.function.IntConsumer;
+
 public class ProgramCreator {
 
 	private static final Logger LOGGER = LogManager.getLogger("ProgramCreator");
@@ -49,9 +51,28 @@ public class ProgramCreator {
 	 */
 	public static int load(String name, ProgramBinaryCache.Key cacheKey) {
 		final int program = ProgramBinaryCache.load(cacheKey);
-		if (program != 0) {
-			GLDebug.nameObject(KHRDebug.GL_PROGRAM, program, name);
+		return nameLoadedProgram(program,
+			loadedProgram -> GLDebug.nameObject(KHRDebug.GL_PROGRAM, loadedProgram, name),
+			GLStateManager::glDeleteProgram);
+	}
+
+	/** Names a restored program and releases it if naming fails before ownership can be returned. */
+	static int nameLoadedProgram(int program, IntConsumer nameObject, IntConsumer deleteProgram) {
+		if (program == 0) {
+			return 0;
 		}
+
+		try {
+			nameObject.accept(program);
+		} catch (RuntimeException | Error failure) {
+			try {
+				deleteProgram.accept(program);
+			} catch (RuntimeException | Error cleanupFailure) {
+				failure.addSuppressed(cleanupFailure);
+			}
+			throw failure;
+		}
+
 		return program;
 	}
 
@@ -60,11 +81,25 @@ public class ProgramCreator {
 	}
 
 	public static int create(String name, @Nullable ProgramBinaryCache.Key cacheKey, GlShader... shaders) {
+		return create(name, cacheKey, ATTRIBUTE_NAMES, ATTRIBUTE_LOCATIONS, shaders);
+	}
+
+	/** Links shader stages with caller-owned attribute bindings that do not use Iris's cached layout. */
+	public static int createWithAttributeBindings(String name, String[] attributeNames, int[] attributeLocations,
+												 GlShader... shaders) {
+		return create(name, null, attributeNames, attributeLocations, shaders);
+	}
+
+	private static int create(String name, @Nullable ProgramBinaryCache.Key cacheKey, String[] attributeNames,
+						  int[] attributeLocations, GlShader... shaders) {
+		if (attributeNames.length != attributeLocations.length) {
+			throw new IllegalArgumentException("Attribute names and locations must have the same length");
+		}
 		int program = GLStateManager.glCreateProgram();
 
 		try {
-			for (int i = 0; i < ATTRIBUTE_NAMES.length; i++) {
-				RenderSystem.bindAttributeLocation(program, ATTRIBUTE_LOCATIONS[i], ATTRIBUTE_NAMES[i]);
+			for (int i = 0; i < attributeNames.length; i++) {
+				RenderSystem.bindAttributeLocation(program, attributeLocations[i], attributeNames[i]);
 			}
 
 			for (GlShader shader : shaders) {
@@ -99,7 +134,11 @@ public class ProgramCreator {
 			return program;
 		} catch (RuntimeException | Error failure) {
 			// The caller never sees this name, so nothing else can delete what was created here.
-			GLStateManager.glDeleteProgram(program);
+			try {
+				GLStateManager.glDeleteProgram(program);
+			} catch (RuntimeException | Error cleanupFailure) {
+				failure.addSuppressed(cleanupFailure);
+			}
 			throw failure;
 		}
 	}

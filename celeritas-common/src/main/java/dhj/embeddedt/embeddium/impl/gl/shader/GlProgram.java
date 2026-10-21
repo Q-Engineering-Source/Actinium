@@ -104,9 +104,11 @@ public class GlProgram<T> extends GlObject implements ShaderBindingContext {
         return new GlUniformBlock(bindingPoint);
     }
 
-    public static class Builder {
+    public static class Builder implements AutoCloseable {
         private final String name;
         private final int program;
+        private boolean transferred;
+        private boolean closed;
 
         public Builder(String name) {
             this.name = name;
@@ -114,6 +116,7 @@ public class GlProgram<T> extends GlObject implements ShaderBindingContext {
         }
 
         public Builder attachShader(GlShader shader) {
+            ensureOpen();
             LWJGL.glAttachShader(this.program, shader.handle());
 
             return this;
@@ -129,37 +132,67 @@ public class GlProgram<T> extends GlObject implements ShaderBindingContext {
          * @return An instantiated shader container as provided by the factory
          */
         public <U> GlProgram<U> link(Function<ShaderBindingContext, U> factory) {
-            applyLinkHook(this.program);
+            ensureOpen();
+            try {
+                applyLinkHook(this.program);
 
-            LWJGL.glLinkProgram(this.program);
+                LWJGL.glLinkProgram(this.program);
 
-            String log = LWJGL.glGetProgramInfoLog(this.program, 4096);
+                String log = LWJGL.glGetProgramInfoLog(this.program, 4096);
 
-            if (!log.isEmpty()) {
-                LOGGER.warn("Program link log for " + this.name + ": " + log);
+                if (!log.isEmpty()) {
+                    LOGGER.warn("Program link log for " + this.name + ": " + log);
+                }
+
+                int result = LWJGL.glGetProgrami(this.program, GL20.GL_LINK_STATUS);
+
+                if (result != GL20.GL_TRUE) {
+                    throw new RuntimeException("Shader program linking failed, see log for details");
+                }
+
+                GLDebug.nameObject(GL43.GL_PROGRAM, this.program, this.name);
+
+                final GlProgram<U> linked = new GlProgram<>(this.program, factory);
+                this.transferred = true;
+                return linked;
+            } catch (RuntimeException | Error failure) {
+                try {
+                    close();
+                } catch (RuntimeException | Error cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+                throw failure;
             }
-
-            int result = LWJGL.glGetProgrami(this.program, GL20.GL_LINK_STATUS);
-
-            if (result != GL20.GL_TRUE) {
-                throw new RuntimeException("Shader program linking failed, see log for details");
-            }
-
-            GLDebug.nameObject(GL43.GL_PROGRAM, this.program, this.name);
-
-            return new GlProgram<>(this.program, factory);
         }
 
         public Builder bindAttribute(String name, int index) {
+            ensureOpen();
             LWJGL.glBindAttribLocation(this.program, index, name);
 
             return this;
         }
 
         public Builder bindFragmentData(String name, int index) {
+            ensureOpen();
             LWJGL.glBindFragDataLocation(this.program, index, name);
 
             return this;
+        }
+
+        /** Deletes a program that was not transferred to a linked wrapper. */
+        @Override
+        public void close() {
+            if (this.closed || this.transferred) {
+                return;
+            }
+            this.closed = true;
+            LWJGL.glDeleteProgram(this.program);
+        }
+
+        private void ensureOpen() {
+            if (this.closed || this.transferred) {
+                throw new IllegalStateException("This program builder has already been closed or linked");
+            }
         }
     }
 }

@@ -1,218 +1,345 @@
 package net.coderbot.iris.gl.program;
 
+import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
+import com.gtnewhorizons.angelica.glsm.context.GLContextRegistryProvider;
+import net.coderbot.iris.gl.ResourceCleanup;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayDeque;
-import java.util.Iterator;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
-/**
- * Linked programs kept from pipelines that were destroyed, so that turning shaders off and on, reloading
- * an unchanged pack, or travelling between two dimensions reuses the programs the previous pipeline
- * already linked instead of compiling and linking the same sources again.
- *
- * <p>A program is only reusable while its pack configuration is unchanged, which
- * {@link #useConfiguration(String)} tracks: a different configuration retires every kept program. Two
- * batches are held. Programs retained when a pipeline is destroyed form the newest batch; the batch before
- * it is retired when the next pipeline has been built, which gives a program one more build to be taken
- * before it is deleted.</p>
- *
- * <p>Ownership: a program enters the pool through {@link #retain} (the destroying wrapper hands its GL name
- * over instead of deleting it), leaves it through {@link #take} (the new wrapper owns it from then on), and
- * is deleted by the pool when it is evicted, retired or exceeded. A name therefore has exactly one owner at
- * any time: either one {@link Program}/{@link ComputeProgram} wrapper or the pool. The one exception is
- * {@link #discardAll()}, where the pool forgets names of a context that is gone instead of deleting them,
- * because on the new context those numbers may name something else.</p>
- *
- * <p>The pool is bounded twice: one {@link Sources} key keeps at most {@link #MAX_PROGRAMS_PER_SOURCES}
- * programs per batch, which covers several passes that happen to link identical sources, and both batches
- * together keep at most {@link #MAX_RETAINED_PROGRAMS} programs, which bounds the pool when a pack has many
- * dimension folders. Evicting is always a real deletion, never a leak.</p>
- */
+/** Retains linked programs for reuse by a later pipeline in the same GL share group. */
 public final class RetainedPrograms {
-	/**
-	 * The stage sources a linked program was built from; two programs with equal sources are interchangeable.
-	 *
-	 * @param vertex the vertex stage source
-	 * @param geometry the geometry stage source, or null when the program has none
-	 * @param tessControl the tessellation control stage source, or null when the program has none
-	 * @param tessEval the tessellation evaluation stage source, or null when the program has none
-	 * @param fragment the fragment stage source
-	 * @param compute the compute stage source, or null for a graphics program
-	 */
+	/** The stage sources a linked program was built from. */
 	public record Sources(@Nullable String vertex, @Nullable String geometry, @Nullable String tessControl,
 						  @Nullable String tessEval, @Nullable String fragment, @Nullable String compute) {}
 
-	/** Most programs one {@link Sources} key keeps per batch. */
-	private static final int MAX_PROGRAMS_PER_SOURCES = 4;
-	/** Most programs both batches keep together. */
-	private static final int MAX_RETAINED_PROGRAMS = 512;
+	private record ProgramEntry(int program, long order) {}
+	private record Eviction(long shareGroupId, Sources sources, boolean older, ProgramEntry entry) {}
 
-	/** Programs kept from the pipelines destroyed since the last {@link #afterPipelineBuilt()}. */
-	private static Map<Sources, ArrayDeque<Integer>> recent = new LinkedHashMap<>();
-	/** Programs kept one batch earlier: still takeable, deleted when the next pipeline has been built. */
-	private static Map<Sources, ArrayDeque<Integer>> older = new LinkedHashMap<>();
-	/** Number of program names the pool owns, both batches together. */
-	private static int retained;
-	/** Identity of the pack configuration the kept programs were linked for, or null before any pack. */
-	private static String configuration;
-	/** The GL call evicting and retiring use; replaced by tests through {@link #setDeleterForTesting}. */
+	private static final int MAX_PROGRAMS_PER_SOURCES = 4;
+	private static final int MAX_RETAINED_PROGRAMS = 512;
+	private static final Map<Long, GroupPool> pools = new LinkedHashMap<>();
+	/** Names awaiting a live context in their owner share group before they can be deleted. */
+	private static final Map<Long, ArrayDeque<Integer>> pendingDeletes = new LinkedHashMap<>();
+	private static ProgramContextProvider contextProvider = new ProgramContextProviderImpl();
 	private static ProgramDeleter deleter = new ProgramDeleterImpl();
+	private static String configuration;
+	private static long configurationEpoch;
+	private static long nextProgramOrder;
+	private static int cachedPrograms;
+	private static int pendingProgramDeletes;
+
+	@SuppressWarnings("unused")
+	private static final AutoCloseable RETIREMENT_SUBSCRIPTION =
+		GLContextRegistryProvider.addRetirementListener(RetainedPrograms::onContextRetired);
 
 	private RetainedPrograms() {}
 
-	/**
-	 * Selects the pack configuration the kept programs belong to. A configuration that differs from the
-	 * previous one retires every kept program, because programs linked for another pack must never be used.
-	 *
-	 * <p>The identity is the pack settings fingerprint supplied by {@code Iris}: the pack file, the files it
-	 * contains, the options applied to it and the environment defines it was parsed under. A reload of an
-	 * unchanged pack therefore keeps its programs, and a pack switch or an option change drops them.</p>
-	 *
-	 * @param settings identity of the configuration, or null to retire everything without selecting one
-	 */
-	public static void useConfiguration(@Nullable String settings) {
-		if (settings == null || !settings.equals(configuration)) {
-			deletePool(recent);
-			deletePool(older);
-		}
-
-		configuration = settings;
-	}
-
-	/**
-	 * Drops every kept program without deleting it, for the case where the GL context the names were created
-	 * on is gone.
-	 *
-	 * <p>The names are names in the old context. On the new one the same numbers may already refer to
-	 * unrelated objects, so deleting them could destroy a program that context owns; they are therefore
-	 * forgotten rather than freed - losing the context lost the objects behind them. The configuration goes
-	 * with them, because no kept program belongs to it any more.</p>
-	 *
-	 * @return the number of program names dropped, so the caller can report what the migration cost
-	 */
-	public static int discardAll() {
-		final int discarded = retained;
-		recent.clear();
-		older.clear();
-		retained = 0;
-		configuration = null;
-
-		return discarded;
-	}
-
-	/** Hands a program over to the pool instead of deleting it when its pipeline is destroyed. */
-	static void retain(Sources sources, int program) {
-		if (program == 0) {
+	/** Selects the shader-pack state whose linked programs are eligible for reuse. */
+	public static synchronized void useConfiguration(@Nullable String settings) {
+		if (settings != null && settings.equals(configuration)) {
 			return;
 		}
 
-		final ArrayDeque<Integer> programs = recent.computeIfAbsent(sources, key -> new ArrayDeque<>());
-		programs.addLast(program);
-		retained++;
+		configuration = settings;
+		configurationEpoch++;
 
-		while (programs.size() > MAX_PROGRAMS_PER_SOURCES) {
-			final int evicted = programs.pollFirst();
-			delete(evicted);
-			retained--;
+		final List<Runnable> cleanupActions = new ArrayList<>();
+		for (Map.Entry<Long, GroupPool> groupEntry : pools.entrySet()) {
+			final long shareGroupId = groupEntry.getKey();
+			final GroupPool pool = groupEntry.getValue();
+			appendPoolReleaseActions(cleanupActions, shareGroupId, pool.recent);
+			appendPoolReleaseActions(cleanupActions, shareGroupId, pool.older);
+		}
+		pools.clear();
+		cachedPrograms = 0;
+		pruneRetiredShareGroups();
+		ResourceCleanup.runAll(null, cleanupActions);
+	}
+
+	/** Forgets every retained name for controlled teardown or test cleanup. */
+	static synchronized int discardAll() {
+		final int discarded = cachedPrograms + pendingProgramDeletes;
+		pools.clear();
+		pendingDeletes.clear();
+		cachedPrograms = 0;
+		pendingProgramDeletes = 0;
+		configuration = null;
+		configurationEpoch++;
+		return discarded;
+	}
+
+	/** Promotes the current share group's recent batch and retires its previous promoted batch. */
+	public static synchronized void afterPipelineBuilt() {
+		final long shareGroupId = currentShareGroupId();
+		pruneRetiredShareGroups();
+		drainPendingDeletes(shareGroupId);
+		final GroupPool pool = pools.get(shareGroupId);
+		if (pool == null) {
+			return;
 		}
 
-		enforceCapacity();
+		final List<Runnable> cleanupActions = new ArrayList<>();
+		appendPoolReleaseActions(cleanupActions, shareGroupId, pool.older);
+		final int retiredCount = count(pool.older);
+		cachedPrograms -= retiredCount;
+		pool.cachedPrograms -= retiredCount;
+		pool.older.clear();
+
+		pool.older = pool.recent;
+		pool.recent = new LinkedHashMap<>();
+		ResourceCleanup.runAll(null, cleanupActions);
+		removeEmptyPool(shareGroupId, pool);
 	}
 
-	/**
-	 * Takes a kept program for these stage sources, transferring its ownership to the caller.
-	 *
-	 * @return the program, or 0 when nothing matching is kept. A taken program is never handed out twice.
-	 */
-	static int take(Sources sources) {
-		final int program = pollFrom(recent, sources);
-		return program != 0 ? program : pollFrom(older, sources);
+	/** Reconciles retained names with context lifetimes after the display switches GL contexts. */
+	public static synchronized void onDisplayContextChanged() {
+		pruneRetiredShareGroups();
+
+		final long currentShareGroupId = contextProvider.currentShareGroupId();
+		if (currentShareGroupId > 0L && contextProvider.hasLiveContexts(currentShareGroupId)) {
+			drainPendingDeletes(currentShareGroupId);
+		}
 	}
 
-	/**
-	 * Called once a pipeline has been built: the batch before the one the caller just built can no longer be
-	 * taken by a later pipeline, so it is deleted and the newest batch takes its place.
-	 */
-	public static void afterPipelineBuilt() {
-		deletePool(older);
-		older = recent;
-		recent = new LinkedHashMap<>();
-	}
-
-	/**
-	 * Replaces the GL call the pool makes. Only tests use it: it lets eviction and retirement be observed
-	 * without a context. Passing null restores the production implementation.
-	 */
-	static void setDeleterForTesting(@Nullable ProgramDeleter replacement) {
+	static synchronized void setDeleterForTesting(@Nullable ProgramDeleter replacement) {
 		deleter = replacement != null ? replacement : new ProgramDeleterImpl();
 	}
 
-	private static int pollFrom(Map<Sources, ArrayDeque<Integer>> pool, Sources sources) {
-		final ArrayDeque<Integer> programs = pool.get(sources);
-		if (programs == null) {
+	static synchronized void setContextProviderForTesting(@Nullable ProgramContextProvider replacement) {
+		contextProvider = replacement != null ? replacement : new ProgramContextProviderImpl();
+	}
+
+	static synchronized long currentShareGroupId() {
+		final long shareGroupId = contextProvider.currentShareGroupId();
+		if (shareGroupId <= 0L) {
+			throw new IllegalStateException("Program ownership requires a current GL share group");
+		}
+		return shareGroupId;
+	}
+
+	static synchronized long configurationEpoch() {
+		return configurationEpoch;
+	}
+
+	static synchronized void requireCurrentShareGroup(long ownerShareGroupId) {
+		final long currentShareGroupId = currentShareGroupId();
+		if (currentShareGroupId != ownerShareGroupId) {
+			throw new IllegalStateException("A linked program can only be used in its owner share group");
+		}
+	}
+
+	static synchronized int take(Sources sources) {
+		return take(currentShareGroupId(), sources);
+	}
+
+	static synchronized int take(long shareGroupId, Sources sources) {
+		pruneRetiredShareGroups();
+		if (contextProvider.currentShareGroupId() != shareGroupId) {
+			throw new IllegalStateException("A linked program can only be taken from its owner share group");
+		}
+		if (!contextProvider.hasLiveContexts(shareGroupId)) {
+			return 0;
+		}
+		if (contextProvider.currentShareGroupId() == shareGroupId) {
+			drainPendingDeletes(shareGroupId);
+		}
+
+		final GroupPool pool = pools.get(shareGroupId);
+		if (pool == null) {
 			return 0;
 		}
 
-		final int program = programs.pollFirst();
+		final ProgramEntry program = pollFrom(pool.recent, sources);
+		final ProgramEntry selected = program != null ? program : pollFrom(pool.older, sources);
+		if (selected == null) {
+			return 0;
+		}
+
+		pool.cachedPrograms--;
+		cachedPrograms--;
+		removeEmptyPool(shareGroupId, pool);
+		return selected.program();
+	}
+
+	/** Compatibility entry point for an owner that is currently in the program's share group. */
+	static synchronized void retain(Sources sources, int program) {
+		retain(currentShareGroupId(), sources, program, configurationEpoch);
+	}
+
+	static synchronized void retain(long shareGroupId, Sources sources, int program, long ownerConfigurationEpoch) {
+		if (program == 0) {
+			return;
+		}
+		pruneRetiredShareGroups();
+		if (ownerConfigurationEpoch != configurationEpoch || !contextProvider.hasLiveContexts(shareGroupId)) {
+			deleteProgram(shareGroupId, program);
+			return;
+		}
+
+		final GroupPool pool = pools.computeIfAbsent(shareGroupId, ignored -> new GroupPool());
+		final ArrayDeque<ProgramEntry> programs = pool.recent.computeIfAbsent(sources, ignored -> new ArrayDeque<>());
+		programs.addLast(new ProgramEntry(program, nextProgramOrder++));
+		pool.cachedPrograms++;
+		cachedPrograms++;
+
+		final List<Runnable> cleanupActions = new ArrayList<>();
+		while (programs.size() > MAX_PROGRAMS_PER_SOURCES) {
+			final ProgramEntry evicted = programs.removeFirst();
+			pool.cachedPrograms--;
+			cachedPrograms--;
+			cleanupActions.add(() -> deleteProgram(shareGroupId, evicted.program()));
+		}
+		appendCapacityEvictions(cleanupActions);
+		ResourceCleanup.runAll(null, cleanupActions);
+	}
+
+	/** Deletes in the owner group, queues for a live remote group, or forgets a retired group's name. */
+	static synchronized void deleteProgram(long shareGroupId, int program) {
+		if (program == 0 || !contextProvider.hasLiveContexts(shareGroupId)) {
+			return;
+		}
+		if (contextProvider.currentShareGroupId() == shareGroupId) {
+			deleter.deleteProgram(program);
+			return;
+		}
+
+		pendingDeletes.computeIfAbsent(shareGroupId, ignored -> new ArrayDeque<>()).addLast(program);
+		pendingProgramDeletes++;
+	}
+
+	/** Forgets a share group's names after its final native context has been destroyed. */
+	static synchronized void onContextRetired(GLContextIdentity identity) {
+		final long shareGroupId = identity.shareGroupId();
+		if (!contextProvider.hasLiveContexts(shareGroupId)) {
+			dropShareGroup(shareGroupId);
+		}
+	}
+
+	private static void appendCapacityEvictions(List<Runnable> cleanupActions) {
+		while (cachedPrograms > MAX_RETAINED_PROGRAMS) {
+			final Eviction oldest = oldestProgram();
+			if (oldest == null) {
+				return;
+			}
+
+			final GroupPool pool = pools.get(oldest.shareGroupId());
+			final Map<Sources, ArrayDeque<ProgramEntry>> batch = oldest.older() ? pool.older : pool.recent;
+			final ArrayDeque<ProgramEntry> programs = batch.get(oldest.sources());
+			programs.removeFirst();
+			if (programs.isEmpty()) {
+				batch.remove(oldest.sources());
+			}
+			pool.cachedPrograms--;
+			cachedPrograms--;
+			cleanupActions.add(() -> deleteProgram(oldest.shareGroupId(), oldest.entry().program()));
+			removeEmptyPool(oldest.shareGroupId(), pool);
+		}
+	}
+
+	private static Eviction oldestProgram() {
+		Eviction oldest = null;
+		for (Map.Entry<Long, GroupPool> groupEntry : pools.entrySet()) {
+			final long shareGroupId = groupEntry.getKey();
+			final GroupPool pool = groupEntry.getValue();
+			oldest = oldestInBatch(shareGroupId, pool.recent, false, oldest);
+			oldest = oldestInBatch(shareGroupId, pool.older, true, oldest);
+		}
+		return oldest;
+	}
+
+	private static Eviction oldestInBatch(long shareGroupId, Map<Sources, ArrayDeque<ProgramEntry>> batch,
+									  boolean older, @Nullable Eviction oldest) {
+		for (Map.Entry<Sources, ArrayDeque<ProgramEntry>> entry : batch.entrySet()) {
+			final ProgramEntry candidate = entry.getValue().peekFirst();
+			if (candidate != null && (oldest == null || candidate.order() < oldest.entry().order())) {
+				oldest = new Eviction(shareGroupId, entry.getKey(), older, candidate);
+			}
+		}
+		return oldest;
+	}
+
+	private static void drainPendingDeletes(long shareGroupId) {
+		final ArrayDeque<Integer> pending = pendingDeletes.remove(shareGroupId);
+		if (pending == null) {
+			return;
+		}
+		pendingProgramDeletes -= pending.size();
+		final List<Runnable> cleanupActions = new ArrayList<>(pending.size());
+		for (int program : pending) {
+			cleanupActions.add(() -> deleter.deleteProgram(program));
+		}
+		ResourceCleanup.runAll(null, cleanupActions);
+	}
+
+	private static void appendPoolReleaseActions(List<Runnable> actions, long shareGroupId,
+										 Map<Sources, ArrayDeque<ProgramEntry>> batch) {
+		for (ArrayDeque<ProgramEntry> programs : batch.values()) {
+			for (ProgramEntry program : programs) {
+				actions.add(() -> deleteProgram(shareGroupId, program.program()));
+			}
+		}
+	}
+
+	private static ProgramEntry pollFrom(Map<Sources, ArrayDeque<ProgramEntry>> pool, Sources sources) {
+		final ArrayDeque<ProgramEntry> programs = pool.get(sources);
+		if (programs == null) {
+			return null;
+		}
+
+		final ProgramEntry program = programs.pollFirst();
 		if (programs.isEmpty()) {
 			pool.remove(sources);
 		}
-		retained--;
-
 		return program;
 	}
 
-	/**
-	 * Deletes kept programs until the pool fits its bound. The older batch is the oldest kept work, so it is
-	 * the first to go; the newest batch only gives programs up when the older one alone does not cover the
-	 * overflow, which keeps the programs the current pipeline may ask for again.
-	 */
-	private static void enforceCapacity() {
-		while (retained > MAX_RETAINED_PROGRAMS) {
-			if (evictOldest(older)) {
-				continue;
-			}
+	private static int count(Map<Sources, ArrayDeque<ProgramEntry>> pool) {
+		int count = 0;
+		for (ArrayDeque<ProgramEntry> programs : pool.values()) {
+			count += programs.size();
+		}
+		return count;
+	}
 
-			if (!evictOldest(recent)) {
-				return;
+	private static void pruneRetiredShareGroups() {
+		final List<Long> groups = new ArrayList<>(pools.keySet());
+		for (Long shareGroupId : pendingDeletes.keySet()) {
+			if (!groups.contains(shareGroupId)) {
+				groups.add(shareGroupId);
+			}
+		}
+		for (long shareGroupId : groups) {
+			if (!contextProvider.hasLiveContexts(shareGroupId)) {
+				dropShareGroup(shareGroupId);
 			}
 		}
 	}
 
-	/** Deletes and drops the oldest program of a batch. Returns false when the batch is empty. */
-	private static boolean evictOldest(Map<Sources, ArrayDeque<Integer>> pool) {
-		final Iterator<Map.Entry<Sources, ArrayDeque<Integer>>> entries = pool.entrySet().iterator();
-		if (!entries.hasNext()) {
-			return false;
+	private static void dropShareGroup(long shareGroupId) {
+		final GroupPool pool = pools.remove(shareGroupId);
+		if (pool != null) {
+			cachedPrograms -= pool.cachedPrograms;
 		}
-
-		final Map.Entry<Sources, ArrayDeque<Integer>> oldest = entries.next();
-		final int program = oldest.getValue().pollFirst();
-		if (oldest.getValue().isEmpty()) {
-			entries.remove();
+		final ArrayDeque<Integer> pending = pendingDeletes.remove(shareGroupId);
+		if (pending != null) {
+			pendingProgramDeletes -= pending.size();
 		}
-
-		delete(program);
-		retained--;
-
-		return true;
 	}
 
-	/** Deletes every program of a batch and empties it. */
-	private static void deletePool(Map<Sources, ArrayDeque<Integer>> pool) {
-		for (ArrayDeque<Integer> programs : pool.values()) {
-			for (int program : programs) {
-				delete(program);
-				retained--;
-			}
+	private static void removeEmptyPool(long shareGroupId, GroupPool pool) {
+		if (pool.cachedPrograms == 0) {
+			pools.remove(shareGroupId, pool);
 		}
-
-		pool.clear();
 	}
 
-	private static void delete(int program) {
-		deleter.deleteProgram(program);
+	private static final class GroupPool {
+		private Map<Sources, ArrayDeque<ProgramEntry>> recent = new LinkedHashMap<>();
+		private Map<Sources, ArrayDeque<ProgramEntry>> older = new LinkedHashMap<>();
+		private int cachedPrograms;
 	}
 }

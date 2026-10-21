@@ -38,4 +38,7 @@ interface ProgramFallback {
 	 * @return the new program
 	 */
 	int compile(String name, @Nullable ProgramBinaryCache.Key cacheKey, RetainedPrograms.Sources sources);
+
+	/** Deletes a program whose ownership did not reach a completed wrapper. */
+	void deleteProgram(int program);
 }

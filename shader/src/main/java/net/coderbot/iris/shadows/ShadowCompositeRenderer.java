@@ -10,6 +10,7 @@ import net.coderbot.iris.features.FeatureFlags;
 import net.coderbot.iris.gl.buffer.ShaderStorageBufferHolder;
 import net.coderbot.iris.gl.framebuffer.GlFramebuffer;
 import net.coderbot.iris.gl.framebuffer.ViewportData;
+import net.coderbot.iris.gl.ResourceCleanup;
 import net.coderbot.iris.gl.image.GlImage;
 import net.coderbot.iris.gl.program.ComputeProgram;
 import net.coderbot.iris.gl.program.Program;
@@ -48,6 +49,8 @@ import org.lwjgl.opengl.GL43;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
 public class ShadowCompositeRenderer {
 
@@ -92,7 +95,9 @@ public class ShadowCompositeRenderer {
             }
         });
 
-        for (int i = 0, sourcesLength = sources.length; i < sourcesLength; i++) {
+		final List<Pass> ownedPasses = new ArrayList<>();
+		try {
+		for (int i = 0, sourcesLength = sources.length; i < sourcesLength; i++) {
             ProgramSource source = sources[i];
 
             ImmutableSet<Integer> flipped = renderTargets.snapshot();
@@ -101,13 +106,20 @@ public class ShadowCompositeRenderer {
             if (source == null || !source.isValid()) {
                 if (computes[i] != null) {
                     ComputeOnlyPass pass = new ComputeOnlyPass();
-                    pass.computes = createComputes(computes[i], flipped, flippedAtLeastOnceSnapshot, renderTargets);
-                    passes.add(pass);
+					try {
+						pass.computes = createComputes(computes[i], flipped, flippedAtLeastOnceSnapshot, renderTargets);
+						ownedPasses.add(pass);
+						passes.add(pass);
+					} catch (RuntimeException | Error failure) {
+						ResourceCleanup.runAll(failure, pass::destroy);
+						throw failure;
+					}
                 }
                 continue;
             }
 
             Pass pass = new Pass();
+			try {
             ProgramDirectives directives = source.getDirectives();
 
             pass.program = createProgram(source, flipped, flippedAtLeastOnceSnapshot, renderTargets);
@@ -122,7 +134,8 @@ public class ShadowCompositeRenderer {
             pass.mipmappedBuffers = directives.getMipmappedBuffers();
             pass.flippedAtLeastOnce = flippedAtLeastOnceSnapshot;
 
-            passes.add(pass);
+			ownedPasses.add(pass);
+			passes.add(pass);
 
             ImmutableMap<Integer, Boolean> explicitFlips = directives.getExplicitFlips();
 
@@ -143,12 +156,20 @@ public class ShadowCompositeRenderer {
                     flippedAtLeastOnce.add(buffer);
                 }
             });
+			} catch (RuntimeException | Error failure) {
+				ResourceCleanup.runAll(failure, pass::destroy);
+				throw failure;
+			}
         }
 
         this.passes = passes.build();
         this.flippedAtLeastOnceFinal = flippedAtLeastOnce.build();
 
         GLStateManager.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
+		} catch (RuntimeException | Error failure) {
+			ResourceCleanup.runAll(failure, ownedPasses.stream().<Runnable>map(pass -> pass::destroy).toList());
+			throw failure;
+		}
     }
 
     private static void setupMipmapping(RenderTarget target, boolean readFromAlt) {
@@ -275,7 +296,7 @@ public class ShadowCompositeRenderer {
         PatchedShaderPrinter.debugPatchedShaders(source.getName(), vertex, geometry, tessControl, tessEval, fragment);
 
         Objects.requireNonNull(flipped);
-        ProgramBuilder builder;
+		final ProgramBuilder builder;
 
         try {
             builder = ProgramBuilder.begin(source.getName(), vertex, geometry, tessControl, tessEval, fragment, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
@@ -284,7 +305,8 @@ public class ShadowCompositeRenderer {
             throw new RuntimeException("Shader compilation failed for shadow composite " + source.getName() + "!", e);
         }
 
-        ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor = ProgramSamplers.customTextureSamplerInterceptor(
+		try (builder) {
+		ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor = ProgramSamplers.customTextureSamplerInterceptor(
                 builder,
                 customTextureIds,
                 flippedAtLeastOnceSnapshot);
@@ -301,8 +323,10 @@ public class ShadowCompositeRenderer {
         IrisSamplers.addCustomImages(customTextureSamplerInterceptor, irisCustomImages);
         Program build = builder.build();
         this.customUniforms.mapholderToPass(builder, build);
+		builder.commit();
 
         return build;
+		}
     }
 
     private ComputeProgram[] createComputes(ComputeSource[] sources, ImmutableSet<Integer> flipped, ImmutableSet<Integer> flippedAtLeastOnceSnapshot,
@@ -311,52 +335,62 @@ public class ShadowCompositeRenderer {
             return new ComputeProgram[0];
         }
 
-        ComputeProgram[] programs = new ComputeProgram[sources.length];
-        for (int i = 0; i < programs.length; i++) {
-            ComputeSource source = sources[i];
-            if (source == null || !source.getSource().isPresent()) {
-                continue;
-            } else {
-                Objects.requireNonNull(flipped);
-                ProgramBuilder builder;
+		ComputeProgram[] programs = new ComputeProgram[sources.length];
+		try {
+			for (int i = 0; i < programs.length; i++) {
+				ComputeSource source = sources[i];
+				if (source == null || !source.getSource().isPresent()) {
+					continue;
+				}
 
-                try {
-                    String transformed = TransformPatcher.patchCompute(source.getName(), source.getSource().orElse(null),
-                        TextureStage.SHADOWCOMP, pipeline.getTextureMap());
-                    PatchedShaderPrinter.debugPatchedShaders(source.getName() + "_compute", null, null, null, transformed);
-                    builder = ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
-                } catch (RuntimeException e) {
-                    // TODO: Better error handling
-                    throw new RuntimeException("Shader compilation failed for shadowcomp compute " + source.getName() + "!", e);
-                }
+				try {
+					Objects.requireNonNull(flipped);
+					String transformed = TransformPatcher.patchCompute(source.getName(), source.getSource().orElse(null),
+						TextureStage.SHADOWCOMP, pipeline.getTextureMap());
+					PatchedShaderPrinter.debugPatchedShaders(source.getName() + "_compute", null, null, null, transformed);
+					try (ProgramBuilder builder = ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS)) {
+						ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor = ProgramSamplers.customTextureSamplerInterceptor(
+							builder,
+							customTextureIds,
+							flippedAtLeastOnceSnapshot);
 
-                ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor = ProgramSamplers.customTextureSamplerInterceptor(
-                        builder,
-                        customTextureIds,
-                        flippedAtLeastOnceSnapshot);
+						CommonUniforms.addDynamicUniforms(builder, FogMode.OFF);
+						this.customUniforms.assignTo(builder);
+						IrisSamplers.addNoiseSampler(customTextureSamplerInterceptor, noiseTexture);
+						IrisSamplers.addCustomTextures(customTextureSamplerInterceptor, irisCustomTextures);
+						IrisSamplers.addShadowSamplers(customTextureSamplerInterceptor, targets, flipped, pipeline.hasFeature(FeatureFlags.SEPARATE_HARDWARE_SAMPLERS));
+						IrisImages.addShadowColorImages(builder, targets, flipped);
+						IrisImages.addCustomImages(builder, irisCustomImages);
+						IrisSamplers.addCustomImages(customTextureSamplerInterceptor, irisCustomImages);
 
-                CommonUniforms.addDynamicUniforms(builder, FogMode.OFF);
-                this.customUniforms.assignTo(builder);
-                IrisSamplers.addNoiseSampler(customTextureSamplerInterceptor, noiseTexture);
-                IrisSamplers.addCustomTextures(customTextureSamplerInterceptor, irisCustomTextures);
-
-                IrisSamplers.addShadowSamplers(customTextureSamplerInterceptor, targets, flipped, pipeline.hasFeature(FeatureFlags.SEPARATE_HARDWARE_SAMPLERS));
-                IrisImages.addShadowColorImages(builder, targets, flipped);
-
-                IrisImages.addCustomImages(builder, irisCustomImages);
-                IrisSamplers.addCustomImages(customTextureSamplerInterceptor, irisCustomImages);
-                programs[i] = builder.buildCompute();
-
-                this.customUniforms.mapholderToPass(builder, programs[i]);
-
-                programs[i].setWorkGroupInfo(
-                        source.getWorkGroupRelative(),
-                        source.getWorkGroups(),
-                        ssboHolder != null ? FilledIndirectPointer.basedOff(ssboHolder, source.getIndirectPointer()) : null);
-            }
-        }
-
-        return programs;
+						ComputeProgram program = builder.buildCompute();
+						this.customUniforms.mapholderToPass(builder, program);
+						program.setWorkGroupInfo(
+							source.getWorkGroupRelative(),
+							source.getWorkGroups(),
+							ssboHolder != null ? FilledIndirectPointer.basedOff(ssboHolder, source.getIndirectPointer()) : null);
+						programs[i] = program;
+						builder.commit();
+					}
+				} catch (RuntimeException e) {
+					// TODO: Better error handling
+					throw new RuntimeException("Shader compilation failed for shadowcomp compute " + source.getName() + "!", e);
+				}
+			}
+			return programs;
+		} catch (RuntimeException | Error failure) {
+			for (ComputeProgram program : programs) {
+				if (program == null) {
+					continue;
+				}
+				try {
+					program.destroy();
+				} catch (RuntimeException | Error cleanupFailure) {
+					failure.addSuppressed(cleanupFailure);
+				}
+			}
+			throw failure;
+		}
     }
 
     public void destroy() {
@@ -376,12 +410,14 @@ public class ShadowCompositeRenderer {
         ComputeProgram[] computes;
 
         protected void destroy() {
-            this.program.destroy();
-            for (ComputeProgram compute : this.computes) {
-                if (compute != null) {
-                    compute.destroy();
-                }
-            }
+			final List<Runnable> cleanupActions = new ArrayList<>();
+			if (this.program != null) cleanupActions.add(this.program::destroy);
+			if (this.computes != null) {
+				for (ComputeProgram compute : this.computes) {
+					if (compute != null) cleanupActions.add(compute::destroy);
+				}
+			}
+			ResourceCleanup.runAll(null, cleanupActions);
         }
     }
 
@@ -389,11 +425,12 @@ public class ShadowCompositeRenderer {
 
         @Override
         protected void destroy() {
-            for (ComputeProgram compute : this.computes) {
-                if (compute != null) {
-                    compute.destroy();
-                }
-            }
+			if (this.computes == null) return;
+			final List<Runnable> cleanupActions = new ArrayList<>();
+			for (ComputeProgram compute : this.computes) {
+				if (compute != null) cleanupActions.add(compute::destroy);
+			}
+			ResourceCleanup.runAll(null, cleanupActions);
         }
     }
 }

@@ -5,6 +5,7 @@ import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCacheTestSupport;
 import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryOps;
 import com.gtnewhorizons.angelica.glsm.shader.ShaderDiskCache;
 import net.coderbot.iris.config.IrisConfig;
+import net.coderbot.iris.gl.program.RetainedProgramsTestSupport;
 import net.coderbot.iris.pipeline.FixedFunctionWorldRenderingPipeline;
 import net.coderbot.iris.pipeline.WorldRenderingPipeline;
 import net.coderbot.iris.shaderpack.ProgramSet;
@@ -70,6 +71,7 @@ class IrisFullShaderCompileTest {
 
     @BeforeEach
     void configureCache() {
+        RetainedProgramsTestSupport.installNoNativeContext();
         ProgramBinaryCacheTestSupport.installOps(new SilentDriver());
         ShaderDiskCache.configure(tempDir.resolve("cache"), "salt");
         ProgramBinaryCache.setEnabled(true);
@@ -78,10 +80,14 @@ class IrisFullShaderCompileTest {
 
     @AfterEach
     void releaseCache() {
-        ProgramBinaryCache.setEnabled(false);
-        ProgramBinaryCache.usePack(null);
-        ShaderDiskCache.disable();
-        ProgramBinaryCacheTestSupport.installOps(null);
+        try {
+            ProgramBinaryCache.setEnabled(false);
+            ProgramBinaryCache.usePack(null);
+            ShaderDiskCache.disable();
+            ProgramBinaryCacheTestSupport.installOps(null);
+        } finally {
+            RetainedProgramsTestSupport.restoreProductionProvider();
+        }
     }
 
     @Test

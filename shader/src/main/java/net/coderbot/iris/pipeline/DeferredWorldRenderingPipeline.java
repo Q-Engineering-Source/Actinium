@@ -1130,16 +1130,15 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 		PatchedShaderPrinter.debugPatchedShaders(source.getName(), vertex, geometry, tessControl, tessEval, fragment);
 
-		ProgramBuilder builder = ProgramBuilder.begin(source.getName(), vertex, geometry, tessControl, tessEval, fragment,
-			IrisSamplers.WORLD_RESERVED_TEXTURE_UNITS);
-
-		final Program program = wireGbufferProgram(builder, availability, shadow);
-
-		final Pass pass = createPassInner(program, source.getDirectives(), shadow, id);
-		this.customUniforms.mapholderToPass(builder, pass);
-		builtPrograms.record(shareKey, new BuiltProgram(program, pass));
-
-		return pass;
+		try (ProgramBuilder builder = ProgramBuilder.begin(source.getName(), vertex, geometry, tessControl, tessEval, fragment,
+			IrisSamplers.WORLD_RESERVED_TEXTURE_UNITS)) {
+			final Program program = wireGbufferProgram(builder, availability, shadow);
+			final Pass pass = createPassInner(program, source.getDirectives(), shadow, id);
+			this.customUniforms.mapholderToPass(builder, pass);
+			builtPrograms.record(shareKey, new BuiltProgram(program, pass));
+			builder.commit();
+			return pass;
+		}
 	}
 
 	/**
@@ -1695,117 +1694,118 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 	private ComputeProgram[] createShadowComputes(ComputeSource[] compute) {
 		ComputeProgram[] programs = new ComputeProgram[compute.length];
-		for (int i = 0; i < programs.length; i++) {
-			ComputeSource source = compute[i];
-			if (source == null || !source.getSource().isPresent()) {
-				continue;
-			} else {
-				ProgramBuilder builder;
+		try {
+			for (int i = 0; i < programs.length; i++) {
+				ComputeSource source = compute[i];
+				if (source == null || !source.getSource().isPresent()) {
+					continue;
+				}
 
 				try {
 					String transformed = TransformPatcher.patchCompute(source.getName(), source.getSource().orElse(null), TextureStage.GBUFFERS_AND_SHADOW, getTextureMap());
 					PatchedShaderPrinter.debugPatchedShaders(source.getName() + "_compute", null, null, null, transformed);
-					builder = ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.WORLD_RESERVED_TEXTURE_UNITS);
+					try (ProgramBuilder builder = ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.WORLD_RESERVED_TEXTURE_UNITS)) {
+						CommonUniforms.addDynamicUniforms(builder, FogMode.PER_VERTEX);
+						this.customUniforms.assignTo(builder);
+
+						Supplier<ImmutableSet<Integer>> flipped = () -> flippedBeforeShadow;
+						TextureStage textureStage = TextureStage.GBUFFERS_AND_SHADOW;
+						ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor =
+							ProgramSamplers.customTextureSamplerInterceptor(builder, customTextureManager.getCustomTextureIdMap(textureStage));
+
+						IrisSamplers.addRenderTargetSamplers(customTextureSamplerInterceptor, flipped, renderTargets, false, this);
+						IrisImages.addRenderTargetImages(builder, flipped, renderTargets);
+						IrisSamplers.addLevelSamplers(customTextureSamplerInterceptor, this, whitePixel, new InputAvailability(true, true));
+						IrisSamplers.addNoiseSampler(customTextureSamplerInterceptor, customTextureManager.getNoiseTexture());
+						IrisSamplers.addCustomImages(customTextureSamplerInterceptor, customImages);
+						IrisSamplers.addCustomTextures(customTextureSamplerInterceptor, customTextureManager.getIrisCustomTextures());
+
+						if (IrisSamplers.hasShadowSamplers(customTextureSamplerInterceptor) && shadowRenderTargets != null) {
+							IrisSamplers.addShadowSamplers(customTextureSamplerInterceptor, shadowRenderTargets, null, true);
+							IrisImages.addShadowColorImages(builder, shadowRenderTargets, null);
+						}
+
+						IrisImages.addCustomImages(builder, customImages);
+					final ComputeProgram program = builder.buildCompute();
+					this.customUniforms.mapholderToPass(builder, program);
+					program.setWorkGroupInfo(source.getWorkGroupRelative(), source.getWorkGroups(), null);
+					programs[i] = program;
+					builder.commit();
+				}
 				} catch (RuntimeException e) {
-					// TODO: Better error handling
 					throw new RuntimeException("Shader compilation failed!", e);
 				}
-
-				CommonUniforms.addDynamicUniforms(builder, FogMode.PER_VERTEX);
-                this.customUniforms.assignTo(builder);
-
-				Supplier<ImmutableSet<Integer>> flipped;
-
-				flipped = () -> flippedBeforeShadow;
-
-				TextureStage textureStage = TextureStage.GBUFFERS_AND_SHADOW;
-
-				ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor =
-					ProgramSamplers.customTextureSamplerInterceptor(builder, customTextureManager.getCustomTextureIdMap(textureStage));
-
-				IrisSamplers.addRenderTargetSamplers(customTextureSamplerInterceptor, flipped, renderTargets, false, this);
-				IrisImages.addRenderTargetImages(builder, flipped, renderTargets);
-
-				IrisSamplers.addLevelSamplers(customTextureSamplerInterceptor, this, whitePixel, new InputAvailability(true, true));
-
-				IrisSamplers.addNoiseSampler(customTextureSamplerInterceptor, customTextureManager.getNoiseTexture());
-
-				IrisSamplers.addCustomImages(customTextureSamplerInterceptor, customImages);
-				IrisSamplers.addCustomTextures(customTextureSamplerInterceptor, customTextureManager.getIrisCustomTextures());
-
-				if (IrisSamplers.hasShadowSamplers(customTextureSamplerInterceptor)) {
-					if (shadowRenderTargets != null) {
-						IrisSamplers.addShadowSamplers(customTextureSamplerInterceptor, shadowRenderTargets, null, true);
-						IrisImages.addShadowColorImages(builder, shadowRenderTargets, null);
-					}
-				}
-
-				IrisImages.addCustomImages(builder, customImages);
-
-				programs[i] = builder.buildCompute();
-
-                this.customUniforms.mapholderToPass(builder, programs[i]);
-
-				programs[i].setWorkGroupInfo(source.getWorkGroupRelative(), source.getWorkGroups(), null);
 			}
+			return programs;
+		} catch (RuntimeException | Error failure) {
+			destroyComputePrograms(programs, failure);
+			throw failure;
 		}
-
-
-		return programs;
 	}
 
 	private ComputeProgram[] createSetupComputes(ComputeSource[] compute) {
 		ComputeProgram[] programs = new ComputeProgram[compute.length];
-		for (int i = 0; i < programs.length; i++) {
-			ComputeSource source = compute[i];
-			if (source == null || !source.getSource().isPresent()) {
-				continue;
-			} else {
-				ProgramBuilder builder;
+		try {
+			for (int i = 0; i < programs.length; i++) {
+				ComputeSource source = compute[i];
+				if (source == null || !source.getSource().isPresent()) {
+					continue;
+				}
 
 				try {
 					String transformed = TransformPatcher.patchCompute(source.getName(), source.getSource().orElse(null), TextureStage.SETUP, getTextureMap());
 					PatchedShaderPrinter.debugPatchedShaders(source.getName() + "_compute", null, null, null, transformed);
-					builder = ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
+					try (ProgramBuilder builder = ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS)) {
+						CommonUniforms.addDynamicUniforms(builder, FogMode.OFF);
+						this.customUniforms.assignTo(builder);
+
+						ImmutableSet<Integer> empty = ImmutableSet.of();
+						Supplier<ImmutableSet<Integer>> flipped = () -> empty;
+						ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor =
+							ProgramSamplers.customTextureSamplerInterceptor(builder, customTextureManager.getCustomTextureIdMap(TextureStage.SETUP));
+
+						IrisSamplers.addRenderTargetSamplers(customTextureSamplerInterceptor, flipped, renderTargets, true, this);
+						IrisSamplers.addCustomImages(customTextureSamplerInterceptor, customImages);
+						IrisSamplers.addCustomTextures(customTextureSamplerInterceptor, customTextureManager.getIrisCustomTextures());
+
+						IrisImages.addRenderTargetImages(builder, flipped, renderTargets);
+						IrisImages.addCustomImages(builder, customImages);
+						IrisSamplers.addNoiseSampler(customTextureSamplerInterceptor, customTextureManager.getNoiseTexture());
+						IrisSamplers.addCompositeSamplers(customTextureSamplerInterceptor, renderTargets);
+
+						if (IrisSamplers.hasShadowSamplers(customTextureSamplerInterceptor) && shadowRenderTargets != null) {
+							IrisSamplers.addShadowSamplers(customTextureSamplerInterceptor, shadowRenderTargets, null, true);
+							IrisImages.addShadowColorImages(builder, shadowRenderTargets, null);
+						}
+
+						final ComputeProgram program = builder.buildCompute();
+					this.customUniforms.mapholderToPass(builder, program);
+					program.setWorkGroupInfo(source.getWorkGroupRelative(), source.getWorkGroups(), null);
+					programs[i] = program;
+					builder.commit();
+				}
 				} catch (RuntimeException e) {
 					throw new RuntimeException("Shader compilation failed for setup compute " + source.getName() + "!", e);
 				}
+			}
+			return programs;
+		} catch (RuntimeException | Error failure) {
+			destroyComputePrograms(programs, failure);
+			throw failure;
+		}
+	}
 
-				CommonUniforms.addDynamicUniforms(builder, FogMode.OFF);
-				this.customUniforms.assignTo(builder);
-
-				ImmutableSet<Integer> empty = ImmutableSet.of();
-				Supplier<ImmutableSet<Integer>> flipped = () -> empty;
-
-				ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor =
-					ProgramSamplers.customTextureSamplerInterceptor(builder, customTextureManager.getCustomTextureIdMap(TextureStage.SETUP));
-
-				IrisSamplers.addRenderTargetSamplers(customTextureSamplerInterceptor, flipped, renderTargets, true, this);
-				IrisSamplers.addCustomImages(customTextureSamplerInterceptor, customImages);
-				IrisSamplers.addCustomTextures(customTextureSamplerInterceptor, customTextureManager.getIrisCustomTextures());
-
-				IrisImages.addRenderTargetImages(builder, flipped, renderTargets);
-				IrisImages.addCustomImages(builder, customImages);
-
-				IrisSamplers.addNoiseSampler(customTextureSamplerInterceptor, customTextureManager.getNoiseTexture());
-				IrisSamplers.addCompositeSamplers(customTextureSamplerInterceptor, renderTargets);
-
-				if (IrisSamplers.hasShadowSamplers(customTextureSamplerInterceptor)) {
-					if (shadowRenderTargets != null) {
-						IrisSamplers.addShadowSamplers(customTextureSamplerInterceptor, shadowRenderTargets, null, true);
-						IrisImages.addShadowColorImages(builder, shadowRenderTargets, null);
-					}
-				}
-
-				programs[i] = builder.buildCompute();
-
-				this.customUniforms.mapholderToPass(builder, programs[i]);
-
-				programs[i].setWorkGroupInfo(source.getWorkGroupRelative(), source.getWorkGroups(), null);
+	private static void destroyComputePrograms(ComputeProgram[] programs, Throwable failure) {
+		for (ComputeProgram program : programs) {
+			if (program == null) {
+				continue;
+			}
+			try {
+				program.destroy();
+			} catch (RuntimeException | Error cleanupFailure) {
+				failure.addSuppressed(cleanupFailure);
 			}
 		}
-
-		return programs;
 	}
 
 	@Override

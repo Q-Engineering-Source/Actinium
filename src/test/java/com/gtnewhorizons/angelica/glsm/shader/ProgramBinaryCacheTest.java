@@ -1,7 +1,9 @@
 package com.gtnewhorizons.angelica.glsm.shader;
 
+import com.dhj.actinium.startup.ProgramCacheContextReset;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import net.coderbot.iris.gl.shader.ProgramCreator;
+import net.coderbot.iris.gl.program.RetainedProgramsTestSupport;
 import net.coderbot.iris.gl.shader.ShaderType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -337,7 +339,7 @@ class ProgramBinaryCacheTest {
         final String after = programKey("void main() {}", "void main() {}").hex();
         assertNotEquals(before, after, "a binary saved by the previous context must not be looked up as a hit");
         assertEquals(ShaderDiskCache.key(PACK_LAYER).str("another-context-driver")
-                .b(ShaderManager.getInstance().isEnabled())
+                .b(ShaderManager.isGloballyEnabled())
                 .str("stage").i(ShaderType.VERTEX.id).str("void main() {}")
                 .str("stage").i(ShaderType.FRAGMENT.id).str("void main() {}")
                 .hex(),
@@ -346,11 +348,30 @@ class ProgramBinaryCacheTest {
             "a context change neither deselects the pack nor turns saving off");
     }
 
+    @Test
+    void displayContextResetUsesTheProductionCallbackToRefreshTheDriverFingerprint() {
+        enableSaving();
+        final String before = programKey("void main() {}", "void main() {}").hex();
+
+        driver.fingerprint = "callback-context-driver";
+        RetainedProgramsTestSupport.installNoNativeContext();
+        try {
+            ProgramCacheContextReset.onDisplayContextChange();
+        } finally {
+            RetainedProgramsTestSupport.restoreProductionProvider();
+        }
+
+        final String after = programKey("void main() {}", "void main() {}").hex();
+        assertNotEquals(before, after, "the installed host callback must invalidate the driver memo");
+        assertTrue(ProgramBinaryCache.isEnabled(),
+            "the callback resets driver identity without changing the selected pack or saving switch");
+    }
+
     /** Rebuilds the program-independent part of the key from its documented components. */
     private static String keyHexWithoutStages() {
         return ShaderDiskCache.key(PACK_LAYER)
             .str("fake-vendor|fake-renderer|fake-version|4.60|false|460")
-            .b(ShaderManager.getInstance().isEnabled())
+            .b(ShaderManager.isGloballyEnabled())
             .str("attribute").str("mc_Entity").i(11)
             .str("attribute").str("mc_midTexCoord").i(12)
             .str("attribute").str("at_tangent").i(13)

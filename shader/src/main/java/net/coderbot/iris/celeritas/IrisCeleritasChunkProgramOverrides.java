@@ -1,6 +1,7 @@
 package net.coderbot.iris.celeritas;
 
 import com.gtnewhorizons.angelica.glsm.GLDebug;
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.debug.IrisGlDebug;
@@ -22,6 +23,7 @@ import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.KHRDebug;
 
 import java.util.EnumMap;
+import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -112,47 +114,99 @@ public class IrisCeleritasChunkProgramOverrides {
         if (cacheKey != null) {
             final int saved = ProgramBinaryCache.load(cacheKey);
             if (saved != 0) {
-                GLDebug.nameObject(KHRDebug.GL_PROGRAM, saved, name);
-                return new SavedProgram(saved, factory);
+                try {
+                    GLDebug.nameObject(KHRDebug.GL_PROGRAM, saved, name);
+                    return new SavedProgram(saved, factory);
+                } catch (RuntimeException | Error failure) {
+                    try {
+                        GLStateManager.glDeleteProgram(saved);
+                    } catch (RuntimeException | Error cleanupFailure) {
+                        failure.addSuppressed(cleanupFailure);
+                    }
+                    throw failure;
+                }
             }
         }
 
-        final GlShader vertShader = createVertexShader(pass, pipeline);
-        final GlShader geomShader = createGeometryShader(pass, pipeline);
-        final GlShader fragShader = createFragmentShader(pass, pipeline);
-
-        if (vertShader == null || fragShader == null) {
-            if (vertShader != null) vertShader.delete();
-            if (geomShader != null) geomShader.delete();
-            if (fragShader != null) fragShader.delete();
-            return null;
-        }
-
+        final List<GlShader> shaders = new ArrayList<>();
+        GlProgram<IrisCeleritasChunkShaderInterface> program = null;
+        Throwable buildFailure = null;
         try {
-            final GlProgram.Builder builder = GlProgram.builder(name);
-
-            builder.attachShader(vertShader);
-            if (geomShader != null) {
-                builder.attachShader(geomShader);
-            }
-            builder.attachShader(fragShader);
-
-            // Bind all attributes from the vertex format (includes base + Iris extended attributes)
-            int attrIndex = 0;
-            for (var attr : vertexType.getVertexFormat().getAttributes()) {
-                builder.bindAttribute(attr.getName(), attrIndex++);
+            final GlShader vertShader = createVertexShader(pass, pipeline);
+            if (vertShader != null) shaders.add(vertShader);
+            final GlShader geomShader = createGeometryShader(pass, pipeline);
+            if (geomShader != null) shaders.add(geomShader);
+            final GlShader fragShader = createFragmentShader(pass, pipeline);
+            if (fragShader != null) shaders.add(fragShader);
+            if (vertShader == null || fragShader == null) {
+                return null;
             }
 
-            final GlProgram<IrisCeleritasChunkShaderInterface> program = builder.link(factory);
+            try (GlProgram.Builder builder = GlProgram.builder(name)) {
+                builder.attachShader(vertShader);
+                if (geomShader != null) {
+                    builder.attachShader(geomShader);
+                }
+                builder.attachShader(fragShader);
+
+                // Bind all attributes from the vertex format (includes base + Iris extended attributes)
+                int attrIndex = 0;
+                for (var attr : vertexType.getVertexFormat().getAttributes()) {
+                    builder.bindAttribute(attr.getName(), attrIndex++);
+                }
+
+                program = builder.link(factory);
+            }
             if (cacheKey != null) {
                 ProgramBinaryCache.save(cacheKey, program.handle());
             }
             return program;
+        } catch (RuntimeException | Error failure) {
+            buildFailure = failure;
+            if (program != null) {
+                try {
+                    program.delete();
+                } catch (RuntimeException | Error cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            }
+            throw failure;
         } finally {
-            vertShader.delete();
-            if (geomShader != null) geomShader.delete();
-            fragShader.delete();
+            final Throwable shaderCleanupFailure = deleteShaders(shaders);
+            if (shaderCleanupFailure != null) {
+                if (buildFailure != null) {
+                    buildFailure.addSuppressed(shaderCleanupFailure);
+                } else {
+                    if (program != null) {
+                        try {
+                            program.delete();
+                        } catch (RuntimeException | Error programCleanupFailure) {
+                            shaderCleanupFailure.addSuppressed(programCleanupFailure);
+                        }
+                    }
+                    if (shaderCleanupFailure instanceof RuntimeException runtimeException) {
+                        throw runtimeException;
+                    }
+                    throw (Error) shaderCleanupFailure;
+                }
+            }
         }
+    }
+
+    private static Throwable deleteShaders(List<GlShader> shaders) {
+        Throwable failure = null;
+        for (GlShader shader : shaders) {
+            try {
+                shader.delete();
+            } catch (RuntimeException | Error cleanupFailure) {
+                if (failure == null) {
+                    failure = cleanupFailure;
+                } else {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            }
+        }
+        return failure;
     }
 
     /**
@@ -160,17 +214,31 @@ public class IrisCeleritasChunkProgramOverrides {
      */
     private EnumMap<IrisTerrainPass, GlProgram<IrisCeleritasChunkShaderInterface>> createShaders(CeleritasTerrainPipeline pipeline, RenderPassConfiguration<?> configuration) {
         final EnumMap<IrisTerrainPass, GlProgram<IrisCeleritasChunkShaderInterface>> programs = new EnumMap<>(IrisTerrainPass.class);
-        if (pipeline != null) {
-            for (IrisTerrainPass pass : IrisTerrainPass.VALUES) {
-                if (pass.isShadow() && !pipeline.hasShadowPass()) {
-                    programs.put(pass, null);
+        try {
+            if (pipeline != null) {
+                for (IrisTerrainPass pass : IrisTerrainPass.VALUES) {
+                    if (pass.isShadow() && !pipeline.hasShadowPass()) {
+                        programs.put(pass, null);
+                        continue;
+                    }
+                    // Resolved per pass so the cache key and the attribute bindings describe the same vertex format.
+                    programs.put(pass, createShader(pass, pipeline, pass.toTerrainPass(configuration).vertexType()));
+                }
+            }
+            return programs;
+        } catch (RuntimeException | Error failure) {
+            for (GlProgram<IrisCeleritasChunkShaderInterface> program : programs.values()) {
+                if (program == null) {
                     continue;
                 }
-                // Resolved per pass so the cache key and the attribute bindings describe the same vertex format.
-                programs.put(pass, createShader(pass, pipeline, pass.toTerrainPass(configuration).vertexType()));
+                try {
+                    program.delete();
+                } catch (RuntimeException | Error cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
             }
+            throw failure;
         }
-        return programs;
     }
 
     /**

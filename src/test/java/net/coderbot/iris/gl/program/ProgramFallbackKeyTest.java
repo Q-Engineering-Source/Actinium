@@ -61,7 +61,7 @@ class ProgramFallbackKeyTest {
         // the digest and fails here.
         final String expected = ShaderDiskCache.key(PACK_LAYER)
             .str(DRIVER)
-            .b(ShaderManager.getInstance().isEnabled())
+            .b(ShaderManager.isGloballyEnabled())
             .str("attribute").str("mc_Entity").i(11)
             .str("attribute").str("mc_midTexCoord").i(12)
             .str("attribute").str("at_tangent").i(13)

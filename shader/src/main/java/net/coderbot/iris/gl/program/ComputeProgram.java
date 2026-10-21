@@ -30,12 +30,17 @@ public final class ComputeProgram extends GlResource {
 	/** The compute stage this program was linked from, or null when it must be deleted with its wrapper. */
 	@Nullable
 	private final RetainedPrograms.Sources sources;
+	private final long ownerShareGroupId;
+	private final long ownerConfigurationEpoch;
 
-	ComputeProgram(int program, @Nullable RetainedPrograms.Sources sources, ProgramUniforms uniforms,
-				   ProgramSamplers samplers, ProgramImages images) {
+	ComputeProgram(int program, @Nullable RetainedPrograms.Sources sources, long ownerShareGroupId,
+				   long ownerConfigurationEpoch, ProgramUniforms uniforms, ProgramSamplers samplers,
+				   ProgramImages images) {
 		super(program);
 
 		this.sources = sources;
+		this.ownerShareGroupId = ownerShareGroupId;
+		this.ownerConfigurationEpoch = ownerConfigurationEpoch;
         localSizeBuffer = BufferUtils.createIntBuffer(3);
 		RenderSystem.getProgramiv(program, GL43.GL_COMPUTE_WORK_GROUP_SIZE, localSizeBuffer);
 		this.uniforms = uniforms;
@@ -71,6 +76,7 @@ public final class ComputeProgram extends GlResource {
 	}
 
     public void use() {
+		RetainedPrograms.requireCurrentShareGroup(ownerShareGroupId);
         GLStateManager.glUseProgram(getGlId());
 
         uniforms.update();
@@ -79,6 +85,7 @@ public final class ComputeProgram extends GlResource {
     }
 
 	public void dispatch(float width, float height) {
+		RetainedPrograms.requireCurrentShareGroup(ownerShareGroupId);
 		if (!Iris.getPipelineManager().getPipeline().map(WorldRenderingPipeline::allowConcurrentCompute).orElse(false)) {
 			RenderSystem.memoryBarrier(GL42.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL42.GL_TEXTURE_FETCH_BARRIER_BIT | GL43.GL_SHADER_STORAGE_BARRIER_BIT);
 		}
@@ -105,9 +112,9 @@ public final class ComputeProgram extends GlResource {
 
 		if (sources != null) {
 			// The program name outlives this wrapper: a later pipeline with the same stages takes it over.
-			RetainedPrograms.retain(sources, getGlId());
+			RetainedPrograms.retain(ownerShareGroupId, sources, getGlId(), ownerConfigurationEpoch);
 		} else {
-			GLStateManager.glDeleteProgram(getGlId());
+			RetainedPrograms.deleteProgram(ownerShareGroupId, getGlId());
 		}
 	}
 

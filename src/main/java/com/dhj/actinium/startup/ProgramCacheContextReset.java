@@ -1,18 +1,17 @@
 package com.dhj.actinium.startup;
 
-import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import net.coderbot.iris.gl.program.RetainedPrograms;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
- * Drops the program caches that only described the display context the game has just left.
+ * Resets caches whose driver assumptions can change when the display context changes.
  *
- * <p>Two caches survive inside a process but not across a context: {@link ProgramBinaryCache} memoizes the
- * driver fingerprint it keys every saved binary on, and {@link RetainedPrograms} holds GL program names.
- * After a splash replacement migrates the game to a context of its own (issue #150), the first would key
- * new programs on a driver that is no longer running and the second would hand out names that mean
- * something else - or nothing - on the new context.</p>
+ * <p>{@link ProgramBinaryCache} memoizes the driver fingerprint used by saved binaries. Retained GL program
+ * names belong to their share groups, so that pool is reconciled against live contexts and only the current
+ * group's pending deletes are drained.</p>
  *
  * <p>This lives in the root module because it is the only one that sees both sides: GLSM raises the change
  * and must not reach into the shader module, and the shader module must not reach into GLSM's hook table.
@@ -20,6 +19,7 @@ import net.coderbot.iris.gl.program.RetainedPrograms;
  * lifecycle and the first context is captured later.</p>
  */
 public final class ProgramCacheContextReset {
+    private static final Logger LOGGER = LogManager.getLogger("Actinium");
 
     /** Prevents instances; this class only installs and implements one callback. */
     private ProgramCacheContextReset() {}
@@ -35,15 +35,13 @@ public final class ProgramCacheContextReset {
     }
 
     /**
-     * Invalidates both caches. The retained programs are forgotten rather than deleted: their names belong
-     * to the context that is gone, so deleting them on the new one could free an unrelated program that
-     * happens to have the same name there.
+     * Invalidates the driver fingerprint and reconciles program ownership with the current share group.
+     * Programs in another live group remain cached for that group's next pipeline.
      */
-    private static void onDisplayContextChange() {
-        final int discarded = RetainedPrograms.discardAll();
+    public static void onDisplayContextChange() {
+        RetainedPrograms.onDisplayContextChanged();
         ProgramBinaryCache.invalidateContext();
-        ActiniumRuntime.logger().info(
-            "Display context changed: discarded {} retained programs and reset the program binary cache",
-            discarded);
+        LOGGER.info(
+            "Display context changed: pruned retired program share groups and reset the program binary cache driver fingerprint");
     }
 }
