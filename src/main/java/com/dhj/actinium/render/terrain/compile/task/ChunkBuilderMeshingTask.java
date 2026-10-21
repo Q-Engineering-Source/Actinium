@@ -39,6 +39,7 @@ import com.dhj.actinium.world.WorldSlice;
 import com.dhj.actinium.world.cloned.ActiniumBlockAccess;
 import com.dhj.actinium.world.cloned.ChunkRenderContext;
 import com.dhj.actinium.render.terrain.compile.VintageChunkBuildContext;
+import com.dhj.actinium.render.terrain.compile.ChunkBufferBuilder;
 
 import java.util.*;
 
@@ -141,34 +142,54 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                                 net.minecraft.util.BlockRenderLayer layer = shaderLayerOverride.toVanillaLayer();
                                 ForgeHooksClient.setRenderLayer(layer);
                                 block.canRenderInLayer(blockState, layer);
-                                if (blockState.getRenderType() == EnumBlockRenderType.MODEL && ActiniumRuntime.options().performance.useFastBlockRenderer
+                                boolean allowFastRenderer = blockState.getRenderType() == EnumBlockRenderType.MODEL
+                                        && ActiniumRuntime.options().performance.useFastBlockRenderer
                                         && !SnowRealMagicCompat.shouldForceVanillaRender(block)
-                                        && !ArchitectureCraftCompat.shouldForceVanillaRender(block)) {
-                                    buildContext.getBlockRenderer().renderBlock(blockState, blockPos, slice, layer, false);
-                                } else {
-                                    var buffer = buildContext.getBufferForLayer(layer);
-                                    buildContext.beginVanillaBlockRender(buffer, blockPos, blockState);
+                                        && !ArchitectureCraftCompat.shouldForceVanillaRender(block);
+                                ChunkBufferBuilder buffer = buildContext.getChunkBufferForLayer(layer);
+                                buffer.actinium$beginInvocation(allowFastRenderer, false, false, blockState);
+                                boolean captureLiquid = blockState.getRenderType() == EnumBlockRenderType.LIQUID;
+                                boolean captureStarted = false;
+                                try {
+                                    if (captureLiquid) {
+                                        buildContext.beginVanillaBlockRender(buffer, blockPos, blockState);
+                                        captureStarted = true;
+                                    }
+                                    dispatcher.renderBlock(blockState, blockPos, slice, buffer);
+                                } finally {
                                     try {
-                                        dispatcher.renderBlock(blockState, blockPos, slice, buffer);
+                                        if (captureStarted) {
+                                            buildContext.endVanillaRender(buffer);
+                                        }
                                     } finally {
-                                        buildContext.endVanillaRender(buffer);
+                                        buffer.actinium$endInvocation();
                                     }
                                 }
                             } else {
                                 for (net.minecraft.util.BlockRenderLayer layer : VintageChunkBuildContext.LAYERS) {
                                     if (block.canRenderInLayer(blockState, layer)) {
                                         ForgeHooksClient.setRenderLayer(layer);
-                                        if (blockState.getRenderType() == EnumBlockRenderType.MODEL && ActiniumRuntime.options().performance.useFastBlockRenderer
+                                        boolean allowFastRenderer = blockState.getRenderType() == EnumBlockRenderType.MODEL
+                                                && ActiniumRuntime.options().performance.useFastBlockRenderer
                                                 && !SnowRealMagicCompat.shouldForceVanillaRender(block)
-                                                && !ArchitectureCraftCompat.shouldForceVanillaRender(block)) {
-                                            buildContext.getBlockRenderer().renderBlock(blockState, blockPos, slice, layer);
-                                        } else {
-                                            var buffer = buildContext.getBufferForLayer(layer);
-                                            buildContext.beginVanillaBlockRender(buffer, blockPos, blockState);
+                                                && !ArchitectureCraftCompat.shouldForceVanillaRender(block);
+                                        ChunkBufferBuilder buffer = buildContext.getChunkBufferForLayer(layer);
+                                        buffer.actinium$beginInvocation(allowFastRenderer, true, false, blockState);
+                                        boolean captureLiquid = blockState.getRenderType() == EnumBlockRenderType.LIQUID;
+                                        boolean captureStarted = false;
+                                        try {
+                                            if (captureLiquid) {
+                                                buildContext.beginVanillaBlockRender(buffer, blockPos, blockState);
+                                                captureStarted = true;
+                                            }
+                                            dispatcher.renderBlock(blockState, blockPos, slice, buffer);
+                                        } finally {
                                             try {
-                                                dispatcher.renderBlock(blockState, blockPos, slice, buffer);
+                                                if (captureStarted) {
+                                                    buildContext.endVanillaRender(buffer);
+                                                }
                                             } finally {
-                                                buildContext.endVanillaRender(buffer);
+                                                buffer.actinium$endInvocation();
                                             }
                                         }
                                     }

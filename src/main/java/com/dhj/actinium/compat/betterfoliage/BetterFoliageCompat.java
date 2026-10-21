@@ -41,7 +41,8 @@ public interface BetterFoliageCompat {
             BlockPos pos,
             IBlockAccess blockAccess,
             BufferBuilder buffer,
-            BlockRenderLayer layer
+            BlockRenderLayer layer,
+            VintageChunkBuildContext buildContext
     );
 
     /**

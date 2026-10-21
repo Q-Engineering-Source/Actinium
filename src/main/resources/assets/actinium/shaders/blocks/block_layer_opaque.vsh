@@ -19,9 +19,8 @@ out vec2 v_QuadCoord;
 out float v_ChunkAgeMs;
 #endif
 
-#ifdef USE_FRAGMENT_DISCARD
 out float v_MaterialAlphaCutoff;
-#endif
+out float v_MaterialMipBias;
 
 #if defined(USE_FOG_POSTMODERN)
 out float v_SphericalFragDistance;
@@ -83,9 +82,8 @@ void main() {
 #endif
     v_TexCoord = _vert_tex_diffuse_coord;
 
-#ifdef USE_FRAGMENT_DISCARD
     v_MaterialAlphaCutoff = _material_alpha_cutoff(_material_params);
-#endif
+    v_MaterialMipBias = _material_mip_bias(_material_params);
 #if defined(USE_FOG) && defined(CHUNK_FADE_IN_DURATION_MS) && CHUNK_FADE_IN_DURATION_MS > 0
     v_ChunkAgeMs = celeritas_ChunkAges[_draw_id];
 #endif

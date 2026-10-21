@@ -21,6 +21,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.gen.Invoker;
 import dhj.embeddedt.embeddium.api.shader.buffer.BufferBuilderExtension;
 import dhj.embeddedt.embeddium.api.shader.buffer.VanillaQuadContext;
+import dhj.embeddedt.embeddium.api.shader.buffer.VanillaQuadContextStack;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -74,7 +75,7 @@ public abstract class BufferBuilderMixin implements BufferBuilderExtension, Proj
     private final List<VanillaQuadContext> actinium$quadContexts = new ArrayList<>();
 
     @Unique
-    private @Nullable VanillaQuadContext actinium$activeQuadContext;
+    private final VanillaQuadContextStack actinium$quadContextStack = new VanillaQuadContextStack();
 
     @Inject(method = "<init>", at = @At("TAIL"))
     private void actinium$init(int bufferSizeIn, CallbackInfo ci) {
@@ -123,19 +124,19 @@ public abstract class BufferBuilderMixin implements BufferBuilderExtension, Proj
     @Inject(method = "begin", at = @At("HEAD"))
     private void actinium$begin(int glMode, VertexFormat format, CallbackInfo ci) {
         this.actinium$quadContexts.clear();
-        this.actinium$activeQuadContext = null;
+        this.actinium$quadContextStack.beginBuffer();
     }
 
     @Inject(method = "addVertexData", at = @At("TAIL"))
     private void actinium$addVertexData(int[] vertexData, CallbackInfo ci) {
-        if (this.actinium$activeQuadContext != null) {
+        if (this.actinium$quadContextStack.active() != null) {
             this.actinium$quadContexts.add(this.actinium$snapshotQuadContext());
         }
     }
 
     @Inject(method = "endVertex", at = @At("TAIL"))
     private void actinium$endVertex(CallbackInfo ci) {
-        if (this.actinium$activeQuadContext != null && this.drawMode == GL11.GL_QUADS && (this.vertexCount & 3) == 0) {
+        if (this.actinium$quadContextStack.active() != null && this.drawMode == GL11.GL_QUADS && (this.vertexCount & 3) == 0) {
             this.actinium$quadContexts.add(this.actinium$snapshotQuadContext());
         }
     }
@@ -144,8 +145,8 @@ public abstract class BufferBuilderMixin implements BufferBuilderExtension, Proj
     private VanillaQuadContext actinium$snapshotQuadContext() {
         int shaderOverrideBlockId = ShaderMaterialOverrideState.getBlockId();
         return shaderOverrideBlockId >= 0
-                ? this.actinium$activeQuadContext.withBlockStateId(shaderOverrideBlockId)
-                : this.actinium$activeQuadContext;
+                ? this.actinium$quadContextStack.active().withBlockStateId(shaderOverrideBlockId)
+                : this.actinium$quadContextStack.active();
     }
 
     /**
@@ -245,14 +246,24 @@ public abstract class BufferBuilderMixin implements BufferBuilderExtension, Proj
 
     @Override
     public void actinium$setActiveQuadContext(@Nullable VanillaQuadContext context) {
-        this.actinium$activeQuadContext = context;
+        this.actinium$quadContextStack.setActive(context);
+    }
+
+    @Override
+    public void actinium$pushActiveQuadContext(VanillaQuadContext context) {
+        this.actinium$quadContextStack.push(context);
+    }
+
+    @Override
+    public void actinium$popActiveQuadContext() {
+        this.actinium$quadContextStack.pop();
     }
 
     @Override
     public List<VanillaQuadContext> actinium$consumeQuadContexts() {
         List<VanillaQuadContext> copy = new ArrayList<>(this.actinium$quadContexts);
         this.actinium$quadContexts.clear();
-        this.actinium$activeQuadContext = null;
+        this.actinium$quadContextStack.setActive(null);
         return copy;
     }
 

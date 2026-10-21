@@ -40,9 +40,19 @@ public final class BetterFoliageCompatImpl implements BetterFoliageCompat {
             BlockPos pos,
             IBlockAccess blockAccess,
             BufferBuilder buffer,
-            BlockRenderLayer layer
+            BlockRenderLayer layer,
+            VintageChunkBuildContext buildContext
     ) {
-        return Hooks.renderWorldBlock(dispatcher, state, pos, blockAccess, buffer, layer);
+        if (buildContext.getBufferForLayer(layer) != buffer) {
+            throw new IllegalStateException("Better Foliage received a buffer from a different chunk layer");
+        }
+
+        buildContext.beginVanillaBlockRender(buffer, pos, state);
+        try {
+            return Hooks.renderWorldBlock(dispatcher, state, pos, blockAccess, buffer, layer);
+        } finally {
+            buildContext.endVanillaRender(buffer);
+        }
     }
 
     @Override

@@ -52,7 +52,7 @@ import static com.mitchej123.lwjgl.LWJGLServiceProvider.LWJGL;
 public class VintageChunkBuildContext extends ChunkBuildContext {
     public static final BlockRenderLayer[] LAYERS = BlockRenderLayer.values();
     private final TextureMapExtension textureAtlas;
-    private final net.minecraft.client.renderer.BufferBuilder[] worldRenderers = new net.minecraft.client.renderer.BufferBuilder[LAYERS.length];
+    private final ChunkBufferBuilder[] worldRenderers = new ChunkBufferBuilder[LAYERS.length];
     private final boolean[] usedWorldRenderers = new boolean[LAYERS.length];
     @Getter
     private int offX, offY, offZ;
@@ -83,42 +83,41 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         this.offZ = z;
     }
 
-    public net.minecraft.client.renderer.BufferBuilder getBufferForLayer(BlockRenderLayer layer) {
+    public ChunkBufferBuilder getChunkBufferForLayer(BlockRenderLayer layer) {
         var builder = this.worldRenderers[layer.ordinal()];
         if (builder == null) {
-            builder = new net.minecraft.client.renderer.BufferBuilder(131072);
+            builder = new ChunkBufferBuilder(256, this, layer);
             this.worldRenderers[layer.ordinal()] = builder;
-        }
-        if (!this.usedWorldRenderers[layer.ordinal()]) {
-            builder.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
-            builder.setTranslation(-this.offX, -this.offY, -this.offZ);
-            this.usedWorldRenderers[layer.ordinal()] = true;
         }
         return builder;
     }
 
-    public void convertVanillaDataToCeleritasData(ChunkBuildBuffers buffers) {
-        var renderers = this.worldRenderers;
-        var used = this.usedWorldRenderers;
-        for (int i = 0; i < renderers.length; i++) {
-            if(!used[i]) {
-                continue;
-            }
-            var bufferBuilder = Objects.requireNonNull(renderers[i]);
-            bufferBuilder.finishDrawing();
-            used[i] = false;
-            ByteBuffer rawBuffer = bufferBuilder.getByteBuffer();
-            BufferBuilderExtension extension = bufferBuilder instanceof BufferBuilderExtension value ? value : null;
-            BlockRenderLayer layer = LAYERS[i];
-            List<VanillaQuadContext> quadContexts = extension != null
-                    ? extension.actinium$consumeQuadContexts()
-                    : Collections.emptyList();
-            var material = buffers.getRenderPassConfiguration().getMaterialForRenderType(layer);
-            copyBlockData(rawBuffer, buffers, material, layer, quadContexts);
+    public BufferBuilder getBufferForLayer(BlockRenderLayer layer) {
+        ChunkBufferBuilder builder = this.getChunkBufferForLayer(layer);
+        this.beginVanillaBuffer(builder);
+        return builder;
+    }
+
+    private void beginVanillaBuffer(BufferBuilder buffer) {
+        if (!(buffer instanceof ChunkBufferBuilder builder)) {
+            return;
+        }
+
+        int layerIndex = builder.actinium$renderLayer().ordinal();
+        if (!this.usedWorldRenderers[layerIndex]) {
+            builder.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
+            builder.setTranslation(-this.offX, -this.offY, -this.offZ);
+            this.usedWorldRenderers[layerIndex] = true;
         }
     }
 
     public void beginVanillaBlockRender(BufferBuilder buffer, BlockPos pos, IBlockState state) {
+        this.beginVanillaBuffer(buffer);
+        this.beginVanillaBlockRenderContextOnly(buffer, pos, state);
+    }
+
+    /** Activates block metadata without forcing an otherwise-unused chunk buffer to begin drawing. */
+    public void beginVanillaBlockRenderContextOnly(BufferBuilder buffer, BlockPos pos, IBlockState state) {
         if (!(buffer instanceof BufferBuilderExtension extension)) {
             return;
         }
@@ -134,7 +133,7 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
                 ? ExtendedDataHelper.FLUID_RENDER_TYPE
                 : ExtendedDataHelper.BLOCK_RENDER_TYPE;
 
-        extension.actinium$setActiveQuadContext(new VanillaQuadContext(
+        extension.actinium$pushActiveQuadContext(new VanillaQuadContext(
                 pos.getX() & 15,
                 pos.getY() & 15,
                 pos.getZ() & 15,
@@ -145,12 +144,13 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
     }
 
     public void beginVanillaFluidRender(BufferBuilder buffer, BlockPos pos, IBlockState state) {
+        this.beginVanillaBuffer(buffer);
         if (!(buffer instanceof BufferBuilderExtension extension)) {
             return;
         }
 
         int effectiveMetadata = applyShaderStateBits(state, pos, state.getBlock().getMetaFromState(state));
-        extension.actinium$setActiveQuadContext(new VanillaQuadContext(
+        extension.actinium$pushActiveQuadContext(new VanillaQuadContext(
                 pos.getX() & 15,
                 pos.getY() & 15,
                 pos.getZ() & 15,
@@ -162,7 +162,28 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
 
     public void endVanillaRender(BufferBuilder buffer) {
         if (buffer instanceof BufferBuilderExtension extension) {
-            extension.actinium$setActiveQuadContext(null);
+            extension.actinium$popActiveQuadContext();
+        }
+    }
+
+    public void convertVanillaDataToCeleritasData(ChunkBuildBuffers buffers) {
+        var renderers = this.worldRenderers;
+        var used = this.usedWorldRenderers;
+        for (int i = 0; i < renderers.length; i++) {
+            if (!used[i]) {
+                continue;
+            }
+            BufferBuilder bufferBuilder = Objects.requireNonNull(renderers[i]);
+            bufferBuilder.finishDrawing();
+            used[i] = false;
+            ByteBuffer rawBuffer = bufferBuilder.getByteBuffer();
+            BufferBuilderExtension extension = bufferBuilder instanceof BufferBuilderExtension value ? value : null;
+            BlockRenderLayer layer = LAYERS[i];
+            List<VanillaQuadContext> quadContexts = extension != null
+                    ? extension.actinium$consumeQuadContexts()
+                    : Collections.emptyList();
+            var material = buffers.getRenderPassConfiguration().getMaterialForRenderType(layer);
+            copyBlockData(rawBuffer, buffers, material, layer, quadContexts);
         }
     }
 
@@ -173,7 +194,8 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         for (int i = 0; i < LAYERS.length; i++) {
             if (this.usedWorldRenderers[i]) {
                 this.worldRenderers[i].finishDrawing();
-                if (this.worldRenderers[i] instanceof BufferBuilderExtension extension) {
+                BufferBuilder bufferBuilder = this.worldRenderers[i];
+                if (bufferBuilder instanceof BufferBuilderExtension extension) {
                     extension.actinium$consumeQuadContexts();
                 }
                 this.usedWorldRenderers[i] = false;

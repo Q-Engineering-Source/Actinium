@@ -29,6 +29,7 @@
     "core.startup.MixinSplashProgress",
     "core.terrain.AccessorActiveRenderInfo",
     "core.terrain.AccessorBlockColors",
+    "core.terrain.BlockRendererDispatcherMixin",
     "core.terrain.AccessorChunk",
     "core.terrain.AccessorChunkProviderClient",
     "core.terrain.AccessorEntityRenderer",
