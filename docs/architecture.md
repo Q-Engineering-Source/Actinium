@@ -1,6 +1,6 @@
 # Actinium 架构说明
 
-最后更新：2026-10-08。
+最后更新：2026-10-21。本轮大项回迁的客户端回归仍待用户确认。
 
 ## 概述
 
@@ -169,6 +169,11 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
 - **`render/terrain/compile/`**：`VintageChunkBuildContext`；`compile/light/`：`LightDataCache`、
   `VintageDiffuseProvider`；`compile/pipeline/`：`VintageBlockRenderer`；`compile/task/`：
   `ChunkBuilderMeshingTask`（区块网格构建任务）。
+  mesher 的普通与 shader-layer override 路径统一调用 `BlockRendererDispatcher`。
+  每层的 `ChunkBufferBuilder` 携带调用策略，`ChunkModelRouting` 仅将最外层的合格 MODEL
+  调用交给 fast renderer；递归调用保留原版路径，并通过 `VanillaQuadContextStack` 保存、恢复
+  对应方块或流体的材质身份。fast 路径复用 dispatcher 选定的模型和 actual state，再扩展状态一次，
+  保留原五参 `renderBlock` 方法中的 addon 绑定点；返回值依据实际几何写入。
 - **`render/terrain/fog/`**：`GLStateManagerFogService` —— FogService SPI 实现。
 - **`render/terrain/sprite/`**：`SpriteUtil`。
 
@@ -196,6 +201,13 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
   `ShadowMatrixAccess`（依赖 glsm 的 `InternalShadowRenderingState`）。
 - **`texture/`**：`SpriteExtension`、`TextureMapExtension` —— 精灵/纹理地图扩展
   （动画帧、mipmap、上传数据访问）。
+  `texture/atlas/` 的 `AtlasLoadPlan`、`AtlasLoadSession`、`AtlasAssembler` 配合有界
+  `PrefetchLane` 执行预取、mipmap 和 staging 装配。A2 时序始终由主线程按 Forge 顺序装载
+  依赖帧并调用 custom loader；只有不被其他 loader 读取的普通精灵可交 worker 生成 mip。
+  未知资源包默认串行，所有任务退出后才释放会话；失败会等待兄弟任务并保留首因。
+  `texture/mipmap/` 提供材质 mipmap 策略与 metadata；gutter、terrain sampler、RGSS、
+  mip-bias 和 PBR atlas 使用一致的布局。普通颜色动画采用 alpha-aware 插值，PBR 数据纹理
+  按独立通道插值，避免将材质 alpha 当作透明度。
 
 ## shader/ 子项目（Iris 风格光影管线）
 
@@ -233,6 +245,10 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
   开关光影、重载未改动的包、跨维度时可复用。两批 `recent`/`older` 轮换，配置标识（现在是
   包指纹）变化即整体退役；单键 4 个、两批合计 512 个上限，淘汰与退役都是真删除。
   `ProgramBuilder` 的回退顺序是「保留池 → 程序二进制磁盘 → 编译链接」，命中即短路。
+  池按 native share group 分隔，wrapper 同时持有 owner group 和配置 epoch；其他组不能取用
+  GLuint，跨组释放排队到所属组，最后一个 owner context 退役后丢弃失效记录。普通 Display
+  迁移仅协调仍存活的组，不能清空其他组的所有权。`ProgramBuilder` 在 `commit()` 前持有
+  程序，调用方用 try-with-resources 覆盖编译、uniform/sampler 装配与 pass 建构失败路径。
 - **主菜单预读**：`Iris.prepareSelectedShaderPack` 在主线程捕获环境宏，后台线程完成包解析与
   `Overworld` ProgramSet，经 `preparedPack` 的软引用 + 代次发布；`invalidatePreparedPack`
   在显式 reload 与「选择变了但未应用」时递增代次，晚到的读取既不能发布也不能被取用。
@@ -384,6 +400,25 @@ bounded ByteBuffer 视图由 drawRaw 统一创建。此改动已通过自动化�
   `Feature`/`GLFeatureSet`、`FeedbackManager`、`GpuCommandDiagnostics`、`Vendor`、`GLDebug`、
   `ITessellatorData`。
 - **`backend/`**：渲染后端抽象 —— `RenderBackend`、`BackendManager`、`DebugMessageHandler`。
+- **`context/`**：`GLContextIdentity` 与 `GLContextRegistry` 区分 native handle、生命周期
+  generation 和 share group。Cleanroom 的 `LWJGLTransformer` 在请求 `org.lwjgl.*` 类时读取
+  `org.lwjglx.*` 字节码并把内部类型 remap 回 `org.lwjgl.*`；legacy 名称是最终定义的类名。
+  CleanMix 的 `FoundationBytecodeProvider` 在找不到 raw `org.lwjgl.*` class bytes 时不会调用
+  transformer chain，因此指向这些目标的 Mixin 会在加载阶段报 `ClassNotFound`，即使普通类加载
+  随后可以合成它们。上下文生命周期钩子通过 `MixinEarly` 注册的
+  `LwjglContextLifecycleTransformer` 插入到已经合成的 legacy 字节码中；不要把 target 改为
+  `org.lwjglx.*`。它复用 `compat/lwjgl/DisplayContextBinding`：LWJGLXX 的 `Display.create`、
+  `Display.makeCurrent` 与 `Display.releaseContext` 直接调用 GLFW，成功切换后绑定/解绑 primary
+  context；其它 drawable 由 `DrawableGL` / `ContextGL` 生命周期钩子绑定，只有真实 native context
+  destroy 才退役身份，`DrawableGL.destroy` 清空 primary drawable 引用本身不代表窗口 context 已
+  销毁。同宿主对象换 handle 也退役旧 generation。
+  目标字节应按运行环境的 manifest class-path 解析；本次 Cleanroom 0.6.12-alpha 日志使用
+  `lwjglxx` 1.1.22 与 LWJGL 3.4.1，不能由历史缓存中的 1.1.17 推定。
+  Display-list compilation session 按 context identity 独立保存；release 时暂存 exact capture token，
+  rebind 时在新线程恢复，destroy 前只中止该 identity 的未完成录制。其它仍存活的共享 context
+  不继承录制器或捕获栈。
+  `GLContextState` 持有 VAO/EBO、数组、streaming、FFP 和属性栈状态；`Feature` 与 `StateSet`
+  缓存按 identity 分隔。容器资源只在所属 context 删除，共享 buffer 的删除按所属组调度。
 - **`compat/`**：`FogHelper`（雾色状态捕获）；`compat/lwjgl/`：`AngelicaCylinder/Disk/
   PartialDisk/Sphere`（替代 LWJGL2 GLU quadric 形状）。
 - **`debug/`**：`GLSMDebug`（详细 draw 日志）、`GLSMPerfDebug` + `GLSMPerfDebugHooks`
@@ -394,6 +429,9 @@ bounded ByteBuffer 视图由 drawRaw 统一创建。此改动已通过自动化�
 - **`ffp/`**（固定管线模拟）：`ShaderManager`、`Program`/`ProgramUniformState`、
   `VertexKey`/`FragmentKey`、`Vertex/Fragment/GeometryShaderGenerator`、`ShaderCache`、
   `Uniforms` —— 由固定管线状态生成 shader。
+  FFP program 与可变 uniform 上传状态按 context 独立，避免不同 context 改写同一个共享
+  program 的 uniform。纯 `GenerationTrackedState` 显式接收 identity，不初始化 GL；实际
+  uniform 入口负责校验当前 native context。
 - **`shader/`**（上限为 GLSL 与程序缓存）：`ShaderDiskCache`（磁盘缓存底座：CRC32 envelope、
   临时文件 + 原子替换、build salt 代次、容量上限、layer 保留/删除 API）、`ShaderCacheIO`
   （typed payload 编解码）、`ProgramBinaryCache`（`gl-program/<净化包名>` 层；键 = 驱动指纹
@@ -416,11 +454,24 @@ bounded ByteBuffer 视图由 drawRaw 统一创建。此改动已通过自动化�
   `DisplayListVBO`/`DisplayListVBOBuilder`、`GLCommand`、`AccumulatedDraw`；
   `recording/commands/` —— `DisplayListCommand` 接口及 `MultMatrixCmd`/`TexImage2DCmd`/
   `TexSubImage2DCmd` 等具体命令。
+  indexed batch 与 `SubVBO/DRAW_RANGE` 保存共享 buffer 和布局，VAO 按 context 延迟创建并
+  复用；裸 VAO 命令受编译 identity 约束。每个 context session 保存 recorder、录制模式、
+  nested parent frames、相对变换、draw buffers、state generation、internal StateSet 深度与 capture
+  token；nested compilation 只在同一 identity 内保存、恢复父层。context release 暂停捕获但保留
+  compilation，随后重新绑定可继续 `glEndList`；destroy 在 native context 销毁前取消所属 session，
+  并清理暂停窗口中的 recorder，resume 不会重新激活已取消的 recorder。`TessellatorManager` 的
+  owned capture token 可按 exact identity 从线程本地栈任意位置暂停、恢复或移除，普通调用仍使用
+  原有 LIFO capture API。
+  Display-list ID allocator 与编译缓存按 GL share group 隔离；同组 context 共享列表，不同组
+  可使用相同整数 ID。最后一个 context 退役时释放该组的列表缓存和 CPU 录制资源。
 - **`redirect/`**：`GLSMRedirector`（GL 调用重定向）、`RedirectorDebugOptions`。
 - **`shadow/`**：`InternalShadowRenderingState` —— shadow pass 矩阵与渲染开关状态。
 - **`stacks/`**：全部状态栈（Alpha/Blend/Boolean/Color4/ColorMask/Depth/Fog/Integer/Light/
   LightModel/Line/Material/MatrixMode/Point/Polygon/Stencil/TextureBinding/
   TextureUnitBoolean/ViewPort/Vec3f/Vec4f），接口 `IStateStack`。
+  `CowStateStack`、`CowDepths` 和 `CowDispatch` 实现首次修改才保存的属性栈；pop 只恢复
+  实际改变的组，嵌套 scope 将尚需父层保留的快照向外提升。`GL_TEXTURE_BIT` 同时覆盖
+  TexGen 数值，`GL_TRANSFORM_BIT` 同时覆盖已变换的裁剪平面方程，不仅恢复 enable 位。
 - **`states/`**：与 stacks 一一对应的状态值对象（`ISettableState`），另有
   `TextureUnitArray`、`GenerationTrackedState`、`TexEnvState`、`TexGenState`、
   `VertexAttribState`、`ClipPlaneState`。

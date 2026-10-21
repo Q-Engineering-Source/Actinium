@@ -27,6 +27,39 @@ next bulk upstream refresh.
 
 ## Additional incorporated work
 
+- The 2026-10-21 large-feature backport selectively reuses Actinium's already adapted
+  OpenGL path at `research/sdl-gpu-port` (`6720f2d9912b3a43014cde0a67651a4fbca35cef`).
+  This working batch does not advance the full-tree upstream baselines:
+  - Copy-on-write attribute stacks reuse local commit
+    `b4f7a83672711c549ca33c9ea52019aa073e611b`; per-context state separation follows
+    `ff97146b7f61da5026ddb2c82506454f32ea93df`,
+    `8f0f16b81f89a8fa1e639e0296bc9c5a30e32e5f`, and the replay correction in
+    `90507920236f3aadb49829e60cb94575a5306cf3`. Paths include `glsm/.../{context,stacks,states,ffp,streaming}/`,
+    `StateSet`, `Feature`, `GLContextState`, and `GLStateManager`, under the existing
+    Angelica/GLSM LGPL-3.0 notices. Native identity generations, retirement subscriptions,
+    share-group-aware resource deletion, and the Cleanroom lifecycle adapter are local adaptations.
+  - Display-list context ownership and client-array restoration are informed by Angelica
+    `23aa04361d5fcb733e1203bea0eac827f4902469` (#2250) and
+    `3978be161d5743942674db61c52a0997e6dde3f8` (#2247); internal state recording and
+    reset recovery follow `53776684c8dd8cf1c915f24023f94fdc1b88ac56` (#2126) and
+    `1babfd968c6a9a968dae7a035995990e0f076390` (#2133). Paths are the GLSM recording,
+    client-array, and state-stack code. Multi-context VAO maps and deferred owner deletion
+    extend the upstream single-migration approach; existing LGPL-3.0 notices apply.
+  - Atlas loading, gutter, and texture filtering reuse local commits
+    `a52e323e57a377e676f8561cfea373ff38d6cf03`,
+    `7b244cea9183a149161373ed1afb4de6587f6418`, and
+    `4a02b90ecb8808cc63edafb12bf8886c0c3a5750`, with the 1.12 injection corrections in
+    `5298433fc35dea9bf2612cebe0469bd98bb8190d` and dependency-frame ordering fix in
+    `ec05a50c831eccd0a87d7896985e8d643f1b6e14`. These adapt Angelica's atlas/mipmap
+    work (#2167, #2096, #1952, #2112, #2115) under the existing LGPL-3.0 notices.
+    Local paths include root `texture/{atlas,mipmap}/`, `util/PrefetchLane`, texture Mixins,
+    `celeritas-common/.../texture/`, terrain texture sampling, shader resources, and Iris PBR
+    atlas integration. The final A2 frame-loading order is retained; SDL staging is excluded.
+  - Unified chunk dispatcher routing is a local adaptation of Celeritas
+    `26ab2175887b486c52fbdb1f5992ceb2550082dd`, in root terrain compilation, Foliage/
+    Fluidlogged compatibility, and the dispatcher Mixin. Existing Celeritas/Embeddium
+    file-level notices are retained. Actinium preserves its addon binding descriptors and
+    adds nested material-capture ownership. The upstream vertical sliding window is not imported.
 - The shader-loading backport selectively reuses the already adapted OpenGL-path work from
   Actinium's `research/sdl-gpu-port` commits `b1e91a17`, `de9b99e2`, `b245191a`, and
   the common cache/layer helpers in `d45f3b13`. The original upstream sources are Angelica
