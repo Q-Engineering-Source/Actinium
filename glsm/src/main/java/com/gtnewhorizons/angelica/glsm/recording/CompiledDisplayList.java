@@ -1,6 +1,7 @@
 package com.gtnewhorizons.angelica.glsm.recording;
 
 import com.gtnewhorizons.angelica.glsm.DisplayListManager;
+import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
 import com.gtnewhorizons.angelica.glsm.recording.commands.DisplayListCommand;
 import com.gtnewhorizons.angelica.glsm.recording.commands.IndexedDrawBatch;
 import it.unimi.dsi.fastutil.ints.Int2IntMap;
@@ -31,18 +32,26 @@ public final class CompiledDisplayList {
      * Empty display list singleton. Per OpenGL spec, an empty list is still valid.
      * This instance does nothing when rendered and is never deleted (shared singleton).
      */
-    public static final CompiledDisplayList EMPTY = new CompiledDisplayList(null, null, null, Collections.emptyList());
+    public static final CompiledDisplayList EMPTY = new CompiledDisplayList(null, null, null, Collections.emptyList(), null);
 
     private final ByteBuffer commandBuffer;     // Off-heap command storage, must be freed
     private final Object[] complexObjects;      // Complex commands (TexImage2D, etc.)
     private final DisplayListVBO ownedVbos;     // GPU resources referenced by index
     private final List<IndexedDrawBatch> indexedBatches; // Shared VAO/VBO/EBO triples per layout group
+    private final GLContextIdentity compilationIdentity;
 
-    public CompiledDisplayList(ByteBuffer commandBuffer, Object[] complexObjects, DisplayListVBO ownedVbos, List<IndexedDrawBatch> indexedBatches) {
+    public CompiledDisplayList(
+        ByteBuffer commandBuffer,
+        Object[] complexObjects,
+        DisplayListVBO ownedVbos,
+        List<IndexedDrawBatch> indexedBatches,
+        GLContextIdentity compilationIdentity
+    ) {
         this.commandBuffer = commandBuffer;
         this.complexObjects = complexObjects;
         this.ownedVbos = ownedVbos;
         this.indexedBatches = indexedBatches;
+        this.compilationIdentity = compilationIdentity;
     }
 
     /**
@@ -50,7 +59,7 @@ public final class CompiledDisplayList {
      */
     public void render() {
         if (commandBuffer != null && commandBuffer.limit() > 0) {
-            CommandBufferExecutor.execute(commandBuffer, complexObjects, ownedVbos);
+            CommandBufferExecutor.execute(commandBuffer, complexObjects, ownedVbos, compilationIdentity);
         }
     }
 
@@ -105,6 +114,11 @@ public final class CompiledDisplayList {
 
     public List<IndexedDrawBatch> getIndexedBatches() {
         return indexedBatches;
+    }
+
+    /** Returns the native context lifetime that owns raw VAO names in the command stream. */
+    public GLContextIdentity getCompilationIdentity() {
+        return compilationIdentity;
     }
 
     // === Test inspection methods ===

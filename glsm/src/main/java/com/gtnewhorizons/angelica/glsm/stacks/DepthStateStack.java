@@ -1,59 +1,66 @@
 package com.gtnewhorizons.angelica.glsm.stacks;
 
-import com.gtnewhorizon.gtnhlib.client.renderer.stacks.IStateStack;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.StateSet;
 import com.gtnewhorizons.angelica.glsm.hooks.VanillaStateLayer;
 import com.gtnewhorizons.angelica.glsm.states.DepthState;
 import lombok.Setter;
 
-public class DepthStateStack extends DepthState implements IStateStack<DepthStateStack> {
+public final class DepthStateStack extends DepthState implements CowStateStack<DepthStateStack> {
 
     protected final DepthState[] stack;
+    private final CowDepths cow = new CowDepths(StateSet.R_DEPTH);
 
-    protected int pointer;
     @Setter private VanillaStateLayer<DepthState> vanillaLayer;
+
     private final DepthState effective = new DepthState();
 
-    public DepthStateStack() {
-        stack = new DepthState[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
-        for (int i = 0; i < GLStateManager.MAX_ATTRIB_STACK_DEPTH; i++) {
+    public DepthStateStack(int id) {
+        cow.id = id;
+        stack = new DepthState[GLStateManager.STATE_SLOTS];
+        for (int i = 0; i < GLStateManager.STATE_SLOTS; i++) {
             stack[i] = new DepthState();
         }
     }
 
-    public DepthStateStack push() {
-        if(pointer == stack.length) {
-            throw new IllegalStateException("Stack overflow size " + (pointer + 1) + " reached");
-        }
-
-        VanillaStateLayer.capture(vanillaLayer, stack[pointer++].set(this));
-        return this;
+    @Override
+    public CowDepths cowDepths() {
+        return cow;
     }
 
-    public DepthStateStack pop() {
-        if(pointer == 0) {
-            throw new IllegalStateException("Stack underflow");
-        }
+    @Override
+    public boolean slotChanged(int slot) {
+        return VanillaStateLayer.isHeld(vanillaLayer) || !sameAs(stack[slot]);
+    }
 
-        final DepthState saved = stack[--pointer];
+    @Override
+    public void captureSlot(int s) {
+        VanillaStateLayer.capture(vanillaLayer, stack[s].set(this));
+    }
+
+    @Override
+    public void restoreSlot(int s) {
+        final DepthState saved = stack[s];
         if (VanillaStateLayer.restore(vanillaLayer, saved)) {
             setExceptMask(saved);
         } else {
             set(saved);
         }
-        return this;
     }
 
-    /** Returns the effective depth-write mask after shader overrides are applied. */
+    @Override
+    public boolean topSlotChanged() {
+        return !cow.isEmpty() && !sameAs(stack[cow.top()]);
+    }
+
     public boolean isEffectiveMaskEnabled() {
-        if (!VanillaStateLayer.isHeld(vanillaLayer)) {
-            return isMaskEnabled();
-        }
+        if (!VanillaStateLayer.isHeld(vanillaLayer)) return isEnabled();
         vanillaLayer.readVanilla(effective);
-        return effective.isMaskEnabled();
+        return effective.isEnabled();
     }
 
-    public boolean isEmpty() {
-        return pointer == 0;
+    @Override
+    public int stackId() {
+        return cow.id;
     }
 }

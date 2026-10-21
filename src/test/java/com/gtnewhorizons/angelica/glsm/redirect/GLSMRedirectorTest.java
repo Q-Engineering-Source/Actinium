@@ -55,6 +55,49 @@ class GLSMRedirectorTest {
     }
 
     @Test
+    void redirectsCoreAndArbVertexBindingDivisorsToGlsm() {
+        for (String owner : new String[] {
+            "org/lwjgl/opengl/GL43C",
+            "org/lwjgl/opengl/ARBVertexAttribBinding"
+        }) {
+            final ClassWriter writer = new ClassWriter(0);
+            writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "sample/VertexBindingDivisor", null, "java/lang/Object", null);
+            final MethodVisitor method = writer.visitMethod(Opcodes.ACC_PUBLIC, "render", "()V", null, null);
+            method.visitCode();
+            method.visitInsn(Opcodes.ICONST_0);
+            method.visitInsn(Opcodes.ICONST_1);
+            method.visitMethodInsn(Opcodes.INVOKESTATIC, owner, "glVertexBindingDivisor", "(II)V", false);
+            method.visitInsn(Opcodes.RETURN);
+            method.visitMaxs(2, 1);
+            method.visitEnd();
+            writer.visitEnd();
+            final byte[] classBytes = writer.toByteArray();
+            final GLSMRedirector redirector = new GLSMRedirector();
+
+            assertTrue(redirector.shouldTransform(classBytes), owner + " vertex binding divisor call must be a redirect candidate");
+            final ClassNode classNode = new ClassNode();
+            new ClassReader(classBytes).accept(classNode, 0);
+            assertTrue(redirector.transformClassNode("sample/VertexBindingDivisor", classNode));
+
+            final MethodNode render = classNode.methods.stream()
+                .filter(candidate -> candidate.name.equals("render"))
+                .findFirst()
+                .orElseThrow();
+            boolean redirected = false;
+            for (AbstractInsnNode instruction = render.instructions.getFirst(); instruction != null; instruction = instruction.getNext()) {
+                if (instruction instanceof MethodInsnNode call
+                    && call.owner.equals(GLSM_GL_STATE_MANAGER)
+                    && call.name.equals("glVertexBindingDivisor")
+                    && call.desc.equals("(II)V")) {
+                    redirected = true;
+                    break;
+                }
+            }
+            assertTrue(redirected, owner + " call must be redirected to GLSM GLStateManager");
+        }
+    }
+
+    @Test
     void rewritesVanillaGlStateManagerOutlineModeToGlsmCache() {
         byte[] classBytes = generateClassCallingVanillaOutlineMode();
         GLSMRedirector redirector = new GLSMRedirector();

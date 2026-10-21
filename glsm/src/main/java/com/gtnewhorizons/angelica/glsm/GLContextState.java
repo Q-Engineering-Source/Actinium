@@ -1,12 +1,16 @@
 package com.gtnewhorizons.angelica.glsm;
 
 import com.gtnewhorizon.gtnhlib.client.renderer.stacks.IStateStack;
+import com.gtnewhorizons.angelica.glsm.ClipPlaneBooleanState;
 import com.gtnewhorizons.angelica.glsm.stacks.AlphaStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.BlendStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.BooleanStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.Color4Stack;
 import com.gtnewhorizons.angelica.glsm.stacks.ColorMaskStack;
 import com.gtnewhorizons.angelica.glsm.stacks.ClientAttribStack;
+import com.gtnewhorizons.angelica.glsm.stacks.CowDepths;
+import com.gtnewhorizons.angelica.glsm.stacks.CowDispatch;
+import com.gtnewhorizons.angelica.glsm.stacks.CowStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.DepthStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.FogStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.IntegerStateStack;
@@ -18,17 +22,24 @@ import com.gtnewhorizons.angelica.glsm.stacks.MatrixModeStack;
 import com.gtnewhorizons.angelica.glsm.stacks.PointStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.PolygonStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.ScissorStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.StackIdAllocator;
 import com.gtnewhorizons.angelica.glsm.stacks.StencilStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.ViewPortStateStack;
 import com.gtnewhorizons.angelica.glsm.states.BlendState;
 import com.gtnewhorizons.angelica.glsm.states.ClipPlaneState;
 import com.gtnewhorizons.angelica.glsm.states.Color4;
 import com.gtnewhorizons.angelica.glsm.states.ImageUnitArray;
+import com.gtnewhorizons.angelica.glsm.states.AlphaState;
 import com.gtnewhorizons.angelica.glsm.states.PixelPackState;
 import com.gtnewhorizons.angelica.glsm.states.PixelUnpackState;
 import com.gtnewhorizons.angelica.glsm.states.TextureUnitArray;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
-import it.unimi.dsi.fastutil.ints.IntStack;
+import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
+import com.gtnewhorizons.angelica.glsm.states.BufferGenerationTracker;
+import com.gtnewhorizons.angelica.glsm.streaming.StreamingVaos;
+import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
+import com.gtnewhorizons.angelica.glsm.ffp.ShaderCache;
+import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
+import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import org.joml.Matrix4fStack;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
@@ -47,13 +58,27 @@ import java.util.List;
  * {@code enterWorkerContext()}. After a display-context migration the cached values here are
  * replayed onto the new context via {@link GLStateManager#replayStateToBackend()}.
  */
-class GLContextState {
+public class GLContextState {
+    /** Stable native context lifetime that owns every context-local field in this state object. */
+    GLContextIdentity identity;
+    /** Context-local FFP program selection and uniforms over a share-group-owned linked-program cache. */
+    final ShaderManager shaderManager;
+
     /** Every BooleanStateStack owned by this context, for {@link GLStateManager#replayStateToBackend()}. */
     final List<BooleanStateStack> allBooleanStates = new ArrayList<>();
 
-    private BooleanStateStack track(BooleanStateStack s) {
+    private final List<IStateStack<?>> allStacksBuilder = new ArrayList<>();
+
+    public BooleanStateStack track(BooleanStateStack s) {
+        s.setStackId(StackIdAllocator.nextId());
         allBooleanStates.add(s);
+        allStacksBuilder.add(s);
         return s;
+    }
+
+    public <T extends IStateStack<?>> T member(T stack) {
+        allStacksBuilder.add(stack);
+        return stack;
     }
 
     public boolean poppingAttributes;
@@ -72,6 +97,8 @@ class GLContextState {
     public int colorGeneration;
     // clip plane equation changes
     public int clipPlaneGeneration;
+    /** Bit mask of enabled clip planes, mirrored by {@link ClipPlaneBooleanState}. */
+    public int clipPlaneEnabledMask;
     // active shader program changes
     public int programGeneration;
     // draw framebuffer binding changes
@@ -95,10 +122,19 @@ class GLContextState {
     public boolean dirtyLightmapAttrib;
     public boolean unit23TexCoordSetDuringDraw = false;
     public int maxBoundTextureUnit = 0;
-    public final IntStack attribs = new IntArrayList(GLStateManager.MAX_ATTRIB_STACK_DEPTH);
     public int attribDepth = 0;
-    @SuppressWarnings("unchecked")
-    public final List<IStateStack<?>>[] modifiedAtDepth = new List[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
+    public final StateSet[] attribSets = new StateSet[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
+    public IStateStack<?>[] allStacks;
+    public CowStateStack<?>[] stackById;
+    public CowDepths[] depthsById;
+    public int[] restoreBitById;
+    public int[] restoreUnitById;
+    public byte[] kindById;
+    public int[][] modifiedIds;
+    public int[] modifiedCount;
+    public int restoreChangedMask;
+    public long restoreUnitChangedMask;
+    public final AlphaState restoredAlphaScratch = new AlphaState();
     public final int[] savedMvGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
     public final int[] savedProjGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
     public final int[] savedTexMatGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
@@ -106,34 +142,36 @@ class GLContextState {
     public final int[] savedLightingGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
     public final int[] savedFragmentGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
     public final int[] savedColorGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
+    public final int[] savedTexGenGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
+    public final int[] savedClipPlaneGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
     public final int[] savedNormalGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
     public final int[] savedTexCoordGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
-    public final IntegerStateStack activeTextureUnit = new IntegerStateStack(0);
+    public final IntegerStateStack activeTextureUnit = member(new IntegerStateStack(0, StackIdAllocator.nextId()).restoreBit(StateSet.R_ACTIVE_UNIT));
     public int clientActiveTextureUnit = 0;
-    public final IntegerStateStack shadeModelState = new IntegerStateStack(GL11.GL_SMOOTH);
+    public final IntegerStateStack shadeModelState = member(new IntegerStateStack(GL11.GL_SMOOTH, StackIdAllocator.nextId()));
     public final TextureUnitArray textures = new TextureUnitArray();
     public final ImageUnitArray imageUnits = new ImageUnitArray();
-    public final BlendStateStack blendState = new BlendStateStack();
+    public final BlendStateStack blendState = member(new BlendStateStack(StackIdAllocator.nextId()));
     public final BooleanStateStack blendMode = track(new BooleanStateStack(GL11.GL_BLEND));
     public final BlendState vanillaBlendBefore = new BlendState();
     public final BlendState vanillaBlendAfter = new BlendState();
     public boolean vanillaBlendEnabledBefore;
     public final BooleanStateStack scissorTest = track(new BooleanStateStack(GL11.GL_SCISSOR_TEST));
-    public final ScissorStateStack scissorState = new ScissorStateStack();
-    public final DepthStateStack depthState = new DepthStateStack();
+    public final ScissorStateStack scissorState = member(new ScissorStateStack(StackIdAllocator.nextId()));
+    public final DepthStateStack depthState = member(new DepthStateStack(StackIdAllocator.nextId()));
     public final BooleanStateStack depthTest = track(new BooleanStateStack(GL11.GL_DEPTH_TEST));
-    public final FogStateStack fogState = new FogStateStack();
+    public final FogStateStack fogState = member(new FogStateStack(StackIdAllocator.nextId()));
     public final BooleanStateStack fogMode = track(new BooleanStateStack(GL11.GL_FOG, false, true));
-    public final Color4Stack color = new Color4Stack();
+    public final Color4Stack color = member(new Color4Stack(StackIdAllocator.nextId()));
     // GL_CURRENT_SECONDARY_COLOR - alpha is always 1 and unused, the color sum only adds RGB
-    public final Color4Stack secondaryColor = new Color4Stack(new Color4(0.0F, 0.0F, 0.0F, 1.0F));
+    public final Color4Stack secondaryColor = member(new Color4Stack(StackIdAllocator.nextId(), new Color4(0.0F, 0.0F, 0.0F, 1.0F)).restoreBit(StateSet.R_SECONDARY_COLOR));
     public final BooleanStateStack colorSumState = track(new BooleanStateStack(GL14.GL_COLOR_SUM, false, true));
-    public final Color4Stack clearColor = new Color4Stack(new Color4(0.0F, 0.0F, 0.0F, 0.0F));
-    public final ColorMaskStack colorMask = new ColorMaskStack();
-    public final IntegerStateStack drawBuffer = new IntegerStateStack(GLStateManager.DEFAULT_DRAW_BUFFER);
-    public final IntegerStateStack logicOpMode = new IntegerStateStack(GL11.GL_COPY);
+    public final Color4Stack clearColor = member(new Color4Stack(StackIdAllocator.nextId(), new Color4(0.0F, 0.0F, 0.0F, 0.0F)).restoreBit(StateSet.R_CLEAR_COLOR));
+    public final ColorMaskStack colorMask = member(new ColorMaskStack(StackIdAllocator.nextId()));
+    public final IntegerStateStack drawBuffer = member(new IntegerStateStack(GLStateManager.DEFAULT_DRAW_BUFFER, StackIdAllocator.nextId()).restoreBit(StateSet.R_DRAW_BUFFER));
+    public final IntegerStateStack logicOpMode = member(new IntegerStateStack(GL11.GL_COPY, StackIdAllocator.nextId()).restoreBit(StateSet.R_LOGIC_OP));
     public final BooleanStateStack cullState = track(new BooleanStateStack(GL11.GL_CULL_FACE));
-    public final AlphaStateStack alphaState = new AlphaStateStack();
+    public final AlphaStateStack alphaState = member(new AlphaStateStack(StackIdAllocator.nextId()));
     public final BooleanStateStack alphaTest = track(new BooleanStateStack(GL11.GL_ALPHA_TEST, false, true));
     public final BooleanStateStack lightingState = track(new BooleanStateStack(GL11.GL_LIGHTING, false, true));
     public final BooleanStateStack rescaleNormalState = track(new BooleanStateStack(GL12.GL_RESCALE_NORMAL, false, true));
@@ -154,10 +192,10 @@ class GLContextState {
     public final BooleanStateStack polygonOffsetPointState = track(new BooleanStateStack(GL11.GL_POLYGON_OFFSET_POINT));
     public final BooleanStateStack polygonOffsetLineState = track(new BooleanStateStack(GL11.GL_POLYGON_OFFSET_LINE));
     public final BooleanStateStack polygonOffsetFillState = track(new BooleanStateStack(GL11.GL_POLYGON_OFFSET_FILL));
-    public final LineStateStack lineState = new LineStateStack();
-    public final PointStateStack pointState = new PointStateStack();
-    public final PolygonStateStack polygonState = new PolygonStateStack();
-    public final StencilStateStack stencilState = new StencilStateStack();
+    public final LineStateStack lineState = member(new LineStateStack(StackIdAllocator.nextId()));
+    public final PointStateStack pointState = member(new PointStateStack(StackIdAllocator.nextId()));
+    public final PolygonStateStack polygonState = member(new PolygonStateStack(StackIdAllocator.nextId()));
+    public final StencilStateStack stencilState = member(new StencilStateStack(StackIdAllocator.nextId()));
     public final BooleanStateStack autoNormalState = track(new BooleanStateStack(GL11.GL_AUTO_NORMAL, false, true));
     public final BooleanStateStack map1Color4State = track(new BooleanStateStack(GL11.GL_MAP1_COLOR_4, false, true));
     public final BooleanStateStack map1IndexState = track(new BooleanStateStack(GL11.GL_MAP1_INDEX, false, true));
@@ -178,27 +216,37 @@ class GLContextState {
     public final BooleanStateStack map2Vertex3State = track(new BooleanStateStack(GL11.GL_MAP2_VERTEX_3, false, true));
     public final BooleanStateStack map2Vertex4State = track(new BooleanStateStack(GL11.GL_MAP2_VERTEX_4, false, true));
     public final BooleanStateStack[] clipPlaneStates = new BooleanStateStack[GLStateManager.MAX_CLIP_PLANES];
-    public final ClipPlaneState clipPlaneState = new ClipPlaneState();
+    public final ClipPlaneState clipPlaneState = member(new ClipPlaneState(StackIdAllocator.nextId()));
     public final FloatBuffer queryScratch = BufferUtils.createFloatBuffer(16);
     public final DoubleBuffer queryScratchDouble = BufferUtils.createDoubleBuffer(16);
-    public final MatrixModeStack matrixMode = new MatrixModeStack();
+    public final MatrixModeStack matrixMode = member(new MatrixModeStack(StackIdAllocator.nextId()));
     public final Matrix4fStack modelViewMatrix = new Matrix4fStack(GLStateManager.MAX_MODELVIEW_STACK_DEPTH);
     public final Matrix4fStack projectionMatrix = new Matrix4fStack(GLStateManager.MAX_PROJECTION_STACK_DEPTH);
     public final Matrix4fStack colorMatrix = new Matrix4fStack(GLStateManager.MAX_COLOR_STACK_DEPTH);
     public final BooleanStateStack[] lightStates = new BooleanStateStack[8];
     public final LightStateStack[] lightDataStates = new LightStateStack[8];
     public final BooleanStateStack colorMaterial = track(new BooleanStateStack(GL11.GL_COLOR_MATERIAL, false, true));
-    public final IntegerStateStack colorMaterialFace = new IntegerStateStack(GL11.GL_FRONT_AND_BACK);
-    public final IntegerStateStack colorMaterialParameter = new IntegerStateStack(GL11.GL_AMBIENT_AND_DIFFUSE);
-    public final LightModelStateStack lightModel = new LightModelStateStack();
-    public final MaterialStateStack frontMaterial = new MaterialStateStack(GL11.GL_FRONT);
-    public final MaterialStateStack backMaterial = new MaterialStateStack(GL11.GL_BACK);
-    public final ViewPortStateStack viewportState = new ViewPortStateStack();
+    public final IntegerStateStack colorMaterialFace = member(new IntegerStateStack(GL11.GL_FRONT_AND_BACK, StackIdAllocator.nextId()));
+    public final IntegerStateStack colorMaterialParameter = member(new IntegerStateStack(GL11.GL_AMBIENT_AND_DIFFUSE, StackIdAllocator.nextId()));
+    public final LightModelStateStack lightModel = member(new LightModelStateStack(StackIdAllocator.nextId()));
+    public final MaterialStateStack frontMaterial = member(new MaterialStateStack(GL11.GL_FRONT, StackIdAllocator.nextId()));
+    public final MaterialStateStack backMaterial = member(new MaterialStateStack(GL11.GL_BACK, StackIdAllocator.nextId()));
+    public final ViewPortStateStack viewportState = member(new ViewPortStateStack(StackIdAllocator.nextId()));
     public int activeProgram = 0;
     public int listBase = 0;
     public int boundVBO;
     public int boundEBO;
     public int boundVAO;
+    /** Default VAO and VAO-local tracking belong to this context even when names repeat elsewhere. */
+    public int defaultVAO;
+    public final Int2IntOpenHashMap vaoEboMap = new Int2IntOpenHashMap();
+    public final VertexAttribState vertexAttribState;
+    public final StreamingVaos streamingVaos = new StreamingVaos();
+    /** Client-array upload scratch is context-owned because array-buffer bindings are context-local. */
+    public int clientArraysVBO;
+    public int clientArraysVBOCapacity;
+    public final int[] clientArraysVBOOffsets = new int[VertexAttribState.MAX_ATTRIBS];
+    public final int[] clientArraysVBOUploadLengths = new int[VertexAttribState.MAX_ATTRIBS];
     public int boundPixelUnpackBuffer;
     public int boundPixelPackBuffer;
     public PixelUnpackState pixelUnpackState = PixelUnpackState.DEFAULT;
@@ -207,19 +255,110 @@ class GLContextState {
     public int readFramebuffer = 0;
     public final ClientAttribStack clientAttribStack = new ClientAttribStack();
 
-    GLContextState() {
-        for (int i = 0; i < GLStateManager.MAX_ATTRIB_STACK_DEPTH; i++) modifiedAtDepth[i] = new ArrayList<>();
+    /** True when an open attribute scope saves the stack with this stable id. */
+    public boolean savesState(int id) {
+        for (int depth = attribDepth - 1; depth >= 0; depth--) {
+            if (attribSets[depth].contains(id)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    GLContextState(GLContextIdentity identity, ShaderCache shaderCache) {
+        this.identity = identity;
+        this.shaderManager = new ShaderManager(shaderCache);
+        this.vertexAttribState = new VertexAttribState(
+            identity.shareGroupId(), BufferGenerationTracker.shared(identity.shareGroupId()));
+        vaoEboMap.defaultReturnValue(0);
+        allStacksBuilder.addAll(textures.idStacks());
         for (int i = 0; i < lightStates.length; i++) {
             lightStates[i] = track(new BooleanStateStack(GL11.GL_LIGHT0 + i, false, true));
         }
         for (int i = 0; i < GLStateManager.MAX_CLIP_PLANES; i++) {
-            clipPlaneStates[i] = track(new BooleanStateStack(GL11.GL_CLIP_PLANE0 + i));
+            clipPlaneStates[i] = track(new ClipPlaneBooleanState(this, i, GL11.GL_CLIP_PLANE0 + i));
         }
     }
 
     void init() {
         for (int i = 0; i < lightDataStates.length; i++) {
-            lightDataStates[i] = new LightStateStack(GL11.GL_LIGHT0 + i);
+            lightDataStates[i] = member(new LightStateStack(GL11.GL_LIGHT0 + i, StackIdAllocator.nextId()));
         }
+
+        // These stacks belong to the current context's ShaderManager and share this context's COW ids.
+        ShaderManager.getNormalStack().setStackId(StackIdAllocator.nextId());
+        allStacksBuilder.add(ShaderManager.getNormalStack());
+        ShaderManager.getTexCoordStack().setStackId(StackIdAllocator.nextId());
+        allStacksBuilder.add(ShaderManager.getTexCoordStack());
+
+        allStacks = allStacksBuilder.toArray(new IStateStack<?>[0]);
+        final int capacity = StackIdAllocator.allocated();
+        stackById = new CowStateStack<?>[capacity];
+        depthsById = new CowDepths[capacity];
+        restoreBitById = new int[capacity];
+        restoreUnitById = new int[capacity];
+        kindById = new byte[capacity];
+
+        for (IStateStack<?> stateStack : allStacks) {
+            if (!(stateStack instanceof CowStateStack<?> cow)) {
+                throw new IllegalStateException("Registered GL state stack does not support COW: " + stateStack.getClass().getName());
+            }
+            final int id = cow.stackId();
+            if (id < 0 || id >= capacity || stackById[id] != null) {
+                throw new IllegalStateException("Invalid or duplicate GL state stack id " + id + " for " + stateStack.getClass().getName());
+            }
+            stackById[id] = cow;
+            depthsById[id] = cow.cowDepths();
+            depthsById[id].owner = this;
+            restoreBitById[id] = cow.restoreBit();
+            restoreUnitById[id] = cow.restoreUnit();
+            kindById[id] = CowDispatch.kindOf(cow);
+        }
+
+        for (int id = 0; id < capacity; id++) {
+            if (stackById[id] == null) {
+                throw new IllegalStateException("Missing GL state stack registration for id " + id);
+            }
+        }
+
+        modifiedIds = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH][allStacks.length];
+        modifiedCount = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
+    }
+
+    /** Transfers display-owned cached values to its replacement context and drops context-local bindings. */
+    void adoptNativeContext(GLContextIdentity replacement, ShaderCache replacementCache) {
+        final boolean sameShareGroup = identity.shareGroupId() == replacement.shareGroupId();
+        identity = replacement;
+        shaderManager.adoptContextIdentity(replacement, replacementCache);
+        defaultVAO = 0;
+        boundVAO = 0;
+        boundEBO = 0;
+        boundVBO = 0;
+        boundPixelPackBuffer = 0;
+        boundPixelUnpackBuffer = 0;
+        pixelPackState = PixelPackState.DEFAULT;
+        pixelUnpackState = PixelUnpackState.DEFAULT;
+        drawFramebuffer = 0;
+        readFramebuffer = 0;
+        activeProgram = 0;
+        programGeneration++;
+        vaoEboMap.clear();
+        vertexAttribState.resetForShareGroup(
+            replacement.shareGroupId(), BufferGenerationTracker.shared(replacement.shareGroupId()));
+        streamingVaos.clear();
+        clientAttribStack.clear();
+        if (!sameShareGroup) {
+            clientArraysVBO = 0;
+            clientArraysVBOCapacity = 0;
+        }
+    }
+
+    /** Releases Java-side snapshots that belong only to a destroyed native context. */
+    void onContextRetired() {
+        shaderManager.retireContext();
+        vaoEboMap.clear();
+        vertexAttribState.releaseState();
+        streamingVaos.clear();
+        clientAttribStack.clear();
     }
 }

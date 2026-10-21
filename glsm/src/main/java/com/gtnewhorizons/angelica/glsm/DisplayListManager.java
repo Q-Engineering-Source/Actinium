@@ -18,9 +18,9 @@ import com.gtnewhorizons.angelica.glsm.recording.commands.DisplayListCommand;
 import com.gtnewhorizons.angelica.glsm.recording.commands.IndexedDrawBatch;
 import com.gtnewhorizons.angelica.glsm.recording.commands.IndexedDrawBatchBuilder;
 import com.gtnewhorizons.angelica.glsm.recording.commands.IndexedDrawCapture;
-import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import lombok.Getter;
+import com.gtnewhorizons.angelica.glsm.recording.commands.StateSetScopeCmd;
+import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
+import com.gtnewhorizons.angelica.glsm.context.GLContextRegistryProvider;
 import lombok.experimental.UtilityClass;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fStack;
@@ -28,14 +28,17 @@ import org.joml.Vector3f;
 import org.lwjgl.opengl.GL11;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Deque;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memAddress;
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memGetInt;
+import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memFree;
 
 /**
  * VBO-based display list emulation with command recording, transform collapsing, and format-based batching.
@@ -63,9 +66,6 @@ public class DisplayListManager {
         }
     }
 
-    // Track which display list is currently being rendered
-    @Getter private static int currentRenderingList = -1;
-
     private static final Matrix4f IDENTITY = new Matrix4f();
 
     public static boolean isIdentity(Matrix4f m) {
@@ -82,515 +82,709 @@ public class DisplayListManager {
         COMPILE_AND_EXECUTE // GL_COMPILE_AND_EXECUTE: record and execute
     }
 
-    // Display list compilation state (current/active context)
-    private static int glListMode = 0;
-    private static int glListId = -1;
-    private static CommandRecorder currentRecorder = null;  // Command recorder (null when not recording)
-    private static volatile Thread recordingThread = null;  // Thread that started recording (for thread-safety)
-    private static List<AccumulatedDraw> accumulatedDraws = null;  // Accumulates quad draws for batching
-    private static Matrix4fStack relativeTransform = null;  // Tracks relative transforms during compilation (with push/pop support)
-    /**
-     * -- GETTER --
-     * Get the current state generation (for draw merging).
-     */
-    @Getter
-    private static int stateGeneration = 0;  // Increments at draw barriers (state commands); used for draw merging
-    private static StackTraceElement[] compilationStackTrace = null;  // For logging: captured at glNewList()
+    // Compilation data lives on a native context session; a thread-local idle session covers calls outside a bound context.
+    private static final Map<GLContextIdentity, DisplayListCompilationSession> compilationSessions = new ConcurrentHashMap<>();
+    private static final ThreadLocal<DisplayListCompilationSession> idleSession =
+        ThreadLocal.withInitial(() -> new DisplayListCompilationSession(null));
+    private static final Map<CommandRecorder, DisplayListCompilationSession> recorderOwners =
+        Collections.synchronizedMap(new IdentityHashMap<>());
+    private static final Set<CommandRecorder> canceledRecorders = ConcurrentHashMap.newKeySet();
 
-    // Debug logging: track sources of MULT_MATRIX commands and draw origins; only populated when LOG_DISPLAY_LIST_COMPILATION is true
-    private static List<String> pendingTransformOps = null;  // Ops accumulated since last flush
-    private static List<List<String>> multMatrixSources = null;  // Source ops for each MULT_MATRIX in raw buffer
-    private static List<String> drawRangeSources = null;  // Source type for each DRAW_RANGE in final buffer
+    private static final DisplayListNamespaces displayListNamespaces = new DisplayListNamespaces();
+    @SuppressWarnings("unused")
+    private static final AutoCloseable displayListRetirementSubscription =
+        GLContextRegistryProvider.addRetirementListener(DisplayListManager::onContextRetired);
 
-    // Nested compilation support - stack of parent contexts
-    private static final Deque<CompilationContext> compilationStack = new ArrayDeque<>();
-
-    // Display list cache
-    private static final Int2ObjectMap<CompiledDisplayList> displayListCache = new Int2ObjectOpenHashMap<>();
-
-    /**
-     * Compilation context for a single display list being compiled.
-     * Used to support nested glNewList() calls (spec-violating but needed for mod compatibility).
-     */
-    private record CompilationContext(
-        int listId,
-        int listMode,
-        CommandRecorder recorder,
-        List<AccumulatedDraw> draws,
-        Matrix4fStack transform,
-        StackTraceElement[] stackTrace,
-
-        // Debug logging fields (only used when LOG_DISPLAY_LIST_COMPILATION)
-        List<String> pendingOps,
-        List<List<String>> matrixSources,
-        List<String> drawSources
-    ) {}
-
-    public static RecordMode getRecordMode() {
-        if (currentRecorder == null || Thread.currentThread() != recordingThread) {
-            return RecordMode.NONE;
+    private static DisplayListCompilationSession session() {
+        final GLContextIdentity currentIdentity = GLContextRegistryProvider.get().currentBinding();
+        if (currentIdentity == null) {
+            return idleSession.get();
         }
-        return glListMode == GL11.GL_COMPILE_AND_EXECUTE ? RecordMode.COMPILE_AND_EXECUTE : RecordMode.COMPILE;
+        return compilationSessions.computeIfAbsent(currentIdentity, DisplayListCompilationSession::new);
     }
 
-    /** True only for the thread that started recording. */
+    private static DisplayListCompilationSession sessionFor(GLContextIdentity identity) {
+        return compilationSessions.computeIfAbsent(identity, DisplayListCompilationSession::new);
+    }
+
+    /** Saves a context's active compilation capture when the native binding leaves this thread. */
+    public static synchronized void onContextUnbound(GLContextIdentity identity) {
+        if (identity == null) {
+            return;
+        }
+        final DisplayListCompilationSession owner = compilationSessions.get(identity);
+        if (owner == null || !owner.isActive()) {
+            return;
+        }
+        if (owner.recordingThread != null && owner.recordingThread != Thread.currentThread()) {
+            throw new IllegalStateException("Cannot suspend display-list compilation owned by another thread");
+        }
+        if (owner.recordingThread == Thread.currentThread()) {
+            for (DirectTessellator capture : owner.capturesOutermostFirst()) {
+                TessellatorManager.suspend(capture);
+            }
+            owner.recordingThread = null;
+        }
+    }
+
+    /** Restores a parked compilation capture after its native context becomes current on this thread. */
+    public static synchronized void onContextBound(GLContextIdentity identity) {
+        if (identity == null) {
+            return;
+        }
+        final DisplayListCompilationSession owner = compilationSessions.get(identity);
+        if (owner == null || !owner.isActive()) {
+            return;
+        }
+        if (owner.recordingThread != null && owner.recordingThread != Thread.currentThread()) {
+            throw new IllegalStateException("Display-list compilation context is already bound to another thread");
+        }
+        for (DirectTessellator capture : owner.capturesOutermostFirst()) {
+            TessellatorManager.resume(capture);
+        }
+        owner.recordingThread = Thread.currentThread();
+    }
+
+    /** Returns the list currently replaying on this thread, or {@code -1} outside list replay. */
+    public static int getCurrentRenderingList() {
+        return session().currentRenderingList;
+    }
+
+    public static RecordMode getRecordMode() {
+        if (!isRecording()) {
+            return RecordMode.NONE;
+        }
+        return session().listMode == GL11.GL_COMPILE_AND_EXECUTE ? RecordMode.COMPILE_AND_EXECUTE : RecordMode.COMPILE;
+    }
+
+    /** True only for the context and thread that started recording. */
     public static boolean isRecording() {
-        return currentRecorder != null && Thread.currentThread() == recordingThread;
+        final DisplayListCompilationSession current = session();
+        return current.recorder != null && Thread.currentThread() == current.recordingThread;
     }
 
     public static boolean isCompileAndExecute() {
-        return glListMode == GL11.GL_COMPILE_AND_EXECUTE;
+        return isRecording() && session().listMode == GL11.GL_COMPILE_AND_EXECUTE;
     }
 
-    public static CommandRecorder pauseRecording() {
-        final CommandRecorder r = currentRecorder;
-        currentRecorder = null;
+    public static synchronized CommandRecorder pauseRecording() {
+        final DisplayListCompilationSession current = session();
+        final CommandRecorder r = current.recorder;
+        if (r != null) {
+            current.recorder = null;
+            current.pausedRecorders.add(r);
+        }
         return r;
     }
 
-    public static void resumeRecording(CommandRecorder r) {
-        currentRecorder = r;
+    public static synchronized void resumeRecording(CommandRecorder r) {
+        if (r == null || canceledRecorders.remove(r)) {
+            return;
+        }
+        final DisplayListCompilationSession owner;
+        synchronized (recorderOwners) {
+            owner = recorderOwners.get(r);
+        }
+        if (owner == null) {
+            throw new IllegalStateException("Cannot resume an unknown display-list recorder");
+        }
+        if (!owner.identity.equals(GLContextRegistryProvider.get().currentBinding())
+            || owner.recordingThread != Thread.currentThread()) {
+            throw new IllegalStateException("Cannot resume a display-list recorder outside its bound context session");
+        }
+        if (!owner.pausedRecorders.remove(r) || owner.recorder != null) {
+            throw new IllegalStateException("Display-list recorder is not paused or another recorder is active");
+        }
+        owner.recorder = r;
+    }
+
+    /** Releases the calling context's complete nested compilation session. */
+    public static synchronized void abortCompilation() {
+        final DisplayListCompilationSession current = session();
+        if (current.identity == null || !compilationSessions.containsKey(current.identity)) {
+            current.virtualStateScopes.clear();
+            return;
+        }
+        abortSession(current);
+    }
+
+    /** Aborts one context's compilation before native destruction, preserving every other context session. */
+    public static synchronized boolean abortCompilationForContext(GLContextIdentity retiringIdentity) {
+        if (retiringIdentity == null) {
+            return false;
+        }
+        final DisplayListCompilationSession owner = compilationSessions.get(retiringIdentity);
+        if (owner == null || !owner.isActive()) {
+            return false;
+        }
+        if (owner.recordingThread != null && Thread.currentThread() != owner.recordingThread) {
+            throw new IllegalStateException(
+                "Cannot destroy OpenGL context generation " + retiringIdentity.generation()
+                    + " while its display-list compilation is owned by thread "
+                    + owner.recordingThread.getName());
+        }
+        abortSession(owner);
+        compilationSessions.remove(retiringIdentity, owner);
+        return true;
+    }
+
+    private static void abortSession(DisplayListCompilationSession owner) {
+        if (owner.recordingThread != null && owner.recordingThread != Thread.currentThread()) {
+            throw new IllegalStateException("Display-list compilation can only be aborted by its owning context thread");
+        }
+
+        Throwable failure = null;
+        for (DirectTessellator capture : owner.capturesOutermostFirst()) {
+            try {
+                TessellatorManager.cancel(capture);
+            } catch (RuntimeException | Error cleanupFailure) {
+                if (failure == null) {
+                    failure = cleanupFailure;
+                } else if (failure != cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            }
+        }
+        final Set<CommandRecorder> recorders = Collections.newSetFromMap(new IdentityHashMap<>());
+        if (owner.recorder != null) {
+            recorders.add(owner.recorder);
+        }
+        recorders.addAll(owner.pausedRecorders);
+        for (DisplayListCompilationSession.Frame parent : owner.parents) {
+            if (parent.recorder() != null) {
+                recorders.add(parent.recorder());
+            }
+            freeAccumulatedDraws(parent.draws());
+        }
+        freeAccumulatedDraws(owner.accumulatedDraws);
+        for (CommandRecorder recorder : recorders) {
+            try {
+                final boolean paused = owner.pausedRecorders.contains(recorder);
+                synchronized (recorderOwners) {
+                    recorderOwners.remove(recorder);
+                }
+                if (paused) {
+                    canceledRecorders.add(recorder);
+                }
+                abortRecorder(recorder);
+            } catch (RuntimeException | Error cleanupFailure) {
+                if (failure == null) {
+                    failure = cleanupFailure;
+                } else if (failure != cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            }
+        }
+        owner.clear();
+        if (failure instanceof RuntimeException runtimeException) {
+            throw runtimeException;
+        }
+        if (failure instanceof Error error) {
+            throw error;
+        }
+    }
+
+    private static void abortRecorder(CommandRecorder recorder) {
+        for (Object object : recorder.getBuffer().getComplexObjects()) {
+            if (object instanceof DisplayListCommand command) {
+                command.delete();
+            }
+        }
+        recorder.free();
+    }
+
+    private static void freeAccumulatedDraws(List<AccumulatedDraw> draws) {
+        if (draws == null) {
+            return;
+        }
+        for (AccumulatedDraw draw : draws) {
+            for (ByteBuffer buffer : draw.drawBuffers) {
+                memFree(buffer);
+            }
+        }
+    }
+
+    /** Records one internal COW StateSet scope and advances its virtual compile-time depth. */
+    public static void recordPushState(StateSet stateSet) {
+        if (session().recorder == null || Thread.currentThread() != session().recordingThread) {
+            return;
+        }
+        if (session().virtualStateScopes.depth() >= GLStateManager.MAX_ATTRIB_STACK_DEPTH) {
+            throw new IllegalStateException("Display-list StateSet stack overflow at depth " + session().virtualStateScopes.depth());
+        }
+        if (session().identity == null || !session().identity.equals(GLStateManager.currentContextIdentity())) {
+            throw new IllegalStateException("A recorded StateSet scope must stay on its compilation context");
+        }
+        session().recorder.recordComplexCommand(StateSetScopeCmd.push(stateSet));
+        session().virtualStateScopes.push();
+    }
+
+    /** Records a pop for a pending internal COW scope; returns false when no virtual scope is open. */
+    public static boolean recordPopStateIfPending() {
+        if (session().recorder == null || Thread.currentThread() != session().recordingThread || session().virtualStateScopes.depth() == 0) {
+            return false;
+        }
+        session().recorder.recordComplexCommand(StateSetScopeCmd.pop());
+        session().virtualStateScopes.popIfPending();
+        return true;
     }
 
     /**
      * Emit accumulated transform as MultMatrix if non-identity, then reset.
      */
     public static void flushMatrix() {
-        if (relativeTransform == null || isIdentity(relativeTransform)) {
+        flushMatrix(session());
+    }
+
+    private static void flushMatrix(DisplayListCompilationSession owner) {
+        if (owner.relativeTransform == null || isIdentity(owner.relativeTransform)) {
             // Clear pending ops even if we don't emit - they were no-ops (identity)
-            if (pendingTransformOps != null) {
-                pendingTransformOps.clear();
+            if (owner.pendingTransformOps != null) {
+                owner.pendingTransformOps.clear();
             }
             return;
         }
 
 
         // Save pending transform ops for logging (before we clear them)
-        if (multMatrixSources != null && pendingTransformOps != null) {
-            if (pendingTransformOps.isEmpty()) {
+        if (owner.matrixSources != null && owner.pendingTransformOps != null) {
+            if (owner.pendingTransformOps.isEmpty()) {
                 GLStateManager.LOGGER.warn("flushMatrix: non-identity transform with no tracked ops");
-                multMatrixSources.add(Collections.singletonList("(unknown source)"));
+                owner.matrixSources.add(Collections.singletonList("(unknown source)"));
             } else {
-                multMatrixSources.add(new ArrayList<>(pendingTransformOps));
+                owner.matrixSources.add(new ArrayList<>(owner.pendingTransformOps));
             }
-            pendingTransformOps.clear();
+            owner.pendingTransformOps.clear();
         }
 
         // Record the collapsed MultMatrix command (for playback)
-        if (currentRecorder != null) {
-            currentRecorder.recordMultMatrix(relativeTransform);
-            stateGeneration++;
+        if (owner.recorder != null) {
+            owner.recorder.recordMultMatrix(owner.relativeTransform);
+            owner.stateGeneration++;
         }
 
         // Reset to identity - we're now synchronized with GL
-        relativeTransform.identity();
+        owner.relativeTransform.identity();
 
     }
 
     public static void matrixBarrier() {
-        flushMatrix();
+        matrixBarrier(session());
+    }
+
+    private static void matrixBarrier(DisplayListCompilationSession owner) {
+        try {
+            flushMatrix(owner);
+        } catch (RuntimeException | Error exception) {
+            if (owner.identity != null && owner.identity.equals(GLContextRegistryProvider.get().currentBinding())) {
+                abortCompilation();
+            } else {
+                abortCompilationForContext(owner.identity);
+            }
+            throw exception;
+        }
     }
 
     public static int getRecordingListId() {
-        return glListId;
+        return session().listId;
     }
 
     public static int getListMode() {
-        return glListMode;
+        return isRecording() ? session().listMode : 0;
     }
 
     public static int getCommandCount() {
-        return currentRecorder != null ? currentRecorder.getCommandCount() : 0;
+        return session().recorder != null ? session().recorder.getCommandCount() : 0;
     }
 
     public static void trackDrawRangeSource(String source) {
-        if (drawRangeSources != null) {
-            drawRangeSources.add(source);
+        if (session().drawSources != null) {
+            session().drawSources.add(source);
         }
     }
 
     // Draw barriers: state commands that prevent draw merging
     static void drawBarrier() {
-        stateGeneration++;
+        session().stateGeneration++;
     }
 
     public static void recordEnable(int cap) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordEnable(cap);
+        session().recorder.recordEnable(cap);
     }
 
     public static void recordDisable(int cap) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordDisable(cap);
+        session().recorder.recordDisable(cap);
     }
 
     // ==================== NON-BARRIER COMMANDS ====================
     // Clear commands don't affect subsequent draws, just clear buffers.
 
     public static void recordClear(int mask) {
-        if (currentRecorder == null) return;
-        currentRecorder.recordClear(mask);
+        if (session().recorder == null) return;
+        session().recorder.recordClear(mask);
     }
 
     public static void recordClearColor(float r, float g, float b, float a) {
-        if (currentRecorder == null) return;
-        currentRecorder.recordClearColor(r, g, b, a);
+        if (session().recorder == null) return;
+        session().recorder.recordClearColor(r, g, b, a);
     }
 
     public static void recordClearDepth(double depth) {
-        if (currentRecorder == null) return;
-        currentRecorder.recordClearDepth(depth);
+        if (session().recorder == null) return;
+        session().recorder.recordClearDepth(depth);
     }
 
     public static void recordClearStencil(int s) {
-        if (currentRecorder == null) return;
-        currentRecorder.recordClearStencil(s);
+        if (session().recorder == null) return;
+        session().recorder.recordClearStencil(s);
     }
 
     // ==================== MORE DRAW BARRIER COMMANDS ====================
 
     public static void recordBlendColor(float r, float g, float b, float a) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordBlendColor(r, g, b, a);
+        session().recorder.recordBlendColor(r, g, b, a);
     }
 
     public static void recordColor(float r, float g, float b, float a) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordColor(r, g, b, a);
+        session().recorder.recordColor(r, g, b, a);
         if (ImmediateModeRecorder.isDrawing()) {
             ImmediateModeRecorder.setColor(r, g, b, a);
         }
     }
 
     public static void recordSecondaryColor(float r, float g, float b) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordSecondaryColor(r, g, b);
+        session().recorder.recordSecondaryColor(r, g, b);
     }
 
     public static void recordColorMask(boolean r, boolean g, boolean b, boolean a) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordColorMask(r, g, b, a);
+        session().recorder.recordColorMask(r, g, b, a);
     }
 
     public static void recordDepthMask(boolean flag) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordDepthMask(flag);
+        session().recorder.recordDepthMask(flag);
     }
 
     public static void recordFrontFace(int mode) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordFrontFace(mode);
+        session().recorder.recordFrontFace(mode);
     }
 
     public static void recordDepthFunc(int func) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordDepthFunc(func);
+        session().recorder.recordDepthFunc(func);
     }
 
     public static void recordBlendFunc(int srcRgb, int dstRgb, int srcAlpha, int dstAlpha) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordBlendFunc(srcRgb, dstRgb, srcAlpha, dstAlpha);
+        session().recorder.recordBlendFunc(srcRgb, dstRgb, srcAlpha, dstAlpha);
     }
 
     public static void recordAlphaFunc(int func, float ref) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordAlphaFunc(func, ref);
+        session().recorder.recordAlphaFunc(func, ref);
     }
 
     public static void recordCullFace(int mode) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordCullFace(mode);
+        session().recorder.recordCullFace(mode);
     }
 
     public static void recordShadeModel(int mode) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordShadeModel(mode);
+        session().recorder.recordShadeModel(mode);
     }
 
     public static void recordBindTexture(int target, int texture) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordBindTexture(target, texture);
+        session().recorder.recordBindTexture(target, texture);
     }
 
     public static void recordTexParameteri(int target, int pname, int param) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordTexParameteri(target, pname, param);
+        session().recorder.recordTexParameteri(target, pname, param);
     }
 
     public static void recordTexParameterf(int target, int pname, float param) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordTexParameterf(target, pname, param);
+        session().recorder.recordTexParameterf(target, pname, param);
     }
 
     public static void recordMatrixMode(int mode) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         matrixBarrier();  // Matrix barrier: flush and reset
-        currentRecorder.recordMatrixMode(mode);
+        session().recorder.recordMatrixMode(mode);
     }
 
     public static void recordPushMatrix() {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         // Flush any pending delta, then record push.
         flushMatrix();
-        currentRecorder.recordPushMatrix();
+        session().recorder.recordPushMatrix();
     }
 
     public static void recordPopMatrix() {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         // Flush any pending delta, then record pop.
         flushMatrix();
-        currentRecorder.recordPopMatrix();
+        session().recorder.recordPopMatrix();
     }
 
     public static void recordViewport(int x, int y, int width, int height) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordViewport(x, y, width, height);
+        session().recorder.recordViewport(x, y, width, height);
     }
 
     public static void recordScissor(int x, int y, int width, int height) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordScissor(x, y, width, height);
+        session().recorder.recordScissor(x, y, width, height);
     }
 
     public static void recordPointSize(float size) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordPointSize(size);
+        session().recorder.recordPointSize(size);
     }
 
     public static void recordLineWidth(float width) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordLineWidth(width);
+        session().recorder.recordLineWidth(width);
     }
 
     public static void recordLineStipple(int factor, int pattern) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordLineStipple(factor, pattern);
+        session().recorder.recordLineStipple(factor, pattern);
     }
 
     public static void recordPolygonOffset(float factor, float units) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordPolygonOffset(factor, units);
+        session().recorder.recordPolygonOffset(factor, units);
     }
 
     public static void recordPolygonMode(int face, int mode) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordPolygonMode(face, mode);
+        session().recorder.recordPolygonMode(face, mode);
     }
 
     public static void recordColorMaterial(int face, int mode) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordColorMaterial(face, mode);
+        session().recorder.recordColorMaterial(face, mode);
     }
 
     public static void recordLogicOp(int opcode) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordLogicOp(opcode);
+        session().recorder.recordLogicOp(opcode);
     }
 
     public static void recordActiveTexture(int texture) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordActiveTexture(texture);
+        session().recorder.recordActiveTexture(texture);
     }
 
     public static void recordUseProgram(int program) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordUseProgram(program);
+        session().recorder.recordUseProgram(program);
     }
 
     // PushAttrib saves state but doesn't change it - not a draw barrier
     public static void recordPushAttrib(int mask) {
-        if (currentRecorder == null) return;
-        currentRecorder.recordPushAttrib(mask);
+        if (session().recorder == null) return;
+        session().recorder.recordPushAttrib(mask);
     }
 
     // PopAttrib restores potentially any state - draw barrier
     public static void recordPopAttrib() {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordPopAttrib();
+        session().recorder.recordPopAttrib();
     }
 
     public static void recordFogf(int pname, float param) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordFogf(pname, param);
+        session().recorder.recordFogf(pname, param);
     }
 
     public static void recordFogi(int pname, int param) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordFogi(pname, param);
+        session().recorder.recordFogi(pname, param);
     }
 
     public static void recordHint(int target, int mode) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordHint(target, mode);
+        session().recorder.recordHint(target, mode);
     }
 
     public static void recordFog(int pname, java.nio.FloatBuffer params) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordFog(pname, params);
+        session().recorder.recordFog(pname, params);
     }
 
     public static void recordLightf(int light, int pname, float param) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordLightf(light, pname, param);
+        session().recorder.recordLightf(light, pname, param);
     }
 
     public static void recordLighti(int light, int pname, int param) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordLighti(light, pname, param);
+        session().recorder.recordLighti(light, pname, param);
     }
 
     public static void recordLight(int light, int pname, java.nio.FloatBuffer params) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordLight(light, pname, params);
+        session().recorder.recordLight(light, pname, params);
     }
 
     public static void recordLightModelf(int pname, float param) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordLightModelf(pname, param);
+        session().recorder.recordLightModelf(pname, param);
     }
 
     public static void recordLightModeli(int pname, int param) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordLightModeli(pname, param);
+        session().recorder.recordLightModeli(pname, param);
     }
 
     public static void recordLightModel(int pname, java.nio.FloatBuffer params) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordLightModel(pname, params);
+        session().recorder.recordLightModel(pname, params);
     }
 
     public static void recordMaterialf(int face, int pname, float val) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordMaterialf(face, pname, val);
+        session().recorder.recordMaterialf(face, pname, val);
     }
 
     public static void recordMaterial(int face, int pname, java.nio.FloatBuffer params) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordMaterial(face, pname, params);
+        session().recorder.recordMaterial(face, pname, params);
     }
 
     public static void recordClipPlane(int plane, double a, double b, double c, double d) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordClipPlane(plane, a, b, c, d);
+        session().recorder.recordClipPlane(plane, a, b, c, d);
     }
 
     public static void recordStencilFunc(int func, int ref, int mask) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordStencilFunc(func, ref, mask);
+        session().recorder.recordStencilFunc(func, ref, mask);
     }
 
     public static void recordStencilFuncSeparate(int face, int func, int ref, int mask) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordStencilFuncSeparate(face, func, ref, mask);
+        session().recorder.recordStencilFuncSeparate(face, func, ref, mask);
     }
 
     public static void recordStencilOp(int fail, int zfail, int zpass) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordStencilOp(fail, zfail, zpass);
+        session().recorder.recordStencilOp(fail, zfail, zpass);
     }
 
     public static void recordStencilOpSeparate(int face, int sfail, int dpfail, int dppass) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordStencilOpSeparate(face, sfail, dpfail, dppass);
+        session().recorder.recordStencilOpSeparate(face, sfail, dpfail, dppass);
     }
 
     public static void recordStencilMask(int mask) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordStencilMask(mask);
+        session().recorder.recordStencilMask(mask);
     }
 
     public static void recordStencilMaskSeparate(int face, int mask) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordStencilMaskSeparate(face, mask);
+        session().recorder.recordStencilMaskSeparate(face, mask);
     }
 
     public static void recordCallList(int listId) {
-        if (currentRecorder == null) return;
+        if (!isRecording()) return;
         matrixBarrier();  // Matrix barrier: nested list has own transforms
-        currentRecorder.recordCallList(listId);
+        session().recorder.recordCallList(listId);
     }
 
     public static void recordDrawBuffer(int mode) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordDrawBuffer(mode);
+        session().recorder.recordDrawBuffer(mode);
     }
 
     public static void recordDrawBuffers(int count, int buf) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordDrawBuffers(count, buf);
+        session().recorder.recordDrawBuffers(count, buf);
     }
 
     public static void recordDrawBuffers(int count, java.nio.IntBuffer bufs) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
-        currentRecorder.recordDrawBuffers(count, bufs);
+        session().recorder.recordDrawBuffers(count, bufs);
     }
 
     // Complex commands are texture uploads - not draw barriers
     public static void recordComplexCommand(DisplayListCommand cmd) {
-        if (currentRecorder == null) return;
-        currentRecorder.recordComplexCommand(cmd);
+        if (session().recorder == null) return;
+        session().recorder.recordComplexCommand(cmd);
     }
 
     public static void recordLoadMatrix(Matrix4f matrix) {
-        if (currentRecorder != null) currentRecorder.recordLoadMatrix(matrix);
+        if (session().recorder != null) session().recorder.recordLoadMatrix(matrix);
     }
 
     public static void recordLoadIdentity() {
-        if (currentRecorder != null) currentRecorder.recordLoadIdentity();
+        if (session().recorder != null) session().recorder.recordLoadIdentity();
     }
 
     public static void recordDrawArrays(int mode, int start, int count) {
-        if (currentRecorder != null) currentRecorder.recordDrawArrays(mode, start, count);
+        if (session().recorder != null) session().recorder.recordDrawArrays(mode, start, count);
     }
 
     /**
@@ -600,17 +794,28 @@ public class DisplayListManager {
      * any pending transform so the draw replays at the right matrix state.
      */
     public static void recordIndexedDrawCapture(IndexedDrawCapture capture) {
-        if (currentRecorder == null) return;
+        if (session().recorder == null) return;
         drawBarrier();
         matrixBarrier();
-        currentRecorder.recordIndexedDrawCapture(capture);
+        session().recorder.recordIndexedDrawCapture(capture);
     }
 
-    public static void recordBindVBO(int vbo) { if (currentRecorder != null) currentRecorder.recordBindVBO(vbo); }
-    public static void recordBindVAO(int vao) { if (currentRecorder != null) currentRecorder.recordBindVAO(vao); }
+    public static void recordBindVBO(int vbo) { if (session().recorder != null) session().recorder.recordBindVBO(vbo); }
+    public static void recordBindVAO(int vao) {
+        if (session().recorder == null) {
+            return;
+        }
+        if (vao != 0) {
+            final GLContextIdentity currentIdentity = GLStateManager.currentContextIdentity();
+            if (session().identity == null || !session().identity.equals(currentIdentity)) {
+                throw new IllegalStateException("A raw display-list VAO bind must belong to the compilation context");
+            }
+        }
+        session().recorder.recordBindVAO(vao);
+    }
 
 
-    // recordOrtho/recordFrustum removed - these now accumulate into relativeTransform
+    // recordOrtho/recordFrustum removed - these now accumulate into session().relativeTransform
     // via updateRelativeTransformOrtho/updateRelativeTransformFrustum
 
     /**
@@ -623,9 +828,10 @@ public class DisplayListManager {
      *
      */
     public static void addImmediateModeDraw(DirectTessellator tessellator) {
-        if (!tessellator.isEmpty()) {
+        final DisplayListCompilationSession owner = session();
+        if (!tessellator.isEmpty() && owner.recorder != null) {
             // Get relative transform (changes since glNewList, not absolute matrix state)
-            addAccumulatedDraw(tessellator, tessellator.getVertexFormat() != DefaultVertexFormat.POSITION);
+            addAccumulatedDraw(owner, tessellator, tessellator.getVertexFormat() != DefaultVertexFormat.POSITION);
         }
         tessellator.reset();
     }
@@ -639,24 +845,24 @@ public class DisplayListManager {
     }
 
     public static void updateRelativeTransform(float x, float y, float z, TransformOp op, Vector3f rotationAxis) {
-        if (relativeTransform == null) return;
+        if (session().relativeTransform == null) return;
 
         if (DEBUG_DISPLAY_LISTS) {
             final Matrix4f singleTransform = new Matrix4f();
             applyTransformOp(singleTransform, x, y, z, op, rotationAxis);
-            if (currentRecorder != null) currentRecorder.recordMultMatrix(singleTransform);
+            if (session().recorder != null) session().recorder.recordMultMatrix(singleTransform);
             return;
         }
 
-        applyTransformOp(relativeTransform, x, y, z, op, rotationAxis);
+        applyTransformOp(session().relativeTransform, x, y, z, op, rotationAxis);
 
-        if (pendingTransformOps != null) {
+        if (session().pendingTransformOps != null) {
             final String log = switch (op) {
                 case TRANSLATE -> String.format("glTranslatef(%.4f, %.4f, %.4f)", x, y, z);
                 case SCALE -> String.format("glScalef(%.4f, %.4f, %.4f)", x, y, z);
                 case ROTATE -> rotationAxis != null ? String.format("glRotatef(%.4f, %.4f, %.4f, %.4f)", x, rotationAxis.x, rotationAxis.y, rotationAxis.z) : null;
             };
-            if (log != null) pendingTransformOps.add(log);
+            if (log != null) session().pendingTransformOps.add(log);
         }
     }
 
@@ -670,64 +876,66 @@ public class DisplayListManager {
      * @param matrix The matrix to multiply
      */
     public static void updateRelativeTransform(Matrix4f matrix) {
-        if (relativeTransform == null) {
+        if (session().relativeTransform == null) {
             return;
         }
 
         if (DEBUG_DISPLAY_LISTS) {
-            if (currentRecorder != null) {
-                currentRecorder.recordMultMatrix(matrix);
+            if (session().recorder != null) {
+                session().recorder.recordMultMatrix(matrix);
             }
             return;
         }
 
-        relativeTransform.mul(matrix);
+        session().relativeTransform.mul(matrix);
 
-        if (pendingTransformOps != null) {
-            pendingTransformOps.add("glMultMatrixf(...)");
+        if (session().pendingTransformOps != null) {
+            session().pendingTransformOps.add("glMultMatrixf(...)");
         }
     }
 
-    // Reusable matrix for ortho/frustum computation
-    private static final Matrix4f orthoFrustumTemp = new Matrix4f();
+    // Scratch is thread-local because independent native contexts may compile on different threads.
+    private static final ThreadLocal<Matrix4f> orthoFrustumTemp = ThreadLocal.withInitial(Matrix4f::new);
 
-    /** Accumulate ortho projection into relativeTransform. */
+    /** Accumulate ortho projection into session().relativeTransform. */
     public static void updateRelativeTransformOrtho(double left, double right, double bottom, double top, double zNear, double zFar) {
-        if (relativeTransform == null) return;
+        if (session().relativeTransform == null) return;
 
-        orthoFrustumTemp.identity().ortho((float) left, (float) right, (float) bottom, (float) top, (float) zNear, (float) zFar);
+        final Matrix4f transform = orthoFrustumTemp.get()
+            .identity().ortho((float) left, (float) right, (float) bottom, (float) top, (float) zNear, (float) zFar);
 
         if (DEBUG_DISPLAY_LISTS) {
-            if (currentRecorder != null) currentRecorder.recordMultMatrix(orthoFrustumTemp);
-            if (glListMode == GL11.GL_COMPILE_AND_EXECUTE) {
-                GLStateManager.getMatrixStack().mul(orthoFrustumTemp);
+            if (session().recorder != null) session().recorder.recordMultMatrix(transform);
+            if (session().listMode == GL11.GL_COMPILE_AND_EXECUTE) {
+                GLStateManager.getMatrixStack().mul(transform);
             }
             return;
         }
 
-        relativeTransform.mul(orthoFrustumTemp);
-        if (pendingTransformOps != null) {
-            pendingTransformOps.add(String.format("glOrtho(%.4f, %.4f, %.4f, %.4f, %.4f, %.4f)", left, right, bottom, top, zNear, zFar));
+        session().relativeTransform.mul(transform);
+        if (session().pendingTransformOps != null) {
+            session().pendingTransformOps.add(String.format("glOrtho(%.4f, %.4f, %.4f, %.4f, %.4f, %.4f)", left, right, bottom, top, zNear, zFar));
         }
     }
 
-    /** Accumulate frustum projection into relativeTransform. */
+    /** Accumulate frustum projection into session().relativeTransform. */
     public static void updateRelativeTransformFrustum(double left, double right, double bottom, double top, double zNear, double zFar) {
-        if (relativeTransform == null) return;
+        if (session().relativeTransform == null) return;
 
-        orthoFrustumTemp.identity().frustum((float) left, (float) right, (float) bottom, (float) top, (float) zNear, (float) zFar);
+        final Matrix4f transform = orthoFrustumTemp.get()
+            .identity().frustum((float) left, (float) right, (float) bottom, (float) top, (float) zNear, (float) zFar);
 
         if (DEBUG_DISPLAY_LISTS) {
-            if (currentRecorder != null) currentRecorder.recordMultMatrix(orthoFrustumTemp);
-            if (glListMode == GL11.GL_COMPILE_AND_EXECUTE) {
-                GLStateManager.getMatrixStack().mul(orthoFrustumTemp);
+            if (session().recorder != null) session().recorder.recordMultMatrix(transform);
+            if (session().listMode == GL11.GL_COMPILE_AND_EXECUTE) {
+                GLStateManager.getMatrixStack().mul(transform);
             }
             return;
         }
 
-        relativeTransform.mul(orthoFrustumTemp);
-        if (pendingTransformOps != null) {
-            pendingTransformOps.add(String.format("glFrustum(%.4f, %.4f, %.4f, %.4f, %.4f, %.4f)", left, right, bottom, top, zNear, zFar));
+        session().relativeTransform.mul(transform);
+        if (session().pendingTransformOps != null) {
+            session().pendingTransformOps.add(String.format("glFrustum(%.4f, %.4f, %.4f, %.4f, %.4f, %.4f)", left, right, bottom, top, zNear, zFar));
         }
     }
 
@@ -737,10 +945,10 @@ public class DisplayListManager {
      * subsequent transforms are relative to that loaded matrix (i.e., start from identity).
      */
     public static void resetRelativeTransform() {
-        if (relativeTransform == null) {
+        if (session().relativeTransform == null) {
             return;
         }
-        relativeTransform.identity();
+        session().relativeTransform.identity();
     }
 
     /**
@@ -751,14 +959,11 @@ public class DisplayListManager {
      * @return true if the display list exists, false otherwise
      */
     public static boolean displayListExists(int list) {
-        if (displayListCache.containsKey(list)) {
-            return true;
-        }
         // Check VBOManager for GTNHLib compatibility (negative IDs)
         if (list < -1) {
             return VBOManager.get(list) != null;
         }
-        return false;
+        return currentNamespace().contains(list);
     }
 
     /**
@@ -768,7 +973,71 @@ public class DisplayListManager {
      * @return The CompiledDisplayList, or null if not found
      */
     public static CompiledDisplayList getDisplayList(int list) {
-        return displayListCache.get(list);
+        return currentNamespace().get(list);
+    }
+
+    /** Allocates names in the current context's shared display-list namespace. */
+    public static int glGenLists(int range) {
+        return currentNamespace().allocateRange(range);
+    }
+
+    /** Reports only lists that have been compiled in the current share group. */
+    public static boolean glIsList(int list) {
+        return currentNamespace().contains(list);
+    }
+
+    /** Deletes compiled lists and reserved names from the current share group only. */
+    public static void glDeleteLists(int list, int range) {
+        deleteCompiledLists(currentNamespace().deleteRange(list, range));
+    }
+
+    private static DisplayListNamespace currentNamespace() {
+        final GLContextIdentity identity = GLStateManager.currentContextIdentity();
+        if (identity == null) {
+            throw new IllegalStateException("Display-list operations require a registered current context");
+        }
+        return displayListNamespaces.forShareGroup(identity.shareGroupId());
+    }
+
+    private static DisplayListNamespace namespaceFor(GLContextIdentity identity) {
+        if (identity == null) {
+            throw new IllegalStateException("Display-list compilation requires a registered current context");
+        }
+        return displayListNamespaces.forShareGroup(identity.shareGroupId());
+    }
+
+    /** Drops CPU and GL resource owners only after the final context in a share group has retired. */
+    private static void onContextRetired(GLContextIdentity identity) {
+        abortCompilationForContext(identity);
+        compilationSessions.remove(identity);
+        if (!GLContextRegistryProvider.get().liveContextsInShareGroup(identity.shareGroupId()).isEmpty()) {
+            return;
+        }
+        deleteCompiledLists(displayListNamespaces.retireShareGroup(identity.shareGroupId()));
+    }
+
+    private static void deleteCompiledLists(List<CompiledDisplayList> compiledLists) {
+        Throwable failure = null;
+        for (CompiledDisplayList compiled : compiledLists) {
+            if (compiled == CompiledDisplayList.EMPTY) {
+                continue;
+            }
+            try {
+                compiled.delete();
+            } catch (RuntimeException | Error cleanupFailure) {
+                if (failure == null) {
+                    failure = cleanupFailure;
+                } else if (failure != cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            }
+        }
+        if (failure instanceof RuntimeException runtimeException) {
+            throw runtimeException;
+        }
+        if (failure instanceof Error error) {
+            throw error;
+        }
     }
 
     /**
@@ -777,170 +1046,251 @@ public class DisplayListManager {
      *   GL_COMPILE: Commands are recorded only (not executed), GLSM cache unchanged
      *   GL_COMPILE_AND_EXECUTE: Commands are recorded AND executed (GLSM cache updated)
      */
-    public static void glNewList(int list, int mode) {
+    public static synchronized void glNewList(int list, int mode) {
+        final GLContextIdentity currentIdentity = GLStateManager.currentContextIdentity();
+        if (currentIdentity == null) {
+            throw new IllegalStateException("Display-list compilation requires a registered current context");
+        }
+        sessionFor(currentIdentity);
         // Handle nested compilation - push current context onto stack
-        final boolean isNested = glListMode > 0;
+        final boolean isNested = session().listMode > 0;
 
         if (isNested) {
+            if (session().recorder == null || Thread.currentThread() != session().recordingThread
+                || !session().identity.equals(currentIdentity)) {
+                throw new IllegalStateException(
+                    "Another context already owns an active display-list compilation");
+            }
             // Nested display list compilation violates OpenGL spec, but some of our optimizations require it
             // Save current compilation context and start fresh for nested list
-            final CompilationContext parentContext = new CompilationContext(
-                glListId, glListMode, currentRecorder, accumulatedDraws, relativeTransform,
-                compilationStackTrace, pendingTransformOps, multMatrixSources, drawRangeSources
+            final DisplayListCompilationSession.Frame parentContext = new DisplayListCompilationSession.Frame(
+                session().listId, session().listMode, session().virtualStateScopes.depth(), session().captureActive,
+                session().capture, session().recorder, session().accumulatedDraws, session().relativeTransform,
+                session().stateGeneration, session().stackTrace, session().pendingTransformOps,
+                session().matrixSources, session().drawSources
             );
-            compilationStack.push(parentContext);
+            session().parents.push(parentContext);
         }
 
         // Initialize fresh context for this (possibly nested) list
-        glListId = list;
-        glListMode = mode;
-        recordingThread = Thread.currentThread();  // Track which thread is recording
-        currentRecorder = new CommandRecorder();  // Create command recorder
-        accumulatedDraws = new ArrayList<>(16);   // Fewer draws than commands typically
-        relativeTransform = new Matrix4fStack(GLStateManager.MAX_MODELVIEW_STACK_DEPTH);
-        stateGeneration = 0;  // Reset state generation for fresh list
-        compilationStackTrace = LOG_DISPLAY_LIST_COMPILATION ? Thread.currentThread().getStackTrace() : null;
+        session().listId = list;
+        session().listMode = mode;
+        session().virtualStateScopes.clear();
+        session().captureActive = false;
+        session().recordingThread = Thread.currentThread();  // Track which thread is recording
+        session().recorder = new CommandRecorder();  // Create command recorder
+        synchronized (recorderOwners) {
+            recorderOwners.put(session().recorder, session());
+        }
+        session().accumulatedDraws = new ArrayList<>(16);   // Fewer draws than commands typically
+        session().relativeTransform = new Matrix4fStack(GLStateManager.MAX_MODELVIEW_STACK_DEPTH);
+        session().stateGeneration = 0;  // Reset state generation for fresh list
+        session().stackTrace = LOG_DISPLAY_LIST_COMPILATION ? Thread.currentThread().getStackTrace() : null;
 
         // Initialize debug logging fields (only when logging enabled)
         if (LOG_DISPLAY_LIST_COMPILATION) {
-            pendingTransformOps = new ArrayList<>();
-            multMatrixSources = new ArrayList<>();
-            drawRangeSources = new ArrayList<>();
+            session().pendingTransformOps = new ArrayList<>();
+            session().matrixSources = new ArrayList<>();
+            session().drawSources = new ArrayList<>();
         } else {
-            pendingTransformOps = null;
-            multMatrixSources = null;
-            drawRangeSources = null;
+            session().pendingTransformOps = null;
+            session().matrixSources = null;
+            session().drawSources = null;
         }
 
-        TessellatorManager.startCapturingDirect((tessellator) -> {
-            if (!tessellator.isEmpty()) {
-                addAccumulatedDraw(tessellator, false);
-            }
-            return true;
-        });
+        try {
+            final DisplayListCompilationSession compiling = session();
+            compiling.capture = TessellatorManager.startOwned((tessellator) -> {
+                if (!tessellator.isEmpty()) {
+                    addAccumulatedDraw(compiling, tessellator, false);
+                }
+                return true;
+            });
+            compiling.captureActive = true;
+        } catch (RuntimeException | Error exception) {
+            abortCompilation();
+            throw exception;
+        }
     }
 
     /**
      * End display list compilation and build optimized/unoptimized versions.
      */
-    public static void glEndList() {
-        if (glListMode == 0) {
+    public static synchronized void glEndList() {
+        if (session().listMode == 0) {
             throw new RuntimeException("glEndList called outside of a display list!");
         }
+        final GLContextIdentity compiledIdentity = session().identity;
+        if (compiledIdentity == null || !compiledIdentity.equals(GLStateManager.currentContextIdentity())) {
+            throw new IllegalStateException("Display-list compilation context changed before glEndList");
+        }
+        if (session().virtualStateScopes.depth() != 0) {
+            final int unclosedDepth = session().virtualStateScopes.depth();
+            abortCompilation();
+            throw new IllegalStateException("Display-list compilation ended with " + unclosedDepth + " open StateSet scopes");
+        }
         flushMatrix();
-        final boolean isNested = !compilationStack.isEmpty();
+        final boolean isNested = !session().parents.isEmpty();
 
         // Stop compiling mode (works for both root and nested lists now)
-        TessellatorManager.stopCapturingDirect();
+        if (!session().captureActive) {
+            abortCompilation();
+            throw new IllegalStateException("Display-list compilation lost its tessellator capture");
+        }
+        TessellatorManager.stop(session().capture);
+        session().captureActive = false;
+        session().capture = null;
 
-        final CompiledDisplayList compiled;
-        // Create CompiledDisplayList with both unoptimized and optimized versions
-        final CommandBuffer rawCommandBuffer = currentRecorder.getBuffer();
-        final boolean hasCommands = !rawCommandBuffer.isEmpty();
-        final boolean hasDraws = accumulatedDraws != null && !accumulatedDraws.isEmpty();
+        CompiledDisplayList compiled;
+        DisplayListVBO compiledBuffers = null;
+        CommandBuffer finalBuffer = null;
+        List<IndexedDrawBatch> indexedBatches = Collections.emptyList();
+        try {
+            // Create CompiledDisplayList with both unoptimized and optimized versions.
+            final CommandBuffer rawCommandBuffer = session().recorder.getBuffer();
+            final List<AccumulatedDraw> recordedDraws = session().accumulatedDraws;
+            final boolean hasCommands = !rawCommandBuffer.isEmpty();
+            final boolean hasDraws = recordedDraws != null && !recordedDraws.isEmpty();
 
-        if (hasCommands || hasDraws) {
-            // Phase 1: Compile format-based VBOs (shared by both optimized and unoptimized paths)
-            final DisplayListVBO compiledBuffers = new DisplayListVBOBuilder().addDraws(accumulatedDraws).build();
-
-            // Build to CommandBuffer - optimize raw buffer to final buffer
-            final CommandBuffer finalBuffer = new CommandBuffer();
-            CommandBufferBuilder.buildFromRawBuffer(rawCommandBuffer, accumulatedDraws, finalBuffer);
-
-            // Build the shared VAO/VBO/EBO triples for baked indexed draws. This binds
-            // VAOs, so pause recording to keep the GL setup out of the compiled list.
-            final IndexedDrawBatchBuilder indexedBuilder = currentRecorder.getIndexedDraws();
-            final List<IndexedDrawBatch> indexedBatches;
-            if (indexedBuilder.isEmpty()) {
-                indexedBatches = Collections.emptyList();
-            } else {
-                final CommandRecorder paused = pauseRecording();
+            if (hasCommands || hasDraws) {
                 try {
-                    indexedBatches = indexedBuilder.build();
+                    // The builder owns and frees every CPU draw buffer on success and failure.
+                    compiledBuffers = new DisplayListVBOBuilder().addDraws(recordedDraws).build();
                 } finally {
-                    resumeRecording(paused);
+                    session().accumulatedDraws = null;
+                }
+
+                finalBuffer = new CommandBuffer();
+                CommandBufferBuilder.buildFromRawBuffer(rawCommandBuffer, recordedDraws, finalBuffer);
+
+                final IndexedDrawBatchBuilder indexedBuilder = session().recorder.getIndexedDraws();
+                if (!indexedBuilder.isEmpty()) {
+                    final CommandRecorder paused = pauseRecording();
+                    try {
+                        indexedBatches = indexedBuilder.build();
+                    } finally {
+                        resumeRecording(paused);
+                    }
+                }
+
+                compiled = new CompiledDisplayList(
+                    finalBuffer.toBuffer(), finalBuffer.getComplexObjects(), compiledBuffers, indexedBatches, compiledIdentity);
+            } else {
+                compiled = CompiledDisplayList.EMPTY;
+            }
+
+            synchronized (recorderOwners) {
+                recorderOwners.remove(session().recorder);
+            }
+            session().recorder.free();
+            session().recorder = null;
+        } catch (RuntimeException | Error exception) {
+            if (finalBuffer != null) {
+                try {
+                    finalBuffer.free();
+                } catch (RuntimeException | Error cleanupFailure) {
+                    exception.addSuppressed(cleanupFailure);
                 }
             }
-
-            // Free the recorder (and its buffer) after optimization; also releases the
-            // captures' CPU-side vertex/index buffers (already uploaded by build()).
-            currentRecorder.free();
-
-            compiled = new CompiledDisplayList(finalBuffer.toBuffer(), finalBuffer.getComplexObjects(), compiledBuffers, indexedBatches);
-        } else {
-            // Free the recorder even if empty
-            if (currentRecorder != null) {
-                currentRecorder.free();
+            if (compiledBuffers != null) {
+                try {
+                    compiledBuffers.delete();
+                } catch (RuntimeException | Error cleanupFailure) {
+                    exception.addSuppressed(cleanupFailure);
+                }
             }
-            // Empty display list - per OpenGL spec, still valid after glNewList/glEndList
-            compiled = CompiledDisplayList.EMPTY;
+            for (IndexedDrawBatch batch : indexedBatches) {
+                try {
+                    batch.delete();
+                } catch (RuntimeException | Error cleanupFailure) {
+                    exception.addSuppressed(cleanupFailure);
+                }
+            }
+            try {
+                abortCompilation();
+            } catch (RuntimeException | Error cleanupFailure) {
+                exception.addSuppressed(cleanupFailure);
+            }
+            throw exception;
         }
         // Store the compiled list (even if empty - an empty list is still a valid list).
         // Re-recording an existing id replaces it; free the previous list's GPU resources.
-        final CompiledDisplayList previous = displayListCache.put(glListId, compiled);
-        if (previous != null && previous != CompiledDisplayList.EMPTY && previous != compiled) {
-            previous.delete();
+        final DisplayListNamespace namespace = namespaceFor(compiledIdentity);
+        final CompiledDisplayList previous = namespace.put(session().listId, compiled);
+        if (previous != null && previous != compiled) {
+            deleteCompiledLists(List.of(previous));
         }
 
-        // Log compilation details if enabled (before context restoration changes glListId)
+        // Log compilation details if enabled (before context restoration changes session().listId)
         if (LOG_DISPLAY_LIST_COMPILATION) {
-            logCompiledDisplayList(glListId, compiled, compilationStackTrace);
+            logCompiledDisplayList(session().listId, compiled, session().stackTrace);
         }
 
         // Handle nested compilation - restore parent context
         if (isNested) {
-            final CompilationContext parentContext = compilationStack.pop();
+            final DisplayListCompilationSession.Frame parentContext = session().parents.pop();
 
             // Restore parent context
-            glListId = parentContext.listId;
-            glListMode = parentContext.listMode;
-            currentRecorder = parentContext.recorder;
-            accumulatedDraws = parentContext.draws;
-            relativeTransform = parentContext.transform;
-            compilationStackTrace = parentContext.stackTrace;
-            pendingTransformOps = parentContext.pendingOps;
-            multMatrixSources = parentContext.matrixSources;
-            drawRangeSources = parentContext.drawSources;
+            session().listId = parentContext.listId();
+            session().listMode = parentContext.listMode();
+            session().virtualStateScopes.restore(parentContext.virtualStateDepth());
+            session().captureActive = parentContext.captureActive();
+            session().capture = parentContext.capture();
+            session().recorder = parentContext.recorder();
+            session().accumulatedDraws = parentContext.draws();
+            session().relativeTransform = parentContext.transform();
+            session().stateGeneration = parentContext.stateGeneration();
+            session().stackTrace = parentContext.stackTrace();
+            session().pendingTransformOps = parentContext.pendingOps();
+            session().matrixSources = parentContext.matrixSources();
+            session().drawSources = parentContext.drawSources();
 
             // Note: TessellatorManager callback stack was popped by stopCompiling()
             // Parent's COMPILING callback is now active again
         } else {
             // Not nested - clear all compilation state
-            currentRecorder = null;
-            recordingThread = null;
-            accumulatedDraws = null;
-            relativeTransform = null;
-            compilationStackTrace = null;
-            pendingTransformOps = null;
-            multMatrixSources = null;
-            drawRangeSources = null;
-            glListId = -1;
-            glListMode = 0;
+            session().recorder = null;
+            session().recordingThread = null;
+            session().virtualStateScopes.clear();
+            session().captureActive = false;
+            session().accumulatedDraws = null;
+            session().relativeTransform = null;
+            session().stackTrace = null;
+            session().pendingTransformOps = null;
+            session().matrixSources = null;
+            session().drawSources = null;
+            session().listId = -1;
+            session().listMode = 0;
+            session().clear();
         }
     }
 
-    private static void addAccumulatedDraw(DirectTessellator tessellator, boolean copyLast) {
-        final int cmdIndex = getCommandCount();
-        matrixBarrier();
+    private static void addAccumulatedDraw(
+        DisplayListCompilationSession owner,
+        DirectTessellator tessellator,
+        boolean copyLast
+    ) {
+        final int cmdIndex = owner.recorder == null ? 0 : owner.recorder.getCommandCount();
+        matrixBarrier(owner);
 
-        if (accumulatedDraws.isEmpty()) {
-            accumulatedDraws.add(
+        if (owner.accumulatedDraws.isEmpty()) {
+            owner.accumulatedDraws.add(
                 new AccumulatedDraw(
-                    tessellator, cmdIndex, stateGeneration, copyLast
+                    tessellator, cmdIndex, owner.stateGeneration, copyLast
                 )
             );
             return;
         }
 
         // Merge the previous draw call if possible
-        final AccumulatedDraw previous = accumulatedDraws.get(accumulatedDraws.size() - 1);
-        if (previous.format == tessellator.getVertexFormat() && previous.stateGeneration == stateGeneration) {
+        final AccumulatedDraw previous = owner.accumulatedDraws.get(owner.accumulatedDraws.size() - 1);
+        if (previous.format == tessellator.getVertexFormat() && previous.stateGeneration == owner.stateGeneration) {
             previous.mergeDraw(tessellator, copyLast);
             return;
         }
 
-        accumulatedDraws.add(
-            new AccumulatedDraw(tessellator, cmdIndex, stateGeneration, copyLast)
+        owner.accumulatedDraws.add(
+            new AccumulatedDraw(tessellator, cmdIndex, owner.stateGeneration, copyLast)
         );
     }
 
@@ -948,17 +1298,17 @@ public class DisplayListManager {
      * Execute a compiled display list.
      */
     public static void glCallList(int list) {
-        if (currentRecorder != null) {
+        if (isRecording()) {
             recordCallList(list);
 
-            if (getListMode() != GL11.GL_COMPILE) {
+            if (isCompileAndExecute()) {
                 // Don't record the GL calls, we already recorded glCallList
-                final CommandRecorder recorder = currentRecorder;
-                currentRecorder = null;
-
-                executeDisplayList(list);
-
-                currentRecorder = recorder;
+                final CommandRecorder paused = pauseRecording();
+                try {
+                    executeDisplayList(list);
+                } finally {
+                    resumeRecording(paused);
+                }
             }
             return;
         }
@@ -967,12 +1317,12 @@ public class DisplayListManager {
     }
 
     private static void executeDisplayList(int list) {
-        final CompiledDisplayList compiled = displayListCache.get(list);
+        final CompiledDisplayList compiled = currentNamespace().get(list);
         if (compiled != null) {
-            final int prevList = currentRenderingList;
-            currentRenderingList = list;
+            final int prevList = session().currentRenderingList;
+            session().currentRenderingList = list;
             compiled.render();
-            currentRenderingList = prevList;
+            session().currentRenderingList = prevList;
             return;
         }
 
@@ -986,18 +1336,6 @@ public class DisplayListManager {
             // Per OpenGL spec: if list is undefined, glCallList has no effect
         }
         // An uncached positive-ID list = no-op (per OpenGL spec)
-    }
-
-    /**
-     * Delete display lists and free their VBO resources.
-     */
-    public static void glDeleteLists(int list, int range) {
-        for (int i = list; i < list + range; i++) {
-            CompiledDisplayList compiled = displayListCache.remove(i);
-            if (compiled != null) {
-                compiled.delete();
-            }
-        }
     }
 
     // ==================== DEBUG LOGGING ====================
@@ -1125,7 +1463,7 @@ public class DisplayListManager {
         long ptr = basePtr;
         final long end = basePtr + buffer.limit();
         int cmdNum = 0;
-        int drawRangeIdx = 0;   // Index into drawRangeSources for source tracking
+        int drawRangeIdx = 0;   // Index into session().drawSources for source tracking
 
         while (ptr < end) {
             final int opcode = memGetInt(ptr);
@@ -1147,8 +1485,8 @@ public class DisplayListManager {
                     final int vboIdx = memGetInt(ptr + 4);
                     sb.append("(vbo=").append(vboIdx).append(")");
                     // Show draw source if available
-                    if (drawRangeSources != null && drawRangeIdx < drawRangeSources.size()) {
-                        sb.append(" [from: ").append(drawRangeSources.get(drawRangeIdx)).append("]");
+                    if (session().drawSources != null && drawRangeIdx < session().drawSources.size()) {
+                        sb.append(" [from: ").append(session().drawSources.get(drawRangeIdx)).append("]");
                     }
                     drawRangeIdx++;
                 }
@@ -1160,8 +1498,8 @@ public class DisplayListManager {
                     sb.append("(vbo=").append(vboIdx).append(", start=").append(start)
                         .append(", count=").append(count).append(", brightness=").append(brightness != 0).append(")");
                     // Show draw source if available
-                    if (drawRangeSources != null && drawRangeIdx < drawRangeSources.size()) {
-                        sb.append(" [from: ").append(drawRangeSources.get(drawRangeIdx)).append("]");
+                    if (session().drawSources != null && drawRangeIdx < session().drawSources.size()) {
+                        sb.append(" [from: ").append(session().drawSources.get(drawRangeIdx)).append("]");
                     }
                     drawRangeIdx++;
                 }

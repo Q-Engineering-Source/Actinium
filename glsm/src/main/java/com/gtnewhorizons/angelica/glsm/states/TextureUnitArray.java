@@ -1,6 +1,9 @@
 package com.gtnewhorizons.angelica.glsm.states;
 
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizon.gtnhlib.client.renderer.stacks.IStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.CowStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.StackIdAllocator;
 import com.gtnewhorizons.angelica.glsm.stacks.TextureBindingStack;
 import com.gtnewhorizons.angelica.glsm.stacks.TextureUnitBooleanStateStack;
 import lombok.Getter;
@@ -8,7 +11,11 @@ import org.joml.Matrix4fStack;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class TextureUnitArray {
+    private final List<IStateStack<?>> idStacks = new ArrayList<>();
     private final TextureBindingStack[] bindings;
     private final TextureUnitBooleanStateStack[] states;
     private final TextureUnitBooleanStateStack[] texture1DStates;
@@ -36,18 +43,34 @@ public class TextureUnitArray {
         textureMatricies = new Matrix4fStack[GLStateManager.MAX_TEXTURE_UNITS];
 
         for (int i = 0; i < GLStateManager.MAX_TEXTURE_UNITS; i++) {
-            bindings[i] = new TextureBindingStack();
-            states[i] = new TextureUnitBooleanStateStack(GL11.GL_TEXTURE_2D, i);
-            texture1DStates[i] = new TextureUnitBooleanStateStack(GL11.GL_TEXTURE_1D, i);
-            texture3DStates[i] = new TextureUnitBooleanStateStack(GL12.GL_TEXTURE_3D, i);
-            texGenSStates[i] = new TextureUnitBooleanStateStack(GL11.GL_TEXTURE_GEN_S, i);
-            texGenTStates[i] = new TextureUnitBooleanStateStack(GL11.GL_TEXTURE_GEN_T, i);
-            texGenRStates[i] = new TextureUnitBooleanStateStack(GL11.GL_TEXTURE_GEN_R, i);
-            texGenQStates[i] = new TextureUnitBooleanStateStack(GL11.GL_TEXTURE_GEN_Q, i);
-            texGenStates[i] = new TexGenState();
-            texEnvStates[i] = new TexEnvState();
+            bindings[i] = member(new TextureBindingStack(StackIdAllocator.nextId(), i));
+            states[i] = track(new TextureUnitBooleanStateStack(GL11.GL_TEXTURE_2D, i));
+            texture1DStates[i] = track(new TextureUnitBooleanStateStack(GL11.GL_TEXTURE_1D, i));
+            texture3DStates[i] = track(new TextureUnitBooleanStateStack(GL12.GL_TEXTURE_3D, i));
+            texGenSStates[i] = track(new TextureUnitBooleanStateStack(GL11.GL_TEXTURE_GEN_S, i));
+            texGenTStates[i] = track(new TextureUnitBooleanStateStack(GL11.GL_TEXTURE_GEN_T, i));
+            texGenRStates[i] = track(new TextureUnitBooleanStateStack(GL11.GL_TEXTURE_GEN_R, i));
+            texGenQStates[i] = track(new TextureUnitBooleanStateStack(GL11.GL_TEXTURE_GEN_Q, i));
+            texGenStates[i] = member(new TexGenState(StackIdAllocator.nextId(), i));
+            texEnvStates[i] = member(new TexEnvState(StackIdAllocator.nextId()));
             textureMatricies[i] = new Matrix4fStack(GLStateManager.MAX_TEXTURE_STACK_DEPTH);
         }
+    }
+
+    private <T extends IStateStack<?>> T member(T stack) {
+        idStacks.add(stack);
+        return stack;
+    }
+
+    private <T extends CowStateStack<?>> T track(T stack) {
+        stack.setStackId(StackIdAllocator.nextId());
+        idStacks.add(stack);
+        return stack;
+    }
+
+    /** Returns the context-local state stacks that must participate in COW scope snapshots. */
+    public List<IStateStack<?>> idStacks() {
+        return idStacks;
     }
 
     public TextureBindingStack getTextureUnitBindings(int index) {

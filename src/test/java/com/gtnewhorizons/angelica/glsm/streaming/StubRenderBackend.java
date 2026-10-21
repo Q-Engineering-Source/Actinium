@@ -202,6 +202,7 @@ class StubRenderBackend extends RenderBackend {
     @Override public void disableVertexAttribArray(int index) { throw new UnsupportedOperationException(); }
     @Override public void vertexAttribDivisor(int index, int divisor) { throw new UnsupportedOperationException(); }
     @Override public void bindVertexBuffer(int bindingindex, int buffer, long offset, int stride) { throw new UnsupportedOperationException(); }
+    @Override public void vertexBindingDivisor(int bindingindex, int divisor) { throw new UnsupportedOperationException(); }
     @Override public void vertexAttribFormat(int attribindex, int size, int type, boolean normalized, int relativeoffset) { throw new UnsupportedOperationException(); }
     @Override public void vertexAttribIFormat(int attribindex, int size, int type, int relativeoffset) { throw new UnsupportedOperationException(); }
     @Override public void vertexAttribBinding(int attribindex, int bindingindex) { throw new UnsupportedOperationException(); }

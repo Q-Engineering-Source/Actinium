@@ -9,6 +9,7 @@ import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.ARBClearTexture;
 import org.lwjgl.opengl.ARBPolygonOffsetClamp;
+import org.lwjgl.opengl.ARBVertexAttribBinding;
 import org.lwjgl.opengl.EXTDirectStateAccess;
 import org.lwjgl.opengl.EXTPolygonOffsetClamp;
 import org.lwjgl.opengl.GL;
@@ -1426,22 +1427,57 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public void bindVertexBuffer(int bindingindex, int buffer, long offset, int stride) {
-        GL43C.glBindVertexBuffer(bindingindex, buffer, offset, stride);
+        if (caps.OpenGL43) {
+            GL43C.glBindVertexBuffer(bindingindex, buffer, offset, stride);
+        } else if (caps.GL_ARB_vertex_attrib_binding) {
+            ARBVertexAttribBinding.glBindVertexBuffer(bindingindex, buffer, offset, stride);
+        } else {
+            throw new UnsupportedOperationException("Vertex buffer binding API is unavailable on " + getName());
+        }
+    }
+
+    @Override
+    public void vertexBindingDivisor(int bindingindex, int divisor) {
+        if (caps.OpenGL43) {
+            GL43C.glVertexBindingDivisor(bindingindex, divisor);
+        } else if (caps.GL_ARB_vertex_attrib_binding) {
+            ARBVertexAttribBinding.glVertexBindingDivisor(bindingindex, divisor);
+        } else {
+            throw new UnsupportedOperationException("Vertex buffer binding divisors are unavailable on " + getName());
+        }
     }
 
     @Override
     public void vertexAttribFormat(int attribindex, int size, int type, boolean normalized, int relativeoffset) {
-        GL43C.glVertexAttribFormat(attribindex, size, type, normalized, relativeoffset);
+        if (caps.OpenGL43) {
+            GL43C.glVertexAttribFormat(attribindex, size, type, normalized, relativeoffset);
+        } else if (caps.GL_ARB_vertex_attrib_binding) {
+            ARBVertexAttribBinding.glVertexAttribFormat(attribindex, size, type, normalized, relativeoffset);
+        } else {
+            throw new UnsupportedOperationException("Vertex attribute format API is unavailable on " + getName());
+        }
     }
 
     @Override
     public void vertexAttribIFormat(int attribindex, int size, int type, int relativeoffset) {
-        GL43C.glVertexAttribIFormat(attribindex, size, type, relativeoffset);
+        if (caps.OpenGL43) {
+            GL43C.glVertexAttribIFormat(attribindex, size, type, relativeoffset);
+        } else if (caps.GL_ARB_vertex_attrib_binding) {
+            ARBVertexAttribBinding.glVertexAttribIFormat(attribindex, size, type, relativeoffset);
+        } else {
+            throw new UnsupportedOperationException("Integer vertex attribute format API is unavailable on " + getName());
+        }
     }
 
     @Override
     public void vertexAttribBinding(int attribindex, int bindingindex) {
-        GL43C.glVertexAttribBinding(attribindex, bindingindex);
+        if (caps.OpenGL43) {
+            GL43C.glVertexAttribBinding(attribindex, bindingindex);
+        } else if (caps.GL_ARB_vertex_attrib_binding) {
+            ARBVertexAttribBinding.glVertexAttribBinding(attribindex, bindingindex);
+        } else {
+            throw new UnsupportedOperationException("Vertex attribute binding API is unavailable on " + getName());
+        }
     }
 
     @Override

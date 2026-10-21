@@ -23,6 +23,7 @@ import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL32;
 import org.lwjgl.opengl.GL42;
 import org.lwjgl.opengl.GL43;
+import org.lwjgl.opengl.NVXGPUMemoryInfo;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
@@ -576,7 +577,12 @@ public class RenderSystem {
     }
 
     public static long getVRAM() {
-        return 4294967296L;
+        if (GLStateManager.capabilities.GL_NVX_gpu_memory_info) {
+            return RENDER_BACKEND.getInteger(NVXGPUMemoryInfo.GL_GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX) * 1024L;
+        } else {
+            // Default to 4GB if we can't query VRAM
+            return 4294967296L;
+        }
     }
 
     public static void clearTexImage(int texture, int target, int level, int format, int type) {
@@ -690,6 +696,12 @@ public class RenderSystem {
     public static void samplerParameteri(int sampler, int pname, int param) {
         if (!supportsSamplerObjects || sampler == 0) return;
         RENDER_BACKEND.samplerParameteri(sampler, pname, param);
+    }
+
+    /** Sets a floating-point sampler parameter such as EXT texture anisotropy. */
+    public static void samplerParameterf(int sampler, int pname, float param) {
+        if (!supportsSamplerObjects || sampler == 0) return;
+        RENDER_BACKEND.samplerParameterf(sampler, pname, param);
     }
 
     public static void bindSamplerToUnit(int unit, int sampler) {

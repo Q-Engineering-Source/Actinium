@@ -1,6 +1,7 @@
 package com.gtnewhorizons.angelica.glsm.states;
 
 import com.gtnewhorizons.angelica.glsm.stacks.ClientAttribStack;
+import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
 import org.junit.jupiter.api.Test;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL21;
@@ -9,9 +10,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class ClientPixelStoreSnapshotTest {
     private static final ClientPixelStoreSnapshot INITIAL = new ClientPixelStoreSnapshot(
@@ -49,20 +49,21 @@ class ClientPixelStoreSnapshotTest {
         final MemoryPixelStoreAccess access = new MemoryPixelStoreAccess();
         INITIAL.restore(DEFAULT, access);
         final ClientAttribStack scopes = new ClientAttribStack();
-        scopes.push(GL11.GL_CLIENT_PIXEL_STORE_BIT, ClientPixelStoreSnapshot.capture(access), 1, 7);
+        scopes.push(GL11.GL_CLIENT_PIXEL_STORE_BIT, ClientPixelStoreSnapshot.capture(access), null, 7);
         CHANGED.restore(INITIAL, access);
-        scopes.push(GL11.GL_CLIENT_VERTEX_ARRAY_BIT, ClientPixelStoreSnapshot.capture(access), 3, 9);
+        final VertexAttribState.Snapshot arrays = vertexSnapshot(3, 3);
+        scopes.push(GL11.GL_CLIENT_VERTEX_ARRAY_BIT, null, arrays, 9);
         DEFAULT.restore(CHANGED, access);
 
         final ClientAttribStack.Snapshot vertexScope = scopes.pop();
-        assertTrue(vertexScope.vertexArrays());
-        assertEquals(3, vertexScope.textureUnit());
+        assertNotNull(vertexScope.vertexArrays());
+        assertEquals(3, vertexScope.vertexArrays().clientTextureUnit());
         assertEquals(9, vertexScope.vertexFlags());
         assertNull(vertexScope.pixels());
         assertEquals(DEFAULT, ClientPixelStoreSnapshot.capture(access), "vertex-only pop must leave pixel changes visible");
 
         final ClientAttribStack.Snapshot pixelScope = scopes.pop();
-        assertFalse(pixelScope.vertexArrays());
+        assertNull(pixelScope.vertexArrays());
         pixelScope.pixels().restore(ClientPixelStoreSnapshot.capture(access), access);
         assertEquals(INITIAL, ClientPixelStoreSnapshot.capture(access));
         assertEquals(0, scopes.depth());
@@ -72,19 +73,25 @@ class ClientPixelStoreSnapshotTest {
     void nestedPixelScopesAndUnboundPbosRestoreInOrder() {
         final MemoryPixelStoreAccess access = new MemoryPixelStoreAccess();
         final ClientAttribStack scopes = new ClientAttribStack();
-        scopes.push(GL11.GL_CLIENT_ALL_ATTRIB_BITS, DEFAULT, 2, 5);
+        scopes.push(GL11.GL_CLIENT_ALL_ATTRIB_BITS, DEFAULT, vertexSnapshot(2, 2), 5);
         INITIAL.restore(DEFAULT, access);
-        scopes.push(GL11.GL_CLIENT_PIXEL_STORE_BIT, INITIAL, 0, 0);
+        scopes.push(GL11.GL_CLIENT_PIXEL_STORE_BIT, INITIAL, null, 0);
         CHANGED.restore(INITIAL, access);
 
         scopes.pop().pixels().restore(ClientPixelStoreSnapshot.capture(access), access);
         assertEquals(INITIAL, ClientPixelStoreSnapshot.capture(access));
         final ClientAttribStack.Snapshot outer = scopes.pop();
-        assertTrue(outer.vertexArrays());
-        assertEquals(2, outer.textureUnit());
+        assertNotNull(outer.vertexArrays());
+        assertEquals(2, outer.vertexArrays().clientTextureUnit());
         assertEquals(5, outer.vertexFlags());
         outer.pixels().restore(ClientPixelStoreSnapshot.capture(access), access);
         assertEquals(DEFAULT, ClientPixelStoreSnapshot.capture(access));
+    }
+
+    private static VertexAttribState.Snapshot vertexSnapshot(int vao, int clientTextureUnit) {
+        final VertexAttribState state = new VertexAttribState(99L, new BufferGenerationTracker(99L));
+        state.initForContext(vao);
+        return state.snapshot(new GLContextIdentity(1L, 0xA11CEL, 99L), vao, 0, 0, clientTextureUnit);
     }
 
     /** In-memory pixel-transfer context exercising the production capture/restore implementation. */

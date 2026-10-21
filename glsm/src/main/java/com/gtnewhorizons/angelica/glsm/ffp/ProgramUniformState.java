@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.glsm.ffp;
 
+import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
 import com.gtnewhorizons.angelica.glsm.states.GenerationTrackedState;
 
 /**
@@ -38,124 +39,124 @@ final class ProgramUniformState extends GenerationTrackedState {
         super(14);
     }
 
-    boolean needsModelViewUpload(int generation) {
-        return needsUpload(MODEL_VIEW, generation);
+    boolean needsModelViewUpload(GLContextIdentity identity, int generation) {
+        return needsUpload(identity, MODEL_VIEW, generation);
     }
 
-    void markModelViewUploaded(int generation) {
-        markUploaded(MODEL_VIEW, generation);
+    void markModelViewUploaded(GLContextIdentity identity, int generation) {
+        markUploaded(identity, MODEL_VIEW, generation);
     }
 
-    boolean needsProjectionUpload(int generation) {
-        return needsUpload(PROJECTION, generation);
+    boolean needsProjectionUpload(GLContextIdentity identity, int generation) {
+        return needsUpload(identity, PROJECTION, generation);
     }
 
-    void markProjectionUploaded(int generation) {
-        markUploaded(PROJECTION, generation);
+    void markProjectionUploaded(GLContextIdentity identity, int generation) {
+        markUploaded(identity, PROJECTION, generation);
     }
 
-    boolean needsTextureMatrixUpload(int generation) {
-        return needsUpload(TEXTURE_MATRIX, generation);
+    boolean needsTextureMatrixUpload(GLContextIdentity identity, int generation) {
+        return needsUpload(identity, TEXTURE_MATRIX, generation);
     }
 
-    void markTextureMatrixUploaded(int generation) {
-        markUploaded(TEXTURE_MATRIX, generation);
+    void markTextureMatrixUploaded(GLContextIdentity identity, int generation) {
+        markUploaded(identity, TEXTURE_MATRIX, generation);
     }
 
-    boolean needsLightingUpload(int generation) {
-        return needsUpload(LIGHTING, generation);
+    boolean needsLightingUpload(GLContextIdentity identity, int generation) {
+        return needsUpload(identity, LIGHTING, generation);
     }
 
-    void markLightingUploaded(int generation) {
-        markUploaded(LIGHTING, generation);
+    void markLightingUploaded(GLContextIdentity identity, int generation) {
+        markUploaded(identity, LIGHTING, generation);
     }
 
-    boolean needsFragmentUpload(int generation) {
-        return needsUpload(FRAGMENT, generation);
+    boolean needsFragmentUpload(GLContextIdentity identity, int generation) {
+        return needsUpload(identity, FRAGMENT, generation);
     }
 
-    void markFragmentUploaded(int generation) {
-        markUploaded(FRAGMENT, generation);
+    void markFragmentUploaded(GLContextIdentity identity, int generation) {
+        markUploaded(identity, FRAGMENT, generation);
     }
 
-    boolean needsColorUpload(int generation) {
-        return needsUpload(COLOR, generation);
+    boolean needsColorUpload(GLContextIdentity identity, int generation) {
+        return needsUpload(identity, COLOR, generation);
     }
 
-    void markColorUploaded(int generation) {
-        markUploaded(COLOR, generation);
+    void markColorUploaded(GLContextIdentity identity, int generation) {
+        markUploaded(identity, COLOR, generation);
     }
 
-    boolean needsNormalUpload(int generation) {
-        return needsUpload(NORMAL, generation);
+    boolean needsNormalUpload(GLContextIdentity identity, int generation) {
+        return needsUpload(identity, NORMAL, generation);
     }
 
-    void markNormalUploaded(int generation) {
-        markUploaded(NORMAL, generation);
+    void markNormalUploaded(GLContextIdentity identity, int generation) {
+        markUploaded(identity, NORMAL, generation);
     }
 
-    boolean needsTexCoordUpload(int generation) {
-        return needsUpload(TEX_COORD, generation);
+    boolean needsTexCoordUpload(GLContextIdentity identity, int generation) {
+        return needsUpload(identity, TEX_COORD, generation);
     }
 
-    void markTexCoordUploaded(int generation) {
-        markUploaded(TEX_COORD, generation);
+    void markTexCoordUploaded(GLContextIdentity identity, int generation) {
+        markUploaded(identity, TEX_COORD, generation);
     }
 
-    boolean needsTexGenUpload(int generation) {
-        return needsUpload(TEX_GEN, generation);
+    boolean needsTexGenUpload(GLContextIdentity identity, int generation) {
+        return needsUpload(identity, TEX_GEN, generation);
     }
 
-    void markTexGenUploaded(int generation) {
-        markUploaded(TEX_GEN, generation);
+    void markTexGenUploaded(GLContextIdentity identity, int generation) {
+        markUploaded(identity, TEX_GEN, generation);
     }
 
-    boolean needsClipPlaneUpload(int generation) {
-        return needsUpload(CLIP_PLANE, generation);
+    boolean needsClipPlaneUpload(GLContextIdentity identity, int generation) {
+        return needsUpload(identity, CLIP_PLANE, generation);
     }
 
-    void markClipPlaneUploaded(int generation) {
-        markUploaded(CLIP_PLANE, generation);
+    void markClipPlaneUploaded(GLContextIdentity identity, int generation) {
+        markUploaded(identity, CLIP_PLANE, generation);
     }
 
-    boolean needsLightmapUpload(float x, float y) {
-        return !isInitialized(LIGHTMAP) || lightmapX != x || lightmapY != y;
+    boolean needsLightmapUpload(GLContextIdentity identity, float x, float y) {
+        return !isInitialized(identity, LIGHTMAP) || lightmapX != x || lightmapY != y;
     }
 
-    void markLightmapUploaded(float x, float y) {
+    void markLightmapUploaded(GLContextIdentity identity, float x, float y) {
         lightmapX = x;
         lightmapY = y;
-        markUploaded(LIGHTMAP, 0);
+        markUploaded(identity, LIGHTMAP, 0);
     }
 
-    boolean needsLineWidthUpload(float width) {
-        return !isInitialized(LINE_WIDTH) || lineWidth != width;
+    boolean needsLineWidthUpload(GLContextIdentity identity, float width) {
+        return !isInitialized(identity, LINE_WIDTH) || lineWidth != width;
     }
 
-    void markLineWidthUploaded(float width) {
+    void markLineWidthUploaded(GLContextIdentity identity, float width) {
         lineWidth = width;
-        markUploaded(LINE_WIDTH, 0);
+        markUploaded(identity, LINE_WIDTH, 0);
     }
 
-    boolean needsViewportUpload(int x, int y, int width, int height) {
-        return !isInitialized(VIEWPORT)
+    boolean needsViewportUpload(GLContextIdentity identity, int x, int y, int width, int height) {
+        return !isInitialized(identity, VIEWPORT)
             || viewportX != x || viewportY != y || viewportWidth != width || viewportHeight != height;
     }
 
-    void markViewportUploaded(int x, int y, int width, int height) {
+    void markViewportUploaded(GLContextIdentity identity, int x, int y, int width, int height) {
         viewportX = x;
         viewportY = y;
         viewportWidth = width;
         viewportHeight = height;
-        markUploaded(VIEWPORT, 0);
+        markUploaded(identity, VIEWPORT, 0);
     }
 
-    boolean needsLineStippleUpload(int packedFactorPattern) {
-        return !isInitialized(LINE_STIPPLE) || lineStipple != packedFactorPattern;
+    boolean needsLineStippleUpload(GLContextIdentity identity, int packedFactorPattern) {
+        return !isInitialized(identity, LINE_STIPPLE) || lineStipple != packedFactorPattern;
     }
 
-    void markLineStippleUploaded(int packedFactorPattern) {
+    void markLineStippleUploaded(GLContextIdentity identity, int packedFactorPattern) {
         lineStipple = packedFactorPattern;
-        markUploaded(LINE_STIPPLE, 0);
+        markUploaded(identity, LINE_STIPPLE, 0);
     }
 }

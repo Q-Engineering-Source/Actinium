@@ -1,34 +1,53 @@
 package com.gtnewhorizons.angelica.glsm.stacks;
 
-import com.gtnewhorizon.gtnhlib.client.renderer.stacks.IStateStack;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.StateSet;
 import com.gtnewhorizons.angelica.glsm.states.ScissorState;
 
-/** Saves scissor rectangles for nested GL_SCISSOR_BIT attribute scopes. */
-public class ScissorStateStack extends ScissorState implements IStateStack<ScissorStateStack> {
-    private final ScissorState[] stack = new ScissorState[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
-    private int pointer;
+public final class ScissorStateStack extends ScissorState implements CowStateStack<ScissorStateStack> {
+
+    protected final ScissorState[] stack;
+    private final CowDepths cow = new CowDepths(StateSet.R_SCISSOR);
 
     public ScissorStateStack() {
-        for (int i = 0; i < stack.length; i++) stack[i] = new ScissorState();
+        this(-1);
+    }
+
+    public ScissorStateStack(int id) {
+        cow.id = id;
+        stack = new ScissorState[GLStateManager.STATE_SLOTS];
+        for (int i = 0; i < GLStateManager.STATE_SLOTS; i++) {
+            stack[i] = new ScissorState();
+        }
     }
 
     @Override
-    public ScissorStateStack push() {
-        if (pointer == stack.length) throw new IllegalStateException("Scissor stack overflow");
-        stack[pointer++].set(this);
-        return this;
+    public CowDepths cowDepths() {
+        return cow;
     }
 
     @Override
-    public ScissorStateStack pop() {
-        if (pointer == 0) throw new IllegalStateException("Scissor stack underflow");
-        set(stack[--pointer]);
-        return this;
+    public boolean slotChanged(int slot) {
+        return !sameAs(stack[slot]);
     }
 
     @Override
-    public boolean isEmpty() {
-        return pointer == 0;
+    public void captureSlot(int s) {
+        stack[s].set(this);
+    }
+
+    @Override
+    public void restoreSlot(int s) {
+        set(stack[s]);
+    }
+
+    @Override
+    public boolean topSlotChanged() {
+        return !cow.isEmpty() && !sameAs(stack[cow.top()]);
+    }
+
+    @Override
+    public int stackId() {
+        return cow.id;
     }
 }

@@ -2,6 +2,7 @@ package com.gtnewhorizons.angelica.glsm.states;
 
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFlags;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormatElement.Usage;
+import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
 import org.lwjgl.opengl.GL11;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,14 +27,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * {@code (0,0,0,1)} and renders black.</p>
  */
 class VertexAttribStateDeriveVertexFlagsTest {
+    private VertexAttribState state;
+
     @BeforeEach
     void setUp() {
-        VertexAttribState.init(0);
+        state = new VertexAttribState(404L, new BufferGenerationTracker(404L));
+        state.initForContext(0);
     }
 
     @AfterEach
     void tearDown() {
-        VertexAttribState.reset();
+        state.resetState();
     }
 
     /**
@@ -43,8 +47,8 @@ class VertexAttribStateDeriveVertexFlagsTest {
      */
     @Test
     void freshVAOderivesNoFlags() {
-        VertexAttribState.onBindVertexArray(1);
-        assertEquals(0, VertexAttribState.currentClientArrayVertexFlags());
+        state.bindVertexArray(1);
+        assertEquals(0, state.currentClientArrayVertexFlagsForContext());
     }
 
     /**
@@ -54,12 +58,12 @@ class VertexAttribStateDeriveVertexFlagsTest {
      */
     @Test
     void noColorAttribDerivesNoColorBit() {
-        VertexAttribState.onBindVertexArray(1);
+        state.bindVertexArray(1);
         setEnabled(Usage.POSITION.getAttributeLocation(), true);
         setEnabled(Usage.PRIMARY_UV.getAttributeLocation(), true);
         setEnabled(Usage.NORMAL.getAttributeLocation(), true);
 
-        int flags = VertexAttribState.currentClientArrayVertexFlags();
+        int flags = state.currentClientArrayVertexFlagsForContext();
         assertEquals(VertexFlags.TEXTURE_BIT | VertexFlags.NORMAL_BIT, flags,
             "mask must not include COLOR_BIT when the VAO has no color attribute");
     }
@@ -70,12 +74,12 @@ class VertexAttribStateDeriveVertexFlagsTest {
      */
     @Test
     void colorAttribDerivesColorBit() {
-        VertexAttribState.onBindVertexArray(1);
+        state.bindVertexArray(1);
         setEnabled(Usage.POSITION.getAttributeLocation(), true);
         setEnabled(Usage.PRIMARY_UV.getAttributeLocation(), true);
         setEnabled(Usage.COLOR.getAttributeLocation(), true);
 
-        int flags = VertexAttribState.currentClientArrayVertexFlags();
+        int flags = state.currentClientArrayVertexFlagsForContext();
         assertEquals(VertexFlags.TEXTURE_BIT | VertexFlags.COLOR_BIT, flags,
             "mask must include COLOR_BIT when the VAO has a color attribute");
     }
@@ -87,13 +91,13 @@ class VertexAttribStateDeriveVertexFlagsTest {
      */
     @Test
     void derivedMaskIsPerVao() {
-        VertexAttribState.onBindVertexArray(1);
+        state.bindVertexArray(1);
         setEnabled(Usage.POSITION.getAttributeLocation(), true);
         setEnabled(Usage.SECONDARY_UV.getAttributeLocation(), true);
-        assertEquals(VertexFlags.BRIGHTNESS_BIT, VertexAttribState.currentClientArrayVertexFlags());
+        assertEquals(VertexFlags.BRIGHTNESS_BIT, state.currentClientArrayVertexFlagsForContext());
 
-        VertexAttribState.onBindVertexArray(2);
-        assertEquals(0, VertexAttribState.currentClientArrayVertexFlags(),
+        state.bindVertexArray(2);
+        assertEquals(0, state.currentClientArrayVertexFlagsForContext(),
             "binding a different VAO must not keep the previous VAO's brightness bit");
     }
 
@@ -104,12 +108,12 @@ class VertexAttribStateDeriveVertexFlagsTest {
      */
     @Test
     void disablingAttribDropsItsBit() {
-        VertexAttribState.onBindVertexArray(1);
+        state.bindVertexArray(1);
         setEnabled(Usage.COLOR.getAttributeLocation(), true);
-        assertEquals(VertexFlags.COLOR_BIT, VertexAttribState.currentClientArrayVertexFlags());
+        assertEquals(VertexFlags.COLOR_BIT, state.currentClientArrayVertexFlagsForContext());
 
         setEnabled(Usage.COLOR.getAttributeLocation(), false);
-        assertEquals(0, VertexAttribState.currentClientArrayVertexFlags());
+        assertEquals(0, state.currentClientArrayVertexFlagsForContext());
     }
 
     /**
@@ -132,8 +136,8 @@ class VertexAttribStateDeriveVertexFlagsTest {
         source.position(position);
 
         final int location = Usage.POSITION.getAttributeLocation();
-        VertexAttribState.set(location, 3, GL11.GL_FLOAT, false, stride, source, 0);
-        final VertexAttribState.Attrib attrib = VertexAttribState.get(location);
+        state.setPointer(location, 3, GL11.GL_FLOAT, false, stride, source, 0);
+        final VertexAttribState.Attrib attrib = state.getAttrib(location);
 
         assertEquals(position, source.position());
         assertEquals(0, attrib.clientPointer.position());
@@ -145,7 +149,50 @@ class VertexAttribStateDeriveVertexFlagsTest {
         assertEquals(22.0f, attrib.readComponent(attrib.clientPointer, stride, 2));
     }
 
-    private static void setEnabled(int index, boolean enabled) {
-        VertexAttribState.setEnabled(index, enabled);
+    /**
+     * Motivation: client-attrib snapshots duplicate pointers once when captured and again when
+     * restored; both copies must retain native byte order so the restored vertex data stays valid.
+     */
+    @Test
+    void clientPointerReadsNativeFloatsAfterSnapshotCopyAndRestore() {
+        final int position = 4;
+        final int stride = 12;
+        final ByteBuffer source = ByteBuffer.allocateDirect(position + stride * 2).order(ByteOrder.nativeOrder());
+        source.putFloat(0, -100.0f);
+        source.putFloat(position, 31.0f);
+        source.putFloat(position + 4, 32.0f);
+        source.putFloat(position + 8, 33.0f);
+        source.putFloat(position + stride, 41.0f);
+        source.putFloat(position + stride + 4, 42.0f);
+        source.putFloat(position + stride + 8, 43.0f);
+        source.limit(position + 12);
+        source.position(position);
+
+        final int location = Usage.POSITION.getAttributeLocation();
+        state.setPointer(location, 3, GL11.GL_FLOAT, false, stride, source, 0);
+        setEnabled(location, true);
+        final GLContextIdentity identity = new GLContextIdentity(1L, 0xA11CEL, 404L);
+        final VertexAttribState.Snapshot snapshot = state.snapshot(identity, 0, 0, 0, 0);
+
+        final ByteBuffer replacement = ByteBuffer.allocateDirect(12).order(ByteOrder.nativeOrder());
+        replacement.putFloat(0, -1.0f);
+        replacement.putFloat(4, -2.0f);
+        replacement.putFloat(8, -3.0f);
+        state.setPointer(location, 3, GL11.GL_FLOAT, false, 0, replacement, 0);
+        setEnabled(location, false);
+
+        state.restoreModel(snapshot, false);
+        final VertexAttribState.Attrib restored = state.getAttrib(location);
+        assertEquals(0, restored.clientPointer.position());
+        assertEquals(ByteOrder.nativeOrder(), restored.clientPointer.order());
+        assertEquals(31.0f, restored.readComponent(restored.clientPointer, 0, 0));
+        assertEquals(33.0f, restored.readComponent(restored.clientPointer, 0, 2));
+        assertEquals(41.0f, restored.readComponent(restored.clientPointer, stride, 0));
+        assertEquals(43.0f, restored.readComponent(restored.clientPointer, stride, 2));
+        assertEquals(position, source.position());
+    }
+
+    private void setEnabled(int index, boolean enabled) {
+        state.setEnabledForContext(index, enabled);
     }
 }

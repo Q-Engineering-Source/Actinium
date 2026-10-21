@@ -2,6 +2,7 @@ package com.gtnewhorizons.angelica.glsm;
 
 import com.gtnewhorizons.angelica.glsm.stacks.FogStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.LightStateStack;
+import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
 import com.gtnewhorizons.angelica.glsm.states.ClipPlaneState;
 import com.gtnewhorizons.angelica.glsm.states.LightModelState;
 import com.gtnewhorizons.angelica.glsm.states.LightState;
@@ -114,7 +115,7 @@ public class CompatUniformManager {
     private CompatUniformManager() {}
 
     public static long beforeLinkProgram(int program) {
-        return programStates.invalidate(program);
+        return programStates.invalidate(currentShareGroupId(), program);
     }
 
     public static void onLinkProgram(int program, long linkEpoch) {
@@ -128,19 +129,19 @@ public class CompatUniformManager {
             locs[i] = RENDER_BACKEND.getUniformLocation(program, UNIFORM_NAMES[i]);
         }
 
-        if (programStates.storeLinkedProgram(program, linkEpoch, locs)) {
+        if (programStates.storeLinkedProgram(currentShareGroupId(), program, linkEpoch, locs)) {
             GLStateManager.LOGGER.debug("CompatUniformManager: program {} has compat uniforms", program);
         }
     }
 
     public static void onUseProgram(int program) {
         if (program == 0) return;
-        if (!GLStateManager.isCachingEnabled()) {
-            // SharedDrawable does not keep GLStateManager's source cache current.
-            return;
-        }
 
-        CompatProgramUniformState state = programStates.get(program);
+        final GLContextIdentity identity = GLStateManager.currentContextIdentity();
+        if (identity == null) {
+            throw new IllegalStateException("Compat uniforms require a registered current context");
+        }
+        CompatProgramUniformState state = programStates.get(identity.shareGroupId(), program);
         if (state == null || !state.isValid()) return;
 
         int[] locs = state.getLocations();
@@ -148,67 +149,66 @@ public class CompatUniformManager {
         final int mvGen = GLStateManager.getMvGeneration();
         final int projGen = GLStateManager.getProjGeneration();
         final int texMatGen = GLStateManager.getTexMatrixGeneration();
-        final boolean mvChanged = state.needsModelViewUpload(mvGen);
-        final boolean projChanged = state.needsProjectionUpload(projGen);
-        final boolean texMatChanged = state.needsTextureMatrixUpload(texMatGen);
+        final boolean mvChanged = state.needsModelViewUpload(identity, mvGen);
+        final boolean projChanged = state.needsProjectionUpload(identity, projGen);
+        final boolean texMatChanged = state.needsTextureMatrixUpload(identity, texMatGen);
         if (mvChanged || projChanged || texMatChanged) {
             if (!state.isValid()) return;
             uploadMatrices(locs, mvChanged, projChanged, texMatChanged);
-            if (mvChanged) state.markModelViewUploaded(mvGen);
-            if (projChanged) state.markProjectionUploaded(projGen);
-            if (texMatChanged) state.markTextureMatrixUploaded(texMatGen);
+            if (mvChanged) state.markModelViewUploaded(identity, mvGen);
+            if (projChanged) state.markProjectionUploaded(identity, projGen);
+            if (texMatChanged) state.markTextureMatrixUploaded(identity, texMatGen);
         }
 
         final int fragGen = GLStateManager.getFragmentGeneration();
-        final boolean fragmentChanged = state.needsFragmentUpload(fragGen);
+        final boolean fragmentChanged = state.needsFragmentUpload(identity, fragGen);
         if (fragmentChanged) {
             if (!state.isValid()) return;
             uploadFragmentUniforms(locs);
-            state.markFragmentUploaded(fragGen);
+            state.markFragmentUploaded(identity, fragGen);
         }
 
         final int colorGen = GLStateManager.getColorGeneration();
-        final boolean colorChanged = state.needsColorUpload(colorGen);
+        final boolean colorChanged = state.needsColorUpload(identity, colorGen);
         if (colorChanged) {
             if (!state.isValid()) return;
             uploadColorModulator(locs);
-            state.markColorUploaded(colorGen);
+            state.markColorUploaded(identity, colorGen);
         }
 
         final int litGen = GLStateManager.getLightingGeneration();
-        final boolean lightingChanged = state.needsLightingUpload(litGen);
+        final boolean lightingChanged = state.needsLightingUpload(identity, litGen);
         if (lightingChanged) {
             if (!state.isValid()) return;
             if (locs[LOC_SCENE_COLOR] != -1) uploadSceneColor(locs);
             uploadLightSources(locs);
             uploadMaterial(locs);
-            state.markLightingUploaded(litGen);
+            state.markLightingUploaded(identity, litGen);
         }
 
         final boolean hasClipPlaneUniforms = locs[LOC_CLIP_PLANES] != -1 || locs[LOC_CLIP_PLANES_ENABLED] != -1;
         if (hasClipPlaneUniforms) {
             final int cpGen = GLStateManager.getClipPlaneGeneration();
-            final boolean clipPlaneChanged = state.needsClipPlaneUpload(cpGen);
+            final boolean clipPlaneChanged = state.needsClipPlaneUpload(identity, cpGen);
             if (clipPlaneChanged) {
                 if (!state.isValid()) return;
                 uploadClipPlanes(locs);
-                state.markClipPlaneUploaded(cpGen);
+                state.markClipPlaneUploaded(identity, cpGen);
             }
         }
     }
 
     public static void refreshCurrentProgramMatrices() {
-        if (!GLStateManager.isCachingEnabled()) {
-            // Matrix state belongs to the cache-owning context during the splash screen.
-            return;
-        }
-
         final int program = GLStateManager.getActiveProgram();
         if (program == 0) {
             return;
         }
 
-        CompatProgramUniformState state = programStates.get(program);
+        final GLContextIdentity identity = GLStateManager.currentContextIdentity();
+        if (identity == null) {
+            throw new IllegalStateException("Compat uniforms require a registered current context");
+        }
+        CompatProgramUniformState state = programStates.get(identity.shareGroupId(), program);
         if (state == null || !state.isValid()) {
             return;
         }
@@ -218,9 +218,27 @@ public class CompatUniformManager {
             return;
         }
         uploadMatrices(locs, true, true, true);
-        state.markModelViewUploaded(GLStateManager.getMvGeneration());
-        state.markProjectionUploaded(GLStateManager.getProjGeneration());
-        state.markTextureMatrixUploaded(GLStateManager.getTexMatrixGeneration());
+        state.markModelViewUploaded(identity, GLStateManager.getMvGeneration());
+        state.markProjectionUploaded(identity, GLStateManager.getProjGeneration());
+        state.markTextureMatrixUploaded(identity, GLStateManager.getTexMatrixGeneration());
+    }
+
+    /** Drops upload-generation markers for one context while its share-group programs remain live. */
+    public static void retireContext(GLContextIdentity identity) {
+        programStates.retireContext(identity);
+    }
+
+    /** Drops locations and upload markers after the last context in a share group has been destroyed. */
+    public static void retireShareGroup(long shareGroupId) {
+        programStates.retireShareGroup(shareGroupId);
+    }
+
+    private static long currentShareGroupId() {
+        final GLContextIdentity identity = GLStateManager.currentContextIdentity();
+        if (identity == null) {
+            throw new IllegalStateException("Compat uniforms require a registered current context");
+        }
+        return identity.shareGroupId();
     }
 
     private static void uploadMatrices(int[] locs, boolean mvChanged, boolean projChanged, boolean texMatChanged) {
