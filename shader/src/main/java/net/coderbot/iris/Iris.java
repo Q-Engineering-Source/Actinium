@@ -1404,6 +1404,31 @@ public class Iris {
     }
 
     /**
+     * Sets whether compiled programs are saved to disk, with the side effects of the toggle:
+     * turning it off deletes the saved programs, and turning it on while shaders are enabled
+     * reloads so every dimension's shaders are compiled once for the cache.
+     */
+    public static void setSaveCompiledShaders(boolean save) {
+        try {
+            irisConfig.setSaveCompiledShaders(save);
+        } catch (IOException e) {
+            logger.error("Failed to save the Iris config", e);
+        }
+        if (!save) {
+            ProgramBinaryCache.deleteAll();
+            return;
+        }
+        if (!irisConfig.areShadersEnabled()) return;
+
+        // Turning saving on compiles every dimension's shaders once, which only happens on a reload
+        try {
+            reload();
+        } catch (IOException e) {
+            logger.error("Failed to reload shaders after turning on Save Compiled Shaders", e);
+        }
+    }
+
+    /**
      * Destroys and deallocates all created OpenGL resources. Useful as part of a reload.
      */
     private static void destroyEverything() {
