@@ -81,6 +81,9 @@ public abstract class MixinChunkBuilderMeshingTaskBetterFoliage {
                     state, pos, actiniumBlockAccess, buildContext, layer)) {
                 return true;
             }
+            if (!ACTINIUM$BETTER_FOLIAGE_COMPAT.shouldRenderBaseBlockInLayer(state, layer)) {
+                return false;
+            }
             return original.call(dispatcher, state, pos, blockAccess, buffer);
         }
 
