@@ -198,7 +198,10 @@ public class Actinium {
 
         if (Iris.enabled) {
             // Configure before pack parsing; classes directories keep the on-disk cache disabled.
-            AngelicaJar.configureShaderDiskCache();
+            var container = Loader.instance().getIndexedModList().get(MODID);
+            AngelicaJar.configureShaderDiskCache(
+                container != null ? container.getSource() : null,
+                Minecraft.getMinecraft().gameDir.toPath());
             // Registration immediately observes the loaded packs and later invalidates on every reload.
             ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
                     .registerReloadListener(PBRTextureManager.INSTANCE::onResourceManagerReload);

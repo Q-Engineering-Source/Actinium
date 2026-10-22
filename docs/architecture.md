@@ -58,7 +58,9 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
    `PostProcessingBridge`、`WorldRendererCompatBridge`、`IrisDebugOptions.Bridge`、
    `GLSMPerfDebugHooks`）；初始化 DH / NeoFontRender 兼容。
 4. **`onInit`**：NeoFontRender 初始化、dev 命令注册、Iris fmlInitEvent。
-   Iris 启用时先由根项目 `AngelicaJar` 配置磁盘缓存位置与当前 Jar 的 build salt，
+   Iris 启用时先由根项目 `AngelicaJar` 从 FML mod container 的 `getSource()` 与游戏目录
+   配置磁盘缓存（`<gameDir>/angelica/shadercache`）及当前 Jar 的 build salt；classes
+   directory 开发环境保持禁用，避免用 `jar:` URI 解码加载位置，
    再注册 `PBRTextureManager` 的资源重载监听。listener 注册会立即观察已加载的资源包；
    后续每次资源重载同步释放旧 PBR holder，并启动新一代资源名字索引。
 
