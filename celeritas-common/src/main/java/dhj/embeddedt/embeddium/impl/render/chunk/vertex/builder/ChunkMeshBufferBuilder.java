@@ -10,8 +10,15 @@ import org.jetbrains.annotations.Nullable;
 import com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities;
 import java.nio.ByteBuffer;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class ChunkMeshBufferBuilder {
+    private static final AtomicLong RETAINED_SCRATCH_BYTES = new AtomicLong();
+    private static final AtomicLong PEAK_RETAINED_SCRATCH_BYTES = new AtomicLong();
+    private static final AtomicLong RETAINED_SCRATCH_BUFFERS = new AtomicLong();
+    private static final AtomicLong RETENTION_RELEASED_BYTES = new AtomicLong();
+    private static final AtomicLong RETENTION_RELEASE_COUNT = new AtomicLong();
+
     private final ChunkVertexEncoder encoder;
     private final int stride;
 
@@ -29,6 +36,15 @@ public class ChunkMeshBufferBuilder {
     private ByteBuffer directBuffer;
     private int count;
     private int sectionIndex;
+
+    public static ScratchMemoryStats getScratchMemoryStats() {
+        return new ScratchMemoryStats(RETAINED_SCRATCH_BYTES.get(), PEAK_RETAINED_SCRATCH_BYTES.get(),
+                RETAINED_SCRATCH_BUFFERS.get(), RETENTION_RELEASED_BYTES.get(), RETENTION_RELEASE_COUNT.get());
+    }
+
+    public record ScratchMemoryStats(long retainedBytes, long peakRetainedBytes, long retainedBuffers,
+                                    long retentionReleasedBytes, long retentionReleaseCount) {
+    }
 
     public ChunkMeshBufferBuilder(ChunkVertexEncoder encoder, int stride, int initialCapacity, boolean collectSortState) {
         this.encoder = encoder;
@@ -104,6 +120,8 @@ public class ChunkMeshBufferBuilder {
         // Ensure we allocate at least initialCapacity bytes
         newCapacity = Math.max(newCapacity, this.initialCapacity);
 
+        long oldCapacity = this.buffer != null ? this.buffer.getLength() : 0;
+
         if (this.buffer == null) {
             this.buffer = new NativeBuffer(newCapacity);
         } else {
@@ -112,6 +130,7 @@ public class ChunkMeshBufferBuilder {
         }
 
         this.directBuffer = this.buffer.getDirectBuffer();
+        recordCapacityChange(oldCapacity, this.buffer.getLength());
     }
 
     public void start(int sectionIndex) {
@@ -145,10 +164,14 @@ public class ChunkMeshBufferBuilder {
         final long capacity = this.buffer.getLength();
         final long usedBytes = used ? (long) this.count * this.stride : 0;
         if (this.scratchRetention.endTask(usedBytes, capacity, this.initialCapacity)) {
+            long releasedBytes = this.buffer.getLength();
             this.buffer.free();
             this.buffer = null;
             this.directBuffer = null;
             this.count = 0;
+            recordCapacityChange(releasedBytes, 0);
+            RETENTION_RELEASED_BYTES.addAndGet(releasedBytes);
+            RETENTION_RELEASE_COUNT.incrementAndGet();
         }
     }
 
@@ -159,9 +182,11 @@ public class ChunkMeshBufferBuilder {
      */
     public void destroy() {
         if (this.buffer != null) {
+            long releasedBytes = this.buffer.getLength();
             this.buffer.free();
             this.buffer = null;
             this.directBuffer = null;
+            recordCapacityChange(releasedBytes, 0);
         }
 
         this.resetSortState();
@@ -184,5 +209,28 @@ public class ChunkMeshBufferBuilder {
 
     public int count() {
         return this.count;
+    }
+
+    private static void recordCapacityChange(long previousCapacity, long newCapacity) {
+        if (previousCapacity == newCapacity) {
+            return;
+        }
+
+        long retainedBytes = RETAINED_SCRATCH_BYTES.addAndGet(newCapacity - previousCapacity);
+        if (newCapacity > previousCapacity) {
+            updatePeak(PEAK_RETAINED_SCRATCH_BYTES, retainedBytes);
+            if (previousCapacity == 0) {
+                RETAINED_SCRATCH_BUFFERS.incrementAndGet();
+            }
+        } else if (newCapacity == 0) {
+            RETAINED_SCRATCH_BUFFERS.decrementAndGet();
+        }
+    }
+
+    private static void updatePeak(AtomicLong peak, long candidate) {
+        long current = peak.get();
+        while (candidate > current && !peak.compareAndSet(current, candidate)) {
+            current = peak.get();
+        }
     }
 }

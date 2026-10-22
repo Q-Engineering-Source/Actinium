@@ -14,4 +14,9 @@ public abstract class ChunkTaskOutput {
     public void delete() {
 
     }
+
+    /** Returns the native allocation size owned by this result while it is awaiting upload or cleanup. */
+    public long getNativeMemoryBytes() {
+        return 0;
+    }
 }

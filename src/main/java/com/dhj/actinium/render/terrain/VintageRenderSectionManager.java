@@ -32,6 +32,7 @@ import dhj.embeddedt.embeddium.api.shader.ShaderProvider;
 import dhj.embeddedt.embeddium.api.shader.ShaderProviderHolder;
 import com.dhj.actinium.compat.depthsupdate.DepthsUpdateCompat;
 import com.dhj.actinium.compat.fluxloading.FluxLoadingCompat;
+import com.dhj.actinium.debug.ChunkMeshInputDiagnostics;
 import com.dhj.actinium.world.WorldSlice;
 import com.dhj.actinium.world.cloned.ChunkRenderContext;
 import com.dhj.actinium.world.cloned.ClonedChunkSectionCache;
@@ -48,6 +49,9 @@ import java.util.List;
 
 public class VintageRenderSectionManager extends RenderSectionManager {
     private final WorldClient world;
+    /** Bounded mesh diagnostics for this render-section-manager lifetime, without retaining the world itself. */
+    private final ChunkMeshInputDiagnostics.TraceBudget meshInputTraceBudget =
+        new ChunkMeshInputDiagnostics.TraceBudget();
     @Getter
     private final ClonedChunkSectionCache sectionCache;
 
@@ -143,7 +147,8 @@ public class VintageRenderSectionManager extends RenderSectionManager {
             return null;
         }
 
-        return new ChunkBuilderMeshingTask(render, context, frame, this.cameraPosition, this.useRasterOcclusionCulling());
+        return new ChunkBuilderMeshingTask(render, context, frame, this.cameraPosition,
+            this.useRasterOcclusionCulling(), this.meshInputTraceBudget);
     }
 
     @Override

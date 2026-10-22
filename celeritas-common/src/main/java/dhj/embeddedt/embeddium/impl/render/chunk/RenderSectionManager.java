@@ -10,6 +10,7 @@ import lombok.Getter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import dhj.embeddedt.embeddium.impl.common.util.TimeUtil;
+import dhj.embeddedt.embeddium.impl.common.util.NativeBuffer;
 import dhj.embeddedt.embeddium.impl.gl.device.CommandList;
 import dhj.embeddedt.embeddium.impl.gl.device.RenderDevice;
 import dhj.embeddedt.embeddium.impl.gl.profiling.TimerQueryManager;
@@ -17,6 +18,7 @@ import dhj.embeddedt.embeddium.impl.render.chunk.compile.ChunkBuildContext;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.ChunkBuildOutput;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.ChunkSortOutput;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.ChunkTaskOutput;
+import dhj.embeddedt.embeddium.impl.render.chunk.vertex.builder.ChunkMeshBufferBuilder;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.executor.ChunkBuilder;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.executor.ChunkJobMetricsTracker;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.executor.ChunkJobResult;
@@ -94,7 +96,7 @@ public abstract class RenderSectionManager {
 
     private final Long2ReferenceMap<RenderSection> sectionByPosition = new Long2ReferenceOpenHashMap<>();
 
-    private final ConcurrentLinkedDeque<ChunkJobResult<? extends ChunkTaskOutput>> buildResults = new ConcurrentLinkedDeque<>();
+    private final ChunkBuildResultQueue buildResults = new ChunkBuildResultQueue();
     private final ConcurrentLinkedDeque<Runnable> asyncSubmittedTasks = new ConcurrentLinkedDeque<>();
 
     private final ChunkRenderer chunkRenderer;
@@ -707,6 +709,19 @@ public abstract class RenderSectionManager {
     private void processChunkBuildResults(List<ChunkJobResult.Success<? extends ChunkTaskOutput>> results) {
         var filtered = filterChunkBuildResults(results);
 
+        try {
+            if (GLSMPerfDebug.isEnabled()) {
+                for (var holder : filtered) {
+                    if (holder.output() instanceof ChunkBuildOutput buildOutput) {
+                        this.reportAcceptedForUpload(buildOutput);
+                    }
+                }
+            }
+        } catch (RuntimeException | Error diagnosticFailure) {
+            LOGGER.warn("[ActiniumMemory] scope=chunk_mesh phase=acceptedForUploadScan diagnostic=failed",
+                diagnosticFailure);
+        }
+
         this.regions.uploadMeshes(RenderDevice.INSTANCE.createCommandList(), filtered, this::markGraphDirty);
 
         for (var holder : filtered) {
@@ -733,6 +748,23 @@ public abstract class RenderSectionManager {
 
             result.render.setLastBuiltFrame(result.buildTime);
             this.sectionMetricsTracker.updateSectionBuildDuration(result.render, holder.executionTimeNanos());
+        }
+    }
+
+    private void reportAcceptedForUpload(ChunkBuildOutput buildOutput) {
+        try {
+            if (!buildOutput.shouldLogAcceptedForUpload(GLSMPerfDebug.isEnabled())) {
+                return;
+            }
+
+            RenderSection render = buildOutput.render;
+            LOGGER.info("[ActiniumMemory] scope=chunk_mesh phase=acceptedForUpload traceId={} sectionX={} sectionY={} sectionZ={} "
+                    + "buildTime={} acceptedMeshBytes={} byteMeaning=filteredChunkBuildOutputVertexPlusIndexBuffers",
+                buildOutput.meshInputTraceId, render.getChunkX(), render.getChunkY(), render.getChunkZ(),
+                buildOutput.buildTime, buildOutput.getNativeMemoryBytes());
+        } catch (RuntimeException | Error diagnosticFailure) {
+            LOGGER.warn("[ActiniumMemory] scope=chunk_mesh phase=acceptedForUpload traceId={} diagnostic=failed",
+                buildOutput.meshInputTraceId, diagnosticFailure);
         }
     }
 
@@ -1247,9 +1279,10 @@ public abstract class RenderSectionManager {
         list.add(String.format("Transfer Queue: %s", this.regions.getStagingBuffer().toString()));
 
         var rebuildLists = this.getCurrentRenderListManager().getRebuildLists();
+        var queuedBuildResults = this.buildResults.getMemoryStats().resultCount();
 
         list.add(String.format("Chunk Queues: U=%02d (P0=%03d | P1=%03d | P2=%03d) S=%03d/%03d",
-                this.buildResults.size(),
+                queuedBuildResults,
                 rebuildLists.getUpdateCount(ChunkUpdateType.IMPORTANT_REBUILD),
                 rebuildLists.getUpdateCount(ChunkUpdateType.REBUILD),
                 rebuildLists.getUpdateCount(ChunkUpdateType.INITIAL_BUILD),
@@ -1348,11 +1381,89 @@ public abstract class RenderSectionManager {
         this.appendSlowestSections(sb);
         sb.append(']');
 
+        this.appendActiniumMemoryStats(sb);
+
         if (AbstractRasterizer.STATS) {
             this.appendRasterStats(sb);
         }
 
         return sb.toString();
+    }
+
+    private void appendActiniumMemoryStats(StringBuilder sb) {
+        NativeBuffer.MemoryStats nativeStats = NativeBuffer.getMemoryStats();
+        ChunkMeshBufferBuilder.ScratchMemoryStats scratchStats = ChunkMeshBufferBuilder.getScratchMemoryStats();
+        ChunkBuildResultQueue.MemoryStats resultStats = this.buildResults.getMemoryStats();
+        RenderRegionManager.BufferMemorySnapshot bufferStats = this.regions.getBufferMemorySnapshot();
+        RenderRegionManager.StagingMemorySnapshot stagingStats = bufferStats.staging();
+        RenderRegionManager.ArenaRetirementSnapshot retirementStats = bufferStats.arenaRetirement();
+
+        sb.append(" [ActiniumMemory]")
+            .append(" allocator=NativeBuffer")
+            .append(" nativeBufferBytes=").append(nativeStats.liveBytes())
+            .append(" nativeBufferPeakBytes=").append(nativeStats.peakLiveBytes())
+            .append(" nativeBufferBlocks=").append(nativeStats.liveBlocks())
+            .append(" nativeBufferPeakBlocks=").append(nativeStats.peakLiveBlocks())
+            .append(" nativeBufferAllocationCount=").append(nativeStats.allocationCount())
+            .append(" nativeBufferTrackedBuffers=").append(nativeStats.trackedBuffers())
+            .append(" nativeBufferExplicitFreeBytes=").append(nativeStats.explicitFreeBytes())
+            .append(" nativeBufferExplicitFreeCount=").append(nativeStats.explicitFreeCount())
+            .append(" nativeBufferResizeFreeBytes=").append(nativeStats.resizedFreeBytes())
+            .append(" nativeBufferResizeFreeCount=").append(nativeStats.resizedFreeCount())
+            .append(" nativeBufferPhantomReclaimBytes=").append(nativeStats.phantomReclaimBytes())
+            .append(" nativeBufferPhantomReclaimCount=").append(nativeStats.phantomReclaimCount())
+            .append(" scratchBytes=").append(scratchStats.retainedBytes())
+            .append(" scratchPeakBytes=").append(scratchStats.peakRetainedBytes())
+            .append(" scratchBuffers=").append(scratchStats.retainedBuffers())
+            .append(" scratchRetentionReleaseBytes=").append(scratchStats.retentionReleasedBytes())
+            .append(" scratchRetentionReleaseCount=").append(scratchStats.retentionReleaseCount())
+            .append(" buildResultCount=").append(resultStats.resultCount())
+            .append(" buildResultBytes=").append(resultStats.nativeBytes())
+            .append(" buildResultPeakCount=").append(resultStats.peakResultCount())
+            .append(" buildResultPeakBytes=").append(resultStats.peakNativeBytes())
+            .append(" loadedRegions=").append(bufferStats.loadedRegionCount())
+            .append(" geometryArenaCount=").append(bufferStats.geometryArenaCount())
+            .append(" geometryUsedBytes=").append(bufferStats.geometryUsedBytes())
+            .append(" geometryCapacityBytes=").append(bufferStats.geometryCapacityBytes())
+            .append(" indexArenaCount=").append(bufferStats.indexArenaCount())
+            .append(" indexUsedBytes=").append(bufferStats.indexUsedBytes())
+            .append(" indexCapacityBytes=").append(bufferStats.indexCapacityBytes())
+            .append(" terrainBufferCapacityBytes=").append(bufferStats.terrainBufferCapacityBytes())
+            .append(" arenaRetirementTrackedRecords=").append(retirementStats.trackedRecordCount())
+            .append(" arenaRetirementPendingOldCount=").append(retirementStats.pendingOldCount())
+            .append(" arenaRetirementPendingOldCapacityBytes=").append(retirementStats.pendingOldCapacityBytes())
+            .append(" arenaRetirementPendingFenceCount=").append(retirementStats.pendingFenceCount())
+            .append(" arenaRetirementDeleteRequestedNotReturned=").append(retirementStats.deleteRequestedNotReturnedCount())
+            .append(" arenaRetirementDeleteReturnedFencePending=").append(retirementStats.deleteReturnedFencePendingCount())
+            .append(" arenaRetirementDeleteEventUnknown=").append(retirementStats.deleteEventUnknownCount())
+            .append(" arenaRetirementObservationUnavailable=").append(retirementStats.observationUnavailableCount())
+            .append(" arenaRetirementCoverageSkippedCount=").append(retirementStats.coverageSkippedCount())
+            .append(" arenaRetirementCoverageSkippedBytes=").append(retirementStats.coverageSkippedBytes())
+            .append(" arenaRetirementUnsupportedFenceCount=").append(retirementStats.unsupportedFenceCount())
+            .append(" arenaRetirementObservedSignalCount=").append(retirementStats.observedSignalCount())
+            .append(" arenaRetirementObservationEndedCount=").append(retirementStats.observationEndedCount())
+            .append(" arenaRetirementActualDeleteReturnedCount=").append(retirementStats.actualDeleteReturnedCount())
+            .append(" arenaRetirementActualDeleteFailureCount=").append(retirementStats.actualDeleteFailureCount())
+            .append(" arenaRetirementBackendEventOverflowCount=").append(retirementStats.backendEventOverflowCount())
+            .append(" arenaRetirementBackendEventQueueDepth=").append(retirementStats.backendEventQueueDepth())
+            .append(" arenaRetirementLastPollShareGroup=").append(retirementStats.lastPollShareGroup())
+            .append(" arenaRetirementLastPollNanos=").append(retirementStats.lastPollNanos())
+            .append(" arenaRetirementLastPollCount=").append(retirementStats.lastPollCount())
+            .append(" arenaRetirementLastPollDeferred=").append(retirementStats.lastPollDeferredCount())
+            .append(" arenaRetirementLastUnsupportedReason=").append(retirementStats.lastUnsupportedReason())
+            .append(" stagingType=").append(stagingStats.type())
+            .append(" stagingRingCapacityBytes=").append(stagingStats.ringCapacityBytes())
+            .append(" stagingRingAvailableBytes=").append(stagingStats.ringAvailableBytes())
+            .append(" stagingRingPendingUploadBytes=").append(stagingStats.ringPendingUploadBytes())
+            .append(" stagingRingPendingCopyCount=").append(stagingStats.ringPendingCopyCount())
+            .append(" stagingRingUnfencedTransferredBytes=").append(stagingStats.ringUnfencedTransferredBytes())
+            .append(" stagingRingFenceCount=").append(stagingStats.ringFenceCount())
+            .append(" stagingRingFencedBytes=").append(stagingStats.ringFencedBytes())
+            .append(" stagingRingInFlightBytes=").append(stagingStats.ringInFlightBytes())
+            .append(" stagingFallbackLiveBytes=").append(stagingStats.fallbackLiveBytes())
+            .append(" stagingFallbackUploadCount=").append(stagingStats.fallbackUploadCountTotal())
+            .append(" stagingFallbackUploadBytes=").append(stagingStats.fallbackUploadBytesTotal())
+            .append(" stagingFallbackResetPending=").append(stagingStats.fallbackResetPending());
     }
 
     private void appendJobStats(StringBuilder sb, String name, Class<? extends ChunkTaskOutput> outputType) {
