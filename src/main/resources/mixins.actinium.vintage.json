@@ -5,7 +5,9 @@
   "target": "@env(DEFAULT)",
   "minVersion": "0.8.5",
   "compatibilityLevel": "JAVA_8",
-  "mixins": [],
+  "mixins": [
+    "features.debug.MixinChunkGeneratorOverworldDiagnostics"
+  ],
   "server": [],
   "client": [
     "core.MinecraftAccessor",
