@@ -27,6 +27,7 @@
 ## Terrain arena 与 staging
 
 - `loadedRegions`、`geometryArenaCount`、`indexArenaCount` 表示当前渲染 region 和 arena 数量。`geometryUsedBytes` / `indexUsedBytes` 是已占用的逻辑区段字节数；对应 `*CapacityBytes` 是 arena 请求的 GL buffer store 容量。
+- 自共享 arena 重构后，一个 region 的 geometry arena 只有一个，其 stride 是该 region 所有 render pass 顶点 stride 的最小公倍数；同一 region 内不同顶点格式的 pass 共用这一块缓冲，靠 `verticesPerArenaElement` 换算偏移。因此 `geometryArenaCount` 现在等于“已上传过 mesh 的 region 数”，不再随 region 内的顶点格式数量增加；读取旧采样时要注意这一口径变化。`stride` 字段随之为共享 stride，可能大于单个 pass 的顶点 stride。
 - `terrainBufferCapacityBytes` 是 geometry arena、index arena、mapped staging ring 容量和 fallback staging 当前 buffer size 的合计账面值。它表示 GL buffer store 容量请求，不等于显存驻留、驱动实际提交量或进程 private bytes。
 - staging 的 `ringPendingUploadBytes`、`ringUnfencedTransferredBytes`、`ringFencedBytes` 分别表示待 flush、已发出但尚未放入 fence、以及等待 fence signal 的 ring 字节。`ringInFlightBytes` 是三类互斥状态的和；fence signal 后对应字节返回 `ringAvailableBytes`。Fallback 的 `fallbackLiveBytes` 是其当前 GL buffer size；upload count/bytes 是累计值，`fallbackResetPending` 表示等待 flush 清空该 buffer。
 - `terrain.arenaResize` 在分配新存储前记录 arena 类型、region 坐标、旧/新容量、已用字节、尚待上传的 request bytes 和 copy span 数。`arenaResizeOldAndNewCapacitySumEstimateBytes` 以 resize 前的全局容量加新容量估算旧、新 GL store 短暂并存的候选峰值；这是账面估算，不是实际物理提交量。
@@ -135,5 +136,17 @@ PID 13892 的采集尚无本轮新增的 `scope=chunk_mesh` 或 `terrain-vao` �
 机制：`GlBufferArena.transferSegments` 每次扩容都新建 dst buffer、`glBufferData` 申请完整新容量、逐段 `copyBufferSubData` 复制旧数据，然后 `deleteBuffer(srcBufferObj)` 删除旧 buffer。本轮 382 次 geometry 扩容共签发 **29.30 GiB** 新存储、复制了 **18.17 GiB** 旧数据，但 `arenaRetirementActualDeleteReturnedCount=496`、`ActualDeleteFailureCount=0` 只证明 Java native wrapper 返回，`arenaRetirementObservedSignalCount=495` 只证明 fence 观察到 signal；两者都不证明驱动已释放 backing storage。旧存储因此在这个约 54 秒的窗口里持续累积。
 
 放大器在扩容策略本身：382 次扩容的实际请求合计只有 **1,532 MiB**（平均 4.01 MiB），却签发了 **29,999 MiB** 新容量，**19.6 倍**放大。`growthTargetFor` 对大 arena 只用 `base + base/2`，只要剩余空间不足就整块重分配，没有把多个小请求合并成一次扩容。填充分布显示 279 次扩容发生在 `used/old ≥ 0.9`，说明这些不是碎片驱动的浪费性压缩，而是被逐次小请求推着走。
+
+## 共享 arena 重构（2026-10-22）
+
+上游 celeritas 的 `2334caab`（"Allow multiple vertex formats to share the same arena"）已移植。此前一个 region 会为它见到的每一种顶点格式各建一个 geometry arena，arena stride 就是该格式的 stride；同一 region 出现两种格式就有两块 arena、两条扩容历史、两批被换下的旧存储，device-resource 列表还要每帧扫描和裁剪。现在 region 按配置中所有 pass 顶点 stride 的最小公倍数分配唯一 arena，不同格式的 pass 共用同一块缓冲，`SectionRenderDataStorage` 用 `commonVertexStride / passStride` 换算行偏移；pass stride 不能整除 region stride 时直接抛异常，而不是把偏移写错位置。
+
+这是“每 region 约 1.05 个 arena”的结构性原因，但**不能据此认为上述内存问题已经解决**：本页 PID 41904 的账本归属针对的是旧结构下的扩容放大，共享 arena 只是让“同一 region 内多格式”不再产生额外 arena，未改变 `transferSegments` 每次扩容都整块重分配、复制旧数据后删除旧 buffer 的机制，也未加入主动同步或批量合并扩容。
+
+VAO 现在按 pass 而非按 region 选择：`TerrainRenderPass.tessellationKey` 由顶点格式、primitive type 和 sorted 组成——正是 vertex-array setup 读取的三项；三项一致的 pass 共用同一个 VAO。key 在构造 pass 时生成，因此“选择 VAO 用的格式”和“绑定进 VAO 的格式”不会不一致。tessellation 改由组装批次时的 provider 创建并存入 `CachedBatch`，缓存批次绘制时不再每帧查表；创建耗时仍记入 tessellation 阶段而非 fill 阶段，保证 terrain 计时可比。
+
+region 销毁、index arena 释放和 mesh 移除现在会失效该 region 内**所有** storage 的缓存批次；此前只失效被移除格式自身的 storage，可能留下针对已释放 index buffer 的缓存批次。
+
+实机仍需确认：本地图在不同 shader 顶点格式（`useCompactVertexFormat`、Iris extended vertex format）下是否都能正确绘制，以及共享 stride 是否让单 region 的 capacity 明显变大（stride 从较小格式升到最小公倍数时，同样的顶点数会占用更多字节）。
 
 因此 "Private−NMT 差额" 不应再被归因为未知来源：它是 terrain arena 扩容换下的旧存储累积。仍需实机确认的是驱动为何没有在 `glDeleteBuffers` 之后回收这批存储，以及是否需要在扩容前后主动同步或批量合并扩容来避免峰值叠加。
