@@ -9,8 +9,6 @@ import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import dhj.embeddedt.embeddium.impl.gl.array.GlVertexArray;
-import dhj.embeddedt.embeddium.impl.gl.attribute.GlVertexAttributeBinding;
-import dhj.embeddedt.embeddium.impl.gl.attribute.GlVertexFormat;
 import dhj.embeddedt.embeddium.impl.gl.debug.GLDebug;
 import dhj.embeddedt.embeddium.impl.gl.device.CommandList;
 import dhj.embeddedt.embeddium.impl.gl.device.DirectMultiDrawBatch;
@@ -65,8 +63,13 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
 
     private final Reference2ReferenceMap<ChunkPrimitiveType, SharedQuadIndexBuffer> sharedIndexBuffers;
 
-    private TerrainRenderPass currentRenderPass;
-    private GlVertexFormat currentVertexFormat;
+    private final BatchAssembler.TessellationProvider tessellationProvider = this::prepareTessellation;
+
+    /**
+     * Tessellation creation time recorded by {@link #prepareTessellation}, which batch assembly can call
+     * outside the renderer's own timing windows.
+     */
+    private long pendingTessellationNanos;
 
     public DefaultChunkRenderer(RenderDevice device, RenderPassConfiguration<?> renderPassConfiguration) {
         super(device, renderPassConfiguration);
@@ -154,9 +157,6 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
 
             Iterator<ChunkRenderList> iterator = renderLists.iterator(renderPass.isReverseOrder());
 
-            this.currentRenderPass = renderPass;
-            this.currentVertexFormat = this.renderPassConfiguration.getVertexTypeForPass(this.currentRenderPass).getVertexFormat();
-
             this.configureShaderInterface(shader);
 
             long timestamp = System.nanoTime();
@@ -183,6 +183,7 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
                 MultiDrawBatch batch;
                 boolean ephemeralBatch = false;
                 List<AnimatedSectionDraw> animatedSections = null;
+                GlTessellation tessellation = null;
 
                 if (animationProvider != null) {
                     // Animated sections are diverted every frame, so the region batch cannot be cached.
@@ -210,19 +211,26 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
                     if (cached == null || !cached.isValidFor(renderList.getSectionsWithGeometry(), renderList.getSectionsWithGeometryCount(),
                             occlusionCamera.intX, occlusionCamera.intY, occlusionCamera.intZ)) {
                         cached = BatchAssembler.createCachedBatch(region, storage, renderList, occlusionCamera, renderPass,
-                                useBlockFaceCulling, commandList, this.multiDrawMode);
+                                useBlockFaceCulling, commandList, this.multiDrawMode, this.tessellationProvider);
 
                         storage.storeCachedMultiDrawBatch(cacheParams, cached);
                     }
 
                     batch = cached.getBatch();
+                    tessellation = cached.getTessellation();
                 }
 
                 if (fillStartNanos != 0L) {
-                    fillNanos += System.nanoTime() - fillStartNanos;
+                    long fillEndNanos = System.nanoTime();
+                    // Batch assembly now also creates the pass's tessellation on first use, so that time is
+                    // separated out of the fill figure instead of being counted in both stages.
+                    long assemblyTessellationNanos = this.takePendingTessellationNanos();
+                    fillNanos += fillEndNanos - fillStartNanos - assemblyTessellationNanos;
+                    tessellationNanos += assemblyTessellationNanos;
+                } else {
+                    this.takePendingTessellationNanos();
                 }
 
-                GlTessellation tessellation = null;
                 if (batch != null && !batch.isEmpty()) {
                     batches++;
                     commands += batch.size();
@@ -231,10 +239,11 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
                        getSharedIndexBuffer(renderPassConfiguration.getPrimitiveTypeForPass(renderPass), commandList).ensureCapacity(commandList, batch.getIndexBufferSize());
                     }
 
-                    long tessellationStartNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
-                    tessellation = this.prepareTessellation(commandList, region);
-                    if (tessellationStartNanos != 0L) {
-                        tessellationNanos += System.nanoTime() - tessellationStartNanos;
+                    if (tessellation == null) {
+                        // Either the batch was rebuilt per frame because sections are animating, or the cached
+                        // batch found no tessellation to carry. Either way the array is built here.
+                        tessellation = this.prepareTessellation(commandList, region, renderPass);
+                        tessellationNanos += this.takePendingTessellationNanos();
                     }
 
                     long uniformsStartNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
@@ -265,7 +274,8 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
                 if (animatedSections != null && !animatedSections.isEmpty()) {
                     long animatedStartNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
                     if (tessellation == null) {
-                        tessellation = this.prepareTessellation(commandList, region);
+                        tessellation = this.prepareTessellation(commandList, region, renderPass);
+                        tessellationNanos += this.takePendingTessellationNanos();
                     }
                     setModelMatrixUniforms(shader, region, camera);
                     shader.setSectionAges(timestamp, region.getSectionLoadTimes());
@@ -275,9 +285,6 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
                     }
                 }
             }
-
-            this.currentVertexFormat = null;
-            this.currentRenderPass = null;
 
             GLDebug.popGroup();
             if (totalStartNanos != 0L) {
@@ -344,42 +351,57 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
         return (chunkBlockPos - cameraBlockPos) - cameraPos;
     }
 
-    private GlTessellation prepareTessellation(CommandList commandList, RenderRegion region) {
-        var resources = region.getResources(this.currentVertexFormat);
-        var tessellation = this.currentRenderPass.isSorted() ? resources.getIndexedTessellation() : resources.getTessellation();
+    /**
+     * Returns the tessellation one pass of one region draws through, creating it on first use.
+     *
+     * <p>Several passes can share a region arena while their {@link TerrainRenderPass.TessellationKey} matches,
+     * so the key rather than the region alone decides which vertex array is reused. Creation is timed into a
+     * field because this is also called from batch assembly, where the caller has no timing window of its own.</p>
+     */
+    private GlTessellation prepareTessellation(CommandList commandList, RenderRegion region, TerrainRenderPass pass) {
+        var resources = region.getResources();
+
+        if (resources == null) {
+            throw new IllegalStateException("Cannot prepare a tessellation for a region with no device resources");
+        }
+
+        var key = pass.tessellationKey();
+        var tessellation = resources.getTessellation(key);
 
         if (tessellation == null) {
-            tessellation = this.createRegionTessellation(commandList, resources);
-            if (this.currentRenderPass.isSorted()) {
-                resources.updateIndexedTessellation(commandList, tessellation);
-            } else {
-                resources.updateTessellation(commandList, tessellation);
+            long startNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
+            tessellation = this.createRegionTessellation(commandList, resources, pass);
+            resources.updateTessellation(commandList, key, tessellation);
+            if (startNanos != 0L) {
+                this.pendingTessellationNanos += System.nanoTime() - startNanos;
             }
         }
 
         return tessellation;
     }
 
-    private GlVertexAttributeBinding[] generateVertexAttributeBindings() {
-        var attributes = this.currentVertexFormat.getAttributes();
-        var bindings = new GlVertexAttributeBinding[attributes.size()];
-        int i = 0;
-        for (var attr : attributes) {
-            bindings[i] = new GlVertexAttributeBinding(i, attr);
-            i++;
-        }
-        return bindings;
+    /** {@return the tessellation time recorded since the last call, and clears it} */
+    private long takePendingTessellationNanos() {
+        long pendingNanos = this.pendingTessellationNanos;
+        this.pendingTessellationNanos = 0L;
+        return pendingNanos;
     }
 
-    protected TessellationBinding[] makeTessellationBindingArray(CommandList commandList, RenderRegion.DeviceResources resources) {
+    protected TessellationBinding[] makeTessellationBindingArray(CommandList commandList,
+                                                                 RenderRegion.DeviceResources resources,
+                                                                 TerrainRenderPass pass) {
         return new TessellationBinding[] {
-                TessellationBinding.forVertexBuffer(resources.getVertexBuffer(), this.generateVertexAttributeBindings()),
-                TessellationBinding.forElementBuffer(this.currentRenderPass.isSorted() ? resources.getIndexBuffer() : this.getSharedIndexBuffer(this.renderPassConfiguration.getPrimitiveTypeForPass(this.currentRenderPass), commandList).getBufferObject())
+                // The key's format is what the tessellation was selected by, so binding it keeps the layout
+                // and the selection from disagreeing.
+                TessellationBinding.forVertexBuffer(resources.getVertexBuffer(), pass.tessellationKey().vertexFormat()),
+                TessellationBinding.forElementBuffer(pass.isSorted() ? resources.getIndexBuffer() : this.getSharedIndexBuffer(this.renderPassConfiguration.getPrimitiveTypeForPass(pass), commandList).getBufferObject())
         };
     }
 
-    protected GlTessellation createRegionTessellation(CommandList commandList, RenderRegion.DeviceResources resources) {
-        var bindings = makeTessellationBindingArray(commandList, resources);
+    protected GlTessellation createRegionTessellation(CommandList commandList,
+                                                      RenderRegion.DeviceResources resources,
+                                                      TerrainRenderPass pass) {
+        var bindings = makeTessellationBindingArray(commandList, resources, pass);
         GlVertexArrayTessellation tessellation = new GlVertexArrayTessellation(new GlVertexArray(), bindings);
         tessellation.registerTerrainDiagnostics();
         tessellation.init(commandList);

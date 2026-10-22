@@ -11,7 +11,7 @@ import dhj.embeddedt.embeddium.impl.gl.arena.PendingUpload;
 import dhj.embeddedt.embeddium.impl.gl.arena.staging.FallbackStagingBuffer;
 import dhj.embeddedt.embeddium.impl.gl.arena.staging.MappedStagingBuffer;
 import dhj.embeddedt.embeddium.impl.gl.arena.staging.StagingBuffer;
-import dhj.embeddedt.embeddium.impl.gl.attribute.GlVertexFormat;
+import dhj.embeddedt.embeddium.impl.common.util.MathUtil;
 import dhj.embeddedt.embeddium.impl.gl.device.CommandList;
 import dhj.embeddedt.embeddium.impl.gl.device.RenderDevice;
 import dhj.embeddedt.embeddium.impl.render.chunk.RenderPassConfiguration;
@@ -70,9 +70,26 @@ public class RenderRegionManager {
 
     private final RenderPassConfiguration<?> renderPassConfiguration;
 
+    /**
+     * Stride every region arena allocates in. Any vertex format the configuration declares must divide it.
+     */
+    private final int commonVertexStride;
+
     public RenderRegionManager(CommandList commandList, RenderPassConfiguration<?> renderPassConfiguration) {
         this.stagingBuffer = createStagingBuffer(commandList);
         this.renderPassConfiguration = renderPassConfiguration;
+        this.commonVertexStride = computeCommonVertexStride(renderPassConfiguration);
+    }
+
+    /**
+     * Picks the stride that every region's geometry arena allocates in, so that passes with different vertex
+     * formats can share one arena instead of each allocating its own. The regions then index their rows by
+     * arena element rather than by vertex.
+     */
+    static int computeCommonVertexStride(RenderPassConfiguration<?> renderPassConfiguration) {
+        return renderPassConfiguration.getAllKnownRenderPasses()
+                .mapToInt(pass -> pass.vertexType().getVertexFormat().getStride())
+                .reduce(1, MathUtil::lcm);
     }
 
     public void update() {
@@ -122,7 +139,7 @@ public class RenderRegionManager {
     }
 
     private class MeshUploader {
-        private final Map<GlVertexFormat, List<PendingSectionUpload>> uploadsByFormat = new Object2ObjectOpenHashMap<>(2);
+        private final Map<TerrainRenderPass, List<PendingSectionUpload>> uploadsByPass = new Reference2ReferenceOpenHashMap<>();
         private final CommandList commandList;
         private final RenderRegion region;
         private final Runnable graphUpdateTrigger;
@@ -136,7 +153,7 @@ public class RenderRegionManager {
         }
 
         private List<PendingSectionUpload> getUploadQueue(TerrainRenderPass pass) {
-            return uploadsByFormat.computeIfAbsent(pass.vertexType().getVertexFormat(), $ -> new ObjectArrayList<>());
+            return uploadsByPass.computeIfAbsent(pass, $ -> new ObjectArrayList<>());
         }
 
         private void processBuildResult(ChunkBuildOutput result) {
@@ -167,7 +184,7 @@ public class RenderRegionManager {
                     storage.removeIndexBuffer(result.render.getSectionIndex());
                 }
 
-                getUploadQueue(entry.getKey()).add(new PendingMeshSortUpload(result.render, pass, PendingUpload.of(mesh.indexData())));
+                getUploadQueue(pass).add(new PendingMeshSortUpload(result.render, pass, PendingUpload.of(mesh.indexData())));
             }
         }
 
@@ -183,26 +200,28 @@ public class RenderRegionManager {
             }
 
             // If we have nothing to upload, abort!
-            if (uploadsByFormat.isEmpty()) {
+            if (uploadsByPass.isEmpty()) {
                 return;
             }
 
+            // Every pass stores into the region's single geometry arena, so the arena and the index arena are
+            // obtained once instead of once per vertex format.
+            var resources = region.createResources(commandList);
             boolean bufferChanged = false;
 
-            for (var entry : uploadsByFormat.entrySet()) {
-                var resources = region.createResources(entry.getKey(), commandList);
-                var uploads = entry.getValue();
-                var geometryArena = resources.getGeometryArena();
-
-                bufferChanged |= geometryArena.upload(commandList, uploads.stream()
+            for (var uploads : uploadsByPass.values()) {
+                bufferChanged |= resources.getGeometryArena().upload(commandList, uploads.stream()
                         .map(PendingSectionUpload::vertexUpload).filter(Objects::nonNull));
+            }
 
-                if (needIndexBuffer) {
-                    bufferChanged |= resources.getOrCreateIndexArena(commandList).upload(commandList, uploads.stream()
+            if (needIndexBuffer) {
+                var indexArena = resources.getOrCreateIndexArena(commandList);
+
+                for (var uploads : uploadsByPass.values()) {
+                    bufferChanged |= indexArena.upload(commandList, uploads.stream()
                             .map(PendingSectionUpload::indexUpload).filter(Objects::nonNull));
                 }
             }
-
 
             // If any of the buffers changed, the tessellation will need to be updated
             // Once invalidated the tessellation will be re-created on the next attempted use
@@ -213,7 +232,7 @@ public class RenderRegionManager {
             int previousPassCookie = region.getPassSetUpdateCount();
 
             // Collect the upload results
-            for (var uploads : uploadsByFormat.values()) {
+            for (var uploads : uploadsByPass.values()) {
                 for (PendingSectionUpload upload : uploads) {
                     var storage = region.createStorage(upload.pass(), renderPassConfiguration);
                     if (upload instanceof PendingMeshRebuildUpload meshUpload) {
@@ -279,18 +298,22 @@ public class RenderRegionManager {
         long indexCapacityBytes = 0L;
 
         for (RenderRegion region : this.regions.values()) {
-            for (RenderRegion.DeviceResources resources : region.getAllResources()) {
-                GlBufferArena geometryArena = resources.getGeometryArena();
-                geometryArenaCount++;
-                geometryUsedBytes += geometryArena.getDeviceUsedMemoryL();
-                geometryCapacityBytes += geometryArena.getDeviceAllocatedMemoryL();
+            RenderRegion.DeviceResources resources = region.getResources();
 
-                GlBufferArena indexArena = resources.getIndexArena();
-                if (indexArena != null) {
-                    indexArenaCount++;
-                    indexUsedBytes += indexArena.getDeviceUsedMemoryL();
-                    indexCapacityBytes += indexArena.getDeviceAllocatedMemoryL();
-                }
+            if (resources == null) {
+                continue;
+            }
+
+            GlBufferArena geometryArena = resources.getGeometryArena();
+            geometryArenaCount++;
+            geometryUsedBytes += geometryArena.getDeviceUsedMemoryL();
+            geometryCapacityBytes += geometryArena.getDeviceAllocatedMemoryL();
+
+            GlBufferArena indexArena = resources.getIndexArena();
+            if (indexArena != null) {
+                indexArenaCount++;
+                indexUsedBytes += indexArena.getDeviceUsedMemoryL();
+                indexCapacityBytes += indexArena.getDeviceAllocatedMemoryL();
             }
         }
 
@@ -477,7 +500,7 @@ public class RenderRegionManager {
 
         if (instance == null) {
             this.regions.put(key, instance = new RenderRegion(x, y, z, this.getNextId(), this.stagingBuffer,
-                    this.resizeObserver, this.diagnosticsOwnerId));
+                    this.commonVertexStride, this.resizeObserver, this.diagnosticsOwnerId));
         }
 
         return instance;
