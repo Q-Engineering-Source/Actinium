@@ -1,6 +1,7 @@
 package net.coderbot.iris.texture.pbr;
 
 import net.coderbot.iris.debug.IrisDebugOptions;
+import net.coderbot.iris.debug.ShaderMemoryDiagnostics;
 import com.gtnewhorizons.angelica.compat.mojang.AutoClosableAbstractTexture;
 import net.coderbot.iris.debug.PBRDebug;
 import lombok.Getter;
@@ -33,6 +34,7 @@ public class PBRAtlasTexture extends AutoClosableAbstractTexture {
 	protected final ResourceLocation id;
 	protected final Map<ResourceLocation, TextureAtlasSprite> sprites = new HashMap<>();
 	protected final Set<TextureAtlasSprite> animatedSprites = new HashSet<>();
+	private long trackedEstimatedBytes;
 
 	public PBRAtlasTexture(TextureMap textureMap, PBRType type) {
 		this.texMap = textureMap;
@@ -65,6 +67,10 @@ public class PBRAtlasTexture extends AutoClosableAbstractTexture {
 	public void upload(int atlasWidth, int atlasHeight, int mipLevel, float anisotropicFiltering) {
 		final int glId = getGlTextureId();
 		TextureUtil.allocateTextureImpl(glId, mipLevel, atlasWidth, atlasHeight);
+		final long estimatedBytes = ShaderMemoryDiagnostics.estimateMipmappedRgba8Bytes(
+			atlasWidth, atlasHeight, mipLevel);
+		ShaderMemoryDiagnostics.pbrAtlasUploaded(type, trackedEstimatedBytes, estimatedBytes);
+		trackedEstimatedBytes = estimatedBytes;
 		TextureManipulationUtil.fillWithColor(glId, mipLevel, type.getDefaultValue());
 
 		for (TextureAtlasSprite sprite : sprites.values()) {
@@ -169,5 +175,7 @@ public class PBRAtlasTexture extends AutoClosableAbstractTexture {
 		}
 		clear();
 		PBRDebug.atlasClosed(this);
+		ShaderMemoryDiagnostics.pbrAtlasClosed(type, trackedEstimatedBytes);
+		trackedEstimatedBytes = 0L;
 	}
 }

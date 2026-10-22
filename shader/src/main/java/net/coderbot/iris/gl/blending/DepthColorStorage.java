@@ -4,6 +4,7 @@ import com.gtnewhorizons.angelica.glsm.states.ColorMask;
 import com.gtnewhorizons.angelica.glsm.states.DepthState;
 import com.gtnewhorizons.angelica.glsm.hooks.VanillaStateLayer;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import net.coderbot.iris.debug.ShaderMemoryDiagnostics;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import lombok.Getter;
 
@@ -18,11 +19,15 @@ public class DepthColorStorage {
 	private static final IntOpenHashSet ownedPrograms = new IntOpenHashSet();
 
 	public static void registerOwnedProgram(int programId) {
-		ownedPrograms.add(programId);
+		if (ownedPrograms.add(programId)) {
+			ShaderMemoryDiagnostics.ownedProgramCreated();
+		}
 	}
 
 	public static void unregisterOwnedProgram(int programId) {
-		ownedPrograms.remove(programId);
+		if (ownedPrograms.remove(programId)) {
+			ShaderMemoryDiagnostics.ownedProgramDestroyed();
+		}
 	}
 
 	public static boolean isOwnedProgram(int programId) {

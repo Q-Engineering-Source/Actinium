@@ -8,6 +8,7 @@ import net.coderbot.iris.gl.framebuffer.GlFramebuffer;
 import net.coderbot.iris.gl.texture.DepthBufferFormat;
 import net.coderbot.iris.gl.texture.DepthCopyStrategy;
 import net.coderbot.iris.gl.texture.InternalTextureFormat;
+import net.coderbot.iris.debug.ShaderMemoryDiagnostics;
 import net.coderbot.iris.rendertarget.DepthTexture;
 import net.coderbot.iris.features.FeatureFlags;
 import net.coderbot.iris.pipeline.WorldRenderingPipeline;
@@ -36,6 +37,9 @@ public class ShadowRenderTargets {
 	private final boolean[] linearFiltered;
 	private final InternalTextureFormat[] formats;
 	private final IntList buffersToBeCleared;
+	private long memoryEstimateBytes;
+	private int allocatedColorBuffers;
+	private boolean memoryDiagnosticsRegistered;
 
 	public ShadowRenderTargets(WorldRenderingPipeline pipeline, int resolution, PackShadowDirectives shadowDirectives) {
 		this.shadowDirectives = shadowDirectives;
@@ -65,6 +69,8 @@ public class ShadowRenderTargets {
 		fullClearRequired = true;
 
 		// Create target 0 eagerly - it's needed for framebuffer creation and almost always used
+		memoryEstimateBytes = 2L * ShaderMemoryDiagnostics.estimateDepthTextureBytes(
+			DepthBufferFormat.DEPTH, resolution, resolution);
 		createIfEmpty(0);
 
 		this.depthSourceFb = createFramebufferWritingToMain(new int[] {0});
@@ -73,6 +79,8 @@ public class ShadowRenderTargets {
 		this.noTranslucentsDestFb.addDepthAttachment(this.noTranslucents.getTextureId());
 
 		this.translucentDepthDirty = true;
+		ShaderMemoryDiagnostics.shadowTargetsCreated(allocatedColorBuffers, memoryEstimateBytes, resolution);
+		memoryDiagnosticsRegistered = true;
 	}
 
 	private void create(int index) {
@@ -86,6 +94,13 @@ public class ShadowRenderTargets {
 			.setInternalFormat(settings.getFormat())
 			.setPixelFormat(settings.getFormat().getPixelFormat()).build();
 		formats[index] = settings.getFormat();
+		final long bufferEstBytes = 2L * ShaderMemoryDiagnostics.estimateColorTextureBytes(
+			settings.getFormat(), resolution, resolution);
+		memoryEstimateBytes += bufferEstBytes;
+		allocatedColorBuffers++;
+		if (memoryDiagnosticsRegistered) {
+			ShaderMemoryDiagnostics.shadowColorBufferCreated(bufferEstBytes);
+		}
 
 		if (settings.getClear()) {
 			buffersToBeCleared.add(index);
@@ -127,6 +142,10 @@ public class ShadowRenderTargets {
 
 		mainDepth.destroy();
 		noTranslucents.destroy();
+		if (memoryDiagnosticsRegistered) {
+			ShaderMemoryDiagnostics.shadowTargetsDestroyed(allocatedColorBuffers, memoryEstimateBytes, resolution);
+			memoryDiagnosticsRegistered = false;
+		}
 	}
 
 	public int getRenderTargetCount() {

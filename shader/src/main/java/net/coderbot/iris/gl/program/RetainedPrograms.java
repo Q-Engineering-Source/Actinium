@@ -2,6 +2,8 @@ package net.coderbot.iris.gl.program;
 
 import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
 import com.gtnewhorizons.angelica.glsm.context.GLContextRegistryProvider;
+import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
+import net.coderbot.iris.Iris;
 import net.coderbot.iris.gl.ResourceCleanup;
 import org.jetbrains.annotations.Nullable;
 
@@ -32,6 +34,10 @@ public final class RetainedPrograms {
 	private static long nextProgramOrder;
 	private static int cachedPrograms;
 	private static int pendingProgramDeletes;
+	private static long retainedHits;
+	private static long retainedMisses;
+	private static long programDeleteCalls;
+	private static long programDeleteQueues;
 
 	@SuppressWarnings("unused")
 	private static final AutoCloseable RETIREMENT_SUBSCRIPTION =
@@ -59,6 +65,9 @@ public final class RetainedPrograms {
 		cachedPrograms = 0;
 		pruneRetiredShareGroups();
 		ResourceCleanup.runAll(null, cleanupActions);
+		if (!cleanupActions.isEmpty()) {
+			logPoolBoundary("configuration-change", cleanupActions.size());
+		}
 	}
 
 	/** Forgets every retained name for controlled teardown or test cleanup. */
@@ -68,6 +77,10 @@ public final class RetainedPrograms {
 		pendingDeletes.clear();
 		cachedPrograms = 0;
 		pendingProgramDeletes = 0;
+		retainedHits = 0L;
+		retainedMisses = 0L;
+		programDeleteCalls = 0L;
+		programDeleteQueues = 0L;
 		configuration = null;
 		configurationEpoch++;
 		return discarded;
@@ -94,6 +107,9 @@ public final class RetainedPrograms {
 		pool.recent = new LinkedHashMap<>();
 		ResourceCleanup.runAll(null, cleanupActions);
 		removeEmptyPool(shareGroupId, pool);
+		if (retiredCount > 0) {
+			logPoolBoundary("after-pipeline-built", retiredCount);
+		}
 	}
 
 	/** Reconciles retained names with context lifetimes after the display switches GL contexts. */
@@ -143,6 +159,7 @@ public final class RetainedPrograms {
 			throw new IllegalStateException("A linked program can only be taken from its owner share group");
 		}
 		if (!contextProvider.hasLiveContexts(shareGroupId)) {
+			retainedMisses++;
 			return 0;
 		}
 		if (contextProvider.currentShareGroupId() == shareGroupId) {
@@ -151,15 +168,18 @@ public final class RetainedPrograms {
 
 		final GroupPool pool = pools.get(shareGroupId);
 		if (pool == null) {
+			retainedMisses++;
 			return 0;
 		}
 
 		final ProgramEntry program = pollFrom(pool.recent, sources);
 		final ProgramEntry selected = program != null ? program : pollFrom(pool.older, sources);
 		if (selected == null) {
+			retainedMisses++;
 			return 0;
 		}
 
+		retainedHits++;
 		pool.cachedPrograms--;
 		cachedPrograms--;
 		removeEmptyPool(shareGroupId, pool);
@@ -204,12 +224,14 @@ public final class RetainedPrograms {
 			return;
 		}
 		if (contextProvider.currentShareGroupId() == shareGroupId) {
+			programDeleteCalls++;
 			deleter.deleteProgram(program);
 			return;
 		}
 
 		pendingDeletes.computeIfAbsent(shareGroupId, ignored -> new ArrayDeque<>()).addLast(program);
 		pendingProgramDeletes++;
+		programDeleteQueues++;
 	}
 
 	/** Forgets a share group's names after its final native context has been destroyed. */
@@ -269,6 +291,7 @@ public final class RetainedPrograms {
 			return;
 		}
 		pendingProgramDeletes -= pending.size();
+		programDeleteCalls += pending.size();
 		final List<Runnable> cleanupActions = new ArrayList<>(pending.size());
 		for (int program : pending) {
 			cleanupActions.add(() -> deleter.deleteProgram(program));
@@ -334,6 +357,31 @@ public final class RetainedPrograms {
 	private static void removeEmptyPool(long shareGroupId, GroupPool pool) {
 		if (pool.cachedPrograms == 0) {
 			pools.remove(shareGroupId, pool);
+		}
+	}
+
+	/** Returns lifetime hit/miss and delete counts with the current retained-name gauges. */
+	public static synchronized String statsSummary() {
+		if (!GLSMPerfDebug.isEnabled()) {
+			return "";
+		}
+
+		return "[ActiniumMemory][shader] retainedPrograms[hitCount=" + retainedHits
+			+ ",missCount=" + retainedMisses
+			+ ",cached=" + cachedPrograms
+			+ ",pendingDelete=" + pendingProgramDeletes
+			+ ",cachedShareGroups=" + pools.size()
+			+ ",pendingDeleteShareGroups=" + pendingDeletes.size()
+			+ ",cacheLimit=" + MAX_RETAINED_PROGRAMS
+			+ ",deleteCallCount=" + programDeleteCalls
+			+ ",deleteQueueCount=" + programDeleteQueues + ']';
+	}
+
+	private static void logPoolBoundary(String event, int affectedPrograms) {
+		if (GLSMPerfDebug.isEnabled()) {
+			Iris.logger.info(
+				"[ActiniumMemory][shader] retainedPool event={} affectedPrograms={} cached={} pendingDelete={} cachedShareGroups={}",
+				event, affectedPrograms, cachedPrograms, pendingProgramDeletes, pools.size());
 		}
 	}
 

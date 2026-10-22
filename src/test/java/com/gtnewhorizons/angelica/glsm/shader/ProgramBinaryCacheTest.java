@@ -221,7 +221,10 @@ class ProgramBinaryCacheTest {
 
         assertTrue(driver.created.isEmpty(), "nothing has to be created to discover that nothing was saved");
         assertTrue(driver.programParameters.isEmpty());
-        assertTrue(ProgramBinaryCache.statsSummary().startsWith("progCache[hit=0,miss=1,hitRate=0.0%,"));
+        final String summary = ProgramBinaryCache.statsSummary();
+        assertTrue(summary.startsWith(
+            "[ActiniumMemory][shader] programBinaryInterval[hit=0,miss=1,hitRate=0.0%,"), summary);
+        assertTrue(summary.contains(" programBinaryPackTotal[hit=0,miss=1,hitRate=0.0%,"), summary);
     }
 
     @Test
@@ -242,9 +245,12 @@ class ProgramBinaryCacheTest {
             "the driver-chosen format stored as the blob tag is the one the restore is told about");
         assertTrue(driver.deleted.isEmpty());
         final String summary = ProgramBinaryCache.statsSummary();
-        assertTrue(summary.startsWith("progCache[hit=1,miss=0,hitRate=100.0%,save=1,reject=0,builds=0,restoreMs="),
+        assertTrue(summary.startsWith(
+            "[ActiniumMemory][shader] programBinaryInterval[hit=1,miss=0,hitRate=100.0%,save=1,reject=0,builds=0,restoreMs="),
             summary);
-        assertTrue(summary.endsWith(",missBuildMs=0.000]"), summary);
+        assertTrue(summary.contains(
+            " programBinaryPackTotal[hit=1,miss=0,hitRate=100.0%,save=1,reject=0,builds=0,restoreMs="),
+            summary);
     }
 
     @Test
@@ -258,8 +264,11 @@ class ProgramBinaryCacheTest {
 
         assertEquals(driver.created, driver.deleted, "the program created for the rejected binary is deleted again");
         assertNull(ShaderDiskCache.getBlob(key.diskKey()), "the unusable entry is withdrawn so the next load recompiles");
-        assertTrue(ProgramBinaryCache.statsSummary()
-            .startsWith("progCache[hit=0,miss=1,hitRate=0.0%,save=0,reject=1,builds=0,restoreMs="));
+        final String summary = ProgramBinaryCache.statsSummary();
+        assertTrue(summary.startsWith(
+            "[ActiniumMemory][shader] programBinaryInterval[hit=0,miss=1,hitRate=0.0%,save=0,reject=1,builds=0,restoreMs="), summary);
+        assertTrue(summary.contains(
+            " programBinaryPackTotal[hit=0,miss=1,hitRate=0.0%,save=0,reject=1,builds=0,restoreMs="), summary);
     }
 
     @Test
@@ -272,8 +281,12 @@ class ProgramBinaryCacheTest {
 
         assertTrue(driver.created.isEmpty(), "a corrupt entry is recognised before a program is created");
         assertNull(ShaderDiskCache.getBlob(key.diskKey()));
-        assertTrue(ProgramBinaryCache.statsSummary().startsWith("progCache[hit=0,miss=1,hitRate=0.0%,save=0,reject=0,"),
-            "a corrupt entry is a miss, not a driver rejection");
+        final String summary = ProgramBinaryCache.statsSummary();
+        assertTrue(summary.startsWith(
+            "[ActiniumMemory][shader] programBinaryInterval[hit=0,miss=1,hitRate=0.0%,save=0,reject=0,"), summary);
+        assertTrue(summary.contains(
+            " programBinaryPackTotal[hit=0,miss=1,hitRate=0.0%,save=0,reject=0,"),
+            "a corrupt entry is a miss in both the interval and current pack total, not a driver rejection");
     }
 
     @Test

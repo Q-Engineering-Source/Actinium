@@ -1,10 +1,12 @@
 package net.coderbot.iris;
 
 import net.coderbot.iris.debug.IrisDebugOptions;
+import net.coderbot.iris.debug.ShaderMemoryDiagnostics;
 import com.google.common.base.Throwables;
 import dhj.embeddedt.embeddium.api.shader.ShaderProviderHolder;
 import com.gtnewhorizons.angelica.Tags;
 import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
+import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
 import com.gtnewhorizons.angelica.glsm.threading.AngelicaWorkers;
 import it.unimi.dsi.fastutil.ints.Int2IntMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
@@ -1373,6 +1375,7 @@ public class Iris {
     }
 
     public static void reload() throws IOException {
+        ShaderMemoryDiagnostics.log("shader", () -> "reload phase=begin pack=" + currentPackName);
         // A reload is the user asking for the pack as it is on disk now. The fingerprint a read-ahead was
         // taken against only describes size and timestamp, so it cannot tell an edit from a touch: dropping
         // the read-ahead here, at the head of every reload entry point, makes the user's explicit request
@@ -1384,6 +1387,7 @@ public class Iris {
 
         // Destroy all allocated resources
         destroyEverything();
+        ShaderMemoryDiagnostics.log("shader", () -> "reload phase=destroyed");
 
         // Load the new shaderpack
         loadShaderpack();
@@ -1401,6 +1405,7 @@ public class Iris {
             Minecraft.getMinecraft().player.sendMessage(new TextComponentString(TextFormatting.BOLD.toString() + TextFormatting.RED + "This pack doesn't have DH support."));
             Minecraft.getMinecraft().player.sendMessage(new TextComponentString(TextFormatting.RED + "Distant Horizons (DH) chunks won't show up. This isn't a bug, get another shader."));
         }
+        ShaderMemoryDiagnostics.log("shader", () -> "reload phase=end pack=" + currentPackName);
     }
 
     /**
@@ -1717,23 +1722,31 @@ public class Iris {
                                             Supplier<Map<String, ProgramSet>> programSets,
                                             FolderPipelineBuilder builder, PipelineReleaser releaser) {
         if (!saveCompiledShaders) {
+            ShaderMemoryDiagnostics.log("shader", () -> "fullcompile=skipped reason=savingDisabled pack="
+                + packName + ' ' + ProgramBinaryCache.availabilitySummary());
             return false;
         }
 
         if (settings == null) {
             logger.warn("Not compiling every shader folder of shaderpack \"" + packName
                 + "\": the pack could not be described, so a full compile of it could never be marked as done");
+            ShaderMemoryDiagnostics.log("shader", () -> "fullcompile=skipped reason=missingSettings pack="
+                + packName + ' ' + ProgramBinaryCache.availabilitySummary());
             return false;
         }
 
         if (!ProgramBinaryCache.isEnabled()) {
             logger.info("Not compiling every shader folder of shaderpack \"{}\" ahead of time: no program binary can be saved for it"
                 + " (the driver offers none, saving is off, or the program cache is not configured)", packName);
+            ShaderMemoryDiagnostics.log("shader", () -> "fullcompile=skipped reason=programBinaryUnavailable pack="
+                + packName + ' ' + ProgramBinaryCache.availabilitySummary());
             return false;
         }
 
         if (ProgramBinaryCache.wasCompiledFor(settings)) {
             logger.info("Every shader folder of shaderpack \"{}\" was already compiled for these settings, nothing to compile", packName);
+            ShaderMemoryDiagnostics.log("shader", () -> "fullcompile=skipped reason=alreadyCompiled pack="
+                + packName + ' ' + ProgramBinaryCache.availabilitySummary());
             return false;
         }
 
@@ -1743,11 +1756,13 @@ public class Iris {
         } catch (Exception e) {
             // A full compile is an optimization; failing to enumerate its folders must not fail the load
             logger.warn("Could not enumerate the shader folders of shaderpack \"" + packName + "\" for saving", e);
+            ShaderMemoryDiagnostics.log("shader", () -> "fullcompile=skipped reason=folderEnumerationFailed pack=" + packName);
             return false;
         }
 
         final long startNanos = System.nanoTime();
         logger.info("[Full compile] Compiling every shader folder of shaderpack \"{}\": {} folders", packName, sets.size());
+        ShaderMemoryDiagnostics.log("shader", () -> "fullcompile=begin pack=" + packName + " folders=" + sets.size());
 
         boolean everyFolderCompiled = true;
         boolean loopFinished = false;
@@ -1775,7 +1790,10 @@ public class Iris {
         } finally {
             // A run that did not finish, or that left a folder out, must not claim the whole pack: the
             // next load then retries instead of trusting a half-filled cache.
-            ProgramBinaryCache.finishFullCompile(loopFinished && everyFolderCompiled ? settings : null);
+            final boolean fullCompileComplete = loopFinished && everyFolderCompiled;
+            ProgramBinaryCache.finishFullCompile(fullCompileComplete ? settings : null);
+            ShaderMemoryDiagnostics.log("shader", () -> "fullcompile=end pack=" + packName
+                + " complete=" + fullCompileComplete + " folders=" + sets.size());
         }
 
         final long elapsedMillis = (System.nanoTime() - startNanos) / 1_000_000L;
@@ -1928,6 +1946,8 @@ public class Iris {
     }
 
     public void fmlInitEvent() {
+        GLSMPerfDebugHooks.addStatsProvider(ShaderMemoryDiagnostics::statsSummary);
+        GLSMPerfDebugHooks.addStatsProvider(RetainedPrograms::statsSummary);
         IRIS_VERSION = Tags.VERSION;
         String keybindCategory = I18n.format("key.category.iris.keybinds");
         reloadKeybind = new KeyBinding(I18n.format("iris.keybind.reload"), Keyboard.KEY_R, keybindCategory);

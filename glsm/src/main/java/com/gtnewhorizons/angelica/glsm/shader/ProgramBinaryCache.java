@@ -219,8 +219,23 @@ public final class ProgramBinaryCache {
      * interval restored instead of compiling, and what it compiled and saved.
      */
     public static String statsSummary() {
-        final Snapshot snapshot = intervalCounters.take();
-        return snapshot.idle() ? "" : "progCache[" + describe(snapshot) + ']';
+        final Snapshot interval = intervalCounters.take();
+        final Snapshot packTotal = epochCounters.peek();
+        if (interval.idle() && packTotal.idle()) return "";
+        return "[ActiniumMemory][shader] programBinaryInterval[" + describe(interval) + ']'
+            + " programBinaryPackTotal[" + describe(packTotal) + ']';
+    }
+
+    /** Reports every condition which gates disk-backed shader program binaries. */
+    public static String availabilitySummary() {
+        final boolean savingEnabled = enabled;
+        final boolean packSelected = packLayer != null;
+        final String driverSupported = savingEnabled && packSelected
+            ? Boolean.toString(ops.isSupported()) : "notChecked";
+        return "programBinaryAvailability[saveEnabled=" + savingEnabled
+            + ",packSelected=" + packSelected
+            + ",driverSupported=" + driverSupported
+            + ",diskCacheConfigured=" + ShaderDiskCache.isEnabled() + ']';
     }
 
     /**
@@ -230,7 +245,7 @@ public final class ProgramBinaryCache {
      */
     public static String dumpEventSummary() {
         final Snapshot snapshot = epochCounters.take();
-        return "progCache[" + describeEpoch(snapshot, totalBuildCount.get(), totalBuildNanos.get()) + ']';
+        return "[ActiniumMemory][shader] programBinary[" + describeEpoch(snapshot, totalBuildCount.get(), totalBuildNanos.get()) + ']';
     }
 
     private static int recordMiss() {
@@ -312,6 +327,11 @@ public final class ProgramBinaryCache {
             return new Snapshot(this.hits.getAndSet(0L), this.misses.getAndSet(0L), this.saves.getAndSet(0L),
                 this.rejects.getAndSet(0L), this.builds.getAndSet(0L), this.restoreNanos.getAndSet(0L),
                 this.buildNanos.getAndSet(0L));
+        }
+
+        private Snapshot peek() {
+            return new Snapshot(this.hits.get(), this.misses.get(), this.saves.get(), this.rejects.get(),
+                this.builds.get(), this.restoreNanos.get(), this.buildNanos.get());
         }
 
         private void clear() {

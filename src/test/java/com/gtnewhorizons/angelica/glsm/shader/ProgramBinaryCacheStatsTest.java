@@ -24,13 +24,19 @@ class ProgramBinaryCacheStatsTest {
     }
 
     @Test
-    void intervalReportPricesTheMissBuildsAndClearsThem() {
+    void intervalReportDrainsIntervalBuildsButKeepsThePackTotal() {
         ProgramBinaryCache.recordMissBuild(2_000_000L);
         ProgramBinaryCache.recordMissBuild(4_000_000L);
 
-        assertEquals("progCache[hit=0,miss=0,hitRate=n/a,save=0,reject=0,builds=2,restoreMs=0.000,missBuildMs=6.000]",
+        assertEquals(
+            "[ActiniumMemory][shader] programBinaryInterval[hit=0,miss=0,hitRate=n/a,save=0,reject=0,builds=2,restoreMs=0.000,missBuildMs=6.000] "
+                + "programBinaryPackTotal[hit=0,miss=0,hitRate=n/a,save=0,reject=0,builds=2,restoreMs=0.000,missBuildMs=6.000]",
             ProgramBinaryCache.statsSummary());
-        assertEquals("", ProgramBinaryCache.statsSummary(), "the report must clear what it reported");
+        assertEquals(
+            "[ActiniumMemory][shader] programBinaryInterval[hit=0,miss=0,hitRate=n/a,save=0,reject=0,builds=0,restoreMs=0.000,missBuildMs=0.000] "
+                + "programBinaryPackTotal[hit=0,miss=0,hitRate=n/a,save=0,reject=0,builds=2,restoreMs=0.000,missBuildMs=6.000]",
+            ProgramBinaryCache.statsSummary(),
+            "the interval is drained while the current pack total remains available for the periodic report");
     }
 
     @Test
@@ -41,11 +47,11 @@ class ProgramBinaryCacheStatsTest {
         final String summary = ProgramBinaryCache.dumpEventSummary();
 
         assertEquals(
-            "progCache[hit=0,miss=0,hitRate=n/a,save=0,reject=0,builds=2,restoreMs=0.000,missBuildMs=6.000,"
+            "[ActiniumMemory][shader] programBinary[hit=0,miss=0,hitRate=n/a,save=0,reject=0,builds=2,restoreMs=0.000,missBuildMs=6.000,"
                 + "avgMissBuildMs=3.000,estSavedCompileMs=0.000,sessionMissBuilds=2]",
             summary);
         assertEquals(
-            "progCache[hit=0,miss=0,hitRate=n/a,save=0,reject=0,builds=0,restoreMs=0.000,missBuildMs=0.000,"
+            "[ActiniumMemory][shader] programBinary[hit=0,miss=0,hitRate=n/a,save=0,reject=0,builds=0,restoreMs=0.000,missBuildMs=0.000,"
                 + "avgMissBuildMs=3.000,estSavedCompileMs=0.000,sessionMissBuilds=2]",
             ProgramBinaryCache.dumpEventSummary(),
             "the epoch counters reset while the session average the estimate is priced from survives");

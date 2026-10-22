@@ -4,6 +4,7 @@ import com.gtnewhorizons.angelica.compat.mojang.NativeImage;
 import com.gtnewhorizons.angelica.glsm.texture.TextureInfo;
 import com.gtnewhorizons.angelica.glsm.texture.TextureInfoCache;
 import net.coderbot.iris.debug.PBRDebug;
+import net.coderbot.iris.debug.ShaderMemoryDiagnostics;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.texture.format.TextureFormat;
 import net.coderbot.iris.texture.format.TextureFormatLoader;
@@ -113,6 +114,7 @@ public class AtlasPBRLoader implements PBRTextureLoader<TextureMap> {
                 return null;
             }
             try (NativeImage nativeImage = NativeImage.read(resource.getInputStream())) {
+                ShaderMemoryDiagnostics.pbrImageDecoded(nativeImage.getWidth(), nativeImage.getHeight());
                 AnimationMetadataSection animationMetadata = (AnimationMetadataSection) resource.getMetadata("animation");
                 if (animationMetadata == null) {
                     try (IResource originalResource = resourceManager.getResource(imageLocation)) {
