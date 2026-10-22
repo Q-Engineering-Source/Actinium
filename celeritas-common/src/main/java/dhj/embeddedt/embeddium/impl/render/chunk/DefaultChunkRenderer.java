@@ -381,6 +381,7 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
     protected GlTessellation createRegionTessellation(CommandList commandList, RenderRegion.DeviceResources resources) {
         var bindings = makeTessellationBindingArray(commandList, resources);
         GlVertexArrayTessellation tessellation = new GlVertexArrayTessellation(new GlVertexArray(), bindings);
+        tessellation.registerTerrainDiagnostics();
         tessellation.init(commandList);
 
         return tessellation;
