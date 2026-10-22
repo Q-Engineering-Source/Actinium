@@ -1,5 +1,9 @@
 package com.gtnewhorizons.angelica.glsm.context;
 
+import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
@@ -10,6 +14,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 /** Identity-based implementation of native context lifetime tracking. */
 final class GLContextRegistryImpl implements GLContextRegistry {
+    private static final Logger LOGGER = LogManager.getLogger("GLSMContextMemory");
+
     private final IdentityHashMap<Object, ContextEntry> contextsByToken = new IdentityHashMap<>();
     private final IdentityHashMap<Object, ShareGroup> shareGroupsByToken = new IdentityHashMap<>();
     private final Map<Long, ContextEntry> contextsByHandle = new HashMap<>();
@@ -246,6 +252,10 @@ final class GLContextRegistryImpl implements GLContextRegistry {
         final ContextEntry entry = new ContextEntry(contextToken, shareGroup, identity);
         contextsByToken.put(contextToken, entry);
         contextsByHandle.put(nativeHandle, entry);
+        if (GLSMPerfDebug.isEnabled()) {
+            LOGGER.info("[ActiniumMemory][context] event=create generation={} shareGroup={} nativeHandle=0x{} liveContexts={}",
+                identity.generation(), identity.shareGroupId(), Long.toHexString(nativeHandle), contextsByToken.size());
+        }
         return entry;
     }
 
@@ -282,6 +292,11 @@ final class GLContextRegistryImpl implements GLContextRegistry {
         }
         shareGroupsByToken.entrySet().removeIf(link -> link.getValue() == entry.shareGroup
             && !contextsByToken.containsKey(link.getKey()));
+        if (GLSMPerfDebug.isEnabled()) {
+            LOGGER.info("[ActiniumMemory][context] event=retire generation={} shareGroup={} nativeHandle=0x{} liveContexts={}",
+                entry.identity.generation(), entry.identity.shareGroupId(),
+                Long.toHexString(entry.identity.nativeHandle()), contextsByToken.size());
+        }
     }
 
     private static final class ContextEntry {

@@ -1,15 +1,16 @@
 package com.mitchej123.lwjgl.lwjgl3;
 
+import com.gtnewhorizons.angelica.glsm.debug.TerrainBufferDiagnostics;
+import com.mitchej123.lwjgl.DebugMessageHandler;
+import com.mitchej123.lwjgl.GLExtension;
+import com.mitchej123.lwjgl.LWJGLService;
+import com.mitchej123.lwjgl.MemoryStack;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.*;
 import org.lwjgl.system.APIUtil;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.system.Pointer;
-import com.mitchej123.lwjgl.DebugMessageHandler;
-import com.mitchej123.lwjgl.GLExtension;
-import com.mitchej123.lwjgl.LWJGLService;
-import com.mitchej123.lwjgl.MemoryStack;
 
 import java.io.PrintStream;
 import java.nio.Buffer;
@@ -95,27 +96,56 @@ public record LWJGL3Service(
 
     @Override
     public void glDeleteBuffers(int buffer) {
-        GL15C.glDeleteBuffers(buffer);
+        final TerrainBufferDiagnostics.NativeDeleteCall call = TerrainBufferDiagnostics.beginNativeDelete(buffer);
+        try {
+            GL15C.glDeleteBuffers(buffer);
+        } catch (RuntimeException | Error failure) {
+            TerrainBufferDiagnostics.finishNativeDelete(call, failure);
+            throw failure;
+        }
+        TerrainBufferDiagnostics.finishNativeDelete(call, null);
     }
 
     @Override
     public void glBindBuffer(int target, int buffer) {
         GL15C.glBindBuffer(target, buffer);
+        TerrainBufferDiagnostics.observeBufferBinding(target, buffer);
     }
 
     @Override
     public void glBufferData(int target, long size, int usage) {
-        GL15C.glBufferData(target, size, usage);
+        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, size);
+        try {
+            GL15C.glBufferData(target, size, usage);
+        } catch (RuntimeException | Error failure) {
+            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
+            throw failure;
+        }
+        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
     }
 
     @Override
     public void glBufferData(int target, ByteBuffer data, int usage) {
-        GL15C.glBufferData(target, data, usage);
+        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, data, Byte.BYTES);
+        try {
+            GL15C.glBufferData(target, data, usage);
+        } catch (RuntimeException | Error failure) {
+            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
+            throw failure;
+        }
+        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
     }
 
     @Override
     public void glBufferData(int target, long size, long data, int usage) {
-        GL15C.nglBufferData(target, size, data, usage);
+        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, size);
+        try {
+            GL15C.nglBufferData(target, size, data, usage);
+        } catch (RuntimeException | Error failure) {
+            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
+            throw failure;
+        }
+        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
     }
 
     @Override
@@ -156,6 +186,7 @@ public record LWJGL3Service(
     @Override
     public void glBindBufferBase(int target, int index, int buffer) {
         GL30C.glBindBufferBase(target, index, buffer);
+        TerrainBufferDiagnostics.observeBufferBinding(target, buffer);
     }
 
     private enum VAOMode {

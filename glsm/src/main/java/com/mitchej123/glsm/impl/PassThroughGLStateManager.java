@@ -1,5 +1,6 @@
 package com.mitchej123.glsm.impl;
 
+import com.gtnewhorizons.angelica.glsm.debug.TerrainBufferDiagnostics;
 import com.mitchej123.glsm.GLStateManagerService;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.Display;
@@ -155,11 +156,19 @@ public class PassThroughGLStateManager implements GLStateManagerService {
     @Override
     public void glBindBuffer(int target, int buffer) {
         org.lwjgl.opengl.GL15.glBindBuffer(target, buffer);
+        TerrainBufferDiagnostics.observeBufferBinding(target, buffer);
     }
 
     @Override
     public void glDeleteBuffers(int buffer) {
-        org.lwjgl.opengl.GL15.glDeleteBuffers(buffer);
+        final TerrainBufferDiagnostics.NativeDeleteCall call = TerrainBufferDiagnostics.beginNativeDelete(buffer);
+        try {
+            org.lwjgl.opengl.GL15.glDeleteBuffers(buffer);
+        } catch (RuntimeException | Error failure) {
+            TerrainBufferDiagnostics.finishNativeDelete(call, failure);
+            throw failure;
+        }
+        TerrainBufferDiagnostics.finishNativeDelete(call, null);
     }
 
     @Override

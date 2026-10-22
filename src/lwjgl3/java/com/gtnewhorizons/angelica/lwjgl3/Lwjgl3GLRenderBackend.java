@@ -6,6 +6,8 @@ import com.gtnewhorizons.angelica.glsm.backend.DebugMessageHandler;
 import com.gtnewhorizons.angelica.glsm.backend.GLDebugMessageListener;
 import com.gtnewhorizons.angelica.glsm.backend.GlfwFileDropWatcher;
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
+import com.gtnewhorizons.angelica.glsm.debug.TerrainBufferDiagnostics;
+import com.gtnewhorizons.angelica.glsm.debug.TerrainVertexArrayDiagnostics;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.ARBClearTexture;
 import org.lwjgl.opengl.ARBPolygonOffsetClamp;
@@ -1161,27 +1163,44 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public void deleteBuffers(int buffer) {
-        GL15C.glDeleteBuffers(buffer);
+        final TerrainBufferDiagnostics.NativeDeleteCall call = TerrainBufferDiagnostics.beginNativeDelete(buffer);
+        try {
+            GL15C.glDeleteBuffers(buffer);
+        } catch (RuntimeException | Error failure) {
+            TerrainBufferDiagnostics.finishNativeDelete(call, failure);
+            throw failure;
+        }
+        TerrainBufferDiagnostics.finishNativeDelete(call, null);
     }
 
     @Override
     public void deleteBuffers(IntBuffer buffers) {
-        GL15C.glDeleteBuffers(buffers);
+        final TerrainBufferDiagnostics.NativeDeleteCall call = TerrainBufferDiagnostics.beginNativeDelete(buffers);
+        try {
+            GL15C.glDeleteBuffers(buffers);
+        } catch (RuntimeException | Error failure) {
+            TerrainBufferDiagnostics.finishNativeDelete(call, failure);
+            throw failure;
+        }
+        TerrainBufferDiagnostics.finishNativeDelete(call, null);
     }
 
     @Override
     public void bindBuffer(int target, int buffer) {
         GL15C.glBindBuffer(target, buffer);
+        TerrainBufferDiagnostics.observeBufferBinding(target, buffer);
     }
 
     @Override
     public void bindBufferBase(int target, int index, int buffer) {
         GL30C.glBindBufferBase(target, index, buffer);
+        TerrainBufferDiagnostics.observeBufferBinding(target, buffer);
     }
 
     @Override
     public void bindBufferRange(int target, int index, int buffer, long offset, long size) {
         GL30C.glBindBufferRange(target, index, buffer, offset, size);
+        TerrainBufferDiagnostics.observeBufferBinding(target, buffer);
     }
 
     @Override
@@ -1207,42 +1226,98 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public void bufferData(int target, long size, int usage) {
-        GL15C.glBufferData(target, size, usage);
+        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, size);
+        try {
+            GL15C.glBufferData(target, size, usage);
+        } catch (RuntimeException | Error failure) {
+            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
+            throw failure;
+        }
+        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
     }
 
     @Override
     public void bufferData(int target, ByteBuffer data, int usage) {
-        GL15C.glBufferData(target, data, usage);
+        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, data, Byte.BYTES);
+        try {
+            GL15C.glBufferData(target, data, usage);
+        } catch (RuntimeException | Error failure) {
+            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
+            throw failure;
+        }
+        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
     }
 
     @Override
     public void bufferData(int target, FloatBuffer data, int usage) {
-        GL15C.glBufferData(target, data, usage);
+        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, data, Float.BYTES);
+        try {
+            GL15C.glBufferData(target, data, usage);
+        } catch (RuntimeException | Error failure) {
+            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
+            throw failure;
+        }
+        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
     }
 
     @Override
     public void bufferData(int target, ShortBuffer data, int usage) {
-        GL15C.glBufferData(target, data, usage);
+        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, data, Short.BYTES);
+        try {
+            GL15C.glBufferData(target, data, usage);
+        } catch (RuntimeException | Error failure) {
+            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
+            throw failure;
+        }
+        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
     }
 
     @Override
     public void bufferData(int target, IntBuffer data, int usage) {
-        GL15C.glBufferData(target, data, usage);
+        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, data, Integer.BYTES);
+        try {
+            GL15C.glBufferData(target, data, usage);
+        } catch (RuntimeException | Error failure) {
+            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
+            throw failure;
+        }
+        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
     }
 
     @Override
     public void bufferData(int target, DoubleBuffer data, int usage) {
-        GL15C.glBufferData(target, data, usage);
+        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, data, Double.BYTES);
+        try {
+            GL15C.glBufferData(target, data, usage);
+        } catch (RuntimeException | Error failure) {
+            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
+            throw failure;
+        }
+        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
     }
 
     @Override
     public void bufferData(int target, int[] data, int usage) {
-        GL15C.glBufferData(target, data, usage);
+        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, data);
+        try {
+            GL15C.glBufferData(target, data, usage);
+        } catch (RuntimeException | Error failure) {
+            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
+            throw failure;
+        }
+        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
     }
 
     @Override
     public void bufferData(int target, float[] data, int usage) {
-        GL15C.glBufferData(target, data, usage);
+        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, data);
+        try {
+            GL15C.glBufferData(target, data, usage);
+        } catch (RuntimeException | Error failure) {
+            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
+            throw failure;
+        }
+        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
     }
 
     @Override
@@ -1377,7 +1452,15 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public void deleteVertexArrays(int array) {
-        GL30C.glDeleteVertexArrays(array);
+        TerrainVertexArrayDiagnostics.NativeDeleteCall call =
+                TerrainVertexArrayDiagnostics.beginNativeDelete(array);
+        try {
+            GL30C.glDeleteVertexArrays(array);
+        } catch (RuntimeException | Error failure) {
+            TerrainVertexArrayDiagnostics.finishNativeDelete(call, failure);
+            throw failure;
+        }
+        TerrainVertexArrayDiagnostics.finishNativeDelete(call, null);
     }
 
     @Override

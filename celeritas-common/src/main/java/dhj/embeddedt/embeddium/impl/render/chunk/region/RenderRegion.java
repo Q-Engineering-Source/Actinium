@@ -48,6 +48,8 @@ public class RenderRegion {
     private static final int MINIMUM_INDEX_ARENA_BYTES = 64 * 1024;
 
     private final StagingBuffer stagingBuffer;
+    private final GlBufferArena.ResizeObserver resizeObserver;
+    private final long diagnosticsOwnerId;
     private final int x, y, z;
 
     @Getter
@@ -81,12 +83,24 @@ public class RenderRegion {
     private int dataRevision = 0;
 
     RenderRegion(int x, int y, int z, int id, StagingBuffer stagingBuffer) {
+        this(x, y, z, id, stagingBuffer, null, 0L);
+    }
+
+    RenderRegion(int x, int y, int z, int id, StagingBuffer stagingBuffer,
+                 GlBufferArena.ResizeObserver resizeObserver) {
+        this(x, y, z, id, stagingBuffer, resizeObserver, 0L);
+    }
+
+    RenderRegion(int x, int y, int z, int id, StagingBuffer stagingBuffer,
+                 GlBufferArena.ResizeObserver resizeObserver, long diagnosticsOwnerId) {
         this.x = x;
         this.y = y;
         this.z = z;
 
         this.id = id;
         this.stagingBuffer = stagingBuffer;
+        this.resizeObserver = resizeObserver;
+        this.diagnosticsOwnerId = diagnosticsOwnerId;
     }
 
     public static long key(int x, int y, int z) {
@@ -276,7 +290,7 @@ public class RenderRegion {
     public DeviceResources createResources(GlVertexFormat format, CommandList commandList) {
         var resources = getResources(format);
         if (resources == null) {
-            resources = new DeviceResources(commandList, this.stagingBuffer, format.getStride());
+            resources = new DeviceResources(this, commandList, this.stagingBuffer, format.getStride());
 
             var newList = new ArrayList<>(this.allDeviceResources);
             newList.add(resources);
@@ -308,6 +322,7 @@ public class RenderRegion {
     }
 
     public static class DeviceResources {
+        private final RenderRegion region;
         private final GlBufferArena geometryArena;
         private final StagingBuffer stagingBuffer;
         private final int stride;
@@ -315,8 +330,12 @@ public class RenderRegion {
         private GlTessellation tessellation;
         private GlTessellation indexedTessellation;
 
-        public DeviceResources(CommandList commandList, StagingBuffer stagingBuffer, int stride) {
-            this.geometryArena = new GlBufferArena(commandList, stride, MINIMUM_GEOMETRY_ARENA_BYTES, stagingBuffer);
+        public DeviceResources(RenderRegion region, CommandList commandList, StagingBuffer stagingBuffer, int stride) {
+            this.region = region;
+            this.geometryArena = new GlBufferArena(commandList, stride, MINIMUM_GEOMETRY_ARENA_BYTES, stagingBuffer,
+                    region.resizeObserver,
+                    new GlBufferArena.ArenaDiagnosticsContext(region.diagnosticsOwnerId, GlBufferArena.ArenaType.GEOMETRY,
+                            region.id, region.x, region.y, region.z));
             this.stagingBuffer = stagingBuffer;
             this.stride = stride;
         }
@@ -391,7 +410,10 @@ public class RenderRegion {
 
         public GlBufferArena getOrCreateIndexArena(CommandList commandList) {
             if (this.indexArena == null) {
-                this.indexArena = new GlBufferArena(commandList, 4, MINIMUM_INDEX_ARENA_BYTES, this.stagingBuffer);
+                this.indexArena = new GlBufferArena(commandList, 4, MINIMUM_INDEX_ARENA_BYTES, this.stagingBuffer,
+                        this.region.resizeObserver,
+                        new GlBufferArena.ArenaDiagnosticsContext(this.region.diagnosticsOwnerId, GlBufferArena.ArenaType.INDEX,
+                                this.region.id, this.region.x, this.region.y, this.region.z));
             }
             return this.indexArena;
         }

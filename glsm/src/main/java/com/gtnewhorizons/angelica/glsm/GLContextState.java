@@ -39,7 +39,10 @@ import com.gtnewhorizons.angelica.glsm.streaming.StreamingVaos;
 import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderCache;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
+import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.joml.Matrix4fStack;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
@@ -59,6 +62,8 @@ import java.util.List;
  * replayed onto the new context via {@link GLStateManager#replayStateToBackend()}.
  */
 public class GLContextState {
+    private static final Logger MEMORY_LOGGER = LogManager.getLogger("GLSMContextMemory");
+
     /** Stable native context lifetime that owns every context-local field in this state object. */
     GLContextIdentity identity;
     /** Context-local FFP program selection and uniforms over a share-group-owned linked-program cache. */
@@ -327,7 +332,8 @@ public class GLContextState {
 
     /** Transfers display-owned cached values to its replacement context and drops context-local bindings. */
     void adoptNativeContext(GLContextIdentity replacement, ShaderCache replacementCache) {
-        final boolean sameShareGroup = identity.shareGroupId() == replacement.shareGroupId();
+        final GLContextIdentity previous = identity;
+        final boolean sameShareGroup = previous.shareGroupId() == replacement.shareGroupId();
         identity = replacement;
         shaderManager.adoptContextIdentity(replacement, replacementCache);
         defaultVAO = 0;
@@ -348,6 +354,7 @@ public class GLContextState {
         streamingVaos.clear();
         clientAttribStack.clear();
         if (!sameShareGroup) {
+            logClientArraysVbo("shareGroupMigration", previous, replacement);
             clientArraysVBO = 0;
             clientArraysVBOCapacity = 0;
         }
@@ -355,10 +362,24 @@ public class GLContextState {
 
     /** Releases Java-side snapshots that belong only to a destroyed native context. */
     void onContextRetired() {
+        logClientArraysVbo("retire", identity, null);
         shaderManager.retireContext();
         vaoEboMap.clear();
         vertexAttribState.releaseState();
         streamingVaos.clear();
         clientAttribStack.clear();
+    }
+
+    private void logClientArraysVbo(String event, GLContextIdentity owner, GLContextIdentity replacement) {
+        if (GLSMPerfDebug.isEnabled() && (clientArraysVBO != 0 || clientArraysVBOCapacity != 0)) {
+            if (replacement == null) {
+                MEMORY_LOGGER.info("[ActiniumMemory][context] event={} generation={} shareGroup={} clientArraysVbo={} capacityBytes={}",
+                    event, owner.generation(), owner.shareGroupId(), clientArraysVBO, clientArraysVBOCapacity);
+            } else {
+                MEMORY_LOGGER.info("[ActiniumMemory][context] event={} generation={} shareGroup={} replacementGeneration={} replacementShareGroup={} clientArraysVbo={} capacityBytes={}",
+                    event, owner.generation(), owner.shareGroupId(), replacement.generation(), replacement.shareGroupId(),
+                    clientArraysVBO, clientArraysVBOCapacity);
+            }
+        }
     }
 }
