@@ -119,7 +119,7 @@ PID 13892 的采集尚无本轮新增的 `scope=chunk_mesh` 或 `terrain-vao` �
 
 ## Private 增长的账本归属（PID 41904，2026-10-22）
 
-把 PID 41904 的采样与本轮 	errain.arenaResize、GL 计数器对齐后，Private 增长可以被单一机制闭合，不需要再假设未知 allocator 或驱动缓存：
+把 PID 41904 的采样与本轮 `terrain.arenaResize`、GL 计数器对齐后，Private 增长可以被单一机制闭合，不需要再假设未知 allocator 或驱动缓存：
 
 | 账面 | 值 |
 |---|---:|
@@ -130,10 +130,10 @@ PID 13892 的采集尚无本轮新增的 `scope=chunk_mesh` 或 `terrain-vao` �
 | **无法由上述账本解释的余量** | **18.37 GiB** |
 | **被替换下线的旧 geometry arena 存储量（ΣoldCapacity）** | **18.17 GiB** |
 
-复算方式：sumNewCapacity − 当前 globalGeometryCapacityBytes = 29.30 − 10.89 = **18.40 GiB**，与上表余量相差 0.04 GiB。这两个独立算法给出同一个数，说明缺口就是被换下但未回收的旧 arena 存储。
+复算方式：`ΣnewCapacity − 当前 globalGeometryCapacityBytes` = `29.30 − 10.89` = **18.40 GiB**，与上表余量相差 0.04 GiB。这一条不能当作独立证据：同一 arena 的扩容是链式的（本次新容量就是下次被替换的旧容量），所以 `ΣoldCapacity = ΣnewCapacity − 当前容量` 是代数恒等式，两个数字必然一致。独立成立的是量级对应关系——GPU 计数器（11.70 GiB）接近当前存活容量（10.89 GiB），说明 GPU 账本只收录存活容量、不含已下线的旧存储；而进程 Private 比这份账本多出的 18.37 GiB，与被替换下线的 18.17 GiB 同阶且几乎相等。
 
-机制：GlBufferArena.transferSegments 每次扩容都新建 dst buffer、glBufferData 申请完整新容量、逐段 copyBufferSubData 复制旧数据，然后 deleteBuffer(srcBufferObj) 删除旧 buffer。本轮 382 次 geometry 扩容共签发 **29.30 GiB** 新存储、复制了 **18.17 GiB** 旧数据，但 renaRetirementActualDeleteReturnedCount=496、ActualDeleteFailureCount=0 只证明 Java native wrapper 返回，renaRetirementObservedSignalCount=495 只证明 fence 观察到 signal；两者都不证明驱动已释放 backing storage。旧存储因此在这个约 54 秒的窗口里持续累积。
+机制：`GlBufferArena.transferSegments` 每次扩容都新建 dst buffer、`glBufferData` 申请完整新容量、逐段 `copyBufferSubData` 复制旧数据，然后 `deleteBuffer(srcBufferObj)` 删除旧 buffer。本轮 382 次 geometry 扩容共签发 **29.30 GiB** 新存储、复制了 **18.17 GiB** 旧数据，但 `arenaRetirementActualDeleteReturnedCount=496`、`ActualDeleteFailureCount=0` 只证明 Java native wrapper 返回，`arenaRetirementObservedSignalCount=495` 只证明 fence 观察到 signal；两者都不证明驱动已释放 backing storage。旧存储因此在这个约 54 秒的窗口里持续累积。
 
-放大器在扩容策略本身：382 次扩容的实际请求合计只有 **1,532 MiB**（平均 4.01 MiB），却签发了 **29,999 MiB** 新容量，**19.6 倍**放大。growthTargetFor 对大 arena 只用 ase + base/2，只要剩余空间不足就整块重分配，没有把多个小请求合并成一次扩容。填充分布显示 279 次扩容发生在 used/old ≥ 0.9，说明这些不是碎片驱动的浪费性压缩，而是被逐次小请求推着走。
+放大器在扩容策略本身：382 次扩容的实际请求合计只有 **1,532 MiB**（平均 4.01 MiB），却签发了 **29,999 MiB** 新容量，**19.6 倍**放大。`growthTargetFor` 对大 arena 只用 `base + base/2`，只要剩余空间不足就整块重分配，没有把多个小请求合并成一次扩容。填充分布显示 279 次扩容发生在 `used/old ≥ 0.9`，说明这些不是碎片驱动的浪费性压缩，而是被逐次小请求推着走。
 
-因此「Private−NMT 差额」不应再被归因为未知来源：它是 terrain arena 扩容的旧存储累积。仍需实机确认的是驱动为何没有在 glDeleteBuffers 后回收，以及是否需要在扩容前后主动 glFinish/拆分批量扩容来避免峰值叠加。
+因此 "Private−NMT 差额" 不应再被归因为未知来源：它是 terrain arena 扩容换下的旧存储累积。仍需实机确认的是驱动为何没有在 `glDeleteBuffers` 之后回收这批存储，以及是否需要在扩容前后主动同步或批量合并扩容来避免峰值叠加。
