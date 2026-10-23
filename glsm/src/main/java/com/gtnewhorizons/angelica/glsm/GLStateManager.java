@@ -8288,10 +8288,12 @@ public class GLStateManager {
         profile.clean();
     }
 
-    public static void glGetTexImage(int target, int level, int format, int type, long pixels) {
-        suspendPixelPackBuffer();
-        RENDER_BACKEND.getTexImage(target, level, format, type, pixels);
-        restorePixelPackBuffer();
+    /**
+     * Reads a texture into the bound pixel-pack buffer at a byte offset. Unlike the client-buffer
+     * overloads, this must preserve the PBO binding so that offset zero is not a null CPU pointer.
+     */
+    public static void glGetTexImage(int target, int level, int format, int type, long pixelBufferOffset) {
+        RENDER_BACKEND.getTexImage(target, level, format, type, pixelBufferOffset);
     }
 
     /**

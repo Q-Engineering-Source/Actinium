@@ -1,10 +1,14 @@
 # Xaero 小地图 / 世界地图兼容
 
-最后更新：2026-09-22。分支：`fix/xaero-map-render`。对应
+最后更新：2026-10-23。原始修复分支：`fix/xaero-map-render`。对应
 [issue #175](https://github.com/DHJComical/Actinium/issues/175)（两张地图的地形渲染成纯色方块，
 以及开启实体雷达时世界地图图标按钮的白底）。
 
 版本：XaeroLib 1.7.3 + Xaero's Minimap 26.5.1 + Xaero's World Map 1.46.0。
+
+追加修复：[issue #237](https://github.com/Q-Engineering-Source/Actinium/issues/237)，分支
+`fix/issue237-xaero-pbo-readback`；报告版本为 XaeroLib 1.7.3 + Xaero's Minimap 26.6.0 +
+Xaero's World Map 1.47.0，详见下方 PBO 回读崩溃记录。
 
 ## 症状与环境
 
@@ -113,7 +117,39 @@ Xaero 的格式用到 `index` 2/3 → 返回 `-1` → `setupVertexFormatAttribut
 诊断代码**不得读取 CPU 侧绘制缓冲**（`BufferBuilder` 的 `ByteBuffer`）——streaming 路径的
 `firstVertex` 是持久缓冲内偏移，用它索引上传数据会越界并使客户端崩溃。只需跟踪状态时，一律读 glsm
 自身跟踪值（零 GL 调用）；必须做 GL 查询时，需避开显示列表编译期（`DisplayListManager.isRecording()`），
-并对纹理回读先经 glsm 解绑 pack PBO。
+并在客户端内存纹理回读时经 glsm 临时解绑 pack PBO；传入 `long` PBO 偏移的回读必须保留绑定。
+
+## 根因：缩小世界地图时 PBO 回读崩溃（2026-10-23，issue #237）
+
+报告环境：Minecraft 1.12.2、Cleanroom 0.6.13、Java 25、Windows 11、NVIDIA RTX 5060，
+无光影，Xaero 三件套版本为 Minimap 26.6.0 / World Map 1.47.0 / XaeroLib 1.7.3。
+世界地图缩小到 0.5x 以下后进程短暂停顿并以 `0xc0000005` 退出，没有 Java crash report 或
+`hs_err_pid` 文件。
+
+精确版本 World Map 1.47.0 的反编译结果给出以下触发链：
+
+- `GuiMap` 按 `floor(log2(1 / userScale))` 选择纹理层级；从 0.5x 起进入分支层级，
+  `BranchLeveledRegion` 创建或更新 `BranchRegionTexture`。
+- `BranchRegionTexture.uploadNonCache` 请求合成或下载分支纹理，传入 pack PBO 与偏移 `0`。
+  `RegionTexture.bindPackPBO` 为 64×64 RGBA 数据分配 16384 字节，容量与纹理尺寸一致。
+- `TextureUpload.BranchUpdate.upload` / `BranchDownload.upload` 绑定该 PBO 后调用
+  `GL11.glGetTexImage(..., pboOffset)`，由 GLSM 重定向至 `GLStateManager` 的 `long` 重载。
+- 该重载错误地调用 `suspendPixelPackBuffer()`，实际解绑 PBO 后仍原样下传 `0L`。
+  此时参数由缓冲区偏移变成空 CPU 指针，驱动回读会触发原生访问冲突。
+
+修复仅移除 `glGetTexImage(..., long)` 周围的 PBO 临时解绑与恢复，使其保留调用者绑定，
+与已有 `glReadPixels(..., long)` 保持一致。`ByteBuffer` / `IntBuffer` 客户端内存重载仍保留
+临时解绑行为。本修复不新增 Xaero Mixin，也不改变 PBO 容量或纹理生成流程。
+
+验证记录：
+
+- 临时独立 JVM 验证程序通过已有 `ServiceLoader` backend 入口，直接调用真实
+  `GLStateManager`，在测试 backend 中检查回读瞬间的绑定；不使用真实驱动向空地址写入。
+  修复前零偏移和非零偏移两项均观察到错误绑定 `0`；修复后两项均保留原绑定。
+  `ByteBuffer` / direct `IntBuffer` 的解绑与恢复以及 `glReadPixels(long)` 对照均通过，合计 5 项。
+  程序位于本地忽略目录 `build/issue237-probe/`，未纳入常规 JUnit 套件。
+- `./gradlew check build --no-daemon` 通过；根项目 783 项测试，0 失败、4 跳过，分发 jar 结构校验通过。
+- 2026-10-23，用户使用 `Actinium-issue237-pbo-readback.jar` 实机验证后确认通过。
 
 ## 已知缺口（与本缺陷无关）
 
@@ -128,8 +164,6 @@ Xaero 的格式用到 `index` 2/3 → 返回 `-1` → `setupVertexFormatAttribut
 - `GLStateManager.glPushAttrib()`（无参）只推 `GL_ENABLE_BIT`，而原版 1.12.2 `GlStateManager.pushAttrib()`
   推的是 `8256 = GL_ENABLE_BIT | GL_CURRENT_BIT` ⇒ 经重定向走该入口时会漏恢复"当前颜色 / 当前纹理坐标"。
   修复方向：让无参版本推 `8256`。已定位未提交。
-- `GLStateManager.glGetTexImage(int,int,int,int,long)` 的 PBO 偏移读回错误地套用了
-  `suspendPixelPackBuffer()/restorePixelPackBuffer()`（偏移会被当成客户端指针）。已定位未提交。
 
 ## 复现配方（dev 运行）
 
