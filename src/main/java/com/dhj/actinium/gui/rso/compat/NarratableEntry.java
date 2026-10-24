@@ -9,7 +9,6 @@ import java.util.List;
  */
 public interface NarratableEntry {
 
-    /** Returns the narration priority of this entry. */
     default NarrationPriority narrationPriority() {
         return NarrationPriority.NONE;
     }

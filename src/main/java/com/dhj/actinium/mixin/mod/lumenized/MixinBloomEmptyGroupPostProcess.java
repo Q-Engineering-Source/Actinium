@@ -23,13 +23,10 @@ import java.util.function.Consumer;
  * when every ticket in a group is inactive.
  *
  * <p>GregTech CEu 2.8 splits the pass into the renderBloomBlockLayer wrapper and
- * renderBloomInternal (which holds the framebuffer calls); Lumenized keeps everything
- * inline in renderBloomBlockLayer. Like MixinBloomEffectUtilClear, the pass redirects
- * target both and tolerate whichever is empty (require=0) — a miss only forfeits the
- * skip, never the rendered output. The draw-based tracking keeps require=1: draw has the
- * same shape in both mods, so a mismatch there means the class changed underneath us and
- * must fail loudly rather than skip real bloom (an applied tracker without an applied
- * marker would read every group as empty).
+ * renderBloomInternal; Lumenized keeps everything inline. Pass redirects target both with
+ * require=0 (a miss only forfeits the skip, never the rendered output); the draw redirect
+ * keeps require=1 because a mismatch there must fail loudly rather than skip real bloom
+ * (an applied tracker without an applied marker would read every group as empty).
  */
 @Pseudo
 @Mixin(value = BloomEffectUtil.class, remap = false)

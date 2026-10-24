@@ -63,7 +63,6 @@ public class DisplayListManager {
         }
     }
 
-    // Track which display list is currently being rendered
     @Getter private static int currentRenderingList = -1;
 
     private static final Matrix4f IDENTITY = new Matrix4f();
@@ -85,10 +84,10 @@ public class DisplayListManager {
     // Display list compilation state (current/active context)
     private static int glListMode = 0;
     private static int glListId = -1;
-    private static CommandRecorder currentRecorder = null;  // Command recorder (null when not recording)
-    private static volatile Thread recordingThread = null;  // Thread that started recording (for thread-safety)
-    private static List<AccumulatedDraw> accumulatedDraws = null;  // Accumulates quad draws for batching
-    private static Matrix4fStack relativeTransform = null;  // Tracks relative transforms during compilation (with push/pop support)
+    private static CommandRecorder currentRecorder = null;  // Null when not recording
+    private static volatile Thread recordingThread = null;  // For thread-safety
+    private static List<AccumulatedDraw> accumulatedDraws = null;
+    private static Matrix4fStack relativeTransform = null;  // Supports push/pop
     /**
      * -- GETTER --
      * Get the current state generation (for draw merging).
@@ -105,7 +104,6 @@ public class DisplayListManager {
     // Nested compilation support - stack of parent contexts
     private static final Deque<CompilationContext> compilationStack = new ArrayDeque<>();
 
-    // Display list cache
     private static final Int2ObjectMap<CompiledDisplayList> displayListCache = new Int2ObjectOpenHashMap<>();
 
     /**
@@ -336,20 +334,20 @@ public class DisplayListManager {
 
     public static void recordMatrixMode(int mode) {
         if (currentRecorder == null) return;
-        matrixBarrier();  // Matrix barrier: flush and reset
+        matrixBarrier();
         currentRecorder.recordMatrixMode(mode);
     }
 
     public static void recordPushMatrix() {
         if (currentRecorder == null) return;
-        // Flush any pending delta, then record push.
+        // The pending delta must be flushed before the push is recorded.
         flushMatrix();
         currentRecorder.recordPushMatrix();
     }
 
     public static void recordPopMatrix() {
         if (currentRecorder == null) return;
-        // Flush any pending delta, then record pop.
+        // The pending delta must be flushed before the pop is recorded.
         flushMatrix();
         currentRecorder.recordPopMatrix();
     }
@@ -680,7 +678,6 @@ public class DisplayListManager {
     // Reusable matrix for ortho/frustum computation
     private static final Matrix4f orthoFrustumTemp = new Matrix4f();
 
-    /** Accumulate ortho projection into relativeTransform. */
     public static void updateRelativeTransformOrtho(double left, double right, double bottom, double top, double zNear, double zFar) {
         if (relativeTransform == null) return;
 
@@ -700,7 +697,6 @@ public class DisplayListManager {
         }
     }
 
-    /** Accumulate frustum projection into relativeTransform. */
     public static void updateRelativeTransformFrustum(double left, double right, double bottom, double top, double zNear, double zFar) {
         if (relativeTransform == null) return;
 
@@ -721,7 +717,6 @@ public class DisplayListManager {
     }
 
     /**
-     * Reset the relative transform to identity during display list compilation.
      * Called by GLStateManager.glLoadMatrix() - after loading an absolute matrix,
      * subsequent transforms are relative to that loaded matrix (i.e., start from identity).
      */
@@ -733,7 +728,6 @@ public class DisplayListManager {
     }
 
     /**
-     * Check if a display list exists (has been compiled and stored).
      * Checks both DisplayListManager's cache and VBOManager for GTNHLib compatibility.
      */
     public static boolean displayListExists(int list) {
@@ -747,17 +741,11 @@ public class DisplayListManager {
         return false;
     }
 
-    /**
-     * Get a compiled display list from the cache.
-     *
-     * @return The CompiledDisplayList, or null if not found
-     */
     public static CompiledDisplayList getDisplayList(int list) {
         return displayListCache.get(list);
     }
 
     /**
-     * Start display list compilation.
      * Supports nested glNewList() calls (spec-violating but needed for mod compatibility).
      *   GL_COMPILE: Commands are recorded only (not executed), GLSM cache unchanged
      *   GL_COMPILE_AND_EXECUTE: Commands are recorded AND executed (GLSM cache updated)
@@ -776,11 +764,11 @@ public class DisplayListManager {
 
         glListId = list;
         glListMode = mode;
-        recordingThread = Thread.currentThread();  // Track which thread is recording
-        currentRecorder = new CommandRecorder();  // Create command recorder
+        recordingThread = Thread.currentThread();
+        currentRecorder = new CommandRecorder();
         accumulatedDraws = new ArrayList<>(16);   // Fewer draws than commands typically
         relativeTransform = new Matrix4fStack(GLStateManager.MAX_MODELVIEW_STACK_DEPTH);
-        stateGeneration = 0;  // Reset state generation for fresh list
+        stateGeneration = 0;
         compilationStackTrace = LOG_DISPLAY_LIST_COMPILATION ? Thread.currentThread().getStackTrace() : null;
 
         if (LOG_DISPLAY_LIST_COMPILATION) {
@@ -811,7 +799,7 @@ public class DisplayListManager {
         flushMatrix();
         final boolean isNested = !compilationStack.isEmpty();
 
-        // Stop compiling mode (works for both root and nested lists now)
+        // Works for both root and nested lists
         TessellatorManager.stopCapturingDirect();
 
         final CompiledDisplayList compiled;
@@ -918,9 +906,6 @@ public class DisplayListManager {
         );
     }
 
-    /**
-     * Execute a compiled display list.
-     */
     public static void glCallList(int list) {
         if (currentRecorder != null) {
             recordCallList(list);

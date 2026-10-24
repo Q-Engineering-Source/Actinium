@@ -404,7 +404,6 @@ public abstract class MixinRenderGlobal implements SimpleWorldRenderer.Provider<
                     continue;
                 }
 
-                // Do regular vanilla checks for visibility
                 if(!this.renderManager.shouldRender(entity, camera, renderViewX, renderViewY, renderViewZ) && !entity.isRidingOrBeingRiddenBy(player)) {
                     continue;
                 }

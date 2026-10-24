@@ -12,16 +12,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * Establishes the world lightmap before every HBM tile-entity renderer entry.
  *
- * <p>Woven from an early config on purpose: {@code TileEntityRendererDispatcher} is a vanilla class
- * that large packs load well before the late/conditional mixin window. NTM's legacy coremod ASM
- * transformer pulls it in while resolving other classes' hierarchies, and Mixin cannot weave into
- * an already-loaded class, so a late config targeting it aborts the launch with
- * {@code MixinTargetAlreadyLoadedException} (issue #136). Early configs are registered before any
- * game class loads, so the injection is in place no matter who loads the dispatcher or when.
- *
- * <p>The hook is inert on vanilla-only installs: {@link HbmRenderStateCompat#isHbmInstalled()}
- * guards both injections, {@link HbmRenderStateCompat#setWorldLightmap} repeats the check for its
- * own callers, and {@link HbmRenderStateCompat#isHbmTile} never matches a vanilla tile entity.
+ * <p>Early config because NTM's legacy coremod ASM transformer loads
+ * {@code TileEntityRendererDispatcher} before the late mixin window and Mixin cannot
+ * weave an already-loaded class (issue #136). {@link HbmRenderStateCompat} guards both
+ * injections, so the hook is inert on vanilla-only installs.
  */
 @Mixin(TileEntityRendererDispatcher.class)
 public abstract class MixinTileEntityRendererDispatcherLightmap {

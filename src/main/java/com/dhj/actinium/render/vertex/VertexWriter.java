@@ -1,16 +1,13 @@
 package com.dhj.actinium.render.vertex;
 
 /**
- * Encodes the four immediate-mode vertex attribute writes that dominate the
- * {@code BufferBuilder} hot path. Implementations store values with absolute
- * {@code sun.misc.Unsafe} accesses at the native address of the staging buffer, skipping
- * the per-call element lookup, offset arithmetic and bounds work of the NIO views.
- *
- * <p>One singleton implementation exists per {@code VertexFormatElement.EnumType} family
- * because the original write methods switch on the element type only; the element usage
- * never alters the encoding. The staging buffer is created with native byte order, so
- * multi-byte {@code Unsafe} stores match the NIO view byte for byte and no byte swapping
- * is required anywhere in this package.
+ * Encodes the four immediate-mode vertex attribute writes that dominate the {@code BufferBuilder}
+ * hot path. Implementations store values with absolute {@code sun.misc.Unsafe} accesses at the
+ * native address of the staging buffer, skipping the per-call element lookup, offset arithmetic
+ * and bounds work of the NIO views. One singleton implementation exists per
+ * {@code VertexFormatElement.EnumType} family because the original write methods switch on the
+ * element type only; the element usage never alters the encoding. The staging buffer is created
+ * with native byte order, so multi-byte {@code Unsafe} stores match the NIO view byte for byte.
  */
 public interface VertexWriter {
     /**

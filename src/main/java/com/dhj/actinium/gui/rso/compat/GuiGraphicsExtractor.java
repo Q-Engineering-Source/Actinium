@@ -15,7 +15,6 @@ import org.lwjgl.opengl.GL11;
  */
 public final class GuiGraphicsExtractor {
 
-    /** Fills a rectangle with the given ARGB color. */
     public void fill(int x1, int y1, int x2, int y2, int color) {
         Gui.drawRect(x1, y1, x2, y2, color);
     }
@@ -25,22 +24,18 @@ public final class GuiGraphicsExtractor {
         Gui.drawRect(x1, y1, x2, y2, color);
     }
 
-    /** Draws a text string at the given position. */
     public void text(Font font, String text, int x, int y, int color) {
         this.text(font, text, x, y, color, false);
     }
 
-    /** Draws a text string at the given position with an optional shadow. */
     public void text(Font font, String text, int x, int y, int color, boolean shadow) {
         this.drawText(font, text, x, y, color, shadow);
     }
 
-    /** Draws a component at the given position. */
     public void text(Font font, Component text, int x, int y, int color) {
         this.text(font, text, x, y, color, false);
     }
 
-    /** Draws a component at the given position with an optional shadow. */
     public void text(Font font, Component text, int x, int y, int color, boolean shadow) {
         Style rgbStyle = text.rgbStyle();
         if (rgbStyle != null && rgbStyle.rgbColor() != null) {
@@ -52,12 +47,10 @@ public final class GuiGraphicsExtractor {
         }
     }
 
-    /** Draws a formatted character sequence at the given position. */
     public void text(Font font, FormattedCharSequence text, int x, int y, int color) {
         this.text(font, text, x, y, color, false);
     }
 
-    /** Draws a formatted character sequence at the given position with an optional shadow. */
     public void text(Font font, FormattedCharSequence text, int x, int y, int color, boolean shadow) {
         Style style = text.style();
         if (style != null && style.rgbColor() != null) {
@@ -69,19 +62,16 @@ public final class GuiGraphicsExtractor {
         }
     }
 
-    /** Draws a component centered on the given X position. */
     public void centeredText(Font font, Component text, int x, int y, int color) {
         int width = font.width(text);
         this.text(font, text, x - width / 2, y, color);
     }
 
-    /** Draws a full texture region at the given position. */
     public void blit(ResourceLocation texture, int x, int y, float u, float v, int width, int height,
                      int textureWidth, int textureHeight) {
         this.blit(texture, x, y, u, v, width, height, textureWidth, textureHeight, 0xFFFFFFFF);
     }
 
-    /** Draws a full texture region at the given position with a tint color. */
     public void blit(ResourceLocation texture, int x, int y, float u, float v, int width, int height,
                      int textureWidth, int textureHeight, int color) {
         boolean blendWasEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
@@ -111,7 +101,6 @@ public final class GuiGraphicsExtractor {
         GL11.glScissor(x * scale, mc.displayHeight - (y + height) * scale, width * scale, height * scale);
     }
 
-    /** Disables the active scissor box. */
     public void disableScissor() {
         GL11.glDisable(GL11.GL_SCISSOR_TEST);
     }

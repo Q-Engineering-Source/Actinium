@@ -38,9 +38,6 @@ public interface TextureFormat {
 	 * Dictates whether textures of the given PBR type can have their color values interpolated or not.
 	 * Usually, this controls the texture minification and magification filters -
 	 * a return value of false would signify that the linear filters cannot be used.
-	 *
-	 * @param pbrType The type of PBR texture
-	 * @return If texture values can be interpolated or not
 	 */
 	boolean canInterpolateValues(PBRType pbrType);
 

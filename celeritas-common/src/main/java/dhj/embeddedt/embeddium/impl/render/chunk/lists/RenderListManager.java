@@ -86,7 +86,6 @@ public class RenderListManager {
 
     /**
      * @param graph  the lattice and search thread shared with the other pass's manager
-     * @param shadow whether this manager serves the shadow pass
      * @param mode   which passes search asynchronously: {@code EVERYTHING} for both, {@code ONLY_SHADOW} for the
      *               shadow pass alone, {@code NONE} for neither
      */

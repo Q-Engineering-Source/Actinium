@@ -6,11 +6,9 @@ package com.dhj.actinium.gui.rso.compat;
  */
 public sealed interface FocusNavigationEvent {
 
-    /** Navigation driven by an arrow key in a given direction. */
     record ArrowNavigation(ScreenDirection direction) implements FocusNavigationEvent {
     }
 
-    /** Navigation driven by the Tab key, with forward/backward order. */
     record TabNavigation(boolean forward) implements FocusNavigationEvent {
     }
 }

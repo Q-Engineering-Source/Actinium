@@ -3,24 +3,15 @@ package com.gtnewhorizon.gtnhlib.client.renderer.stacks;
 public interface IStateStack<T> {
 
     /**
-     * Push the current state onto the stack.
-     *
      * @return This state stack for chaining
      */
     T push();
 
     /**
-     * Pop a state from the stack.
-     *
      * @return This state stack for chaining
      */
     T pop();
 
-    /**
-     * Check if the stack is empty.
-     *
-     * @return true if the stack is empty
-     */
     boolean isEmpty();
 
     /**
@@ -35,8 +26,6 @@ public interface IStateStack<T> {
         }
         return (T) this;
     }
-
-    // ==================== Lazy Copy-on-Write API ====================
 
     /**
      * Increment depth counter without copying state (lazy push).
@@ -87,12 +76,9 @@ public interface IStateStack<T> {
      * For implementations that don't support lazy copy-on-write, this is a no-op.
      */
     default void beforeModify() {
-        // Default: no-op for stacks that don't support lazy copy-on-write
     }
 
     /**
-     * Get the current stack depth.
-     *
      * @return The current depth (0 when empty)
      */
     default int getDepth() {

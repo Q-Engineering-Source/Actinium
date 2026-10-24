@@ -105,12 +105,7 @@ public abstract class BiomeColorCache<BIOME, RESOLVER> {
      * <p>The hook runs for both the blurred path and the fast path where an entire slice resolved to a single
      * uniform color (which skips blurring). This is the reason it is applied after the blur step.</p>
      *
-     * @param resolver the color resolver the slice is currently populated for
-     * @param worldX   the world-space X coordinate of the color being adjusted
-     * @param worldY   the world-space Y coordinate of the color being adjusted
-     * @param worldZ   the world-space Z coordinate of the color being adjusted
      * @param color    the blended (or directly resolved, if no blur was applied) ARGB color
-     * @return the adjusted color to store in the cache
      */
     protected int postProcessColor(RESOLVER resolver, int worldX, int worldY, int worldZ, int color) {
         return color;

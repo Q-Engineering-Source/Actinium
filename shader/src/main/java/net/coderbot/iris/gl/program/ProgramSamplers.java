@@ -135,7 +135,6 @@ public class ProgramSamplers {
 					continue;
 				}
 
-				// Set up this sampler uniform to use this particular texture unit.
 				calls.add(new GlUniform1iCall(location, textureUnit));
 				IrisGlDebug.logSamplerInitialization(program, "external", name, location, textureUnit);
 			}
@@ -185,11 +184,9 @@ public class ProgramSamplers {
 					throw new IllegalStateException("No more available texture units while activating sampler " + name);
 				}
 
-				// Set up this sampler uniform to use this particular texture unit.
 				calls.add(new GlUniform1iCall(location, nextUnit));
 				IrisGlDebug.logSamplerInitialization(program, used ? "dynamic-shared" : "dynamic", name, location, nextUnit);
 
-				// And mark this texture unit as used.
 				used = true;
 			}
 

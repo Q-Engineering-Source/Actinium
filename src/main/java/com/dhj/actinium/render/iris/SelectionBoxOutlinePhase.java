@@ -17,8 +17,6 @@ public final class SelectionBoxOutlinePhase {
     /**
      * Runs selection-box rendering inside Iris' outline phase when a shader pack is active and
      * releases that phase even when a Mixin cancels or throws during the wrapped method.
-     *
-     * @param renderSelectionBox the original selection-box render operation
      */
     public static void runWithOutline(Runnable renderSelectionBox) {
         if (!Iris.enabled || !IrisApiV0Impl.INSTANCE.isShaderPackInUse()) {

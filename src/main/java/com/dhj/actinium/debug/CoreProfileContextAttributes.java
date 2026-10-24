@@ -15,22 +15,12 @@ import java.util.function.Consumer;
 public final class CoreProfileContextAttributes {
     private static final Logger LOGGER = LogManager.getLogger("Celeritas");
 
-    /**
-     * Prevents instantiation because context attribute construction is stateless.
-     */
     private CoreProfileContextAttributes() {
     }
 
     /**
-     * Configures one context attribute object in place.
-     *
-     * <p>The lwjglx compatibility implementation returns {@code null} from these mutator methods, so their
-     * return values must not be chained or retained.</p>
-     *
-     * @param major requested OpenGL major version
-     * @param minor requested OpenGL minor version
-     * @param lwjglDebug whether the debug context was requested at startup
-     * @return configured context attributes
+     * The lwjglx compatibility implementation returns {@code null} from these mutator methods, so their
+     * return values must not be chained or retained.
      */
     public static ContextAttribs create(int major, int minor, boolean lwjglDebug) {
         ContextAttribs attributes = new ContextAttribs(major, minor);
@@ -43,15 +33,9 @@ public final class CoreProfileContextAttributes {
     }
 
     /**
-     * Configures the Forge early OpenGL context used by Cleanroom's LWJGLXX implementation.
-     *
-     * <p>LWJGLXX ignores {@code Display.create(PixelFormat, ContextAttribs)} and reads the desired version,
+     * LWJGLXX ignores {@code Display.create(PixelFormat, ContextAttribs)} and reads the desired version,
      * profile, and debug state from {@code ForgeEarlyConfig}. Without this override, macOS can downgrade a
-     * requested modern compatibility-profile context to the legacy 2.1 Metal context.</p>
-     *
-     * @param major requested OpenGL major version
-     * @param minor requested OpenGL minor version
-     * @param lwjglDebug whether the debug context was requested at startup
+     * requested modern compatibility-profile context to the legacy 2.1 Metal context.
      */
     public static void applyForgeEarlyCoreProfile(int major, int minor, boolean lwjglDebug) {
         ForgeEarlyConfig.OPENGL_VERSION_MAJOR = major;
@@ -61,17 +45,11 @@ public final class CoreProfileContextAttributes {
     }
 
     /**
-     * Restores the Forge early OpenGL config after the core-profile context was created.
-     *
-     * <p>LWJGLXX reads these fields when creating the context and Cleanroom persists them back to
-     * forge_early.cfg. Leaving the core-profile request in place breaks startup without Actinium
-     * (Cleanroom's own default path expects the compatibility profile), so restore the requested
-     * version/debug state and force the compatibility profile back on. The compatibility flag is
-     * restored unconditionally: Actinium is the only writer that sets it to false.
-     *
-     * @param originalMajor OpenGL major version before Actinium's request
-     * @param originalMinor OpenGL minor version before Actinium's request
-     * @param originalDebug debug-context flag before Actinium's request
+     * Restores the Forge early OpenGL config after the core-profile context was created. LWJGLXX reads
+     * these fields when creating the context and Cleanroom persists them back to forge_early.cfg.
+     * Leaving the core-profile request in place breaks startup without Actinium (Cleanroom's own default
+     * path expects the compatibility profile). The compatibility flag is restored unconditionally:
+     * Actinium is the only writer that sets it to false.
      */
     public static void restoreForgeEarlyCompatProfile(int originalMajor, int originalMinor, boolean originalDebug) {
         ForgeEarlyConfig.OPENGL_VERSION_MAJOR = originalMajor;
@@ -103,14 +81,7 @@ public final class CoreProfileContextAttributes {
     }
 
     /**
-     * Applies context mutations without retaining compatibility-layer return values.
-     *
-     * @param attributes context object mutated by every operation
-     * @param coreProfile enables the core profile
-     * @param forwardCompatible enables forward-compatible behavior
-     * @param debug configures the requested debug state
-     * @param <T> concrete context attribute type
-     * @return the original context object
+     * Applies context mutations in place without retaining compatibility-layer return values.
      */
     static <T> T configure(
         T attributes,

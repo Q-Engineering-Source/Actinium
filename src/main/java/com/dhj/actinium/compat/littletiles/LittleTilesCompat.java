@@ -34,29 +34,17 @@ import static net.minecraft.block.material.Material.LAVA;
 import static net.minecraft.block.material.Material.WATER;
 
 /**
- * Compatibility for {@code LittleTiles} (mod id {@code littletiles}).
+ * Compatibility for {@code LittleTiles} (mod id {@code littletiles}); fixes issue #133.
  *
- * <p>LittleTiles does not render its tiles through the block's baked model. Each
- * {@link TileEntityLittleTiles} owns a {@link LayeredRenderBufferCache}: raw vertex bytes in
- * vanilla {@code DefaultVertexFormats.BLOCK} layout, relative to the tile entity's own 16^3
- * section, built asynchronously by LittleTiles' {@code RenderingThread}. Vanilla Minecraft only
- * appends those bytes to the chunk upload buffer inside {@code ChunkRenderDispatcher.uploadChunk}
- * (an ASM hook installed by LittleTiles), a method Actinium's chunk pipeline never calls, so every
- * non-full-block LittleTiles block is invisible (issue #133).
- *
- * <p>Vanilla collects the LittleTiles tile entities of a chunk purely by
- * {@code instanceof TileEntityLittleTiles} (LittleTiles' ASM hook in {@code RenderChunk}), so the
- * tile entities are gathered here by scanning the section being meshed instead of reusing the
- * meshing task's TESR-bearing tile entity lists. Those lists cannot serve as the source: LittleTiles
- * registers its TESR only for the two <em>tick-rendering</em> tile entity variants
- * ({@code TileEntityLittleTilesRendered}/{@code TileEntityLittleTilesTickingRendered}), while
- * ordinary static tiles live in plain {@code TileEntityLittleTiles} without any TESR.
- *
- * <p>The vanilla {@code ViewFrustum} still exists under Actinium (created with zero render
- * distance, so it only holds placeholder render chunks), which is enough for LittleTiles' own
- * cache-build queue to function. What is missing is (a) consuming the caches during section
- * meshing and (b) translating "cache build finished" into a celeritas section rebuild, since the
- * vanilla {@code RenderChunk.setNeedsUpdate} flag LittleTiles flips is never polled.
+ * <p>LittleTiles renders tiles from per-tile-entity {@link LayeredRenderBufferCache} bytes that
+ * vanilla appends to the chunk upload buffer in {@code ChunkRenderDispatcher.uploadChunk} (an ASM
+ * hook), which Actinium's chunk pipeline never calls, so the blocks are invisible. Tile entities
+ * are gathered by scanning the meshed section: vanilla collects them purely by
+ * {@code instanceof TileEntityLittleTiles}, and the TESR lists miss the static tiles, which
+ * register no TESR. The placeholder-chunk {@code ViewFrustum} keeps LittleTiles' own cache-build
+ * queue alive; what this class adds is consuming the caches during meshing and scheduling a
+ * celeritas section rebuild when a cache build finishes, since the vanilla
+ * {@code RenderChunk.setNeedsUpdate} flag is never polled.
  */
 public final class LittleTilesCompat {
     private LittleTilesCompat() {

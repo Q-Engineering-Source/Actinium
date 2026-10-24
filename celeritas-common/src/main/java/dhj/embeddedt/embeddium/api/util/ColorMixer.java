@@ -10,10 +10,7 @@ public class ColorMixer {
      * The order of the channels within the packed color does not matter, and the output color will always
      * have the same ordering as the input colors.
      *
-     * @param aColor The color to mix towards
-     * @param bColor The color to mix away from
-     * @param ratio The percentage (in 0.0..1.0 range) to mix the first color into the second color
-     * @return The mixed color in packed 32-bit format
+     * @param ratio the mixing ratio, in 0.0..1.0 range
      */
     public static int mix(int aColor, int bColor, float ratio) {
         int aRatio = (int) (256 * ratio); // int(ratio)
@@ -44,10 +41,6 @@ public class ColorMixer {
      * <p>
      * The order of the channels within the packed color does not matter, and the output color will always
      * have the same ordering as the input colors.
-     *
-     * @param a The first color to multiply
-     * @param b The second color to multiply
-     * @return The multiplied color in packed 32-bit format
      */
     public static int mul(int a, int b) {
         // Take each 8-bit component pair, multiply them together to create intermediate 16-bit integers,
@@ -65,10 +58,6 @@ public class ColorMixer {
      * <p>
      * Aside from alpha being in the most significant 8 bits, the order of the channels within the packed color does not
      * matter, and the output color will always have the same ordering as the input colors.
-     *
-     * @param a The first color to multiply
-     * @param b The component to multiply the RGB components by
-     * @return The multiplied color in packed 32-bit format
      */
     public static int mulSingleWithoutAlpha(int a, int b) {
         b &= 0xFF; // Mask the component for safety

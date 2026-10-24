@@ -33,7 +33,6 @@ public final class TextureDebugLabels {
         });
     }
 
-    /** Runs labeling only when the texture owner exposes an allocated object. */
     static void nameTextureObject(ITextureObject texture, IntConsumer labelTexture) {
         int textureId = texture.getGlTextureId();
         // Betweenlands registers framebuffer-backed textures before allocating their attachments.

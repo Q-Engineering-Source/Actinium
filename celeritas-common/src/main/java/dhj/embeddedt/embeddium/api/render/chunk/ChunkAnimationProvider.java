@@ -28,7 +28,6 @@ public interface ChunkAnimationProvider {
     /**
      * Queries the animation offset for a section on the render thread.
      *
-     * @param section the render section being drawn
      * @param out     a 3-element array receiving the offset in world-space blocks; only written
      *                when this method returns {@code true}
      * @return {@code true} if the section currently has an animation offset and should be drawn

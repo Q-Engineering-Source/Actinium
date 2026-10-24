@@ -14,19 +14,14 @@ import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
 /**
  * Keeps VoxelMap's GL state mutations inside the GLSM state cache.
  *
- * <p>The minimap's CPU render path draws the map texture inside a scissor rectangle. VoxelMap's
- * {@code GLShim} forwards most state calls through the vanilla {@code GlStateManager} (which GLSM
- * tracks), but the scissor enable/disable and {@code glScissor} calls go straight to {@code GL11},
- * bypassing the cache. The core-profile renderer then draws the map quad without the scissor,
- * spreading the map texture (and the black mask around it) across the whole HUD and leaving the
- * blend state polluted for the rest of the frame. This mixin reroutes those calls through
- * {@link GLStateManager} so the cached state matches the real GL state.</p>
- *
- * <p>The same mixin also downgrades the minimap texture's minification filter from mipmap-based to
- * plain linear: the CPU path asks for {@code GL_LINEAR_MIPMAP_LINEAR} and relies on the legacy
- * {@code GL_GENERATE_MIPMAP} texture parameter to build the mipmap chain. Core profiles ignore
- * {@code GL_GENERATE_MIPMAP}, so the map texture only has level 0 and sampling an incomplete
- * texture returns opaque black.</p>
+ * <p>The minimap's CPU render path draws the map texture inside a scissor rectangle, but its
+ * scissor enable/disable and {@code glScissor} calls go straight to {@code GL11}, bypassing
+ * the cache; the core-profile renderer then draws the map quad without the scissor, spreading
+ * the map texture (and the black mask around it) across the whole HUD and leaving the blend
+ * state polluted for the rest of the frame. The same mixin downgrades the minimap texture's
+ * minification filter from mipmap-based to plain linear: the CPU path relies on the legacy
+ * {@code GL_GENERATE_MIPMAP} parameter, which core profiles ignore, so the map texture only
+ * has level 0 and sampling an incomplete texture returns opaque black.
  */
 @Mixin(value = GLShim.class, remap = false)
 public abstract class MixinVoxelMapGLShim {

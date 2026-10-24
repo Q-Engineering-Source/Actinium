@@ -15,14 +15,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.List;
 
 /**
- * Maintains the pre-computed element offsets and the element-advance ring on every
- * vertex format so the immediate-mode write path can consume them as plain arrays.
- *
- * <p>{@code addElement} is the only path that appends elements (the copy constructor and
- * the format constants both route through it, including its duplicate-position early
- * return, which re-runs the rebuild with an unchanged list), and {@code clear} is the
- * only path that empties them; both are covered so the arrays can never diverge from the
- * element list.
+ * Maintains the pre-computed element offsets and the element-advance ring on every vertex
+ * format for the immediate-mode write path. {@code addElement} (the only append path; the
+ * copy constructor and format constants route through it) and {@code clear} are both
+ * covered so the arrays can never diverge from the element list.
  */
 @Mixin(VertexFormat.class)
 public abstract class MixinVertexFormat implements FastVertexLayout {

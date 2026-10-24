@@ -119,7 +119,6 @@ public final class ClassConstantPoolParser {
             return false;
         }
 
-        // Loop through each entry in the constant pool, getting the size and content before jumping to the next.
         // Strings get scanned for the searched constants, and if found result in an early exit.
         final int numConstants = readUnsignedShort(8, basicClass);
         int index = 10;

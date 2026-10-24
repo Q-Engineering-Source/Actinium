@@ -1,15 +1,12 @@
 package com.dhj.actinium.render.vertex;
 
 /**
- * Read side of the pre-computed vertex format layout installed on every
- * {@code VertexFormat}.
- *
- * <p>Element offset and element-advance information are properties of the format, not of
- * the element: the vanilla format constants share a handful of
- * {@code VertexFormatElement} instances across many formats, so per-element state would
- * be overwritten by whichever format registered the element last. Keeping the state in
- * arrays owned by the format makes the hot path a plain array load instead of a boxed
- * {@code List.get} and keeps the shared elements untouched.
+ * Read side of the pre-computed vertex format layout installed on every {@code VertexFormat}.
+ * Element offset and element-advance information are properties of the format, not of the
+ * element: the vanilla format constants share a handful of {@code VertexFormatElement} instances
+ * across many formats, so per-element state would be overwritten by whichever format registered
+ * the element last. Keeping the state in arrays owned by the format makes the hot path a plain
+ * array load instead of a boxed {@code List.get}.
  */
 public interface FastVertexLayout {
     /**

@@ -33,8 +33,7 @@ public interface IVertexBuffer {
      * {@link com.gtnewhorizon.gtnhlib.client.renderer.vao.VertexBufferType}
      * </p>
      *
-     * @param buffer      the vertex data to upload; its remaining bytes determine the buffer size
-     * @param vertexCount the number of vertices contained in the buffer
+     * @param buffer the vertex data to upload; its remaining bytes determine the buffer size
      */
     void allocate(ByteBuffer buffer, int vertexCount);
 
@@ -49,7 +48,6 @@ public interface IVertexBuffer {
      * {@link com.gtnewhorizon.gtnhlib.client.renderer.vao.VertexBufferType}
      * </p>
      *
-     * @param buffer the data to write into the buffer
      * @param offset byte offset into the buffer at which to start writing
      *
      * @throws UnsupportedOperationException If the buffer does not allow data mutations
@@ -92,9 +90,6 @@ public interface IVertexBuffer {
 
     /**
      * Issues a draw call using a subset of this vertex buffer.
-     *
-     * @param first index of the first vertex to draw
-     * @param count number of vertices to draw
      */
     void draw(int first, int count);
 
@@ -110,8 +105,6 @@ public interface IVertexBuffer {
 
     /**
      * Returns the vertex format describing the layout of the data stored in this buffer.
-     *
-     * @return the vertex format
      */
     VertexFormat getVertexFormat();
 

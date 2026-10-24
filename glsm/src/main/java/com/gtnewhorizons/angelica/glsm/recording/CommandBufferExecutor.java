@@ -32,9 +32,9 @@ public final class CommandBufferExecutor {
     /**
      * Execute all commands in the buffer.
      *
-     * @param buffer The command buffer (position should be at 0, limit at size)
-     * @param complexObjects Array of complex objects (TexImage2DCmd, etc.)
-     * @param ownedVbos Array of VBOs owned by the display list (indexed by DrawRange commands)
+     * @param buffer position should be at 0, limit at size
+     * @param complexObjects e.g. {@code TexImage2DCmd}
+     * @param ownedVbos indexed by {@code DrawRange} commands
      */
     public static void execute(ByteBuffer buffer, Object[] complexObjects, DisplayListVBO ownedVbos) {
         long ptr = memAddress(buffer);

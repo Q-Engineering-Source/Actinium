@@ -413,7 +413,6 @@ public final class MemoryUtilities {
      * Memory allocated with this method must be freed with {@link #memFree}.
      * </p>
      *
-     * @param num  the number of elements to allocate.
      * @param size the size of each element. If {@code size} is zero, the return value depends on the particular library
      *             implementation (it may or may not be a null pointer), but the returned pointer shall not be
      *             dereferenced.
@@ -1410,7 +1409,6 @@ public final class MemoryUtilities {
     /**
      * Sets all bytes in a specified block of memory to a fixed value (usually zero).
      *
-     * @param ptr   the starting memory address
      * @param value the value to set (memSet will convert it to unsigned byte)
      */
     public static void memSet(ByteBuffer ptr, int value) {
@@ -1420,7 +1418,6 @@ public final class MemoryUtilities {
     /**
      * Sets all bytes in a specified block of memory to a fixed value (usually zero).
      *
-     * @param ptr   the starting memory address
      * @param value the value to set (memSet will convert it to unsigned byte)
      */
     public static void memSet(ShortBuffer ptr, int value) {
@@ -1430,7 +1427,6 @@ public final class MemoryUtilities {
     /**
      * Sets all bytes in a specified block of memory to a fixed value (usually zero).
      *
-     * @param ptr   the starting memory address
      * @param value the value to set (memSet will convert it to unsigned byte)
      */
     public static void memSet(CharBuffer ptr, int value) {
@@ -1440,7 +1436,6 @@ public final class MemoryUtilities {
     /**
      * Sets all bytes in a specified block of memory to a fixed value (usually zero).
      *
-     * @param ptr   the starting memory address
      * @param value the value to set (memSet will convert it to unsigned byte)
      */
     public static void memSet(IntBuffer ptr, int value) {
@@ -1450,7 +1445,6 @@ public final class MemoryUtilities {
     /**
      * Sets all bytes in a specified block of memory to a fixed value (usually zero).
      *
-     * @param ptr   the starting memory address
      * @param value the value to set (memSet will convert it to unsigned byte)
      */
     public static void memSet(LongBuffer ptr, int value) {
@@ -1460,7 +1454,6 @@ public final class MemoryUtilities {
     /**
      * Sets all bytes in a specified block of memory to a fixed value (usually zero).
      *
-     * @param ptr   the starting memory address
      * @param value the value to set (memSet will convert it to unsigned byte)
      */
     public static void memSet(FloatBuffer ptr, int value) {
@@ -1470,7 +1463,6 @@ public final class MemoryUtilities {
     /**
      * Sets all bytes in a specified block of memory to a fixed value (usually zero).
      *
-     * @param ptr   the starting memory address
      * @param value the value to set (memSet will convert it to unsigned byte)
      */
     public static void memSet(DoubleBuffer ptr, int value) {
@@ -1479,9 +1471,6 @@ public final class MemoryUtilities {
 
     /**
      * Sets all bytes in a specified block of memory to a copy of another block.
-     *
-     * @param src the source memory address
-     * @param dst the destination memory address
      */
     public static void memCopy(ByteBuffer src, ByteBuffer dst) {
         if (CHECKS) {
@@ -1492,9 +1481,6 @@ public final class MemoryUtilities {
 
     /**
      * Sets all bytes in a specified block of memory to a copy of another block.
-     *
-     * @param src the source memory address
-     * @param dst the destination memory address
      */
     public static void memCopy(ShortBuffer src, ShortBuffer dst) {
         if (CHECKS) {
@@ -1505,9 +1491,6 @@ public final class MemoryUtilities {
 
     /**
      * Sets all bytes in a specified block of memory to a copy of another block.
-     *
-     * @param src the source memory address
-     * @param dst the destination memory address
      */
     public static void memCopy(CharBuffer src, CharBuffer dst) {
         if (CHECKS) {
@@ -1518,9 +1501,6 @@ public final class MemoryUtilities {
 
     /**
      * Sets all bytes in a specified block of memory to a copy of another block.
-     *
-     * @param src the source memory address
-     * @param dst the destination memory address
      */
     public static void memCopy(IntBuffer src, IntBuffer dst) {
         if (CHECKS) {
@@ -1531,9 +1511,6 @@ public final class MemoryUtilities {
 
     /**
      * Sets all bytes in a specified block of memory to a copy of another block.
-     *
-     * @param src the source memory address
-     * @param dst the destination memory address
      */
     public static void memCopy(LongBuffer src, LongBuffer dst) {
         if (CHECKS) {
@@ -1544,9 +1521,6 @@ public final class MemoryUtilities {
 
     /**
      * Sets all bytes in a specified block of memory to a copy of another block.
-     *
-     * @param src the source memory address
-     * @param dst the destination memory address
      */
     public static void memCopy(FloatBuffer src, FloatBuffer dst) {
         if (CHECKS) {
@@ -1557,9 +1531,6 @@ public final class MemoryUtilities {
 
     /**
      * Sets all bytes in a specified block of memory to a copy of another block.
-     *
-     * @param src the source memory address
-     * @param dst the destination memory address
      */
     public static void memCopy(DoubleBuffer src, DoubleBuffer dst) {
         if (CHECKS) {
@@ -1571,7 +1542,6 @@ public final class MemoryUtilities {
     /**
      * Sets all bytes in a specified block of memory to a fixed value (usually zero).
      *
-     * @param ptr   the starting memory address
      * @param value the value to set (memSet will convert it to unsigned byte)
      * @param bytes the number of bytes to set
      */
@@ -1585,10 +1555,6 @@ public final class MemoryUtilities {
 
     /**
      * Sets all bytes in a specified block of memory to a copy of another block.
-     *
-     * @param src   the source memory address
-     * @param dst   the destination memory address
-     * @param bytes the number of bytes to copy
      */
     public static void memCopy(long src, long dst, long bytes) {
         if (DEBUG && (src == NULL || dst == NULL || bytes < 0)) {
@@ -2437,7 +2403,6 @@ public final class MemoryUtilities {
      * </p>
      *
      * @param length the number of bytes to decode
-     * @param offset the offset at which to start decoding.
      */
     public static String memASCII(ByteBuffer buffer, int length, int offset) {
         return memASCII(memAddress(buffer, offset), length);
@@ -2510,7 +2475,6 @@ public final class MemoryUtilities {
      * </p>
      *
      * @param length the number of bytes to decode
-     * @param offset the offset at which to start decoding.
      */
     public static String memUTF8(ByteBuffer buffer, int length, int offset) {
         return MultiReleaseTextDecoding.decodeUTF8(memAddress(buffer, offset), length);

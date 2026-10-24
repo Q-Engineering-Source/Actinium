@@ -138,9 +138,7 @@ public final class APIUtil {
     /** A data class for API versioning information. */
     public static class APIVersion implements Comparable<APIVersion> {
 
-        /** Returns the API major version. */
         public final int major;
-        /** Returns the API minor version. */
         public final int minor;
 
         /** Returns the API revision. May be null. */
@@ -268,9 +266,6 @@ public final class APIUtil {
      * <p>
      * This method is useful when debugging to quickly identify values returned from an API.
      * </p>
-     *
-     * @param filter       the filter to use (optional)
-     * @param target       the target map (optional)
      */
     public static Map<Integer, String> apiClassTokens(@Nullable BiPredicate<Field, Integer> filter,
             @Nullable Map<Integer, String> target, Class<?>... tokenClasses) {
@@ -283,7 +278,6 @@ public final class APIUtil {
 
         for (Class<?> tokenClass : tokenClasses) {
             for (Field field : tokenClass.getDeclaredFields()) {
-                // Get only <public static final int> fields.
                 if ((field.getModifiers() & TOKEN_MODIFIERS) == TOKEN_MODIFIERS && field.getType() == int.class) {
                     try {
                         Integer value = field.getInt(null);
@@ -429,8 +423,6 @@ public final class APIUtil {
 
     /**
      * Frees the specified array of pointers.
-     *
-     * @param length   the pointer array length
      */
     public static void apiArrayFree(long pointers, int length) {
         for (int i = length; --i >= 0;) {

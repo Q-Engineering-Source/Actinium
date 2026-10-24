@@ -296,8 +296,6 @@ final class Checks {
     /**
      * Helper method to ensure a array has enough capacity.
      *
-     * @param size the minimum array capacity
-     *
      * @throws IllegalArgumentException if {@code buf.length < size}
      */
     public static void check(byte[] buf, int size) {
@@ -306,8 +304,6 @@ final class Checks {
 
     /**
      * Helper method to ensure a array has enough capacity.
-     *
-     * @param size the minimum array capacity
      *
      * @throws IllegalArgumentException if {@code buf.length < size}
      */
@@ -318,8 +314,6 @@ final class Checks {
     /**
      * Helper method to ensure a array has enough capacity.
      *
-     * @param size the minimum array capacity
-     *
      * @throws IllegalArgumentException if {@code buf.length < size}
      */
     public static void check(int[] buf, int size) {
@@ -328,8 +322,6 @@ final class Checks {
 
     /**
      * Helper method to ensure a array has enough capacity.
-     *
-     * @param size the minimum array capacity
      *
      * @throws IllegalArgumentException if {@code buf.length < size}
      */
@@ -340,8 +332,6 @@ final class Checks {
     /**
      * Helper method to ensure a array has enough capacity.
      *
-     * @param size the minimum array capacity
-     *
      * @throws IllegalArgumentException if {@code buf.length < size}
      */
     public static void check(float[] buf, int size) {
@@ -350,8 +340,6 @@ final class Checks {
 
     /**
      * Helper method to ensure a array has enough capacity.
-     *
-     * @param size the minimum array capacity
      *
      * @throws IllegalArgumentException if {@code buf.length < size}
      */
@@ -362,8 +350,6 @@ final class Checks {
     /**
      * Helper method to ensure a CharSequence has enough characters.
      *
-     * @param size the minimum number of characters
-     *
      * @throws IllegalArgumentException if {@code text.length() < size}
      */
     public static void check(CharSequence text, int size) {
@@ -372,8 +358,6 @@ final class Checks {
 
     /**
      * Helper method to ensure a buffer has enough capacity.
-     *
-     * @param size the minimum buffer capacity
      *
      * @throws IllegalArgumentException if {@code buf.remaining() < size}
      */

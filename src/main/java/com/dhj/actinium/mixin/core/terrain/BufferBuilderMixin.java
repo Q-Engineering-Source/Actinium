@@ -92,15 +92,9 @@ public abstract class BufferBuilderMixin implements BufferBuilderExtension, Proj
     }
 
     /**
-     * Computes the absolute byte offset of the active element and validates the pending
-     * write against the staging buffer limit, reproducing the original bounds semantics:
-     * the original methods bounds-check every absolute store, whose contiguous span ends
-     * at offset + componentCount * type size. One range check per attribute write keeps
-     * that guarantee on the raw-address path, failing before any partial data lands in
-     * the buffer.
-     *
-     * <p>An out-of-range cursor means the active format changed without a reset that
-     * re-aligns the cursor; the mismatch is reported here before any store is attempted.
+     * One range check per attribute write reproduces the original per-store bounds
+     * semantics (contiguous span ending at offset + componentCount * type size). An
+     * out-of-range cursor means the active format changed without a realigning reset.
      */
     @Unique
     private int actinium$writeOffset(int componentCount) {
@@ -148,14 +142,7 @@ public abstract class BufferBuilderMixin implements BufferBuilderExtension, Proj
                 : this.actinium$activeQuadContext;
     }
 
-    /**
-     * Writes the position element through the pre-selected raw writer.
-     *
-     * <p>The offset arithmetic, type dispatch and translation handling reproduce the
-     * original method: the element offset comes from the pre-computed layout, the writer
-     * applies the same per-type conversion to the translated coordinates, and the
-     * element cursor advances afterwards. The returned builder is always this instance.
-     */
+    /** Reproduces the original offset arithmetic and translation handling. */
     @Overwrite
     public BufferBuilder pos(double x, double y, double z) {
         VertexWriters.forType(this.vertexFormatElement.getType()).writePosition(
@@ -166,12 +153,8 @@ public abstract class BufferBuilderMixin implements BufferBuilderExtension, Proj
     }
 
     /**
-     * Writes the color element through the pre-selected raw writer.
-     *
-     * <p>Disabled colors keep the original behavior: the method returns without writing
-     * and without advancing the element cursor. The byte-wise color layout including its
-     * platform-dependent byte order lives in the byte writer; the float and short
-     * layouts match the original component order.
+     * Returns without writing or advancing the cursor when noColor is set, like the
+     * original; the byte-wise layout (platform-dependent byte order) lives in the writer.
      */
     @Overwrite
     public BufferBuilder color(int red, int green, int blue, int alpha) {
@@ -222,13 +205,9 @@ public abstract class BufferBuilderMixin implements BufferBuilderExtension, Proj
     }
 
     /**
-     * Advances the element cursor along the pre-computed element-advance ring.
-     *
-     * <p>The ring encodes the original advance result: one step forward with wraparound,
-     * repeated past PADDING elements. An out-of-range cursor means the active format
-     * changed without going through a reset that re-aligns the cursor; the original code
-     * would silently keep drawing through a wrong element, so the mismatch is reported
-     * instead of writing into undefined slots.
+     * The ring encodes the original advance (one step forward with wraparound past
+     * PADDING). The original silently kept drawing through a wrong element on cursor
+     * desync; the mismatch is reported instead.
      */
     @Overwrite
     public void nextVertexFormatIndex() {

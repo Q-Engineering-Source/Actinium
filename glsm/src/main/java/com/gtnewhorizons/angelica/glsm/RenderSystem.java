@@ -145,7 +145,6 @@ public class RenderSystem {
             maxSSBOBindings = 0;
         }
 
-        // Check for sampler objects support (GL 3.3+ or ARB extension)
         supportsSamplerObjects = GLStateManager.capabilities.OpenGL33 || GLStateManager.capabilities.GL_ARB_sampler_objects;
         if (supportsSamplerObjects) {
             samplers = new int[RENDER_BACKEND.getInteger(GL20.GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS)];

@@ -219,16 +219,13 @@ public final class VanillaVertexBufferRenderer {
 
     /**
      * Resolves the generic vertex-attribute slot a vanilla {@link VertexFormatElement} feeds.
-     *
-     * <p>A UV element's {@code index} is the legacy texture unit it belongs to — vanilla's
+     * A UV element's {@code index} is the legacy texture unit it belongs to (vanilla's
      * {@code WorldVertexBufferUploader} dispatches each UV element through
-     * {@code setClientActiveTexture(TEXTURE0 + index)} — so UV elements must resolve through the
+     * {@code setClientActiveTexture(TEXTURE0 + index)}), so UV elements must resolve through the
      * shared unit-to-slot table ({@link Usage#uvAttributeLocation}) rather than being limited to
-     * units 0/1. Dropping units 2/3 here left their attribute slots unset, so the FFP vertex shader
-     * fell back to the per-draw constant {@code u_CurrentTexCoord2/3} and the fixed-function texenv
-     * chain of Xaero's map (which enables texture units 0/2/3 over one multi-UV vertex format)
-     * sampled a single texel per texture — flattening every 64x64 map tile into one colour
-     * (issue #175). Both Xaero's minimap and world map draw their terrain this way.</p>
+     * units 0/1; dropping units 2/3 there left the FFP texenv chain of Xaero's map (which enables
+     * texture units 0/2/3 over one multi-UV vertex format) sampling a single texel per texture
+     * (issue #175). Both Xaero's minimap and world map draw their terrain this way.
      *
      * @param element format element to place
      * @return the attribute slot in {@code [0, 15]}, or {@code -1} when the element owns no slot
@@ -245,9 +242,8 @@ public final class VanillaVertexBufferRenderer {
     }
 
     /**
-     * Reports a format element the FFP pipeline cannot feed. UV elements are the interesting case:
-     * a legacy texture unit without a slot silently loses its texture coordinates, which is how
-     * issue #175 stayed hidden (Xaero's map texenv chain then sampled a constant texel). PADDING
+     * Reports a format element the FFP pipeline cannot feed. A legacy texture unit without a
+     * slot silently loses its texture coordinates, which is how issue #175 stayed hidden; PADDING
      * legitimately owns no slot and stays quiet.
      */
     private static void reportUnsupportedElement(VertexFormatElement element) {

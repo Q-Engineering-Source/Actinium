@@ -210,9 +210,8 @@ public abstract class NormalHelper {
 		// tx ty tz
 		// nx ny nz
 
-		// Be very careful when writing out complex multi-step calculations
-		// such as vector cross products! The calculation for pbitangentz
-		// used to be broken because it multiplied values in the wrong order.
+		// The multiplication order of the cross product terms matters; writing a term with
+		// the operands swapped silently produces a wrong tangent, as once happened for pbitangentz.
 
 		final float pbitangentx = tangenty * normalZ - tangentz * normalY;
 		final float pbitangenty = tangentz * normalX - tangentx * normalZ;
@@ -297,9 +296,8 @@ public abstract class NormalHelper {
 		// tx ty tz
 		// nx ny nz
 
-		// Be very careful when writing out complex multi-step calculations
-		// such as vector cross products! The calculation for pbitangentz
-		// used to be broken because it multiplied values in the wrong order.
+		// The multiplication order of the cross product terms matters; writing a term with
+		// the operands swapped silently produces a wrong tangent, as once happened for pbitangentz.
 
 		final float pbitangentx = tangenty * normalZ - tangentz * normalY;
 		final float pbitangenty = tangentz * normalX - tangentx * normalZ;

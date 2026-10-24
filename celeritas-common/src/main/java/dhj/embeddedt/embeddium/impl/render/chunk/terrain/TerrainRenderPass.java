@@ -112,16 +112,8 @@ public class TerrainRenderPass {
     /**
      * Constructs a terrain render pass with an explicit depth-write policy.
      *
-     * @param name the friendly name of this render pass
-     * @param pipelineState the callback used to configure the GPU pipeline
      * @param useReverseOrder whether sections are rendered farthest-to-nearest
      * @param fragmentDiscard whether fragment alpha testing is enabled
-     * @param useTranslucencySorting whether translucency sorting is enabled
-     * @param hasNoLightmap whether this pass has no lightmap texture
-     * @param vertexType the vertex type used by this pass
-     * @param primitiveType the primitive type used by this pass
-     * @param extraDefines additional shader defines for this pass
-     * @param writesDepth whether drawing this pass updates the depth buffer
      */
     public TerrainRenderPass(String name,
                              PipelineState pipelineState,
@@ -149,17 +141,9 @@ public class TerrainRenderPass {
     /**
      * Constructs a terrain render pass with explicit semantic and depth-write policies.
      *
-     * @param name the friendly name of this render pass
-     * @param pipelineState the callback used to configure the GPU pipeline
      * @param useReverseOrder whether sections are rendered farthest-to-nearest
      * @param fragmentDiscard whether fragment alpha testing is enabled
-     * @param useTranslucencySorting whether translucency sorting is enabled
-     * @param hasNoLightmap whether this pass has no lightmap texture
-     * @param vertexType the vertex type used by this pass
-     * @param primitiveType the primitive type used by this pass
-     * @param extraDefines additional shader defines for this pass
      * @param semantic the fixed-function behavior represented by this pass
-     * @param writesDepth whether drawing this pass updates the depth buffer
      */
     public TerrainRenderPass(String name,
                              PipelineState pipelineState,
@@ -204,16 +188,10 @@ public class TerrainRenderPass {
         return this.useReverseOrder;
     }
 
-    /**
-     * Returns the stable semantic used to classify this render pass.
-     */
     public Semantic semantic() {
         return this.semantic;
     }
 
-    /**
-     * Returns whether drawing this render pass updates the depth buffer.
-     */
     public boolean writesDepth() {
         return this.writesDepth;
     }
@@ -306,17 +284,11 @@ public class TerrainRenderPass {
             return this;
         }
 
-        /**
-         * Sets the fixed-function semantic represented by this render pass.
-         */
         public TerrainRenderPassBuilder semantic(Semantic semantic) {
             this.semantic = semantic;
             return this;
         }
 
-        /**
-         * Sets whether drawing this render pass updates the depth buffer.
-         */
         public TerrainRenderPassBuilder writesDepth(boolean writesDepth) {
             this.writesDepth = writesDepth;
             return this;

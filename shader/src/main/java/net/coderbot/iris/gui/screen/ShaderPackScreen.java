@@ -152,15 +152,12 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
 
             // Draw the comment panel
             if (this.isDisplayingComment()) {
-                // Determine panel height and position
                 final int panelHeight = Math.max(50, 18 + (this.hoveredElementCommentBody.size() * 10));
                 int x = mouseX + 5;
                 if (x + 314 >= (this.width - 4)) x = this.width - (318);
                 int y = mouseY + 8;
                 if (y + panelHeight >= (this.height - 4)) y = this.height - (panelHeight + 4);
-                // Draw panel
                 GuiUtil.drawPanel(x, y, COMMENT_PANEL_WIDTH, panelHeight);
-                // Draw text
                 this.fontRenderer.drawStringWithShadow(this.hoveredElementCommentTitle.orElse(""), x + 4, y + 4, 0xFFFFFF);
                 for (int i = 0; i < this.hoveredElementCommentBody.size(); i++) {
                     this.fontRenderer.drawStringWithShadow(this.hoveredElementCommentBody.get(i), x + 4, (y + 16) + (i * 10), 0xFFFFFF);

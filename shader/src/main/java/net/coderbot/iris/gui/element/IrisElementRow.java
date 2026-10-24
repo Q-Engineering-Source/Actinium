@@ -50,9 +50,6 @@ public class IrisElementRow {
 
 	/**
 	 * Modifies the width of an element.
-	 *
-	 * @param element The element whose width to modify
-	 * @param width The width to be assigned to the specified element
 	 */
 	public void setWidth(Element element, int width) {
 		if (!this.elements.containsKey(element)) {

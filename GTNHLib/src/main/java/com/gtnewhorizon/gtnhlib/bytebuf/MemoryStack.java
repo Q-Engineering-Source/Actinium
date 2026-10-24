@@ -349,8 +349,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
     /**
      * Calls {@link #nmalloc(int, int)} with {@code alignment} equal to {@link Pointer#POINTER_SIZE POINTER_SIZE}.
      *
-     * @param size the allocation size
-     *
      * @return the memory address on the stack for the requested allocation
      */
     public long nmalloc(int size) {
@@ -360,9 +358,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
     /**
      * Allocates a block of {@code size} bytes of memory on the stack. The content of the newly allocated block of
      * memory is not initialized, remaining with indeterminate values.
-     *
-     * @param alignment the required alignment
-     * @param size      the allocation size
      *
      * @return the memory address on the stack for the requested allocation
      */
@@ -382,10 +377,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
      * Allocates a block of memory on the stack for an array of {@code num} elements, each of them {@code size} bytes
      * long, and initializes all its bits to zero.
      *
-     * @param alignment the required element alignment
-     * @param num       num the number of elements to allocate
-     * @param size      the size of each element
-     *
      * @return the memory address on the stack for the requested allocation
      */
     public long ncalloc(int alignment, int num, int size) {
@@ -397,9 +388,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
 
     /**
      * Allocates an aligned {@link ByteBuffer} on the stack.
-     *
-     * @param alignment the required buffer alignment
-     * @param size      the number of elements in the buffer
      *
      * @return the allocated buffer
      */
@@ -421,8 +409,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
     /**
      * Allocates a {@link ByteBuffer} on the stack with {@code alignment} equal to {@link Pointer#POINTER_SIZE
      * POINTER_SIZE}.
-     *
-     * @param size the number of elements in the buffer
      *
      * @return the allocated buffer
      */

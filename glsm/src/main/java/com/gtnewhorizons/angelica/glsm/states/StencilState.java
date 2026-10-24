@@ -29,7 +29,7 @@ public class StencilState implements ISettableState<StencilState> {
     private int zPassOpBack = GL11.GL_KEEP;
     private int writeMaskBack = 0xFFFFFFFF;
 
-    // Clear value (shared)
+    // Shared between front and back faces
     private int clearValue = 0;
 
     @Override

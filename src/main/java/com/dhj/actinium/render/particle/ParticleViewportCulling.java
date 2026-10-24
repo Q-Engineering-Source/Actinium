@@ -13,7 +13,6 @@ import net.minecraft.util.math.AxisAlignedBB;
  */
 public final class ParticleViewportCulling {
     private ParticleViewportCulling() {
-        // Prevent instances of this stateless culling utility.
     }
 
     /**

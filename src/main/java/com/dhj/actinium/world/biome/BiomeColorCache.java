@@ -34,11 +34,9 @@ public class BiomeColorCache extends dhj.embeddedt.embeddium.impl.biome.BiomeCol
     }
 
     /**
-     * Enables the post-processing pass only when the biome color noise feature can actually
-     * change a color. With the toggle off, or when every configured intensity is zero, the noise
-     * is a mathematical identity, so skipping the whole per-pixel pass keeps slice population
-     * free of the extra loop. Once the pass is on, the noise dispatch itself stays in
-     * {@link BiomeColorNoise#applyForResolver}, which treats unknown resolvers as identity anyway.
+     * Enables the post-processing pass only when the noise can actually change a color: with the
+     * toggle off, or every configured intensity zero, the noise is a mathematical identity, so
+     * skipping the per-pixel pass keeps slice population free of the extra loop.
      */
     @Override
     protected boolean shouldPostProcessColors() {
@@ -50,12 +48,10 @@ public class BiomeColorCache extends dhj.embeddedt.embeddium.impl.biome.BiomeCol
     }
 
     /**
-     * Applies the position-based biome color noise on the chunk build thread, after biome
-     * blending (including the box blur) has produced the final color for this world position.
-     * All work is delegated to {@link BiomeColorNoise#applyForResolver}, which is a pure function
-     * of its arguments (fixed seed, no shared mutable state) as required by the base class hook,
-     * and which already handles the feature toggle, per-resolver intensity routing, and unknown
-     * resolver identity semantics.
+     * Applies the position-based biome color noise on the chunk build thread, after biome blending
+     * has produced the final color. {@link BiomeColorNoise#applyForResolver} must stay a pure
+     * function of its arguments (fixed seed, no shared mutable state), as required by the base
+     * class hook.
      */
     @Override
     protected int postProcessColor(BiomeColorHelper.ColorResolver resolver, int worldX, int worldY, int worldZ, int color) {

@@ -303,7 +303,6 @@ public class BiomeUniforms {
 
         final String name = biomeName.toLowerCase(Locale.ROOT);
 
-        // Check for keywords in biome names
         // Priority order matters - check more specific terms first
 
         if (name.contains("nether")) return BiomeCategories.NETHER;

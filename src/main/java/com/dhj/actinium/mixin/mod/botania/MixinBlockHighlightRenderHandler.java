@@ -11,11 +11,9 @@ import vazkii.botania.client.core.handler.BlockHighlightRenderHandler;
 /**
  * Restores GL_TEXTURE_2D enablement after Botania's block-highlight overlay pass.
  *
- * <p>Botania's {@code onWorldRenderLast} disables texture sampling to draw wireframe
- * overlays; under the GLSM state cache its {@code glPushAttrib}/{@code disableTexture}
- * pairing can leave the active texture unit disabled when the method returns, which
- * makes the immediately following held-item pass render without texture (flat white).
- * Re-enable the units so item rendering samples the atlas again.</p>
+ * <p>Botania's {@code onWorldRenderLast} disables texture sampling for wireframe overlays;
+ * under the GLSM state cache its {@code glPushAttrib}/{@code disableTexture} pairing can
+ * leave the active texture unit disabled, so the following held-item pass renders flat white.
  */
 @Mixin(value = BlockHighlightRenderHandler.class, remap = false)
 public abstract class MixinBlockHighlightRenderHandler {

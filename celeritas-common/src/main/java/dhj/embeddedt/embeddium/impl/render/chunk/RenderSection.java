@@ -22,7 +22,6 @@ import java.util.Objects;
  * data about the render in the chunk visibility graph.
  */
 public class RenderSection extends AbstractSection {
-    // Render Region State
     private final RenderRegion region;
 
     // We must use EVERYTHING here for the default visibility encoding, so that ContextBundle.empty() would correspond
@@ -209,10 +208,6 @@ public class RenderSection extends AbstractSection {
         return this.getVisualsServiceFlags() != 0;
     }
 
-    /**
-     * @param sortStates the passes needing a resort as the camera moves; every entry implies dynamic sorting
-     * @param highestSortingIndex the highest variant seen before compaction, or {@link #NO_TRANSLUCENT_GEOMETRY}
-     */
     public void setTranslucencySortStates(@NotNull Map<TerrainRenderPass, SortState.Resortable> sortStates, int highestSortingIndex) {
         this.translucencySortStates = Map.copyOf(sortStates);
         this.highestSortingIndex = highestSortingIndex;

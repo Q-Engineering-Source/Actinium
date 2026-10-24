@@ -49,7 +49,6 @@ public class NormI8 {
 
     /**
      * Unpacks the x-component of the packed normal, denormalizing it to a float in the range of -1.0..1.0.
-     * @param norm The packed normal
      */
     public static float unpackX(int norm) {
         return ((byte) ((norm >> X_COMPONENT_OFFSET) & 0xFF)) * NORM;
@@ -57,7 +56,6 @@ public class NormI8 {
 
     /**
      * Unpacks the y-component of the packed normal, denormalizing it to a float in the range of -1.0..1.0.
-     * @param norm The packed normal
      */
     public static float unpackY(int norm) {
         return ((byte) ((norm >> Y_COMPONENT_OFFSET) & 0xFF)) * NORM;
@@ -65,7 +63,6 @@ public class NormI8 {
 
     /**
      * Unpacks the z-component of the packed normal, denormalizing it to a float in the range of -1.0..1.0.
-     * @param norm The packed normal
      */
     public static float unpackZ(int norm) {
         return ((byte) ((norm >> Z_COMPONENT_OFFSET) & 0xFF)) * NORM;
@@ -73,7 +70,6 @@ public class NormI8 {
 
     /**
      * Unpacks the w-component of the packed normal, denormalizing it to a float in the range of -1.0..1.0.
-     * @param norm The packed normal
      */
     public static float unpackW(int norm) {
         return ((byte) ((norm >> W_COMPONENT_OFFSET) & 0xFF)) * NORM;

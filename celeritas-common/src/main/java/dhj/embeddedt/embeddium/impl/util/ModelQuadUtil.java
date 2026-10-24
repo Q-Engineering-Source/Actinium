@@ -32,10 +32,6 @@ public class ModelQuadUtil {
     // Size of vertex format in 4-byte integers
     public static final int VERTEX_SIZE = 8;
 
-    /**
-     * @param vertexIndex The index of the vertex to access
-     * @return The starting offset of the vertex's attributes
-     */
     public static int vertexOffset(int vertexIndex) {
         return vertexIndex * VERTEX_SIZE;
     }

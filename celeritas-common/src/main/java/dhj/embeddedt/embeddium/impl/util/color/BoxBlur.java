@@ -86,7 +86,6 @@ public class BoxBlur {
     /**
      * Pre-computes a multiplier that can be used to avoid costly division when averaging the color data in the
      * sliding window.
-     * @param size The size of the rolling window
      * @author 2No2Name
      */
     private static int getAveragingMultiplier(int size) {

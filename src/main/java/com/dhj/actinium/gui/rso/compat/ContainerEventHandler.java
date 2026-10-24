@@ -27,7 +27,6 @@ public interface ContainerEventHandler extends GuiEventListener {
         return null;
     }
 
-    /** Sets the focused child, updating both the old and new child's focus state. */
     default void setFocused(GuiEventListener focused) {
         GuiEventListener previous = this.getFocused();
         if (previous != null) {
