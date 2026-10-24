@@ -81,7 +81,6 @@ public final class UniversalVAO {
     /**
      * Frees a single vertex array object name.
      *
-     * @param id The name to free
      * @see #deleteVertexArrays(IntBuffer)
      */
     public static void deleteVertexArrays(int id) {

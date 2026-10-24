@@ -107,12 +107,10 @@ public class TextFieldWidget extends BaseWidget implements ControlGuideProvider 
         if (!displayedText.isEmpty() && isCursorWithinDisplayedText && selectionStartOffset < displayedText.length()) {
             guiGraphics.text(this.font, formatted(displayedText.substring(selectionStartOffset)), textEndX, textStartY, 0xFFFFFFFF);
         }
-        // Cursor
         if (this.isFocused()) {
             int color = ((int) (this.currentCursorAlpha * 255) << 24) | 0x00D0D0D0;
             guiGraphics.fill(cursorX, textStartY - 1, cursorX + 1, textStartY + 1 + this.font.lineHeight, color);
         }
-        // Highlighted text
         if (selectionEndOffset != selectionStartOffset) {
             int selectionEndX = textStartX + this.font.width(displayedText.substring(0, selectionEndOffset));
             this.drawSelectionHighlight(guiGraphics, cursorX, textStartY - 1, selectionEndX - 1, textStartY + 1 + this.font.lineHeight);

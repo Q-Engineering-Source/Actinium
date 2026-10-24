@@ -3,11 +3,9 @@ package com.dhj.actinium.render.vertex;
 import sun.misc.Unsafe;
 
 /**
- * Writer for INT and UINT typed elements.
- *
- * <p>Positions store their raw float bits; texture coordinates and normals truncate to
- * integer; colors are stored through the float view because the original color method
- * feeds the integer components to the float accessor unchanged.
+ * Writer for INT and UINT typed elements. Positions store their raw float bits; texture
+ * coordinates and normals truncate to integer; colors are stored through the float view because
+ * the original color method feeds the integer components to the float accessor unchanged.
  */
 final class IntVertexWriter implements VertexWriter {
     /** Single pre-built instance handed out by the writer factory. */

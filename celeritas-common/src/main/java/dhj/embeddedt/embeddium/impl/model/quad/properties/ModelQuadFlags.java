@@ -40,9 +40,6 @@ public class ModelQuadFlags {
      */
     public static final int IS_POPULATED = (1 << 31);
 
-    /**
-     * @return True if the bit-flag of {@link ModelQuadFlags} contains the given flag
-     */
     public static boolean contains(int flags, int mask) {
         return (flags & mask) != 0;
     }
@@ -71,11 +68,6 @@ public class ModelQuadFlags {
      * <p>
      * This method avoids allocations by comparing directly against the expected coordinates
      * for each vertex index based on the given {@code face} and bounding box.
-     *
-     * @param face the face direction of the quad; determines which axis is fixed and
-     *             which two axes form the quad plane
-     * @return {@code true} if the quad's vertices match Minecraft's canonical baked order
-     *         for the given face, {@code false} otherwise
      */
     private static boolean canonicalVertexOrder(ModelQuadView quad, ModelQuadFacing face, float minX, float minY, float minZ,
                                                 float maxX, float maxY, float maxZ) {

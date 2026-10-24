@@ -355,7 +355,6 @@ public class ChunkBuilder {
         long memoryMb = Runtime.getRuntime().maxMemory() / (1024L * 1024L);
         // always allow at least one builder regardless of heap size
         int maxBuilders = Math.max(1, (int)(memoryMb / MBS_PER_CHUNK_BUILDER));
-        // choose the total CPU cores or the number of builders the heap permits, whichever is smaller
         return Math.min(totalCores, maxBuilders);
     }
 
@@ -436,7 +435,6 @@ public class ChunkBuilder {
 
         @Override
         public void run() {
-            // Run until the chunk builder shuts down
             while (ChunkBuilder.this.queue.isRunning()) {
                 ChunkJob job;
 

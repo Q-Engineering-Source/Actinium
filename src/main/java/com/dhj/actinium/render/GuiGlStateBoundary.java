@@ -24,9 +24,8 @@ public final class GuiGlStateBoundary {
      * armor preview. While the surface is active, Iris hooks that apply world-render state
      * (armor item ids, enchant glint conditions) must leave the pass untouched. Every begin
      * must be balanced by {@link EntitySurfaceState#restore()} on the returned token, even
-     * when the nested render throws.
-     *
-     * <p>Minecraft renders on a single thread, so a plain counter is sufficient.
+     * when the nested render throws; Minecraft renders on a single thread, so a plain counter
+     * is sufficient.
      */
     public static EntitySurfaceState beginEntitySurface() {
         entityGuiSurfaceDepth++;

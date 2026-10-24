@@ -128,16 +128,13 @@ public class SectionVisibilityBuilder {
 
     private static void exploreFrom(BitSet visited, BitSet escapedFaces, IntArrayFIFOQueue queue, int startIndex) {
         queue.enqueue(startIndex);
-        // Mark the start location as handled
         visited.set(startIndex, true);
         while (!queue.isEmpty()) {
             int idx = queue.dequeueInt();
             for (int dir = 0; dir < GraphDirection.COUNT; dir++) {
                 int neighborIdx = getNeighborIndex(idx, dir);
                 if (neighborIdx >= 0) {
-                    // We can move within the section in that direction
                     if (!visited.get(neighborIdx)) {
-                        // Mark this location as handled
                         visited.set(neighborIdx, true);
                         queue.enqueue(neighborIdx);
                     }

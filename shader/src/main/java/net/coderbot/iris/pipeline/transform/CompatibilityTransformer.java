@@ -153,13 +153,6 @@ public class CompatibilityTransformer {
 
         // TODO: glsl-transformation-lib doesn't have a way to identify empty declarations
         // this transformation is not done in current versions of Iris, so not sure it's necessary
-//		boolean emptyDeclarationHit = root.process(
-//				root.nodeIndex.getStream(EmptyDeclaration.class),
-//				ASTNode::detachAndDelete);
-//		if (emptyDeclarationHit) {
-//			LOGGER.warn(
-//					"Removed empty external declarations (\";\").");
-//		}
     }
 
 	// does transformations that require cross-shader type data

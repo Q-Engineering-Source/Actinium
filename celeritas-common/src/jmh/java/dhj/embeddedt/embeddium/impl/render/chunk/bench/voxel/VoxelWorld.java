@@ -193,9 +193,7 @@ public final class VoxelWorld {
                 + 0.7 * Math.sin((x + z) * 0.07);
     }
 
-    // ------------------------------------------------------------------
     // Noise
-    // ------------------------------------------------------------------
 
     /**
      * Carves where trilinearly interpolated value noise crosses the middle of its range, along one row of

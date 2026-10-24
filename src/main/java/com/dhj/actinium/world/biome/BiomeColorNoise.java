@@ -5,30 +5,19 @@ import net.minecraft.world.biome.BiomeColorHelper;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 
 /**
- * Stateless deterministic 2D value noise applied to biome-tinted block colors (issue #56,
- * modeled after Ambient Environment with three deliberate corrections):
+ * Stateless deterministic 2D value noise applied to biome-tinted block colors (issue #56, modeled
+ * after Ambient Environment with three deliberate corrections). The noise is applied after blending,
+ * to the final blended color keyed to the block's own position, because Ambient Environment injects
+ * it inside the blend loop where the blend average cancels most of the per-position variation out.
+ * Offsets are bidirectional: the scale factor is multiplicative {@code 1 +/- intensity}, so the noisy
+ * color stays centered on the blended mean instead of mixing only towards black. The fade uses the
+ * quintic smoothstep {@code 6t^5 - 15t^4 + 10t^3}, so neighboring blocks never show a hard seam.
  *
- * <ul>
- *   <li><b>Applied after blending.</b> Ambient Environment injects the noise inside the biome
- *       blend loop, so the blend average cancels most of the per-position variation out (the larger
- *       the blend radius, the weaker the effect). Every injection point here applies the noise to
- *       the final blended color, keyed to the block's own position — never to the blend sample
- *       positions.</li>
- *   <li><b>Bidirectional offsets.</b> Ambient Environment only mixes towards black, which darkens
- *       the mean color. The scale factor here is multiplicative {@code 1 +/- intensity}, so the
- *       noisy color stays centered on the blended mean and only varies around it.</li>
- *   <li><b>Smooth curve.</b> The fade uses the quintic smoothstep {@code 6t^5 - 15t^4 + 10t^3}
- *       instead of tangent-shaped curves with poles, so neighboring blocks never show a hard seam
- *       regardless of how the corner values happen to fall.</li>
- * </ul>
- *
- * <p>The noise itself is classic 2D value noise: integer lattice points are hashed to
- * pseudo-random values in [0, 1) with a splitmix64-style integer mixer (allocation free and
- * purely functional, so chunk build threads and the main thread can sample concurrently without
- * any shared mutable state), and the four corners of the enclosing cell are bilinearly
- * interpolated. Two octaves are summed — the second at double frequency, weighted roughly 2:1
- * (0.65 / 0.35) — and the result is remapped from [0, 1] to [-1, 1] so callers can scale around
- * the mean color symmetrically.</p>
+ * Integer lattice points are hashed to pseudo-random values in [0, 1) with a splitmix64-style mixer
+ * (allocation free and purely functional, so chunk build threads and the main thread can sample
+ * concurrently), and the four corners of the enclosing cell are bilinearly interpolated. Two octaves
+ * are summed at roughly 2:1 weights (0.65 / 0.35), the second at double frequency, and the result is
+ * remapped from [0, 1] to [-1, 1].
  */
 public final class BiomeColorNoise {
 
@@ -59,8 +48,6 @@ public final class BiomeColorNoise {
     /**
      * Samples the biome color noise field at the given world position.
      *
-     * @param x world x coordinate of the block
-     * @param z world z coordinate of the block
      * @return deterministic noise value in [-1, 1] for this position
      */
     public static float sample(float x, float z) {

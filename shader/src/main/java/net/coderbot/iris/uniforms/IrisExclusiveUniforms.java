@@ -76,7 +76,6 @@ public class IrisExclusiveUniforms {
 			return -1;
 		}
 
-//		return Minecraft.getMinecraft().thePlayer.getMaxAirSupply();
 		return 300.0F;
 	}
 

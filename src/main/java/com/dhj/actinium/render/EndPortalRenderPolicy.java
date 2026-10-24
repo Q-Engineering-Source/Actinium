@@ -14,16 +14,15 @@ public final class EndPortalRenderPolicy {
 
     /**
      * The dispatcher only renders block entities that belong to a world. A world-less block
-     * entity is a synthetic render call issued by another renderer — e.g. BetterPortals draws
+     * entity is a synthetic render call issued by another renderer, e.g. BetterPortals draws
      * its starfield overlay through a dummy block entity and relies on the exact legacy blend
-     * state hooks (CONSTANT_ALPHA via shouldRenderFace) and projective texgen behavior.
-     *
-     * <p>Without a shader pack those synthetic calls keep the legacy vanilla path, which the
-     * glsm fixed-function simulation services faithfully. With a shader pack the legacy path
-     * can never execute: an Iris gbuffers program owns the draw and glsm defers to it, so the
-     * projective texgen emulation is silently bypassed and the overlay degrades to garbage.
-     * Synthetic calls therefore go through the shader-compatible replacement renderer, which
-     * reproduces the fade hook via {@link #isLegacyFadeHookBlend(int, int)}.
+     * state hooks (CONSTANT_ALPHA via shouldRenderFace) and projective texgen behavior. Without
+     * a shader pack those synthetic calls stay on the legacy vanilla path, which the glsm
+     * fixed-function simulation services faithfully; with a shader pack an Iris gbuffers program
+     * owns the draw and glsm defers to it, so the projective texgen emulation is silently
+     * bypassed and the overlay degrades to garbage. Synthetic calls therefore go through the
+     * shader-compatible replacement renderer, which reproduces the fade hook via
+     * {@link #isLegacyFadeHookBlend(int, int)}.
      *
      * @param portal block entity passed to the renderer
      * @param shaderPackInUse whether an Iris shader pack currently owns world rendering

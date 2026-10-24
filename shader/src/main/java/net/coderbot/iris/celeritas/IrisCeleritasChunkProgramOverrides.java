@@ -123,7 +123,6 @@ public class IrisCeleritasChunkProgramOverrides {
 
     @Nullable
     public GlProgram<? extends ChunkShaderInterface> getProgramOverride(TerrainRenderPass pass, RenderPassConfiguration<?> configuration) {
-        // Check for shader pack reload
         if (versionCounterForShaderReload != Iris.getPipelineManager().getVersionCounterForSodiumShaderReload()) {
             versionCounterForShaderReload = Iris.getPipelineManager().getVersionCounterForSodiumShaderReload();
             deleteShaders();

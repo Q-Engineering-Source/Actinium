@@ -199,7 +199,6 @@ public class StandardMacros {
 	/**
 	 * Returns the current GL Version using regex
 	 *
-	 * @param name the name of the gl attribute to parse
 	 * @return current gl version stripped of semantic versioning
 	 * @see <a href="https://github.com/sp614x/optifine/blob/9c6a5b5326558ccc57c6490b66b3be3b2dc8cbef/OptiFineDoc/doc/shaders.txt#L701-L703">Optifine Doc for GL Version</a>
 	 * @see <a href="https://github.com/sp614x/optifine/blob/9c6a5b5326558ccc57c6490b66b3be3b2dc8cbef/OptiFineDoc/doc/shaders.txt#L705-L707">Optifine Doc for GLSL Version</a>

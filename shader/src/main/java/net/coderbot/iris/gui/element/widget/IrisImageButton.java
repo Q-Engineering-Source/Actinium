@@ -35,15 +35,12 @@ public class IrisImageButton extends IrisButton {
             yTex += this.yDiffTex;
         }
 
-        // Sets RenderSystem to use solid white as the tint color for blend mode, and enables blend mode
         GLStateManager.glBlendColor(1.0f, 1.0f, 1.0f, 1.0f);
         GLStateManager.enableBlend();
 
-        // Sets RenderSystem to be able to use textures when drawing
         GLStateManager.enableTexture();
         mc.getTextureManager().bindTexture(this.textureLocation);
 
-        // Draw the texture to the screen
         Gui.drawModalRectWithCustomSizedTexture(this.x, this.y, this.xTexStart, yTex, width, height, 256, 256);
 
     }

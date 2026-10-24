@@ -101,8 +101,6 @@ final class Checks {
     /**
      * Checks if any of the specified functions pointers is {@code NULL}.
      *
-     * @param functions the function pointers to check
-     *
      * @return true if all function pointers are valid, false otherwise.
      */
     public static boolean checkFunctions(long... functions) {
@@ -116,8 +114,6 @@ final class Checks {
 
     /**
      * Ensures that the specified pointer is not {@code NULL} (0L).
-     *
-     * @param pointer the pointer to check
      *
      * @throws NullPointerException if {@code pointer} is {@code NULL}
      */
@@ -300,9 +296,6 @@ final class Checks {
     /**
      * Helper method to ensure a array has enough capacity.
      *
-     * @param buf  the array to check
-     * @param size the minimum array capacity
-     *
      * @throws IllegalArgumentException if {@code buf.length < size}
      */
     public static void check(byte[] buf, int size) {
@@ -311,9 +304,6 @@ final class Checks {
 
     /**
      * Helper method to ensure a array has enough capacity.
-     *
-     * @param buf  the array to check
-     * @param size the minimum array capacity
      *
      * @throws IllegalArgumentException if {@code buf.length < size}
      */
@@ -324,9 +314,6 @@ final class Checks {
     /**
      * Helper method to ensure a array has enough capacity.
      *
-     * @param buf  the array to check
-     * @param size the minimum array capacity
-     *
      * @throws IllegalArgumentException if {@code buf.length < size}
      */
     public static void check(int[] buf, int size) {
@@ -335,9 +322,6 @@ final class Checks {
 
     /**
      * Helper method to ensure a array has enough capacity.
-     *
-     * @param buf  the array to check
-     * @param size the minimum array capacity
      *
      * @throws IllegalArgumentException if {@code buf.length < size}
      */
@@ -348,9 +332,6 @@ final class Checks {
     /**
      * Helper method to ensure a array has enough capacity.
      *
-     * @param buf  the array to check
-     * @param size the minimum array capacity
-     *
      * @throws IllegalArgumentException if {@code buf.length < size}
      */
     public static void check(float[] buf, int size) {
@@ -359,9 +340,6 @@ final class Checks {
 
     /**
      * Helper method to ensure a array has enough capacity.
-     *
-     * @param buf  the array to check
-     * @param size the minimum array capacity
      *
      * @throws IllegalArgumentException if {@code buf.length < size}
      */
@@ -372,9 +350,6 @@ final class Checks {
     /**
      * Helper method to ensure a CharSequence has enough characters.
      *
-     * @param text the text to check
-     * @param size the minimum number of characters
-     *
      * @throws IllegalArgumentException if {@code text.length() < size}
      */
     public static void check(CharSequence text, int size) {
@@ -383,9 +358,6 @@ final class Checks {
 
     /**
      * Helper method to ensure a buffer has enough capacity.
-     *
-     * @param buf  the buffer to check
-     * @param size the minimum buffer capacity
      *
      * @throws IllegalArgumentException if {@code buf.remaining() < size}
      */

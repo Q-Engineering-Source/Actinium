@@ -245,7 +245,6 @@ public class ModelQuad implements ModelQuadViewMutable {
 
     /// Shifts every vertex by the given amount.
     /// @param idx The index of the position coord to offset. 0 = x, 1 = y, 2 = z.
-    /// @param offset The amount to shift the coord by.
     private void offsetPos(int idx, float offset) {
         final int i = X_INDEX + idx;
         setData(0, i, getData(0, i) + offset);
@@ -287,8 +286,6 @@ public class ModelQuad implements ModelQuadViewMutable {
     /**
      * Deep copies all data from the source quad into this quad. Used when quads need to be retained beyond their pool
      * lifecycle.
-     *
-     * @param source The quad to copy from
      */
     public ModelQuad copyFrom(ModelQuadView source) {
         // Optimize for ModelQuad-to-ModelQuad copies
@@ -315,7 +312,6 @@ public class ModelQuad implements ModelQuadViewMutable {
                 setForgeNormal(i, source.getForgeNormal(i));
             }
 
-            // Copy metadata
             this.flags = source.getFlags();
             this.normal = source.getComputedFaceNormal();
             this.sprite = source.celeritas$getSprite();

@@ -29,8 +29,6 @@ public final class CommandBuffer {
         this.writePointer = basePointer;
     }
 
-    // === Low-level write operations ===
-
     private void writeInt(int value) {
         memPutInt(writePointer, value);
         writePointer += 4;
@@ -56,8 +54,6 @@ public final class CommandBuffer {
             writePointer = basePointer + size;
         }
     }
-
-    // === Single int commands ===
 
     public void writeEnable(int cap) {
         ensureCapacity(8);
@@ -170,8 +166,6 @@ public final class CommandBuffer {
         writeInt(mode);
     }
 
-    // === Two int commands ===
-
     public void writeBindTexture(int target, int texture) {
         ensureCapacity(12);
         writeInt(GLCommand.BIND_TEXTURE);
@@ -221,8 +215,6 @@ public final class CommandBuffer {
         writeInt(mode);
     }
 
-    // === Three int commands ===
-
     public void writeStencilFunc(int func, int ref, int mask) {
         ensureCapacity(16);
         writeInt(GLCommand.STENCIL_FUNC);
@@ -246,8 +238,6 @@ public final class CommandBuffer {
         writeInt(pname);
         writeInt(param);
     }
-
-    // === Four int commands ===
 
     public void writeViewport(int x, int y, int width, int height) {
         ensureCapacity(20);
@@ -302,8 +292,6 @@ public final class CommandBuffer {
         writeInt(dpfail);
         writeInt(dppass);
     }
-
-    // === Float commands ===
 
     public void writePointSize(float size) {
         ensureCapacity(8);
@@ -365,8 +353,6 @@ public final class CommandBuffer {
         writeFloat(a);
     }
 
-    // === Mixed int+float commands ===
-
     public void writeAlphaFunc(int func, float ref) {
         ensureCapacity(12);
         writeInt(GLCommand.ALPHA_FUNC);
@@ -427,8 +413,6 @@ public final class CommandBuffer {
         writeFloat(param);
     }
 
-    // === Double commands ===
-
     public void writeTranslate(double x, double y, double z) {
         ensureCapacity(28);
         writeInt(GLCommand.TRANSLATE);
@@ -476,8 +460,6 @@ public final class CommandBuffer {
         writeDouble(zFar);
     }
 
-    // === Matrix commands ===
-
     public void writeMultMatrix(Matrix4f matrix) {
         ensureCapacity(68);
         writeInt(GLCommand.MULT_MATRIX);
@@ -495,17 +477,11 @@ public final class CommandBuffer {
      * Uses accessor methods instead of getToAddress() to avoid JOML MemUtil issues.
      */
     private void writeMatrix4f(Matrix4f m) {
-        // Column 0
         writeFloat(m.m00()); writeFloat(m.m01()); writeFloat(m.m02()); writeFloat(m.m03());
-        // Column 1
         writeFloat(m.m10()); writeFloat(m.m11()); writeFloat(m.m12()); writeFloat(m.m13());
-        // Column 2
         writeFloat(m.m20()); writeFloat(m.m21()); writeFloat(m.m22()); writeFloat(m.m23());
-        // Column 3
         writeFloat(m.m30()); writeFloat(m.m31()); writeFloat(m.m32()); writeFloat(m.m33());
     }
-
-    // === Buffer commands (inline 4 floats) ===
 
     public void writeFog(int pname, FloatBuffer params) {
         final int count = Math.min(params.remaining(), 4);
@@ -567,8 +543,6 @@ public final class CommandBuffer {
         writeDouble(d);
     }
 
-    // === Draw commands ===
-
     public void writeDrawRange(int vboIndex) {
         ensureCapacity(8);
         writeInt(GLCommand.DRAW_RANGE);
@@ -588,11 +562,8 @@ public final class CommandBuffer {
         writeInt(GLCommand.DRAW_RANGE_RESTORE);
         writeInt(vboIndex);
         writeInt(restoreData.flags);
-        // Last color (4 bytes)
         writeInt(restoreData.lastColor);
-        // Last normal (4 bytes)
         writeInt(restoreData.lastNormal);
-        // Last texcoord (2 floats = 8 bytes)
         writeFloat(restoreData.lastTexCoordU);
         writeFloat(restoreData.lastTexCoordV);
     }
@@ -630,7 +601,6 @@ public final class CommandBuffer {
     }
 
     private static final int MAX_DRAW_BUFFERS = 8;
-    // cmd (4) + count (4) + buffers (4 * MAX_DRAW_BUFFERS)
     private static final int DRAW_BUFFERS_SIZE = 4 + 4 + 4 * MAX_DRAW_BUFFERS;
 
     public void writeDrawBuffers(int count, int buffer) {
@@ -656,8 +626,6 @@ public final class CommandBuffer {
         }
     }
 
-    // === Complex object reference ===
-
     public void writeComplexRef(DisplayListCommand cmd) {
         ensureCapacity(8);
         final int index = complexObjects.size();
@@ -665,8 +633,6 @@ public final class CommandBuffer {
         writeInt(GLCommand.COMPLEX_REF);
         writeInt(index);
     }
-
-    // === Reading methods for optimization pass ===
 
     private long readPointer = 0;
 
@@ -721,8 +687,6 @@ public final class CommandBuffer {
         dest.m30(readFloat()); dest.m31(readFloat()); dest.m32(readFloat()); dest.m33(readFloat());
         return dest;
     }
-
-    // === Lifecycle ===
 
     public int size() {
         return (int) (writePointer - basePointer);

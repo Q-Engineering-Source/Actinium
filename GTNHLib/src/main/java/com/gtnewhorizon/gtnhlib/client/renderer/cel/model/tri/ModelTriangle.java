@@ -69,8 +69,6 @@ public class ModelTriangle implements ModelPrimitiveView {
         return data[vertexOffset(idx) + NORMAL_INDEX];
     }
 
-    // Setters
-
     public void setX(int idx, float x) {
         data[vertexOffset(idx) + POSITION_INDEX] = Float.floatToRawIntBits(x);
         computedNormal = 0; // Invalidate cached normal
@@ -110,9 +108,7 @@ public class ModelTriangle implements ModelPrimitiveView {
      * Copies a single vertex from a raw buffer directly to this triangle's data. Avoids int→float→int conversions by
      * copying raw ints directly.
      *
-     * @param rawBuffer The tessellator's raw int[] buffer
-     * @param srcOffset Offset to the vertex in the source buffer
-     * @param destIdx   Destination vertex index (0, 1, or 2)
+     * @param destIdx 0, 1, or 2
      */
     public void copyVertexFromBuffer(int[] rawBuffer, int srcOffset, int destIdx) {
         System.arraycopy(rawBuffer, srcOffset, data, vertexOffset(destIdx), VERTEX_SIZE);
@@ -177,10 +173,6 @@ public class ModelTriangle implements ModelPrimitiveView {
     /**
      * Applies a position offset to all vertices. More efficient than calling setX/setY/setZ individually as it
      * invalidates the computed normal only once.
-     *
-     * @param offsetX X offset to add to all vertices
-     * @param offsetY Y offset to add to all vertices
-     * @param offsetZ Z offset to add to all vertices
      */
     public void applyOffset(int offsetX, int offsetY, int offsetZ) {
         if (offsetX == 0 && offsetY == 0 && offsetZ == 0) return;
@@ -197,9 +189,6 @@ public class ModelTriangle implements ModelPrimitiveView {
         computedNormal = 0; // Invalidate once at the end
     }
 
-    /**
-     * Copy data from another ModelTriangle.
-     */
     public ModelTriangle copyFrom(ModelTriangle source) {
         System.arraycopy(source.data, 0, this.data, 0, VERTEX_SIZE * 3);
         this.computedNormal = source.computedNormal;

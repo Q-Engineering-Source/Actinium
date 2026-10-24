@@ -31,11 +31,6 @@ public final class ShaderPackApplyLogic {
      * @param previousPackName   the pack stored in the config, or null if none
      * @param enabled            the state of the enable switch in the UI
      * @param previouslyEnabled  the state of the enable flag in the config
-     * @param optionQueueEmpty   whether no shader option changes are queued
-     * @param resetPending       whether an option reset was requested for the next reload
-     * @param currentPackLoaded  whether a pack object is currently loaded
-     * @param fallbackActive     whether a previous load attempt fell back to vanilla rendering
-     * @return true if applying the changes requires a shader reload
      */
     public static boolean shouldReloadOnApply(String packName, @Nullable String previousPackName,
                                               boolean enabled, boolean previouslyEnabled,

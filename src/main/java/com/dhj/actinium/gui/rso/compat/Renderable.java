@@ -6,13 +6,5 @@ package com.dhj.actinium.gui.rso.compat;
  */
 public interface Renderable {
 
-    /**
-     * Extracts the render state of this element.
-     *
-     * @param guiGraphics the graphics context
-     * @param mouseX      the GUI-space mouse X
-     * @param mouseY      the GUI-space mouse Y
-     * @param delta       the partial tick delta
-     */
     void extractRenderState(GuiGraphicsExtractor guiGraphics, int mouseX, int mouseY, float delta);
 }

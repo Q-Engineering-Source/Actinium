@@ -9,7 +9,6 @@ public enum ScreenDirection {
     UP,
     DOWN;
 
-    /** Returns the opposite direction. */
     public ScreenDirection getOpposite() {
         return switch (this) {
             case LEFT -> RIGHT;

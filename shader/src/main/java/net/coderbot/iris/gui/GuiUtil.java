@@ -47,20 +47,16 @@ public final class GuiUtil {
 	 * @param disabled Whether the button should use the "disabled" texture
 	 */
 	public static void drawButton(int x, int y, int width, int height, boolean hovered, boolean disabled) {
-		// Create variables for half of the width and height.
-		// Will not be exact when width and height are odd, but
-		// that case is handled within the draw calls.
+		// Half sizes are not exact when width or height is odd, but that case is handled within the draw calls.
 		final int halfWidth = width / 2;
         final int halfHeight = height / 2;
 
 		// V offset for which button texture to use
         final int vOffset = disabled ? 46 : hovered ? 86 : 66;
 
-		// Sets RenderSystem to use solid white as the tint color for blend mode, and enables blend mode
 		GLStateManager.glBlendColor(1.0f, 1.0f, 1.0f, 1.0f);
 		GLStateManager.enableBlend();
 
-		// Sets RenderSystem to be able to use textures when drawing
         GLStateManager.enableTexture();
 
 		// Top left section
@@ -76,11 +72,6 @@ public final class GuiUtil {
 	/**
 	 * Draws a translucent black panel
 	 * with a light border.
-	 *
-	 * @param x The x position of the panel
-	 * @param y The y position of the panel
-	 * @param width The width of the panel
-	 * @param height The height of the panel
 	 */
 	public static void drawPanel(int x, int y, int width, int height) {
 		final int borderColor = 0xDEDEDEDE;
@@ -100,10 +91,6 @@ public final class GuiUtil {
 
 	/**
 	 * Draws a text with a panel behind it.
-	 *
-	 * @param text The text String to draw
-	 * @param x The x position of the panel
-	 * @param y The y position of the panel
 	 */
 	public static void drawTextPanel(FontRenderer font, String text, int x, int y) {
 		drawPanel(x, y, font.getStringWidth(text) + 8, 16);
@@ -154,7 +141,6 @@ public final class GuiUtil {
 	 * or other action.
 	 */
 	public static void playButtonClickSound() {
-//		client().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1));
 	}
 
 	/**
@@ -186,19 +172,13 @@ public final class GuiUtil {
 
 		/**
 		 * Draws this icon to the screen at the specified coordinates.
-		 *
-		 * @param x The x position to draw the icon at (left)
-		 * @param y The y position to draw the icon at (top)
 		 */
 		public void draw(int x, int y) {
-			// Sets RenderSystem to use solid white as the tint color for blend mode, and enables blend mode
             GLStateManager.glBlendColor(1.0f, 1.0f, 1.0f, 1.0f);
             GLStateManager.enableBlend();
 
-			// Sets RenderSystem to be able to use textures when drawing
             GLStateManager.enableTexture();
 
-			// Draw the texture to the screen
 			Gui.drawModalRectWithCustomSizedTexture(x, y, u, v, width, height, 256, 256);
 		}
 

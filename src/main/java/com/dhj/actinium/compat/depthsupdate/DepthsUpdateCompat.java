@@ -6,18 +6,15 @@ import sayys.depthsupdate.api.DepthsUpdateAPI;
 import sayys.depthsupdate.api.HeightInfo;
 
 /**
- * Compatibility for {@code Depths Update} (mod id {@code depthsupdate}).
+ * Compatibility for {@code Depths Update} (mod id {@code depthsupdate}); fixes issue #68.
  *
- * <p>Depths Update backports the Caves &amp; Cliffs world height: it extends the build range
- * (default {@code -64..320}, configurable) and reshapes every {@code Chunk.storageArrays} to its own
- * layout (the vanilla sections keep their array index {@code 0..15}, upper sections keep identity
- * above that, and the negative sections are parked at the tail of the array). Actinium's renderer
- * assumed the vanilla {@code 0..255} layout, so sections outside that range were never created and
- * blocks below {@code y=0} or above {@code y=255} were simply not rendered (issue #68).
- *
- * <p>This shim exposes the extended height range and the storage-array index mapping from Depths
- * Update's public API (see the {@code sayys.depthsupdate.api} package). Without the mod installed it
- * falls back to the vanilla identity mapping, so unaffected worlds keep their exact behaviour.
+ * <p>Depths Update backports the Caves &amp; Cliffs world height (default {@code -64..320}) and
+ * reshapes {@code Chunk.storageArrays}: vanilla sections keep their index {@code 0..15}, upper
+ * sections keep identity above that, negative sections are parked at the tail. Actinium's renderer
+ * assumed the vanilla {@code 0..255} layout, so out-of-range sections were never created and the
+ * blocks in them were not rendered. This shim exposes the extended height range and the
+ * storage-array index mapping from the {@code sayys.depthsupdate.api} package, falling back to
+ * the vanilla identity mapping without the mod.
  */
 public final class DepthsUpdateCompat {
     public static final boolean IS_LOADED = Mods.DEPTHSUPDATE;

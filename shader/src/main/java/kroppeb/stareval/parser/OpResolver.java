@@ -28,7 +28,6 @@ abstract class OpResolver<T> {
 		 * Adds a new multi-character operator. Calling this with an empty string is equivalent to calling singleChar.
 		 *
 		 * @param trailing every character after the first character of the operator.
-		 * @param op       the operator
 		 */
 		public void multiChar(String trailing, T op) {
 			T previous = map.put(trailing, op);

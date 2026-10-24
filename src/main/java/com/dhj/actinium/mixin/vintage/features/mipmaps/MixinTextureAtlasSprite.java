@@ -106,7 +106,6 @@ public abstract class MixinTextureAtlasSprite implements SpriteExtension, Sprite
 
         SpriteTransparencyLevel level = embeddium$levelForOrdinal(levelOrdinal);
 
-        // Bail if none of the pixels are semi-transparent or we aren't supposed to rewrite colors.
         if (!shouldRewriteColors || totalWeight == 0.0f) {
             return level;
         }
@@ -115,7 +114,6 @@ public abstract class MixinTextureAtlasSprite implements SpriteExtension, Sprite
         g /= totalWeight;
         b /= totalWeight;
 
-        // Convert that color in linear space back to sRGB.
         // Use an alpha value of zero - this works since we only replace pixels with an alpha value of 0.
         int averageColor = ColorSRGB.linearToSrgb(r, g, b, 0);
 

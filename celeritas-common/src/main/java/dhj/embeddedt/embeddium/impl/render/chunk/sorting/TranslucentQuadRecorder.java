@@ -113,7 +113,6 @@ public class TranslucentQuadRecorder {
     }
 
     private void captureQuad() {
-        // The four positions in vertexPositions form a quad. Find its center and axis-aligned bounds
         float totalX = 0, totalY = 0, totalZ = 0;
         float minX = Float.POSITIVE_INFINITY, minY = Float.POSITIVE_INFINITY, minZ = Float.POSITIVE_INFINITY;
         float maxX = Float.NEGATIVE_INFINITY, maxY = Float.NEGATIVE_INFINITY, maxZ = Float.NEGATIVE_INFINITY;
