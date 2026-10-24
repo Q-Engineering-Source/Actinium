@@ -176,7 +176,6 @@ public class DisplayListManager {
             pendingTransformOps.clear();
         }
 
-        // Record the collapsed MultMatrix command (for playback)
         if (currentRecorder != null) {
             currentRecorder.recordMultMatrix(relativeTransform);
             stateGeneration++;
@@ -226,7 +225,6 @@ public class DisplayListManager {
         currentRecorder.recordDisable(cap);
     }
 
-    // ==================== NON-BARRIER COMMANDS ====================
     // Clear commands don't affect subsequent draws, just clear buffers.
 
     public static void recordClear(int mask) {
@@ -248,8 +246,6 @@ public class DisplayListManager {
         if (currentRecorder == null) return;
         currentRecorder.recordClearStencil(s);
     }
-
-    // ==================== MORE DRAW BARRIER COMMANDS ====================
 
     public static void recordBlendColor(float r, float g, float b, float a) {
         if (currentRecorder == null) return;
@@ -609,10 +605,6 @@ public class DisplayListManager {
     public static void recordBindVBO(int vbo) { if (currentRecorder != null) currentRecorder.recordBindVBO(vbo); }
     public static void recordBindVAO(int vao) { if (currentRecorder != null) currentRecorder.recordBindVAO(vao); }
 
-
-    // recordOrtho/recordFrustum removed - these now accumulate into relativeTransform
-    // via updateRelativeTransformOrtho/updateRelativeTransformFrustum
-
     /**
      * Add an immediate mode draw to the current display list compilation.
      * Called by GLStateManager.glEnd() when immediate mode geometry is ready.
@@ -624,7 +616,6 @@ public class DisplayListManager {
      */
     public static void addImmediateModeDraw(DirectTessellator tessellator) {
         if (!tessellator.isEmpty()) {
-            // Get relative transform (changes since glNewList, not absolute matrix state)
             addAccumulatedDraw(tessellator, tessellator.getVertexFormat() != DefaultVertexFormat.POSITION);
         }
         tessellator.reset();
@@ -666,8 +657,6 @@ public class DisplayListManager {
      *
      * <p>In normal mode: accumulates transforms, emits collapsed MultMatrix at barriers.
      * <p>In debug mode: emits MultMatrix immediately (no collapsing).
-     *
-     * @param matrix The matrix to multiply
      */
     public static void updateRelativeTransform(Matrix4f matrix) {
         if (relativeTransform == null) {
@@ -746,9 +735,6 @@ public class DisplayListManager {
     /**
      * Check if a display list exists (has been compiled and stored).
      * Checks both DisplayListManager's cache and VBOManager for GTNHLib compatibility.
-     *
-     * @param list The display list ID to check
-     * @return true if the display list exists, false otherwise
      */
     public static boolean displayListExists(int list) {
         if (displayListCache.containsKey(list)) {
@@ -764,7 +750,6 @@ public class DisplayListManager {
     /**
      * Get a compiled display list from the cache.
      *
-     * @param list The display list ID
      * @return The CompiledDisplayList, or null if not found
      */
     public static CompiledDisplayList getDisplayList(int list) {
@@ -778,12 +763,10 @@ public class DisplayListManager {
      *   GL_COMPILE_AND_EXECUTE: Commands are recorded AND executed (GLSM cache updated)
      */
     public static void glNewList(int list, int mode) {
-        // Handle nested compilation - push current context onto stack
         final boolean isNested = glListMode > 0;
 
         if (isNested) {
             // Nested display list compilation violates OpenGL spec, but some of our optimizations require it
-            // Save current compilation context and start fresh for nested list
             final CompilationContext parentContext = new CompilationContext(
                 glListId, glListMode, currentRecorder, accumulatedDraws, relativeTransform,
                 compilationStackTrace, pendingTransformOps, multMatrixSources, drawRangeSources
@@ -791,7 +774,6 @@ public class DisplayListManager {
             compilationStack.push(parentContext);
         }
 
-        // Initialize fresh context for this (possibly nested) list
         glListId = list;
         glListMode = mode;
         recordingThread = Thread.currentThread();  // Track which thread is recording
@@ -801,7 +783,6 @@ public class DisplayListManager {
         stateGeneration = 0;  // Reset state generation for fresh list
         compilationStackTrace = LOG_DISPLAY_LIST_COMPILATION ? Thread.currentThread().getStackTrace() : null;
 
-        // Initialize debug logging fields (only when logging enabled)
         if (LOG_DISPLAY_LIST_COMPILATION) {
             pendingTransformOps = new ArrayList<>();
             multMatrixSources = new ArrayList<>();
@@ -834,7 +815,6 @@ public class DisplayListManager {
         TessellatorManager.stopCapturingDirect();
 
         final CompiledDisplayList compiled;
-        // Create CompiledDisplayList with both unoptimized and optimized versions
         final CommandBuffer rawCommandBuffer = currentRecorder.getBuffer();
         final boolean hasCommands = !rawCommandBuffer.isEmpty();
         final boolean hasDraws = accumulatedDraws != null && !accumulatedDraws.isEmpty();
@@ -843,7 +823,6 @@ public class DisplayListManager {
             // Phase 1: Compile format-based VBOs (shared by both optimized and unoptimized paths)
             final DisplayListVBO compiledBuffers = new DisplayListVBOBuilder().addDraws(accumulatedDraws).build();
 
-            // Build to CommandBuffer - optimize raw buffer to final buffer
             final CommandBuffer finalBuffer = new CommandBuffer();
             CommandBufferBuilder.buildFromRawBuffer(rawCommandBuffer, accumulatedDraws, finalBuffer);
 
@@ -868,7 +847,6 @@ public class DisplayListManager {
 
             compiled = new CompiledDisplayList(finalBuffer.toBuffer(), finalBuffer.getComplexObjects(), compiledBuffers, indexedBatches);
         } else {
-            // Free the recorder even if empty
             if (currentRecorder != null) {
                 currentRecorder.free();
             }
@@ -887,11 +865,9 @@ public class DisplayListManager {
             logCompiledDisplayList(glListId, compiled, compilationStackTrace);
         }
 
-        // Handle nested compilation - restore parent context
         if (isNested) {
             final CompilationContext parentContext = compilationStack.pop();
 
-            // Restore parent context
             glListId = parentContext.listId;
             glListMode = parentContext.listMode;
             currentRecorder = parentContext.recorder;
@@ -905,7 +881,6 @@ public class DisplayListManager {
             // Note: TessellatorManager callback stack was popped by stopCompiling()
             // Parent's COMPILING callback is now active again
         } else {
-            // Not nested - clear all compilation state
             currentRecorder = null;
             recordingThread = null;
             accumulatedDraws = null;
@@ -932,7 +907,6 @@ public class DisplayListManager {
             return;
         }
 
-        // Merge the previous draw call if possible
         final AccumulatedDraw previous = accumulatedDraws.get(accumulatedDraws.size() - 1);
         if (previous.format == tessellator.getVertexFormat() && previous.stateGeneration == stateGeneration) {
             previous.mergeDraw(tessellator, copyLast);
@@ -1000,8 +974,6 @@ public class DisplayListManager {
         }
     }
 
-    // ==================== DEBUG LOGGING ====================
-
     public static void logCompiledDisplayList(int listId, CompiledDisplayList compiled, StackTraceElement[] stackTrace) {
         GLStateManager.LOGGER.debug(getCompiledDisplayListString(listId, compiled, stackTrace));
     }
@@ -1010,10 +982,8 @@ public class DisplayListManager {
         final StringBuilder sb = new StringBuilder();
         sb.append("\n========== Display List Compiled: ID=").append(listId).append(" ==========\n");
 
-        // Identify probable source mod from stack trace
         sb.append("Source: ").append(identifySourceFromStackTrace(stackTrace)).append("\n");
 
-        // Log commands if not empty
         if (compiled == CompiledDisplayList.EMPTY) {
             sb.append("Contents: EMPTY (no commands or draws)\n");
         } else {
@@ -1026,7 +996,6 @@ public class DisplayListManager {
             }
         }
 
-        // Log full stack trace
         sb.append("\nFull Stack Trace:\n");
         if (stackTrace != null) {
             for (StackTraceElement element : stackTrace) {
@@ -1063,7 +1032,6 @@ public class DisplayListManager {
                 continue;
             }
 
-            // Try to extract mod name from package
             final String modGuess = guessModFromClassName(className);
             return modGuess + " (" + element.getClassName() + "." + element.getMethodName() +
                    ":" + element.getLineNumber() + ")";
@@ -1132,7 +1100,6 @@ public class DisplayListManager {
             final String cmdName = GLCommand.getName(opcode);
             sb.append("  ").append(cmdNum++).append(": ").append(cmdName);
 
-            // Add command-specific details
             switch (opcode) {
                 case GLCommand.ENABLE, GLCommand.DISABLE -> {
                     final int cap = memGetInt(ptr + 4);
@@ -1146,7 +1113,6 @@ public class DisplayListManager {
                 case GLCommand.DRAW_RANGE -> {
                     final int vboIdx = memGetInt(ptr + 4);
                     sb.append("(vbo=").append(vboIdx).append(")");
-                    // Show draw source if available
                     if (drawRangeSources != null && drawRangeIdx < drawRangeSources.size()) {
                         sb.append(" [from: ").append(drawRangeSources.get(drawRangeIdx)).append("]");
                     }
@@ -1159,7 +1125,6 @@ public class DisplayListManager {
                     final int brightness = memGetInt(ptr + 16);
                     sb.append("(vbo=").append(vboIdx).append(", start=").append(start)
                         .append(", count=").append(count).append(", brightness=").append(brightness != 0).append(")");
-                    // Show draw source if available
                     if (drawRangeSources != null && drawRangeIdx < drawRangeSources.size()) {
                         sb.append(" [from: ").append(drawRangeSources.get(drawRangeIdx)).append("]");
                     }

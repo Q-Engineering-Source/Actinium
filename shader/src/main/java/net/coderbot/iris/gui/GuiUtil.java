@@ -76,11 +76,6 @@ public final class GuiUtil {
 	/**
 	 * Draws a translucent black panel
 	 * with a light border.
-	 *
-	 * @param x The x position of the panel
-	 * @param y The y position of the panel
-	 * @param width The width of the panel
-	 * @param height The height of the panel
 	 */
 	public static void drawPanel(int x, int y, int width, int height) {
 		final int borderColor = 0xDEDEDEDE;
@@ -100,10 +95,6 @@ public final class GuiUtil {
 
 	/**
 	 * Draws a text with a panel behind it.
-	 *
-	 * @param text The text String to draw
-	 * @param x The x position of the panel
-	 * @param y The y position of the panel
 	 */
 	public static void drawTextPanel(FontRenderer font, String text, int x, int y) {
 		drawPanel(x, y, font.getStringWidth(text) + 8, 16);
@@ -154,7 +145,6 @@ public final class GuiUtil {
 	 * or other action.
 	 */
 	public static void playButtonClickSound() {
-//		client().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1));
 	}
 
 	/**

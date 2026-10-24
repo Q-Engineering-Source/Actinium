@@ -34,8 +34,6 @@ public final class IdMapUniforms {
 			.uniform1i(PER_FRAME, "heldBlockLightValue", mainHandSupplier::getLightValue)
 			.uniform1i(PER_FRAME, "heldBlockLightValue2", offHandSupplier::getLightValue);
 		// TODO: Figure out API.
-			//.uniformVanilla3f(PER_FRAME, "heldBlockLightColor", mainHandSupplier::getLightColor)
-			//.uniformVanilla3f(PER_FRAME, "heldBlockLightColor2", offHandSupplier::getLightColor);
 	}
 
     public static void addEntityIdMapUniforms(DynamicUniformHolder uniforms) {

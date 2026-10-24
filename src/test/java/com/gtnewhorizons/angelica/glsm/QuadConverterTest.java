@@ -252,8 +252,6 @@ class QuadConverterTest {
         }
     }
 
-    // === helpers ===
-
     private static void assertUintIndices(ByteBuffer buf, int... expected) {
         for (int i = 0; i < expected.length; i++) {
             assertEquals(expected[i], buf.getInt(i * 4), "uint index[" + i + "]");

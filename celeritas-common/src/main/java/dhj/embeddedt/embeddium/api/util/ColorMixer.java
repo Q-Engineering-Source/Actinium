@@ -57,7 +57,6 @@ public class ColorMixer {
         int c2 = ((((a >> 16) & 0xFF) * ((b >> 16) & 0xFF)) + 0xFF) >> 8;
         int c3 = ((((a >> 24) & 0xFF) * ((b >> 24) & 0xFF)) + 0xFF) >> 8;
 
-        // Pack the components
         return (c0 <<  0) | (c1 <<  8) | (c2 << 16) | (c3 << 24);
     }
 
@@ -80,7 +79,6 @@ public class ColorMixer {
         int c2 = ((((a >> 16) & 0xFF) * b) + 0xFF) >> 8;
         int c3 = (a >> 24) & 0xFF;
 
-        // Pack the components
         return (c0 <<  0) | (c1 <<  8) | (c2 << 16) | (c3 << 24);
     }
 }

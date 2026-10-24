@@ -118,8 +118,6 @@ public class ProgramSamplers {
 				nextUnit += 1;
 			}
 
-			//System.out.println("Begin building samplers. Reserved texture units are " + reservedTextureUnits +
-			//		", next texture unit is " + nextUnit + ", there are " + remainingUnits + " units remaining.");
 		}
 
 		@Override
@@ -138,7 +136,6 @@ public class ProgramSamplers {
 				}
 
 				// Set up this sampler uniform to use this particular texture unit.
-				//System.out.println("Binding external sampler " + name + " to texture unit " + textureUnit);
 				calls.add(new GlUniform1iCall(location, textureUnit));
 				IrisGlDebug.logSamplerInitialization(program, "external", name, location, textureUnit);
 			}

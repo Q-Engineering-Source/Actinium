@@ -86,8 +86,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
      * </p>
      *
      * @param container the backing memory buffer, may be null
-     * @param address   the backing memory address
-     * @param size      the backing memory size
      */
     protected MemoryStack(@Nullable ByteBuffer container, long address, int size) {
         super(address);
@@ -132,8 +130,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
      * In the initial state, there is no active stack frame. The {@link #push} method must be used before any
      * allocations.
      * </p>
-     *
-     * @param buffer the backing memory buffer
      */
     public static MemoryStack create(ByteBuffer buffer) {
         long address = memAddress(buffer);
@@ -148,9 +144,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
      * In the initial state, there is no active stack frame. The {@link #push} method must be used before any
      * allocations.
      * </p>
-     *
-     * @param address the backing memory address
-     * @param size    the backing memory size
      */
     public static MemoryStack ncreate(long address, int size) {
         return DEBUG_STACK ? new DebugMemoryStack(null, address, size) : new MemoryStack(null, address, size);
@@ -402,8 +395,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
         return address;
     }
 
-    // -------------------------------------------------
-
     /**
      * Allocates an aligned {@link ByteBuffer} on the stack.
      *
@@ -478,8 +469,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
         return buffer;
     }
 
-    // -------------------------------------------------
-
     /** Short version of {@link #malloc(int)}. */
     public ShortBuffer mallocShort(int size) {
         return wrapBufferShort(nmalloc(2, size << 1), size);
@@ -526,8 +515,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
         buffer.flip();
         return buffer;
     }
-
-    // -------------------------------------------------
 
     /** Int version of {@link #malloc(int)}. */
     public IntBuffer mallocInt(int size) {
@@ -576,8 +563,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
         return buffer;
     }
 
-    // -------------------------------------------------
-
     /** Long version of {@link #malloc(int)}. */
     public LongBuffer mallocLong(int size) {
         return wrapBufferLong(nmalloc(8, size << 3), size);
@@ -624,8 +609,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
         buffer.flip();
         return buffer;
     }
-
-    // -------------------------------------------------
 
     /** Float version of {@link #malloc(int)}. */
     public FloatBuffer mallocFloat(int size) {
@@ -674,8 +657,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
         return buffer;
     }
 
-    // -------------------------------------------------
-
     /** Double version of {@link #malloc(int)}. */
     public DoubleBuffer mallocDouble(int size) {
         return wrapBufferDouble(nmalloc(8, size << 3), size);
@@ -722,8 +703,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
         buffer.flip();
         return buffer;
     }
-
-    // -------------------------------------------------
 
     /** Pointer version of {@link #malloc(int)}. */
     public PointerBuffer mallocPointer(int size) {
@@ -844,8 +823,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
         return buffer;
     }
 
-    // -------------------------------------------------
-
     /**
      * Encodes the specified text on the stack using ASCII encoding and returns a {@code ByteBuffer} that points to the
      * encoded text, including a null-terminator.
@@ -853,8 +830,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
      * <p>
      * The buffer will have {@code alignment} equal to {@link Pointer#POINTER_SIZE POINTER_SIZE}.
      * </p>
-     *
-     * @param text the text to encode
      */
     public ByteBuffer ASCII(CharSequence text) {
         return ASCII(text, true);
@@ -868,7 +843,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
      * The buffer will have {@code alignment} equal to {@link Pointer#POINTER_SIZE POINTER_SIZE}.
      * </p>
      *
-     * @param text           the text to encode
      * @param nullTerminated if true, a null-terminator is included at the end of the encoded text
      */
     public ByteBuffer ASCII(CharSequence text, boolean nullTerminated) {
@@ -886,7 +860,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
      * {@code alignment} equal to {@link Pointer#POINTER_SIZE POINTER_SIZE}.
      * </p>
      *
-     * @param text           the text to encode
      * @param nullTerminated if true, a null-terminator is included at the end of the encoded text
      */
     public int nASCII(CharSequence text, boolean nullTerminated) {
@@ -916,8 +889,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
      * <p>
      * The buffer will have {@code alignment} equal to {@link Pointer#POINTER_SIZE POINTER_SIZE}.
      * </p>
-     *
-     * @param text the text to encode
      */
     public ByteBuffer UTF8(CharSequence text) {
         return UTF8(text, true);
@@ -931,7 +902,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
      * The buffer will have {@code alignment} equal to {@link Pointer#POINTER_SIZE POINTER_SIZE}.
      * </p>
      *
-     * @param text           the text to encode
      * @param nullTerminated if true, a null-terminator is included at the end of the encoded text
      */
     public ByteBuffer UTF8(CharSequence text, boolean nullTerminated) {
@@ -949,7 +919,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
      * {@code alignment} equal to {@link Pointer#POINTER_SIZE POINTER_SIZE}.
      * </p>
      *
-     * @param text           the text to encode
      * @param nullTerminated if true, a null-terminator is included at the end of the encoded text
      */
     public int nUTF8(CharSequence text, boolean nullTerminated) {
@@ -979,8 +948,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
      * <p>
      * The buffer will have {@code alignment} equal to {@link Pointer#POINTER_SIZE POINTER_SIZE}.
      * </p>
-     *
-     * @param text the text to encode
      */
     public ByteBuffer UTF16(CharSequence text) {
         return UTF16(text, true);
@@ -994,7 +961,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
      * The buffer will have {@code alignment} equal to {@link Pointer#POINTER_SIZE POINTER_SIZE}.
      * </p>
      *
-     * @param text           the text to encode
      * @param nullTerminated if true, a null-terminator is included at the end of the encoded text
      */
     public ByteBuffer UTF16(CharSequence text, boolean nullTerminated) {
@@ -1012,7 +978,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
      * {@code alignment} equal to {@link Pointer#POINTER_SIZE POINTER_SIZE}.
      * </p>
      *
-     * @param text           the text to encode
      * @param nullTerminated if true, a null-terminator is included at the end of the encoded text
      */
     public int nUTF16(CharSequence text, boolean nullTerminated) {
@@ -1035,10 +1000,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
         return text == null ? 0 : nUTF16(text, nullTerminated);
     }
 
-    // -----------------------------------------------------
-    // -----------------------------------------------------
-    // -----------------------------------------------------
-
     /** Returns the stack of the current thread. */
     public static MemoryStack stackGet() {
         return TLS.get();
@@ -1046,8 +1007,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
 
     /**
      * Calls {@link #push} on the stack of the current thread.
-     *
-     * @return the stack of the current thread.
      */
     public static MemoryStack stackPush() {
         return stackGet().push();
@@ -1055,8 +1014,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
 
     /**
      * Calls {@link #pop} on the stack of the current thread.
-     *
-     * @return the stack of the current thread.
      */
     public static MemoryStack stackPop() {
         return stackGet().pop();
@@ -1076,8 +1033,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
     public static long nstackCalloc(int alignment, int num, int size) {
         return stackGet().ncalloc(alignment, num, size);
     }
-
-    // -------------------------------------------------
 
     /** Thread-local version of {@link #malloc(int) malloc}. */
     public static ByteBuffer stackMalloc(int size) {
@@ -1114,8 +1069,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
         return stackGet().bytes(values);
     }
 
-    // -------------------------------------------------
-
     /** Thread-local version of {@link #mallocShort}. */
     public static ShortBuffer stackMallocShort(int size) {
         return stackGet().mallocShort(size);
@@ -1150,8 +1103,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
     public static ShortBuffer stackShorts(short... values) {
         return stackGet().shorts(values);
     }
-
-    // -------------------------------------------------
 
     /** Thread-local version of {@link #mallocInt}. */
     public static IntBuffer stackMallocInt(int size) {
@@ -1188,8 +1139,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
         return stackGet().ints(values);
     }
 
-    // -------------------------------------------------
-
     /** Thread-local version of {@link #mallocLong}. */
     public static LongBuffer stackMallocLong(int size) {
         return stackGet().mallocLong(size);
@@ -1224,8 +1173,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
     public static LongBuffer stackLongs(long... values) {
         return stackGet().longs(values);
     }
-
-    // -------------------------------------------------
 
     /** Thread-local version of {@link #mallocFloat}. */
     public static FloatBuffer stackMallocFloat(int size) {
@@ -1262,8 +1209,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
         return stackGet().floats(values);
     }
 
-    // -------------------------------------------------
-
     /** Thread-local version of {@link #mallocDouble}. */
     public static DoubleBuffer stackMallocDouble(int size) {
         return stackGet().mallocDouble(size);
@@ -1298,8 +1243,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
     public static DoubleBuffer stackDoubles(double... values) {
         return stackGet().doubles(values);
     }
-
-    // -------------------------------------------------
 
     /** Thread-local version of {@link #mallocPointer}. */
     public static PointerBuffer stackMallocPointer(int size) {
@@ -1360,8 +1303,6 @@ public class MemoryStack extends Pointer.Default implements AutoCloseable {
     public static PointerBuffer stackPointers(Pointer... values) {
         return stackGet().pointers(values);
     }
-
-    // -------------------------------------------------
 
     /** Thread-local version of {@link #ASCII(CharSequence)}. */
     public static ByteBuffer stackASCII(CharSequence text) {

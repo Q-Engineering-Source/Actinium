@@ -86,7 +86,6 @@ class TransformOptimizer {
      */
     void emitTransformTo(List<DisplayListCommand> output, Matrix4f target) {
         if (target.equals(lastEmitted)) {
-            // Already at target - nothing to emit
             return;
         }
 
@@ -94,7 +93,6 @@ class TransformOptimizer {
         // delta = inverse(lastEmitted) * target
         // But for simplicity, if lastEmitted is identity, just emit target
         if (DisplayListManager.isIdentity(lastEmitted)) {
-            // Simple case: just emit target
             output.add(MultMatrixCmd.create(target));
         } else {
             // Need to emit delta: inv(lastEmitted) * target

@@ -18,7 +18,6 @@ public abstract class ChunkBuilderTask<OUTPUT> {
      * Executes the given build task asynchronously from the calling thread. The implementation should be careful not
      * to access or modify global mutable state.
      *
-     * @param context            The context to use for building this chunk
      * @param cancellationToken The cancellation source which can be used to query if the task is cancelled
      * @return The build result of this task, containing any data which needs to be uploaded on the main-thread, or null
      *         if the task was cancelled.

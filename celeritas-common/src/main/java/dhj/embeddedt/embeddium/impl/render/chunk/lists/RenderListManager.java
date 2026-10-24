@@ -301,7 +301,6 @@ public class RenderListManager {
                     int sectionIndex = iter.nextByteAsInt();
                     var section = region.getSection(sectionIndex);
 
-                    // Do not count sections without translucent data
                     if(section == null || section.getHighestSortingIndex() == RenderSection.NO_TRANSLUCENT_GEOMETRY) {
                         continue;
                     }

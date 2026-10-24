@@ -41,10 +41,6 @@ final class ByteVertexWriter implements VertexWriter {
      * Kept explicit so both orderings stay testable on any host.
      *
      * @param target native address of the element's first byte
-     * @param red red component
-     * @param green green component
-     * @param blue blue component
-     * @param alpha alpha component
      * @param littleEndian whether the host reads packed ints little endian
      */
     static void putColorBytes(long target, int red, int green, int blue, int alpha,

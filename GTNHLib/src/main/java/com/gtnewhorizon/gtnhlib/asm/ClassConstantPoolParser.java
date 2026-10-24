@@ -113,7 +113,6 @@ public final class ClassConstantPoolParser {
             return false;
         }
 
-        // checks the class version
         final int maxSupported = 69; // Java 25
         short major = readShort(6, basicClass);
         if (major > maxSupported || (major == maxSupported && readShort(4, basicClass) > 0)) {

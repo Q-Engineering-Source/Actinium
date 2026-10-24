@@ -256,7 +256,6 @@ public class RenderSection extends AbstractSection {
     /**
      * Request a type of chunk update for this render section. This may "upgrade" an existing pending update for the
      * section.
-     * @param type the chunk update
      * @return true if the section's chunk update type has changed
      */
     public boolean requestUpdate(ChunkUpdateType type) {

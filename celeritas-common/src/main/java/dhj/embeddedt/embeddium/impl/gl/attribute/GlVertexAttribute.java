@@ -21,7 +21,6 @@ public class GlVertexAttribute {
     private final String name;
 
     /**
-     * @param format The format used
      * @param count The number of components in the vertex attribute
      * @param normalized Specifies whether or not fixed-point data values should be normalized (true) or used directly
  *                   as fixed-point values (false)

@@ -238,7 +238,6 @@ public class SmoothLightPipeline implements LightPipeline {
 
             // Compute the values that each axis would contribute, then combine them
             for (int axis = 0; axis < 3; axis++) {
-                // Unpack the desired normal component
                 float projectedNormal = NormI8.unpackX(normal >> (axis * 8));
 
                 // Skip any components that are zero (they will never contribute anything)

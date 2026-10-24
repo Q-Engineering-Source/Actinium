@@ -35,8 +35,6 @@ public class IrisElementRow {
 	/**
 	 * Adds an element to the right of this row.
 	 *
-	 * @param element The element to add
-	 * @param width The width of the element in this row
 	 * @return {@code this}, to be used for chaining statements
 	 */
 	public IrisElementRow add(Element element, int width) {

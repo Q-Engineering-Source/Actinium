@@ -510,8 +510,6 @@ public class WorldSlice implements ActiniumBlockAccess {
         return EMPTY_BLOCK_STATE;
     }
 
-    // Fluidlogged compat
-
     @Override
     @Optional.Method(modid = FluidloggedCompat.MODID)
     public FluidState getFluidState(int x, int y, int z) {

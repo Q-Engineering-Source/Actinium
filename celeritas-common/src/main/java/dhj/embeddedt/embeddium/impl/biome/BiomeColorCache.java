@@ -145,7 +145,6 @@ public abstract class BiomeColorCache<BIOME, RESOLVER> {
             }
         }
 
-        // Skip blurring if all the values are the same anyway
         if (!uniqueColor && this.blendRadius > 0) {
             BoxBlur.blur(slice.buffer, this.tempColorBuffer, this.blendRadius);
         }

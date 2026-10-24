@@ -221,9 +221,6 @@ enum AoNeighborInfo {
      * Calculates how much each corner contributes to the final "darkening" of the vertex at the specified position. The
      * weight is a function of the distance from the vertex's position to the corner block's position.
      *
-     * @param x The x-position of the vertex
-     * @param y The y-position of the vertex
-     * @param z The z-position of the vertex
      * @param out The weight values for each corner
      */
     public abstract void calculateCornerWeights(float x, float y, float z, float[] out);
@@ -243,9 +240,6 @@ enum AoNeighborInfo {
      * Calculates the depth (or inset) of the vertex into this facing of the block. Used to determine
      * how much shadow is contributed by the direct neighbors of a block.
      *
-     * @param x The x-position of the vertex
-     * @param y The y-position of the vertex
-     * @param z The z-position of the vertex
      * @return The depth of the vertex into this face
      */
     public abstract float getDepth(float x, float y, float z);

@@ -16,9 +16,6 @@ public class ColorABGR implements ColorU8 {
 
     /**
      * Packs the specified color components into ABGR format. The alpha component is fully opaque.
-     * @param r The red component of the color
-     * @param g The green component of the color
-     * @param b The blue component of the color
      */
     public static int pack(float r, float g, float b) {
         return pack(r, g, b, COMPONENT_MASK);
@@ -26,10 +23,6 @@ public class ColorABGR implements ColorU8 {
 
     /**
      * Packs the specified color components into ABGR format.
-     * @param r The red component of the color
-     * @param g The green component of the color
-     * @param b The blue component of the color
-     * @param a The alpha component of the color
      */
     public static int pack(int r, int g, int b, int a) {
         return ((a & COMPONENT_MASK) << ALPHA_COMPONENT_OFFSET) |
@@ -40,8 +33,6 @@ public class ColorABGR implements ColorU8 {
 
     /**
      * Packs the specified color components into ABGR format.
-     * @param rgb The red/green/blue component of the color
-     * @param alpha The alpha component of the color
      */
     public static int withAlpha(int rgb, float alpha) {
         return withAlpha(rgb, ColorU8.normalizedFloatToByte(alpha));
@@ -49,8 +40,6 @@ public class ColorABGR implements ColorU8 {
 
     /**
      * Packs the specified color components into ABGR format.
-     * @param rgb The red/green/blue component of the color
-     * @param alpha The alpha component of the color
      */
     public static int withAlpha(int rgb, int alpha) {
         return (alpha << ALPHA_COMPONENT_OFFSET) | (rgb & ~(COMPONENT_MASK << ALPHA_COMPONENT_OFFSET));

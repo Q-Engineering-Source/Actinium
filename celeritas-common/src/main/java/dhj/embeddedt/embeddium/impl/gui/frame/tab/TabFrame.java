@@ -97,7 +97,6 @@ public class TabFrame extends AbstractFrame {
             int height = 18;
 
             for (var modEntry : tabs.entrySet()) {
-                // Add a "button" as the header
                 Dim2i modHeaderDim = new Dim2i(0, offsetY, width, height).withParentOffset(tabSection);
                 offsetY += height;
                 TabHeaderWidget headerButton = new TabHeaderWidget(modHeaderDim, modEntry.getKey());
@@ -105,7 +104,6 @@ public class TabFrame extends AbstractFrame {
                 this.children.add(headerButton);
 
                 for (Tab<?> tab : modEntry.getValue()) {
-                    // Add the button for the mod itself
                     Dim2i tabDim = new Dim2i(0, offsetY, width, height).withParentOffset(tabSection);
 
                     FlatButtonWidget button = new FlatButtonWidget(tabDim, tab.title(), () -> {

@@ -70,10 +70,6 @@ public final class MemoryUtilities {
 
     /**
      * Returns true if the specified integer {@code value} is a power-of-two number.
-     *
-     * @param value the value to test
-     *
-     * @return true if the value if a power-of-two number.
      */
     public static boolean mathIsPoT(int value) {
         return Integer.bitCount(value) == 1;
@@ -84,8 +80,6 @@ public final class MemoryUtilities {
      * to {@code value} if it already is a power-of-two number.
      *
      * @param value the value to round-up. Must be a number between {@code 1} and <code>1 &lt;&lt; 30</code>.
-     *
-     * @return the power-of-two rounded value
      */
     public static int mathRoundPoT(int value) {
         return 1 << (32 - Integer.numberOfLeadingZeros(value - 1));
@@ -148,11 +142,6 @@ public final class MemoryUtilities {
 
     private MemoryUtilities() {}
 
-    /*
-     * ------------------------------------- ------------------------------------- EXPLICIT MEMORY MANAGEMENT API
-     * ------------------------------------- -------------------------------------
-     */
-
     /**
      * The interface implemented by the memory allocator used by the explicit memory management API ({@link #memAlloc},
      * {@link #memFree}, etc).
@@ -187,8 +176,6 @@ public final class MemoryUtilities {
      * The expectation is that this method will rarely be used, so it does not have the {@code mem} prefix to avoid
      * pollution of auto-complete lists.
      * </p>
-     *
-     * @return the {@link MemoryAllocator} instance
      */
     public static MemoryAllocator getAllocator() {
         return getAllocator(false);
@@ -199,14 +186,10 @@ public final class MemoryUtilities {
      * ({@link #memAlloc}, {@link #memFree}, etc).
      *
      * @param tracked whether allocations will be tracked for memory leaks, if is enabled.
-     *
-     * @return the {@link MemoryAllocator} instance
      */
     public static MemoryAllocator getAllocator(boolean tracked) {
         return tracked ? ALLOCATOR : ALLOCATOR_IMPL;
     }
-
-    // --- [ memAlloc ] ---
 
     /**
      * Unsafe version of {@link #memAlloc}. May return {@link #NULL} if {@code size} is zero or the allocation failed.
@@ -388,8 +371,6 @@ public final class MemoryUtilities {
         }
     }
 
-    // --- [ memCalloc ] ---
-
     /**
      * Unsafe version of {@link #memCalloc}. May return {@link #NULL} if {@code num} or {@code size} are zero or the
      * allocation failed.
@@ -507,8 +488,6 @@ public final class MemoryUtilities {
     public static PointerBuffer memCallocPointer(int num) {
         return PointerBuffer.create(memCalloc(Math.toIntExact(getAllocationSize(num, POINTER_SHIFT))));
     }
-
-    // --- [ memRealloc] ---
 
     /**
      * Unsafe version of {@link #memRealloc}. May return {@link #NULL} if {@code size} is zero or the allocation failed.
@@ -661,7 +640,6 @@ public final class MemoryUtilities {
      * @param size the number of pointer values to allocate.
      */
     public static PointerBuffer memRealloc(@Nullable PointerBuffer ptr, int size) {
-        // return new PointerBuffer(memCalloc(Math.toIntExact(getAllocationSize(num, POINTER_SHIFT))));
 
         PointerBuffer buffer = memPointerBuffer(
                 nmemReallocChecked(ptr == null ? NULL : memAddress(ptr), getAllocationSize(size, POINTER_SHIFT)),
@@ -672,19 +650,8 @@ public final class MemoryUtilities {
         return buffer;
     }
 
-    /*
-     * ------------------------------------- ------------------------------------- BUFFER MANAGEMENT API
-     * ------------------------------------- -------------------------------------
-     */
-
-    // --- [ memAddress0 ] ---
-
     /**
      * Returns the memory address of the specified buffer. [INTERNAL USE ONLY]
-     *
-     * @param buffer the buffer
-     *
-     * @return the memory address
      */
     public static long memAddress0(Buffer buffer) {
         return MemoryUtil.memAddress0(buffer);
@@ -725,15 +692,9 @@ public final class MemoryUtilities {
         return MemoryUtil.memAddress0(buffer);
     }
 
-    // --- [ Buffer address ] ---
-
     /**
      * Returns the memory address at the current position of the specified buffer. This is effectively a pointer value
      * that can be used in native function calls.
-     *
-     * @param buffer the buffer
-     *
-     * @return the memory address
      */
     public static long memAddress(ByteBuffer buffer) {
         return buffer.position() + memAddress0(buffer);
@@ -741,11 +702,6 @@ public final class MemoryUtilities {
 
     /**
      * Returns the memory address at the specified position of the specified buffer.
-     *
-     * @param buffer   the buffer
-     * @param position the buffer position
-     *
-     * @return the memory address
      *
      * @see #memAddress(ByteBuffer)
      */
@@ -850,8 +806,6 @@ public final class MemoryUtilities {
         return address(buffer.position(), elementShift, MemoryUtil.memAddress0(buffer));
     }
 
-    // --- [ Buffer address - Safe ] ---
-
     /** Null-safe version of {@link #memAddress(ByteBuffer)}. Returns {@link #NULL} if the specified buffer is null. */
     public static long memAddressSafe(@Nullable ByteBuffer buffer) {
         return buffer == null ? NULL : memAddress0(buffer) + buffer.position();
@@ -892,16 +846,9 @@ public final class MemoryUtilities {
         return pointer == null ? NULL : pointer.address();
     }
 
-    // --- [ Buffer allocation ] ---
-
     /**
      * Creates a new direct ByteBuffer that starts at the specified memory address and has the specified capacity. The
      * returned ByteBuffer instance will be set to the native {@link ByteOrder}.
-     *
-     * @param address  the starting memory address
-     * @param capacity the buffer capacity
-     *
-     * @return the new ByteBuffer
      */
     public static ByteBuffer memByteBuffer(long address, int capacity) {
         if (CHECKS) {
@@ -926,10 +873,6 @@ public final class MemoryUtilities {
      * This operation is the inverse of {@link ByteBuffer#asShortBuffer()}. The returned {@code ByteBuffer} instance
      * will be set to the native {@link ByteOrder}.
      * </p>
-     *
-     * @param buffer the source buffer
-     *
-     * @return the {@code ByteBuffer} view
      */
     public static ByteBuffer memByteBuffer(ShortBuffer buffer) {
         if (CHECKS && (Integer.MAX_VALUE >> 1) < buffer.remaining()) {
@@ -946,10 +889,6 @@ public final class MemoryUtilities {
      * This operation is the inverse of {@link ByteBuffer#asCharBuffer()}. The returned {@code ByteBuffer} instance will
      * be set to the native {@link ByteOrder}.
      * </p>
-     *
-     * @param buffer the source buffer
-     *
-     * @return the {@code ByteBuffer} view
      */
     public static ByteBuffer memByteBuffer(CharBuffer buffer) {
         if (CHECKS && (Integer.MAX_VALUE >> 1) < buffer.remaining()) {
@@ -966,10 +905,6 @@ public final class MemoryUtilities {
      * This operation is the inverse of {@link ByteBuffer#asIntBuffer()}. The returned {@code ByteBuffer} instance will
      * be set to the native {@link ByteOrder}.
      * </p>
-     *
-     * @param buffer the source buffer
-     *
-     * @return the {@code ByteBuffer} view
      */
     public static ByteBuffer memByteBuffer(IntBuffer buffer) {
         if (CHECKS && (Integer.MAX_VALUE >> 2) < buffer.remaining()) {
@@ -986,10 +921,6 @@ public final class MemoryUtilities {
      * This operation is the inverse of {@link ByteBuffer#asLongBuffer()}. The returned {@code ByteBuffer} instance will
      * be set to the native {@link ByteOrder}.
      * </p>
-     *
-     * @param buffer the source buffer
-     *
-     * @return the {@code ByteBuffer} view
      */
     public static ByteBuffer memByteBuffer(LongBuffer buffer) {
         if (CHECKS && (Integer.MAX_VALUE >> 3) < buffer.remaining()) {
@@ -1006,10 +937,6 @@ public final class MemoryUtilities {
      * This operation is the inverse of {@link ByteBuffer#asFloatBuffer()}. The returned {@code ByteBuffer} instance
      * will be set to the native {@link ByteOrder}.
      * </p>
-     *
-     * @param buffer the source buffer
-     *
-     * @return the {@code ByteBuffer} view
      */
     public static ByteBuffer memByteBuffer(FloatBuffer buffer) {
         if (CHECKS && (Integer.MAX_VALUE >> 2) < buffer.remaining()) {
@@ -1026,10 +953,6 @@ public final class MemoryUtilities {
      * This operation is the inverse of {@link ByteBuffer#asDoubleBuffer()}. The returned {@code ByteBuffer} instance
      * will be set to the native {@link ByteOrder}.
      * </p>
-     *
-     * @param buffer the source buffer
-     *
-     * @return the {@code ByteBuffer} view
      */
     public static ByteBuffer memByteBuffer(DoubleBuffer buffer) {
         if (CHECKS && (Integer.MAX_VALUE >> 3) < buffer.remaining()) {
@@ -1045,11 +968,6 @@ public final class MemoryUtilities {
      * The {@code address} specified must be aligned to 2 bytes. If not, use
      * {@code memByteBuffer(address, capacity * 2).asShortBuffer()}.
      * </p>
-     *
-     * @param address  the starting memory address
-     * @param capacity the buffer capacity
-     *
-     * @return the new ShortBuffer
      */
     public static ShortBuffer memShortBuffer(long address, int capacity) {
         if (CHECKS) {
@@ -1070,11 +988,6 @@ public final class MemoryUtilities {
      * The {@code address} specified must be aligned to 2 bytes. If not, use
      * {@code memByteBuffer(address, capacity * 2).asCharBuffer()}.
      * </p>
-     *
-     * @param address  the starting memory address
-     * @param capacity the buffer capacity
-     *
-     * @return the new CharBuffer
      */
     public static CharBuffer memCharBuffer(long address, int capacity) {
         if (CHECKS) {
@@ -1095,11 +1008,6 @@ public final class MemoryUtilities {
      * The {@code address} specified must be aligned to 4 bytes. If not, use
      * {@code memByteBuffer(address, capacity * 4).asIntBuffer()}.
      * </p>
-     *
-     * @param address  the starting memory address
-     * @param capacity the buffer capacity
-     *
-     * @return the new IntBuffer
      */
     public static IntBuffer memIntBuffer(long address, int capacity) {
         if (CHECKS) {
@@ -1120,11 +1028,6 @@ public final class MemoryUtilities {
      * The {@code address} specified must be aligned to 8 bytes. If not, use
      * {@code memByteBuffer(address, capacity * 8).asLongBuffer()}.
      * </p>
-     *
-     * @param address  the starting memory address
-     * @param capacity the buffer capacity
-     *
-     * @return the new LongBuffer
      */
     public static LongBuffer memLongBuffer(long address, int capacity) {
         if (CHECKS) {
@@ -1145,11 +1048,6 @@ public final class MemoryUtilities {
      * The {@code address} specified must be aligned to 4 bytes. If not, use
      * {@code memByteBuffer(address, capacity * 4).asFloatBuffer()}.
      * </p>
-     *
-     * @param address  the starting memory address
-     * @param capacity the buffer capacity
-     *
-     * @return the new FloatBuffer
      */
     public static FloatBuffer memFloatBuffer(long address, int capacity) {
         if (CHECKS) {
@@ -1170,11 +1068,6 @@ public final class MemoryUtilities {
      * The {@code address} specified must be aligned to 8 bytes. If not, use
      * {@code memByteBuffer(address, capacity * 8).asDoubleBuffer()}.
      * </p>
-     *
-     * @param address  the starting memory address
-     * @param capacity the buffer capacity
-     *
-     * @return the new DoubleBuffer
      */
     public static DoubleBuffer memDoubleBuffer(long address, int capacity) {
         if (CHECKS) {
@@ -1196,11 +1089,6 @@ public final class MemoryUtilities {
      * {@code PointerBuffer.create(memByteBuffer(address, capacity *
      * POINTER_SIZE))}.
      * </p>
-     *
-     * @param address  the starting memory address
-     * @param capacity the buffer capacity
-     *
-     * @return the new PointerBuffer
      */
     public static PointerBuffer memPointerBuffer(long address, int capacity) {
         if (CHECKS) {
@@ -1214,8 +1102,6 @@ public final class MemoryUtilities {
         return address == NULL ? null : PointerBuffer.create(memByteBuffer(address, capacity));
     }
 
-    // --- [ Buffer duplication ] ---
-
     /**
      * Duplicates the specified buffer. The returned buffer will have the same {@link ByteOrder} as the source buffer.
      *
@@ -1224,10 +1110,6 @@ public final class MemoryUtilities {
      * call chains may fail to inline due to JVM limits, disabling important optimizations (e.g. scalar replacement via
      * Escape Analysis).
      * </p>
-     *
-     * @param buffer the buffer to duplicate
-     *
-     * @return the duplicated buffer
      */
     public static ByteBuffer memDuplicate(ByteBuffer buffer) {
         return MemoryUtil.memDuplicate(buffer);
@@ -1241,10 +1123,6 @@ public final class MemoryUtilities {
      * call chains may fail to inline due to JVM limits, disabling important optimizations (e.g. scalar replacement via
      * Escape Analysis).
      * </p>
-     *
-     * @param buffer the buffer to duplicate
-     *
-     * @return the duplicated buffer
      */
     public static ShortBuffer memDuplicate(ShortBuffer buffer) {
         return MemoryUtil.memDuplicate(buffer);
@@ -1258,10 +1136,6 @@ public final class MemoryUtilities {
      * call chains may fail to inline due to JVM limits, disabling important optimizations (e.g. scalar replacement via
      * Escape Analysis).
      * </p>
-     *
-     * @param buffer the buffer to duplicate
-     *
-     * @return the duplicated buffer
      */
     public static CharBuffer memDuplicate(CharBuffer buffer) {
         return MemoryUtil.memDuplicate(buffer);
@@ -1275,10 +1149,6 @@ public final class MemoryUtilities {
      * call chains may fail to inline due to JVM limits, disabling important optimizations (e.g. scalar replacement via
      * Escape Analysis).
      * </p>
-     *
-     * @param buffer the buffer to duplicate
-     *
-     * @return the duplicated buffer
      */
     public static IntBuffer memDuplicate(IntBuffer buffer) {
         return MemoryUtil.memDuplicate(buffer);
@@ -1292,10 +1162,6 @@ public final class MemoryUtilities {
      * call chains may fail to inline due to JVM limits, disabling important optimizations (e.g. scalar replacement via
      * Escape Analysis).
      * </p>
-     *
-     * @param buffer the buffer to duplicate
-     *
-     * @return the duplicated buffer
      */
     public static LongBuffer memDuplicate(LongBuffer buffer) {
         return MemoryUtil.memDuplicate(buffer);
@@ -1309,10 +1175,6 @@ public final class MemoryUtilities {
      * call chains may fail to inline due to JVM limits, disabling important optimizations (e.g. scalar replacement via
      * Escape Analysis).
      * </p>
-     *
-     * @param buffer the buffer to duplicate
-     *
-     * @return the duplicated buffer
      */
     public static FloatBuffer memDuplicate(FloatBuffer buffer) {
         return MemoryUtil.memDuplicate(buffer);
@@ -1326,16 +1188,10 @@ public final class MemoryUtilities {
      * Long call chains may fail to inline due to JVM limits, disabling important optimizations (e.g. scalar replacement
      * via Escape Analysis).
      * </p>
-     *
-     * @param buffer the buffer to duplicate
-     *
-     * @return the duplicated buffer
      */
     public static DoubleBuffer memDuplicate(DoubleBuffer buffer) {
         return MemoryUtil.memDuplicate(buffer);
     }
-
-    // --- [ Buffer slicing ] ---
 
     /**
      * Slices the specified buffer. The returned buffer will have the same {@link ByteOrder} as the source buffer.
@@ -1345,10 +1201,6 @@ public final class MemoryUtilities {
      * chains may fail to inline due to JVM limits, disabling important optimizations (e.g. scalar replacement via
      * Escape Analysis).
      * </p>
-     *
-     * @param buffer the buffer to slice
-     *
-     * @return the sliced buffer
      */
     public static ByteBuffer memSlice(ByteBuffer buffer) {
         return MemoryUtil.memSlice(buffer);
@@ -1362,10 +1214,6 @@ public final class MemoryUtilities {
      * call chains may fail to inline due to JVM limits, disabling important optimizations (e.g. scalar replacement via
      * Escape Analysis).
      * </p>
-     *
-     * @param buffer the buffer to slice
-     *
-     * @return the sliced buffer
      */
     public static ShortBuffer memSlice(ShortBuffer buffer) {
         return MemoryUtil.memSlice(buffer);
@@ -1379,10 +1227,6 @@ public final class MemoryUtilities {
      * chains may fail to inline due to JVM limits, disabling important optimizations (e.g. scalar replacement via
      * Escape Analysis).
      * </p>
-     *
-     * @param buffer the buffer to slice
-     *
-     * @return the sliced buffer
      */
     public static CharBuffer memSlice(CharBuffer buffer) {
         return MemoryUtil.memSlice(buffer);
@@ -1396,10 +1240,6 @@ public final class MemoryUtilities {
      * chains may fail to inline due to JVM limits, disabling important optimizations (e.g. scalar replacement via
      * Escape Analysis).
      * </p>
-     *
-     * @param buffer the buffer to slice
-     *
-     * @return the sliced buffer
      */
     public static IntBuffer memSlice(IntBuffer buffer) {
         return MemoryUtil.memSlice(buffer);
@@ -1413,10 +1253,6 @@ public final class MemoryUtilities {
      * chains may fail to inline due to JVM limits, disabling important optimizations (e.g. scalar replacement via
      * Escape Analysis).
      * </p>
-     *
-     * @param buffer the buffer to slice
-     *
-     * @return the sliced buffer
      */
     public static LongBuffer memSlice(LongBuffer buffer) {
         return MemoryUtil.memSlice(buffer);
@@ -1430,10 +1266,6 @@ public final class MemoryUtilities {
      * call chains may fail to inline due to JVM limits, disabling important optimizations (e.g. scalar replacement via
      * Escape Analysis).
      * </p>
-     *
-     * @param buffer the buffer to slice
-     *
-     * @return the sliced buffer
      */
     public static FloatBuffer memSlice(FloatBuffer buffer) {
         return MemoryUtil.memSlice(buffer);
@@ -1447,10 +1279,6 @@ public final class MemoryUtilities {
      * call chains may fail to inline due to JVM limits, disabling important optimizations (e.g. scalar replacement via
      * Escape Analysis).
      * </p>
-     *
-     * @param buffer the buffer to slice
-     *
-     * @return the sliced buffer
      */
     public static DoubleBuffer memSlice(DoubleBuffer buffer) {
         return MemoryUtil.memSlice(buffer);
@@ -1465,11 +1293,8 @@ public final class MemoryUtilities {
      * The position and limit of the original buffer are preserved after a call to this method.
      * </p>
      *
-     * @param buffer   the buffer to slice
      * @param offset   the slice offset, it must be &le; {@code buffer.remaining()}
      * @param capacity the slice length, it must be &le; {@code buffer.capacity() - (buffer.position() + offset)}
-     *
-     * @return the sliced buffer
      */
     public static ByteBuffer memSlice(ByteBuffer buffer, int offset, int capacity) {
         checkSliceRange(buffer, offset, capacity);
@@ -1484,11 +1309,8 @@ public final class MemoryUtilities {
      * The position and limit of the original buffer are preserved after a call to this method.
      * </p>
      *
-     * @param buffer   the buffer to slice
      * @param offset   the slice offset, it must be &le; {@code buffer.remaining()}
      * @param capacity the slice length, it must be &le; {@code buffer.capacity() - (buffer.position() + offset)}
-     *
-     * @return the sliced buffer
      */
     public static ShortBuffer memSlice(ShortBuffer buffer, int offset, int capacity) {
         checkSliceRange(buffer, offset, capacity);
@@ -1503,11 +1325,8 @@ public final class MemoryUtilities {
      * The position and limit of the original buffer are preserved after a call to this method.
      * </p>
      *
-     * @param buffer   the buffer to slice
      * @param offset   the slice offset, it must be &le; {@code buffer.remaining()}
      * @param capacity the slice length, it must be &le; {@code buffer.capacity() - (buffer.position() + offset)}
-     *
-     * @return the sliced buffer
      */
     public static CharBuffer memSlice(CharBuffer buffer, int offset, int capacity) {
         checkSliceRange(buffer, offset, capacity);
@@ -1522,11 +1341,8 @@ public final class MemoryUtilities {
      * The position and limit of the original buffer are preserved after a call to this method.
      * </p>
      *
-     * @param buffer   the buffer to slice
      * @param offset   the slice offset, it must be &le; {@code buffer.remaining()}
      * @param capacity the slice length, it must be &le; {@code buffer.capacity() - (buffer.position() + offset)}
-     *
-     * @return the sliced buffer
      */
     public static IntBuffer memSlice(IntBuffer buffer, int offset, int capacity) {
         checkSliceRange(buffer, offset, capacity);
@@ -1541,11 +1357,8 @@ public final class MemoryUtilities {
      * The position and limit of the original buffer are preserved after a call to this method.
      * </p>
      *
-     * @param buffer   the buffer to slice
      * @param offset   the slice offset, it must be &le; {@code buffer.remaining()}
      * @param capacity the slice length, it must be &le; {@code buffer.capacity() - (buffer.position() + offset)}
-     *
-     * @return the sliced buffer
      */
     public static LongBuffer memSlice(LongBuffer buffer, int offset, int capacity) {
         checkSliceRange(buffer, offset, capacity);
@@ -1560,11 +1373,8 @@ public final class MemoryUtilities {
      * The position and limit of the original buffer are preserved after a call to this method.
      * </p>
      *
-     * @param buffer   the buffer to slice
      * @param offset   the slice offset, it must be &le; {@code buffer.remaining()}
      * @param capacity the slice length, it must be &le; {@code buffer.capacity() - (buffer.position() + offset)}
-     *
-     * @return the sliced buffer
      */
     public static FloatBuffer memSlice(FloatBuffer buffer, int offset, int capacity) {
         checkSliceRange(buffer, offset, capacity);
@@ -1579,11 +1389,8 @@ public final class MemoryUtilities {
      * The position and limit of the original buffer are preserved after a call to this method.
      * </p>
      *
-     * @param buffer   the buffer to slice
      * @param offset   the slice offset, it must be &le; {@code buffer.remaining()}
      * @param capacity the slice length, it must be &le; {@code buffer.capacity() - (buffer.position() + offset)}
-     *
-     * @return the sliced buffer
      */
     public static DoubleBuffer memSlice(DoubleBuffer buffer, int offset, int capacity) {
         checkSliceRange(buffer, offset, capacity);
@@ -1599,8 +1406,6 @@ public final class MemoryUtilities {
             throw new IllegalArgumentException();
         }
     }
-
-    // --- [ memset ] ---
 
     /**
      * Sets all bytes in a specified block of memory to a fixed value (usually zero).
@@ -1671,8 +1476,6 @@ public final class MemoryUtilities {
     public static void memSet(DoubleBuffer ptr, int value) {
         memSet(memAddress(ptr), value, apiGetBytes(ptr.remaining(), 3));
     }
-
-    // --- [ memcpy ] ---
 
     /**
      * Sets all bytes in a specified block of memory to a copy of another block.
@@ -1764,11 +1567,6 @@ public final class MemoryUtilities {
         }
         MultiReleaseMemCopy.copy(memAddress(src), memAddress(dst), apiGetBytes(src.remaining(), 3));
     }
-
-    /*
-     * ------------------------------------- ------------------------------------- NATIVE MEMORY ACCESS API
-     * ------------------------------------- -------------------------------------
-     */
 
     /**
      * Sets all bytes in a specified block of memory to a fixed value (usually zero).
@@ -1868,25 +1666,12 @@ public final class MemoryUtilities {
         MemoryUtil.memPutAddress(ptr, value);
     }
 
-    /*
-     * ------------------------------------- ------------------------------------- JNI UTILITIES API
-     * ------------------------------------- -------------------------------------
-     */
-
     /**
      * Returns the object that the specified global reference points to.
      *
-     * @param globalRef the global reference
      * @param <T>       the object type
-     *
-     * @return the object pointed to by {@code globalRef}
      */
     public static native <T> T memGlobalRefToObject(long globalRef);
-
-    /*
-     * ------------------------------------- ------------------------------------- TEXT ENCODING API
-     * ------------------------------------- -------------------------------------
-     */
 
     private static int write8(long target, int offset, int value) {
         MemoryUtil.memPutByte(target + Integer.toUnsignedLong(offset), (byte) value);
@@ -1909,8 +1694,6 @@ public final class MemoryUtilities {
     /**
      * Returns a ByteBuffer containing the specified text ASCII encoded and null-terminated.
      *
-     * @param text the text to encode
-     *
      * @return the encoded text. The returned buffer must be deallocated manually with {@link #memFree}.
      *
      * @throws BufferOverflowException if more than {@link Integer#MAX_VALUE} bytes are required to encode the text.
@@ -1927,7 +1710,6 @@ public final class MemoryUtilities {
     /**
      * Returns a {@link ByteBuffer} containing the specified text ASCII encoded and optionally null-terminated.
      *
-     * @param text           the text to encode
      * @param nullTerminated if true, the text will be terminated with a '\0'.
      *
      * @return the encoded text. The returned buffer must be deallocated manually with {@link #memFree}.
@@ -1956,9 +1738,7 @@ public final class MemoryUtilities {
      * specified {@link ByteBuffer}, at the current buffer position. The current buffer position is not modified by this
      * operation.
      *
-     * @param text           the text to encode
      * @param nullTerminated if true, the text will be terminated with a '\0'
-     * @param target         the buffer where the encoded text should be stored
      *
      * @return the number of bytes of the encoded string
      *
@@ -1977,9 +1757,7 @@ public final class MemoryUtilities {
      * specified {@link ByteBuffer} at the specified {@code position} offset. The current buffer position is not
      * modified by this operation.
      *
-     * @param text           the text to encode
      * @param nullTerminated if true, the text will be terminated with a '\0'.
-     * @param offset         the buffer position to which the string will be encoded
      *
      * @return the number of bytes of the encoded string
      *
@@ -2010,10 +1788,7 @@ public final class MemoryUtilities {
     /**
      * Returns the number of bytes required to encode the specified text in the ASCII encoding.
      *
-     * @param value          the text to encode
      * @param nullTerminated if true, add the number of bytes required for null-termination
-     *
-     * @return the number of bytes
      *
      * @throws BufferOverflowException if more than {@link Integer#MAX_VALUE} bytes are required to encode the text.
      */
@@ -2027,8 +1802,6 @@ public final class MemoryUtilities {
 
     /**
      * Returns a ByteBuffer containing the specified text UTF-8 encoded and null-terminated.
-     *
-     * @param text the text to encode
      *
      * @return the encoded text. The returned buffer must be deallocated manually with {@link #memFree}.
      *
@@ -2046,7 +1819,6 @@ public final class MemoryUtilities {
     /**
      * Returns a ByteBuffer containing the specified text UTF-8 encoded and optionally null-terminated.
      *
-     * @param text           the text to encode
      * @param nullTerminated if true, the text will be terminated with a '\0'.
      *
      * @return the encoded text. The returned buffer must be deallocated manually with {@link #memFree}.
@@ -2075,9 +1847,7 @@ public final class MemoryUtilities {
      * specified {@link ByteBuffer}, at the current buffer position. The current buffer position is not modified by this
      * operation.
      *
-     * @param text           the text to encode
      * @param nullTerminated if true, the text will be terminated with a '\0'.
-     * @param target         the buffer in which to store the encoded text
      *
      * @return the number of bytes of the encoded string
      *
@@ -2095,10 +1865,7 @@ public final class MemoryUtilities {
      * specified {@link ByteBuffer}, at the specified {@code position} offset. The current buffer position is not
      * modified by this operation.
      *
-     * @param text           the text to encode
      * @param nullTerminated if true, the text will be terminated with a '\0'.
-     * @param target         the buffer in which to store the encoded text
-     * @param offset         the buffer position to which the string will be encoded
      *
      * @return the number of bytes of the encoded string
      *
@@ -2192,10 +1959,7 @@ public final class MemoryUtilities {
     /**
      * Returns the number of bytes required to encode the specified text in the UTF-8 encoding.
      *
-     * @param value          the text to encode
      * @param nullTerminated if true, add the number of bytes required for null-termination
-     *
-     * @return the number of bytes
      *
      * @throws BufferOverflowException if more than {@link Integer#MAX_VALUE} bytes are required to encode the text.
      */
@@ -2237,8 +2001,6 @@ public final class MemoryUtilities {
     /**
      * Returns a ByteBuffer containing the specified text UTF-16 encoded and null-terminated.
      *
-     * @param text the text to encode
-     *
      * @return the encoded text. The returned buffer must be deallocated manually with {@link #memFree}.
      *
      * @throws BufferOverflowException if more than {@link Integer#MAX_VALUE} bytes are required to encode the text.
@@ -2255,7 +2017,6 @@ public final class MemoryUtilities {
     /**
      * Returns a ByteBuffer containing the specified text UTF-16 encoded and optionally null-terminated.
      *
-     * @param text           the text to encode
      * @param nullTerminated if true, the text will be terminated with a '\0'.
      *
      * @return the encoded text. The returned buffer must be deallocated manually with {@link #memFree}.
@@ -2284,9 +2045,7 @@ public final class MemoryUtilities {
      * the specified {@link ByteBuffer}, at the current buffer position. The current buffer position is not modified by
      * this operation. The {@code target} buffer is assumed to have enough remaining space to store the encoded text.
      *
-     * @param text           the text to encode
      * @param nullTerminated if true, the text will be terminated with a '\0'.
-     * @param target         the buffer in which to store the encoded text
      *
      * @return the number of bytes of the encoded string
      *
@@ -2306,10 +2065,7 @@ public final class MemoryUtilities {
      * modified by this operation. The {@code target} buffer is assumed to have enough remaining space to store the
      * encoded text.
      *
-     * @param text           the text to encode
      * @param nullTerminated if true, the text will be terminated with a '\0'.
-     * @param target         the buffer in which to store the encoded text
-     * @param offset         the buffer position to which the string will be encoded
      *
      * @return the number of bytes of the encoded string
      *
@@ -2341,10 +2097,7 @@ public final class MemoryUtilities {
     /**
      * Returns the number of bytes required to encode the specified text in the UTF-16 encoding.
      *
-     * @param value          the text to encode
      * @param nullTerminated if true, add the number of bytes required for null-termination
-     *
-     * @return the number of bytes
      */
     public static int memLengthUTF16(CharSequence value, boolean nullTerminated) {
         int len = value.length() + (nullTerminated ? 1 : 0);
@@ -2353,11 +2106,6 @@ public final class MemoryUtilities {
         }
         return len << 1;
     }
-
-    /*
-     * ------------------------------------- ------------------------------------- TEXT DECODING API
-     * ------------------------------------- -------------------------------------
-     */
 
     private static int memLengthNT1(long address, int maxLength) {
         if (CHECKS) {
@@ -2438,10 +2186,6 @@ public final class MemoryUtilities {
      * <p>
      * This method is useful for reading ASCII and UTF8 encoded text.
      * </p>
-     *
-     * @param buffer the buffer containing the null-terminated string
-     *
-     * @return the string length, in bytes
      */
     public static int memLengthNT1(ByteBuffer buffer) {
         return memLengthNT1(memAddress(buffer), buffer.remaining());
@@ -2526,10 +2270,6 @@ public final class MemoryUtilities {
      * <p>
      * This method is useful for reading UTF16 encoded text.
      * </p>
-     *
-     * @param buffer the buffer containing the null-terminated string
-     *
-     * @return the string length, in bytes
      */
     public static int memLengthNT2(ByteBuffer buffer) {
         return memLengthNT2(memAddress(buffer), buffer.remaining());
@@ -2543,10 +2283,6 @@ public final class MemoryUtilities {
      * <p>
      * This method is useful for reading ASCII and UTF8 encoded text.
      * </p>
-     *
-     * @param address the starting memory address
-     *
-     * @return the new ByteBuffer
      */
     public static ByteBuffer memByteBufferNT1(long address) {
         return memByteBuffer(address, memLengthNT1(address, Integer.MAX_VALUE));
@@ -2560,11 +2296,6 @@ public final class MemoryUtilities {
      * <p>
      * This method is useful for reading ASCII and UTF8 encoded text.
      * </p>
-     *
-     * @param address   the starting memory address
-     * @param maxLength the maximum string length, in bytes
-     *
-     * @return the new ByteBuffer
      */
     public static ByteBuffer memByteBufferNT1(long address, int maxLength) {
         return memByteBuffer(address, memLengthNT1(address, maxLength));
@@ -2594,10 +2325,6 @@ public final class MemoryUtilities {
      * <p>
      * This method is useful for reading UTF16 encoded text.
      * </p>
-     *
-     * @param address the starting memory address
-     *
-     * @return the new ByteBuffer
      */
     public static ByteBuffer memByteBufferNT2(long address) {
         return memByteBufferNT2(address, Integer.MAX_VALUE - 1);
@@ -2611,10 +2338,6 @@ public final class MemoryUtilities {
      * <p>
      * This method is useful for reading UTF16 encoded text.
      * </p>
-     *
-     * @param address the starting memory address
-     *
-     * @return the new ByteBuffer
      */
     public static ByteBuffer memByteBufferNT2(long address, int maxLength) {
         if (DEBUG) {
@@ -2643,10 +2366,6 @@ public final class MemoryUtilities {
 
     /**
      * Converts the null-terminated ASCII encoded string at the specified memory address to a {@link String}.
-     *
-     * @param address the string memory address
-     *
-     * @return the decoded {@link String}
      */
     public static String memASCII(long address) {
         return memASCII(address, memLengthNT1(address, Integer.MAX_VALUE));
@@ -2655,10 +2374,7 @@ public final class MemoryUtilities {
     /**
      * Converts the ASCII encoded string at the specified memory address to a {@link String}.
      *
-     * @param address the string memory address
      * @param length  the number of bytes to decode
-     *
-     * @return the decoded {@link String}
      */
     @SuppressWarnings("deprecation")
     public static String memASCII(long address, int length) {
@@ -2678,10 +2394,6 @@ public final class MemoryUtilities {
      * The current {@code position} and {@code limit} of the specified {@code buffer} are not affected by this
      * operation.
      * </p>
-     *
-     * @param buffer the {@link ByteBuffer} to decode
-     *
-     * @return the decoded {@link String}
      */
     public static String memASCII(ByteBuffer buffer) {
         return memASCII(memAddress(buffer), buffer.remaining());
@@ -2710,10 +2422,7 @@ public final class MemoryUtilities {
      * operation.
      * </p>
      *
-     * @param buffer the {@link ByteBuffer} to decode
      * @param length the number of bytes to decode
-     *
-     * @return the decoded {@link String}
      */
     public static String memASCII(ByteBuffer buffer, int length) {
         return memASCII(memAddress(buffer), length);
@@ -2727,11 +2436,8 @@ public final class MemoryUtilities {
      * operation.
      * </p>
      *
-     * @param buffer the {@link ByteBuffer} to decode
      * @param length the number of bytes to decode
      * @param offset the offset at which to start decoding.
-     *
-     * @return the decoded {@link String}
      */
     public static String memASCII(ByteBuffer buffer, int length, int offset) {
         return memASCII(memAddress(buffer, offset), length);
@@ -2739,10 +2445,6 @@ public final class MemoryUtilities {
 
     /**
      * Converts the null-terminated UTF-8 encoded string at the specified memory address to a {@link String}.
-     *
-     * @param address the string memory address
-     *
-     * @return the decoded {@link String}
      */
     public static String memUTF8(long address) {
         return MultiReleaseTextDecoding.decodeUTF8(address, memLengthNT1(address, Integer.MAX_VALUE));
@@ -2751,10 +2453,7 @@ public final class MemoryUtilities {
     /**
      * Converts the UTF-8 encoded string at the specified memory address to a {@link String}.
      *
-     * @param address the string memory address
      * @param length  the number of bytes to decode
-     *
-     * @return the decoded {@link String}
      */
     public static String memUTF8(long address, int length) {
         return MultiReleaseTextDecoding.decodeUTF8(address, length);
@@ -2767,10 +2466,6 @@ public final class MemoryUtilities {
      * The current {@code position} and {@code limit} of the specified {@code buffer} are not affected by this
      * operation.
      * </p>
-     *
-     * @param buffer the {@link ByteBuffer} to decode
-     *
-     * @return the decoded {@link String}
      */
     public static String memUTF8(ByteBuffer buffer) {
         return MultiReleaseTextDecoding.decodeUTF8(memAddress(buffer), buffer.remaining());
@@ -2800,10 +2495,7 @@ public final class MemoryUtilities {
      * operation.
      * </p>
      *
-     * @param buffer the {@link ByteBuffer} to decode
      * @param length the number of bytes to decode
-     *
-     * @return the decoded {@link String}
      */
     public static String memUTF8(ByteBuffer buffer, int length) {
         return MultiReleaseTextDecoding.decodeUTF8(memAddress(buffer), length);
@@ -2817,11 +2509,8 @@ public final class MemoryUtilities {
      * operation.
      * </p>
      *
-     * @param buffer the {@link ByteBuffer} to decode
      * @param length the number of bytes to decode
      * @param offset the offset at which to start decoding.
-     *
-     * @return the decoded {@link String}
      */
     public static String memUTF8(ByteBuffer buffer, int length, int offset) {
         return MultiReleaseTextDecoding.decodeUTF8(memAddress(buffer, offset), length);
@@ -2829,10 +2518,6 @@ public final class MemoryUtilities {
 
     /**
      * Converts the null-terminated UTF-16 encoded string at the specified memory address to a {@link String}.
-     *
-     * @param address the string memory address
-     *
-     * @return the decoded {@link String}
      */
     public static String memUTF16(long address) {
         return memUTF16(address, memLengthNT2(address, Integer.MAX_VALUE - 1) >> 1);
@@ -2841,10 +2526,7 @@ public final class MemoryUtilities {
     /**
      * Converts the UTF-16 encoded string at the specified memory address to a {@link String}.
      *
-     * @param address the string memory address
      * @param length  the number of characters to decode
-     *
-     * @return the decoded {@link String}
      */
     public static String memUTF16(long address, int length) {
         if (length <= 0) {
@@ -2871,10 +2553,6 @@ public final class MemoryUtilities {
      * The current {@code position} and {@code limit} of the specified {@code buffer} are not affected by this
      * operation.
      * </p>
-     *
-     * @param buffer the {@link ByteBuffer} to decode
-     *
-     * @return the decoded {@link String}
      */
     public static String memUTF16(ByteBuffer buffer) {
         return memUTF16(memAddress(buffer), buffer.remaining() >> 1);
@@ -2903,10 +2581,7 @@ public final class MemoryUtilities {
      * operation.
      * </p>
      *
-     * @param buffer the {@link ByteBuffer} to decode
      * @param length the number of characters to decode
-     *
-     * @return the decoded {@link String}
      */
     public static String memUTF16(ByteBuffer buffer, int length) {
         return memUTF16(memAddress(buffer), length);
@@ -2920,11 +2595,8 @@ public final class MemoryUtilities {
      * operation.
      * </p>
      *
-     * @param buffer the {@link ByteBuffer} to decode
      * @param length the number of characters to decode
      * @param offset the offset at which to start decoding, in bytes.
-     *
-     * @return the decoded {@link String}
      */
     public static String memUTF16(ByteBuffer buffer, int length, int offset) {
         return memUTF16(memAddress(buffer, offset), length);

@@ -123,7 +123,6 @@ public class RenderSystem {
             GLStateManager.LOGGER.info("MobileGlues detected, clip distance support: {}", hasClipCullDistance);
         }
 
-        // Cache maximum image units
         if (supportsImageLoadStore) {
             if (GLStateManager.capabilities.OpenGL42) {
                 maxImageUnits = RENDER_BACKEND.getInteger(GL42.GL_MAX_IMAGE_UNITS);
@@ -136,7 +135,6 @@ public class RenderSystem {
             maxImageUnits = 0;
         }
 
-        // Cache maximum SSBO bindings
         if (supportsSSBO) {
             if (GLStateManager.capabilities.OpenGL43) {
                 maxSSBOBindings = RENDER_BACKEND.getInteger(GL43.GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS);

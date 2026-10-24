@@ -178,7 +178,6 @@ public class RenderTargets {
         }
 
         if (depthFormatChanged || sizeChanged)  {
-            // Reallocate depth buffers
             noTranslucents.resize(newWidth, newHeight, newDepthFormat);
             noHand.resize(newWidth, newHeight, newDepthFormat);
             this.translucentDepthDirty = true;

@@ -386,7 +386,6 @@ public abstract class MixinRenderGlobal implements SimpleWorldRenderer.Provider<
         EntityPlayerSP player = this.mc.player;
         BlockPos.MutableBlockPos entityBlockPos = new BlockPos.MutableBlockPos();
         ActiniumWorldRenderer worldRenderer = ActiniumWorldRenderer.instance();
-        // Apply entity distance scaling
         Entity.setRenderDistanceWeight(MathHelper.clamp((double)this.mc.gameSettings.renderDistanceChunks / 8.0D, 1.0D, 2.5D) * 1);
         boolean irisEntities = Iris.enabled && IrisApiV0Impl.INSTANCE.isShaderPackInUse();
         GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
@@ -410,7 +409,6 @@ public abstract class MixinRenderGlobal implements SimpleWorldRenderer.Provider<
                     continue;
                 }
 
-                // Check if any corners of the bounding box are in a visible subchunk
                 if(!worldRenderer.isEntityVisible(entity)) {
                     continue;
                 }

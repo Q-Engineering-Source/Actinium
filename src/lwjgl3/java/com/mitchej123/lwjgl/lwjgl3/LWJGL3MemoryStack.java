@@ -45,8 +45,6 @@ public class LWJGL3MemoryStack extends MemoryStack {
         return delegate.getSize();
     }
 
-    // ===================== MALLOC OPERATIONS =====================
-
     @Override
     public ByteBuffer malloc(int size) {
         return delegate.malloc(size);
@@ -72,8 +70,6 @@ public class LWJGL3MemoryStack extends MemoryStack {
         return delegate.mallocFloat(count);
     }
 
-    // ===================== CALLOC OPERATIONS =====================
-
     @Override
     public ByteBuffer calloc(int size) {
         return delegate.calloc(size);
@@ -98,8 +94,6 @@ public class LWJGL3MemoryStack extends MemoryStack {
     public FloatBuffer callocFloat(int count) {
         return delegate.callocFloat(count);
     }
-
-    // ===================== POINTER OPERATIONS =====================
 
     @Override
     public long nmalloc(int size) {

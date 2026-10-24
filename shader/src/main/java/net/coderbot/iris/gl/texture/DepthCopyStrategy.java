@@ -9,7 +9,6 @@ public interface DepthCopyStrategy {
 	// FB -> T
 	class Gl20CopyTexture implements DepthCopyStrategy {
 		private Gl20CopyTexture() {
-			// private
 		}
 
 		@Override
@@ -41,7 +40,6 @@ public interface DepthCopyStrategy {
 	// FB -> FB
 	class Gl30BlitFbCombinedDepthStencil implements DepthCopyStrategy {
 		private Gl30BlitFbCombinedDepthStencil() {
-			// private
 		}
 
 		@Override
@@ -62,7 +60,6 @@ public interface DepthCopyStrategy {
 	// Fastest
 	class Gl43CopyImage implements DepthCopyStrategy {
 		private Gl43CopyImage() {
-			// private
 		}
 
 		@Override
