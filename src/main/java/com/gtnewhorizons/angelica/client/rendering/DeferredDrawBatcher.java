@@ -122,6 +122,7 @@ public final class DeferredDrawBatcher {
             return;
         }
 
+        boolean depthTestEnabled = GLStateManager.getDepthTest().isEnabled();
         flushing = true;
         try {
             RANGES.sort(Comparator.comparingLong(DrawRange::stateKey));
@@ -130,6 +131,8 @@ public final class DeferredDrawBatcher {
             RANGES.clear();
             batchPosition = 0;
             flushing = false;
+            // Custom particles may be the only captured range and leave no trailing vanilla draw.
+            applyDepthTest(depthTestEnabled);
         }
     }
 
@@ -410,10 +413,11 @@ public final class DeferredDrawBatcher {
         int dstRgb = GLStateManager.getBlendState().getDstRgb();
         boolean blendEnabled = GLStateManager.getBlendMode().isEnabled();
         boolean depthMask = GLStateManager.getDepthState().isMaskEnabled();
+        boolean depthTestEnabled = GLStateManager.getDepthTest().isEnabled();
         boolean tex0Enabled = GLStateManager.getTextures().getTextureUnitStates(0).isEnabled();
         boolean tex1Enabled = GLStateManager.getTextures().getTextureUnitStates(1).isEnabled();
 
-        return packStateKey(textureId, srcRgb, dstRgb, blendEnabled, depthMask, tex0Enabled, tex1Enabled);
+        return packStateKey(textureId, srcRgb, dstRgb, blendEnabled, depthMask, tex0Enabled, tex1Enabled, depthTestEnabled);
     }
 
     static long packStateKey(
@@ -423,7 +427,8 @@ public final class DeferredDrawBatcher {
             boolean blendEnabled,
             boolean depthMask,
             boolean tex0Enabled,
-            boolean tex1Enabled
+            boolean tex1Enabled,
+            boolean depthTestEnabled
     ) {
         return ((long) (textureId & 0xFFFFF) << 26)
                 | ((long) (srcRgb & 0xFFF) << 14)
@@ -431,7 +436,8 @@ public final class DeferredDrawBatcher {
                 | (blendEnabled ? 2L : 0L)
                 | (depthMask ? 1L : 0L)
                 | (tex0Enabled ? (1L << 46) : 0L)
-                | (tex1Enabled ? (1L << 47) : 0L);
+                | (tex1Enabled ? (1L << 47) : 0L)
+                | (depthTestEnabled ? (1L << 48) : 0L);
     }
 
     static int unpackTextureId(long key) {
@@ -462,6 +468,10 @@ public final class DeferredDrawBatcher {
         return (key & (1L << 47)) != 0;
     }
 
+    static boolean unpackDepthTestEnabled(long key) {
+        return (key & (1L << 48)) != 0;
+    }
+
     static void applyStateKey(long key) {
         int textureId = unpackTextureId(key);
         int srcRgb = unpackSrcRgb(key);
@@ -470,6 +480,7 @@ public final class DeferredDrawBatcher {
         boolean depthMask = unpackDepthMask(key);
         boolean tex0Enabled = unpackTex0Enabled(key);
         boolean tex1Enabled = unpackTex1Enabled(key);
+        boolean depthTestEnabled = unpackDepthTestEnabled(key);
 
         // Route through GLStateManager so texture-unit enable changes post TEXTURE_UNIT_STATE;
         // bypassing the event silently desyncs Iris pipeline input tracking (issue #41).
@@ -483,6 +494,16 @@ public final class DeferredDrawBatcher {
             GLStateManager.disableBlend();
         }
         GLStateManager.glDepthMask(depthMask);
+        // FindMe and other custom particles temporarily disable testing to render through blocks.
+        applyDepthTest(depthTestEnabled);
+    }
+
+    private static void applyDepthTest(boolean enabled) {
+        if (enabled) {
+            GLStateManager.enableDepthTest();
+        } else {
+            GLStateManager.disableDepthTest();
+        }
     }
 
     private record DrawRange(long stateKey, int byteOffset, int byteLength, VertexFormat format, int vertexCount, int drawMode) {
