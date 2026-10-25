@@ -108,6 +108,10 @@ dependencies {
     // Runtime-only because Actinium does not compile against IE classes.
     modRuntimeOnly 'curse.maven:immersive-engineering-231951:2974106'
 
+    // AE2 Unofficial Extended Life 0.56.6 (issue #191: the CUTOUT controller face lost its animated
+    // lights to mipmap sampling at distance). Runtime-only; no compile-time AE2 references.
+    modRuntimeOnly 'curse.maven:ae2-extended-life-570458:5411078'
+    
     // Tinkers' Construct + Mantle + Construct's Armory: repro set for the conarm dynamic-texture crash.
     // conarm requires tconstruct and mantle; runtime-only, Actinium does not compile against them.
     modRuntimeOnly 'curse.maven:tinkers-construct-74072:2902483'

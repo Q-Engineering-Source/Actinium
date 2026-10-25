@@ -9,6 +9,14 @@
 本轮验证环境：Actinium `30c7ffb`、Java 25.0.3、Cleanroom 0.5.12-alpha、Distant Horizons 3.1.2-b、
 Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 
+> 2026-10-17 追加：AE2 Unofficial Extended Life 0.56.6 的已供电 ME 控制器彩色光效随距离变淡、
+> 最终"像没通电"（issue #191）已修复并由用户实机确认——控制器是 `BlockRenderLayer.CUTOUT`，
+> vanilla 只给 `CUTOUT_MIPPED` 开 mip 采样（`EntityRenderer` 在 CUTOUT 层前后
+> `setBlurMipmap(false, false)`），而 Actinium 把两个 cutout 层并进同一个 mipmapped 通道，且
+> 着色器从未消费 `Material` 的 `useMip` 位，于是 1px 细线在 mip LOD 上升后被 alpha test 蚀掉。
+> 修复为 `CUTOUT` 材质 `mipped = false` + 着色器 `textureLod(..., 0.0)`，不增加 draw pass；
+> `./gradlew check` 通过，详见 [docs/compat/ae2.md](compat/ae2.md)。
+
 > 2026-10-19 追加：Forge SplashProgress 绘制内存条时的启动崩溃（issue #216）已修复。客户端 reset 与 splash
 > 线程绑定 VAO 可并发执行；旧实现清空 `VertexAttribState.current`，`onBindVertexArray` 随后在重算 client-side
 > attribute 数量时读取到 null。修复将 VAO map 的生命周期操作串行化，并在 reset 后为当前绑定 VAO 建立空状态数组；
@@ -282,6 +290,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 | Cleanroom Loader | 必需   | Forge/Cleanroom 启动与 MixinBootstrap | 当前目标运行环境         |
 | Forge SplashProgress | 已验证（dev 启动） | GLSM 对 reset / VAO bind 生命周期操作串行化，reset 后保留当前 VAO 的空跟踪状态 | issue #216：Cleanroom 0.6.13-alpha、CleanMix 0.7.2、MixinBooter 11.8、Java 25.0.1；用户确认修复后 dev 可正常启动，详见 [docs/compat/forge-splash-progress.md](compat/forge-splash-progress.md)，commit `7a5b9361` |
 | Immersive Engineering | 部分（Solas V3.7b 场景已验证） | 无 Mixin（Iris `BlockTrans` 默认 blend 状态修正） | 0.12-98：Garden Cloche 玻璃不透明（issue #197）已由用户在 Solas V3.7b 下确认修复；ITT 3.2 与 Photon v1.3b 因各自 1.12.2 shader fallback 仍呈现泛白/发黑，详见 [docs/compat/immersiveengineering.md](compat/immersiveengineering.md) |
+| AE2 Unofficial Extended Life | 已验证 | 无 Mixin（`CUTOUT` 材质改为非 mipped + 地形着色器消费 `useMip` 位） | 0.56.6（CurseForge 570458:5411078，issue #191）：已供电 ME 控制器的彩色光效随距离变淡/消失已修复并经用户实机确认（`Render Pass 合并` 开/关、mipmap 等级 0 与 4 均通过），详见 [docs/compat/ae2.md](compat/ae2.md) |
 | LittleTiles      | 部分（Photon v1.3b 实测通过） | 条件 Mixin（shader quad context + 独立 AO 顶点通道） | 1.5.87 + CreativeCore 1.10.71（issue #193）：放置的微型方块在光影下比相邻原版方块暗；已修复并经用户确认，Solas 与其他 shader pack 待回归，详见 [docs/compat/littletiles.md](compat/littletiles.md) |
 | ArchitectureCraft | 部分（Photon v1.3b 实测通过） | 条件 Mixin（`RenderTargetWorld#setLight` 的 AO / 方向着色拆分） | 1.12-3.108：用户发现放置 shape 有同类偏暗现象；与原版木板、LittleTiles 同场验证，其他 shader pack 待回归，详见 [docs/compat/architecturecraft.md](compat/architecturecraft.md) |
 | ReplayMod        | 已验证（视频渲染） | 高优先级 selection-box outline scope + GLSM PBO offset readback | 1.12.2-2.6.13 在 BSL_v10.1p1 视频导出时的 G-buffer 状态崩溃及 PBO `glReadPixels(..., long)` 缺失重载已修复；Cleanroom 0.6.13-alpha 整合包实测确认，详见 [docs/compat/replaymod.md](compat/replaymod.md) |
