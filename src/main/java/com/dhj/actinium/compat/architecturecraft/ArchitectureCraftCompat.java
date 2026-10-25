@@ -5,20 +5,16 @@ import net.minecraft.block.Block;
 import net.minecraft.util.ResourceLocation;
 
 /**
- * Compatibility for ArchitectureCraft (mod id {@code architecturecraft}; the TridentMC and Spocel
- * releases share it).
+ * Compatibility for ArchitectureCraft (mod id {@code architecturecraft}); fixes #101.
  *
- * <p>ArchitectureCraft never relies on baked models for its world rendering. Its blockstates only
- * publish a {@code normal} variant (the runtime definition comes from its generated resource pack),
- * so every {@code facing=*} state resolves to Forge's {@code FancyMissingModel} in the bake
- * registry, and the real geometry is emitted by a {@code BlockRendererDispatcher} replacement that
- * {@code CustomBlockDispatcher.inject()} installs into {@code Minecraft.blockRenderDispatcher}
- * during postInit. The vanilla chunk rebuild calls that entry point and the blocks stay visible;
- * Actinium's fast chunk path reads {@code BlockModelShapes.getModelForState} directly, hits the
- * missing model and skips the block (#101). The dispatcher replacement must therefore not be
- * bypassed: the compat forces ArchitectureCraft blocks down the vanilla dispatcher fallback,
- * whose {@code RenderTargetWorld} target writes into a {@code BufferBuilder} without touching GL,
- * which keeps it safe on mesh worker threads.</p>
+ * <p>ArchitectureCraft's blockstates only publish a {@code normal} variant, so every
+ * {@code facing=*} state resolves to Forge's {@code FancyMissingModel} and the real geometry is
+ * emitted by the {@code BlockRendererDispatcher} replacement its {@code CustomBlockDispatcher
+ * .inject()} installs. The vanilla chunk rebuild calls that entry point and the blocks stay
+ * visible; Actinium's fast chunk path reads {@code BlockModelShapes.getModelForState} directly,
+ * hits the missing model and skips the block. ArchitectureCraft blocks are therefore forced down
+ * the vanilla dispatcher fallback, whose {@code RenderTargetWorld} target writes into a
+ * {@code BufferBuilder} without touching GL, which keeps it safe on mesh worker threads.</p>
  */
 public final class ArchitectureCraftCompat {
     /**

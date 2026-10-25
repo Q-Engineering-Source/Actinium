@@ -98,17 +98,7 @@ public class HardcodedCustomUniforms {
 	private static float getEyeSkyBrightness() {
         final int eyeBrightness = client.getRenderViewEntity().getBrightnessForRender();
         return (eyeBrightness & 0xffff);
-//		if (client.cameraEntity == null || client.level == null) {
-//			return 0;
-//		}
 
-//		Vec3 feet = client.cameraEntity.position();
-//		Vec3 eyes = new Vec3(feet.x, client.cameraEntity.getEyeY(), feet.z);
-//		BlockPos eyeBlockPos = new BlockPos(eyes);
-//
-//		int skyLight = client.level.getBrightness(LightLayer.SKY, eyeBlockPos);
-//
-//		return skyLight * 16;
 	}
 
 	private static float getVelocity(CameraUniforms.CameraPositionTracker tracker) {
@@ -136,9 +126,6 @@ public class HardcodedCustomUniforms {
 
 	private static int getWorldDayTime() {
 		return WorldTimeUniforms.getWorldDayTime();
-//		Level level = Minecraft.getMinecraft().theWorld;
-//		long  timeOfDay = level.getDayTime();
-//		long dayTime = ((DimensionTypeAccessor) level.dimensionType()).getFixedTime().orElse(timeOfDay % 24000L);
 	}
 
 	private static float getTimeBrightness() {

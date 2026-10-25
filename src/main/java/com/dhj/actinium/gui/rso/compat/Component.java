@@ -21,22 +21,18 @@ public class Component implements FormattedText {
         this.delegate = delegate;
     }
 
-    /** Creates a translatable component from a language key. */
     public static Component translatable(String key, Object... args) {
         return new Component(new TextComponentTranslation(key, args));
     }
 
-    /** Creates a literal component. */
     public static Component literal(String text) {
         return new Component(new TextComponentString(text));
     }
 
-    /** Wraps an existing 1.12.2 text component. */
     public static Component from(ITextComponent component) {
         return new Component(component);
     }
 
-    /** Converts an embeddium framework text component into an RSO component. */
     public static Component fromEmbeddium(TextComponent component) {
         if (component instanceof TextComponent.Translatable translatable) {
             return new Component(new TextComponentTranslation(translatable.keys().get(0),
@@ -55,12 +51,10 @@ public class Component implements FormattedText {
         return new Component(new TextComponentString(component.toString()));
     }
 
-    /** Creates an empty literal component. */
     public static Component empty() {
         return new Component(new TextComponentString(""));
     }
 
-    /** Returns a copy of this component. */
     public Component copy() {
         Component copy = new Component(this.delegate.createCopy());
         copy.rgbStyle = this.rgbStyle == null ? null : this.rgbStyle.copy();
@@ -72,7 +66,6 @@ public class Component implements FormattedText {
         return new MutableComponent(this.delegate.createCopy(), this.rgbStyle == null ? null : this.rgbStyle.copy());
     }
 
-    /** Applies a style to this component. */
     public Component withStyle(Style style) {
         if (style == null) {
             return this;
@@ -96,7 +89,6 @@ public class Component implements FormattedText {
         return this;
     }
 
-    /** Applies legacy formatting codes to this component. */
     public Component withStyle(TextFormatting... formats) {
         this.delegate.setStyle(this.delegate.getStyle().createShallowCopy());
         for (TextFormatting format : formats) {
@@ -115,13 +107,11 @@ public class Component implements FormattedText {
         return this;
     }
 
-    /** Appends another component and returns this component (mutable). */
     public MutableComponent append(Component other) {
         this.delegate.appendSibling(other.delegate);
         return new MutableComponent(this.delegate, this.rgbStyle == null ? null : this.rgbStyle.copy());
     }
 
-    /** Appends a literal string and returns this component (mutable). */
     public MutableComponent append(String text) {
         return this.append(literal(text));
     }

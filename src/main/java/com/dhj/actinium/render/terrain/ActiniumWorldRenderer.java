@@ -1,5 +1,6 @@
 package com.dhj.actinium.render.terrain;
 
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import net.coderbot.iris.celeritas.WorldRendererCompat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.WorldClient;
@@ -113,7 +114,7 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
         super.drawChunkLayer(renderLayer, x, y, z);
         RenderDebugHooksHolder.check("actinium:draw-chunk-layer:" + renderLayer + ":after-super");
 
-        com.gtnewhorizons.angelica.glsm.GLStateManager.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+        GLStateManager.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
         RenderDebugHooksHolder.check("actinium:draw-chunk-layer:" + renderLayer + ":after-reset-color");
     }
 
@@ -136,7 +137,7 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
             }
         }
 
-        com.gtnewhorizons.angelica.glsm.GLStateManager.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+        GLStateManager.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
     }
 
     public void setCurrentViewport(Viewport viewport) {
@@ -148,14 +149,14 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
         return super.getLastViewport();
     }
 
-    /**
-     * Captures the iChun recursive terrain matrices while leaving ordinary and shadow rendering unchanged.
-     */
-
     @Override
     public void markSectionGraphDirty() {
         getRenderSectionManager().markGraphDirty();
     }
+
+    /**
+     * Captures the iChun recursive terrain matrices while leaving ordinary and shadow rendering unchanged.
+     */
     public void setPortalCamera(boolean portalCamera) {
         this.portalCamera = portalCamera;
         this.portalMatrices = portalCamera ? PortalChunkRenderMatrices.capture() : null;
@@ -272,8 +273,7 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
             try {
                 return super.renderBlockEntities(tileEntityRenderContext);
             } finally {
-                // TESRs leak GL state during the render loop; flush the FastTESR batch with
-                // the clean entry state (see TileEntityGlStateGuard.restoreForBatch).
+                // Flush the FastTESR batch with the clean entry state (see TileEntityGlStateGuard.restoreForBatch).
                 TileEntityGlStateGuard.restoreForBatch();
                 TileEntityRendererDispatcher.instance.drawBatch(pass);
             }

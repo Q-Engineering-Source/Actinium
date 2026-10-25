@@ -50,17 +50,14 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
     }
 
     public void setWorld(WORLD world) {
-        // Check that the world is actually changing
         if (this.world == world) {
             return;
         }
 
-        // If we have a world is already loaded, unload the renderer
         if (this.world != null) {
             this.unloadWorld();
         }
 
-        // If we're loading a new world, load the renderer
         if (world != null) {
             this.loadWorld(world);
         }
@@ -303,6 +300,11 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
 
     protected abstract void renderBlockEntityList(List<BLOCKENTITY> list, BLOCKENTITY_RENDER_CONTEXT context);
 
+    /** Lets implementations retain the global-renderer classification produced during section builds. */
+    protected void renderGlobalBlockEntityList(List<BLOCKENTITY> list, BLOCKENTITY_RENDER_CONTEXT context) {
+        this.renderBlockEntityList(list, context);
+    }
+
     private int renderCulledBlockEntities(BLOCKENTITY_RENDER_CONTEXT renderContext) {
         int count = 0;
         SortedRenderLists renderLists = this.renderSectionManager.getRenderLists();
@@ -364,7 +366,7 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
 
             count += blockEntities.size();
 
-            this.renderBlockEntityList(blockEntities, renderContext);
+            this.renderGlobalBlockEntityList(blockEntities, renderContext);
         }
 
         return count;

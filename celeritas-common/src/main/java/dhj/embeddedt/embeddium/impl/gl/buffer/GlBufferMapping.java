@@ -1,8 +1,9 @@
 package dhj.embeddedt.embeddium.impl.gl.buffer;
 
-import static com.mitchej123.lwjgl.LWJGLServiceProvider.LWJGL;
+import com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities;
 
 import java.nio.ByteBuffer;
+import java.util.Objects;
 
 public class GlBufferMapping {
     private final GlBuffer buffer;
@@ -16,7 +17,15 @@ public class GlBufferMapping {
     }
 
     public void write(ByteBuffer data, int writeOffset) {
-        LWJGL.memCopy(LWJGL.memAddress(data), LWJGL.memAddress(this.map, writeOffset), data.remaining());
+        this.write(data, 0, writeOffset, data.remaining());
+    }
+
+    /** Copies a subrange relative to the source position without allocating a slice or moving it. */
+    public void write(ByteBuffer data, int sourceOffset, int writeOffset, int length) {
+        Objects.checkFromIndexSize(sourceOffset, length, data.remaining());
+        Objects.checkFromIndexSize(writeOffset, length, this.map.limit());
+        MemoryUtilities.memCopy(MemoryUtilities.memAddress(data) + sourceOffset,
+                MemoryUtilities.memAddress(this.map, writeOffset), length);
     }
 
     public GlBuffer getBufferObject() {
@@ -35,4 +44,3 @@ public class GlBufferMapping {
         return this.map;
     }
 }
-

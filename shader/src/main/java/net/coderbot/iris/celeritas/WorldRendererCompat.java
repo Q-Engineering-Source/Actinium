@@ -42,7 +42,6 @@ public interface WorldRendererCompat {
      * terrain search it runs first needs the player camera's viewport, which the main pass prepared before the shadow
      * pass began.
      *
-     * @param playerViewport the player camera's viewport for this frame
      * @param shadowViewport the shadow frustum, centred on the player camera
      */
     void setupShadowTerrain(Viewport playerViewport, Viewport shadowViewport, SimpleWorldRenderer.CameraState cameraState, int frame, boolean spectator);

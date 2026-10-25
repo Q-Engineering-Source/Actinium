@@ -185,10 +185,8 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         if (sprite != null && sprite.getClass() == TextureAtlasSprite.class && !sprite.hasAnimationMetadata() && this.useRenderPassOptimization) {
             var transparencyLevel = ((SpriteTransparencyLevel.Holder)sprite).embeddium$getTransparencyLevel();
             if (transparencyLevel == SpriteTransparencyLevel.OPAQUE) {
-                // Downgrade to solid
                 return this.renderPassConfiguration.defaultSolidMaterial();
             } else if (material == this.renderPassConfiguration.defaultTranslucentMaterial() && transparencyLevel != SpriteTransparencyLevel.TRANSLUCENT) {
-                // Downgrade to cutout
                 return this.renderPassConfiguration.defaultCutoutMippedMaterial();
             }
         }

@@ -29,7 +29,6 @@ public final class VoxelSlice {
         int[] heights = world.columnHeights(chunkX, chunkZ);
         int maxHeight = heights[AREA];
 
-        // Skip sections that are entirely air above both terrain and sea level.
         if (baseY >= maxHeight && baseY >= VoxelWorld.SEA_LEVEL) {
             this.blocks = null;
             this.empty = true;

@@ -20,8 +20,6 @@ public final class Material {
     public final boolean mipped;
 
     /**
-     * Constructs a new Material.
-     * @param pass the {@link TerrainRenderPass} to use for the base configuration
      * @param alphaCutoff the alpha level below which fragments should be discarded
      * @param mipped whether mipmapping should be enabled on geometry rendered with this material
      */

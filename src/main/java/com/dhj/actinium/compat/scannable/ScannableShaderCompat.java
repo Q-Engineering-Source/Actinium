@@ -7,30 +7,18 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * Adapter that lets Actinium stand in as the "shader mod" side of Scannable's OptiFine
- * integration ({@code li.cil.scannable.integration.optifine.ProxyOptiFine}).
+ * integration ({@code li.cil.scannable.integration.optifine.ProxyOptiFine}); fixes issue #94.
  *
- * <p>Motivation (issue #94): Scannable's default scan-wave path ({@code injectDepthTexture=true},
- * mode {@code INJECT}) swaps the main framebuffer's {@code GL_DEPTH_ATTACHMENT} over to a private
- * depth texture and later restores it with {@code glFramebufferRenderbuffer(..., depthBuffer)}.
- * {@code FramebufferIrisMixin} replaces the vanilla depth renderbuffer with a shared depth
- * texture ({@code Framebuffer.depthBuffer} stays 0), so Scannable's restore detaches the depth
- * attachment entirely: terrain rendering afterwards has no depth buffer and loses
- * self-occlusion, which reads as see-through ground. With a shader pack active the same code
- * also runs while an Iris render target is bound, churning the gbuffer depth attachment and
- * drawing the additive scan quad into the pipeline's targets (white screen with ghosting).</p>
- *
- * <p>Scannable ships a dedicated path for external shader mods (mode {@code OPTIFINE}): it copies
- * the shader mod's depth texture into a private FBO right after world rendering and draws the
- * scan wave during the overlay phase. That path never touches the main framebuffer's attachments,
- * which is exactly what Actinium needs. {@code ProxyOptiFine} resolves OptiFine reflectively and
- * reports "no shader mod" when it is absent, so the Scannable mixin reroutes its two queries
- * ({@code isShaderPackLoaded} / {@code getDepthTexture}) here; Actinium's shared main-framebuffer
- * depth texture is the exact object Iris renders gbuffer depth into
- * ({@code DeferredWorldRenderingPipeline} constructs {@code RenderTargets} from it), so it carries
- * the world depth both with and without a shader pack.</p>
- *
- * <p>Assumption: Actinium's Cleanroom environment does not coexist with OptiFine, so when
- * {@code ProxyOptiFine} reports an OptiFine-managed depth texture we defer to it unchanged.</p>
+ * <p>Scannable's default scan-wave path swaps the main framebuffer's {@code GL_DEPTH_ATTACHMENT}
+ * to a private depth texture and restores it with {@code glFramebufferRenderbuffer(...,
+ * depthBuffer)}. {@code FramebufferIrisMixin} replaces the vanilla depth renderbuffer with a
+ * shared depth texture ({@code Framebuffer.depthBuffer} stays 0), so that restore detaches the
+ * depth attachment entirely: terrain loses self-occlusion (see-through ground), and with a pack
+ * active the same code churns the gbuffer depth attachment and draws the scan quad into the
+ * pipeline's targets. Scannable's external-shader-mod path (mode {@code OPTIFINE}) never touches
+ * the main framebuffer's attachments, so the Scannable mixin reroutes its two queries
+ * ({@code isShaderPackLoaded} / {@code getDepthTexture}) here. {@code ProxyOptiFine} resolves
+ * OptiFine reflectively and defers to it when present; Cleanroom never coexists with OptiFine.</p>
  */
 public final class ScannableShaderCompat {
 

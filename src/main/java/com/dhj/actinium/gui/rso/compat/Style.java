@@ -19,7 +19,6 @@ public final class Style {
     private Style() {
     }
 
-    /** Applies a legacy formatting color. */
     public Style withColor(TextFormatting color) {
         Style style = this.copy();
         style.formattingColor = color;
@@ -27,7 +26,6 @@ public final class Style {
         return style;
     }
 
-    /** Applies an arbitrary ARGB color. */
     public Style withColor(int argb) {
         Style style = this.copy();
         style.formattingColor = null;
@@ -35,21 +33,18 @@ public final class Style {
         return style;
     }
 
-    /** Applies italic formatting. */
     public Style withItalic(boolean italic) {
         Style style = this.copy();
         style.italic = italic;
         return style;
     }
 
-    /** Applies strikethrough formatting. */
     public Style withStrikethrough(boolean strikethrough) {
         Style style = this.copy();
         style.strikethrough = strikethrough;
         return style;
     }
 
-    /** Applies underline formatting. */
     public Style withUnderlined(boolean underlined) {
         Style style = this.copy();
         style.underlined = underlined;
@@ -66,22 +61,18 @@ public final class Style {
         return this.formattingColor;
     }
 
-    /** Returns whether italic formatting is set. */
     public boolean isItalic() {
         return Boolean.TRUE.equals(this.italic);
     }
 
-    /** Returns whether strikethrough formatting is set. */
     public boolean isStrikethrough() {
         return Boolean.TRUE.equals(this.strikethrough);
     }
 
-    /** Returns whether underline formatting is set. */
     public boolean isUnderlined() {
         return Boolean.TRUE.equals(this.underlined);
     }
 
-    /** Returns a copy of this style. */
     public Style copy() {
         Style style = new Style();
         style.formattingColor = this.formattingColor;

@@ -42,17 +42,12 @@ public class SliderElementWidget extends StringElementWidget {
 	private void renderSlider(int x, int y, int width, int height, int mouseX, int mouseY, float tickDelta) {
 		GuiUtil.bindIrisWidgetsTexture();
 
-		// Draw background button
 		GuiUtil.drawButton(x, y, width, height, false, false);
-		// Draw slider area
 		GuiUtil.drawButton(x + 2, y + 2, width - 4, height - 4, false, true);
 
-		// Position of slider
 		final int sliderPos = SliderGeometry.sliderXForIndex(x, width, valueIndex, valueCount);
-		// Draw slider
 		GuiUtil.drawButton(sliderPos, y + 4, SliderGeometry.ACTIVE_SLIDER_WIDTH, height - 8, this.mouseDown, false);
 
-		// Draw value label
 		final FontRenderer font = Minecraft.getMinecraft().fontRenderer;
 		font.drawStringWithShadow(this.valueLabel, (int)(x + (width * 0.5)) - (int)(font.getStringWidth(this.valueLabel) * 0.5), y + 7, 0xFFFFFF);
 	}

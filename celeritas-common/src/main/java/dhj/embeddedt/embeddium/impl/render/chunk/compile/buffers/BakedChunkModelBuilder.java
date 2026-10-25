@@ -35,12 +35,20 @@ public class BakedChunkModelBuilder implements ChunkModelBuilder {
         return splitBySide ? this.vertexBuffers[facing.ordinal()] : this.vertexBuffers[ModelQuadFacing.UNASSIGNED.ordinal()];
     }
 
+    public void finishTask(final boolean used) {
+        for (final ChunkMeshBufferBuilder builder : this.vertexBuffers) {
+            builder.finishTask(used);
+        }
+        this.renderData = null;
+    }
+
     @Override
     public BuiltRenderSectionData getSectionContextBundle() {
         return this.renderData;
     }
 
     public void destroy() {
+        this.renderData = null;
         for (ChunkMeshBufferBuilder builder : this.vertexBuffers) {
             if(builder != null) {
                 builder.destroy();

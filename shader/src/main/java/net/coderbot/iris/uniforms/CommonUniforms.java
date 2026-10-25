@@ -225,12 +225,6 @@ public final class CommonUniforms {
 	private static float getPlayerMood() {
         // TODO: What should this be?
         return 0.0F;
-//		if (!(client.cameraEntity instanceof LocalPlayer)) {
-//			return 0.0F;
-//		}
-//
-//		// This should always be 0 to 1 anyways but just making sure
-//		return Math.clamp(0.0F, 1.0F, ((LocalPlayer) client.cameraEntity).getCurrentMood());
 	}
 
 	static float getRainStrength() {
@@ -252,14 +246,6 @@ public final class CommonUniforms {
         final int eyeBrightness = cameraEntity.getBrightnessForRender();
         return new Vector2i((eyeBrightness & 0xffff), (eyeBrightness >> 16));
 
-//		Vec3 feet = client.cameraEntity.position();
-//		Vec3 eyes = new Vec3(feet.x, client.cameraEntity.getEyeY(), feet.z);
-//		BlockPos eyeBlockPos = new BlockPos(eyes);
-//
-//		int blockLight = client.level.getBrightness(LightLayer.BLOCK, eyeBlockPos);
-//		int skyLight = client.level.getBrightness(LightLayer.SKY, eyeBlockPos);
-//
-//		return new Vector2i(blockLight * 16, skyLight * 16);
 	}
 
 	private static float getNightVision() {

@@ -249,9 +249,7 @@ public final class SyntheticWorld {
         return region;
     }
 
-    // ------------------------------------------------------------------
     // Visibility generation
-    // ------------------------------------------------------------------
 
     /**
      * {@return the visibility encoding of every section in the box, indexed by {@link #gridIndex}}
@@ -353,9 +351,7 @@ public final class SyntheticWorld {
         return (h >>> 11) * 0x1.0p-53 < this.unloadedProbability;
     }
 
-    // ------------------------------------------------------------------
     // Accessors
-    // ------------------------------------------------------------------
 
     public RenderSection getSection(int x, int y, int z) {
         return this.sections.get(PositionUtil.packSection(x, y, z));

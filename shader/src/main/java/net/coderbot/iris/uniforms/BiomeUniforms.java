@@ -53,7 +53,6 @@ public class BiomeUniforms {
         final int playerX = MathHelper.floor(client.player.posX);
         final int playerZ = MathHelper.floor(client.player.posZ);
 
-        // Invalidate cache if time or position changed
         if (cachedBiome == null || cachedWorldTime != worldTime || cachedPlayerX != playerX || cachedPlayerZ != playerZ) {
             cachedBiome = client.world.getBiome(new BlockPos(playerX, 0, playerZ));
             cachedWorldTime = worldTime;
@@ -117,14 +116,12 @@ public class BiomeUniforms {
             return BiomeCategories.NONE.ordinal();
         }
 
-        // Check cache first
         if (biome instanceof BiomeCategoryCache cache) {
             final int cached = cache.iris$getCachedCategory();
             if (cached != -1) {
                 return cached;
             }
 
-            // Not cached yet, determine and cache it
             final int category = determineBiomeCategory(biome);
             cache.iris$setCachedCategory(category);
             final BiomeCategories[] categories = BiomeCategories.values();
@@ -306,7 +303,6 @@ public class BiomeUniforms {
 
         final String name = biomeName.toLowerCase(Locale.ROOT);
 
-        // Check for keywords in biome names
         // Priority order matters - check more specific terms first
 
         if (name.contains("nether")) return BiomeCategories.NETHER;

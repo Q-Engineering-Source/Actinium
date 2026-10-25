@@ -24,20 +24,17 @@ public final class CommandBufferExecutor {
 
     // Static reusable buffer for matrix ops (render thread only, LWJGL2/3 compatible)
     private static final FloatBuffer MATRIX_BUFFER = BufferUtils.createFloatBuffer(16);
-    // Static reusable buffer for fog/light/material params
     private static final FloatBuffer PARAMS_BUFFER = BufferUtils.createFloatBuffer(4);
-    // Static reusable buffer for clip plane equation
     private static final DoubleBuffer PARAMS_DOUBLE_BUFFER = BufferUtils.createDoubleBuffer(4);
-    // Static reusable buffer for draw buffers
     private static final int MAX_DRAW_BUFFERS = 8;
     private static final IntBuffer DRAW_BUFFERS_BUFFER = BufferUtils.createIntBuffer(MAX_DRAW_BUFFERS);
 
     /**
      * Execute all commands in the buffer.
      *
-     * @param buffer The command buffer (position should be at 0, limit at size)
-     * @param complexObjects Array of complex objects (TexImage2DCmd, etc.)
-     * @param ownedVbos Array of VBOs owned by the display list (indexed by DrawRange commands)
+     * @param buffer position should be at 0, limit at size
+     * @param complexObjects e.g. {@code TexImage2DCmd}
+     * @param ownedVbos indexed by {@code DrawRange} commands
      */
     public static void execute(ByteBuffer buffer, Object[] complexObjects, DisplayListVBO ownedVbos) {
         long ptr = memAddress(buffer);
@@ -48,7 +45,6 @@ public final class CommandBufferExecutor {
             ptr += 4;
 
             switch (cmd) {
-                // === Single int commands ===
                 case GLCommand.ENABLE -> {
                     GLStateManager.glEnable(memGetInt(ptr));
                     ptr += 4;
@@ -123,7 +119,6 @@ public final class CommandBufferExecutor {
                     ptr += 4;
                 }
 
-                // === Two int commands ===
                 case GLCommand.BIND_TEXTURE -> {
                     final int target = memGetInt(ptr);
                     final int texture = memGetInt(ptr + 4);
@@ -167,7 +162,6 @@ public final class CommandBufferExecutor {
                     GLStateManager.glHint(target, mode);
                 }
 
-                // === Three int commands ===
                 case GLCommand.STENCIL_FUNC -> {
                     final int func = memGetInt(ptr);
                     final int ref = memGetInt(ptr + 4);
@@ -190,7 +184,6 @@ public final class CommandBufferExecutor {
                     GLStateManager.glTexParameteri(target, pname, param);
                 }
 
-                // === Four int commands ===
                 case GLCommand.VIEWPORT -> {
                     final int x = memGetInt(ptr);
                     final int y = memGetInt(ptr + 4);
@@ -244,7 +237,6 @@ public final class CommandBufferExecutor {
                     GLStateManager.glStencilOpSeparate(face, sfail, dpfail, dppass);
                 }
 
-                // === Float commands ===
                 case GLCommand.POINT_SIZE -> {
                     GLStateManager.glPointSize(memGetFloat(ptr));
                     ptr += 4;
@@ -296,7 +288,6 @@ public final class CommandBufferExecutor {
                     GLStateManager.glBlendColor(r, g, b, a);
                 }
 
-                // === Mixed int+float commands ===
                 case GLCommand.ALPHA_FUNC -> {
                     final int func = memGetInt(ptr);
                     final float ref = memGetFloat(ptr + 4);
@@ -350,7 +341,6 @@ public final class CommandBufferExecutor {
                     GLStateManager.glTexParameterf(target, pname, param);
                 }
 
-                // === Double commands ===
                 case GLCommand.TRANSLATE -> {
                     final double x = memGetDouble(ptr);
                     final double y = memGetDouble(ptr + 8);
@@ -394,7 +384,6 @@ public final class CommandBufferExecutor {
                     GLStateManager.glFrustum(left, right, bottom, top, zNear, zFar);
                 }
 
-                // === Matrix commands ===
                 case GLCommand.MULT_MATRIX -> {
                     // Mode-agnostic: just multiply current matrix
                     MATRIX_BUFFER.clear();
@@ -415,7 +404,6 @@ public final class CommandBufferExecutor {
                     GLStateManager.glLoadMatrix(MATRIX_BUFFER);
                 }
 
-                // === Buffer commands ===
                 case GLCommand.FOG -> {
                     final int pname = memGetInt(ptr);
                     final int count = memGetInt(ptr + 4);
@@ -480,7 +468,6 @@ public final class CommandBufferExecutor {
                     GLStateManager.glClipPlane(plane, PARAMS_DOUBLE_BUFFER);
                 }
 
-                // === Draw commands ===
                 case GLCommand.DRAW_RANGE -> {
                     final int vboIndex = memGetInt(ptr);
                     ptr += 4;
@@ -491,10 +478,8 @@ public final class CommandBufferExecutor {
                     final int vboIndex = memGetInt(ptr);
                     final int flags = memGetInt(ptr + 4);
 
-                    // Draw the VBO
                     ownedVbos.render(vboIndex);
 
-                    // Restore attributes based on flags
                     if ((flags & VertexFlags.COLOR_BIT) != 0) {
                         final int color = memGetInt(ptr + 8);
                         final byte a = (byte) ((color >> 24) & 0xFF);
@@ -550,7 +535,6 @@ public final class CommandBufferExecutor {
                     ptr += 4;
                 }
 
-                // === Complex object reference ===
                 case GLCommand.COMPLEX_REF -> {
                     final int index = memGetInt(ptr);
                     ptr += 4;

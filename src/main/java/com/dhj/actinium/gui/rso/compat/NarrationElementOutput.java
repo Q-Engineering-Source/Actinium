@@ -7,7 +7,6 @@ package com.dhj.actinium.gui.rso.compat;
  */
 public final class NarrationElementOutput {
 
-    /** Discards the supplied narration entry. */
     public void add(NarratedElementType type, Component... contents) {
         // No screen reader on 1.12.2; narration is intentionally dropped.
     }

@@ -66,7 +66,7 @@ public class ColorSRGB {
     private static final float MAX_BOUND = Float.intBitsToFloat(MAX_BITS);
 
     /**
-     * Converts a linear sRGB component into a non-linear RGB component.
+     * Converts a non-linear sRGB component into a linear RGB component.
      * @param c The non-linear sRGB component (0 to 255)
      * @return The linear RGB component (0.0 to 1.0)
      */
@@ -76,10 +76,10 @@ public class ColorSRGB {
 
     /**
      * Converts the linear RGB components into non-linear sRGB space, and then packs them alongside a non-linear alpha.
-     * @param r The red-component in non-linear sRGB space (0.0 to 1.0)
-     * @param g The green-component in non-linear sRGB space (0.0 to 1.0)
-     * @param b The blue-component in non-linear sRGB space (0.0 to 1.0)
-     * @param a The alpha-component in linear RGB space (0 to 255)
+     * @param r The red-component in linear RGB space (0.0 to 1.0)
+     * @param g The green-component in linear RGB space (0.0 to 1.0)
+     * @param b The blue-component in linear RGB space (0.0 to 1.0)
+     * @param a The alpha-component in non-linear sRGB space (0 to 255)
      */
     public static int linearToSrgb(float r, float g, float b, int a) {
         return ColorARGB.pack(linearToSrgb(r), linearToSrgb(g), linearToSrgb(b), a);

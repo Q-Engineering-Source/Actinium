@@ -123,10 +123,8 @@ public final class ChunkBuildBuffers {
 
         if (pass.isSorted()) {
             int numPrimitives = vertexCount / primitiveType.getVerticesPerPrimitive();
-            // Generate the canonical index buffer
             mergedIndexBuffer = new NativeBuffer(primitiveType.getIndexBufferSize(numPrimitives));
 
-            // Do the initial sort now
             primitiveType.generateSortedIndexBuffer(mergedIndexBuffer.getDirectBuffer(), numPrimitives, sortState, camX, camY, camZ);
         } else {
             mergedIndexBuffer = null;
@@ -142,6 +140,10 @@ public final class ChunkBuildBuffers {
      * positions of the retained buffers are reset by {@link #init} when the next task begins.
      */
     public void resetForTask() {
+        final boolean used = this.renderData != null;
+        for (var builder : this.builders.values()) {
+            builder.finishTask(used);
+        }
         this.sectionIndex = 0;
         this.renderData = null;
     }

@@ -27,7 +27,6 @@ public interface ChunkPrimitiveType {
      *
      * The caller is responsible for providing a buffer of size given by {@link ChunkPrimitiveType#getIndexBufferSize(int)}.
      * @param indexBuffer a NativeBuffer that should be populated with 32-bit integers
-     * @param numPrimitives the number of primitives to generate the buffer for
      */
     void generateSimpleIndexBuffer(ByteBuffer indexBuffer, int numPrimitives);
 
@@ -39,11 +38,6 @@ public interface ChunkPrimitiveType {
      * The provided camera position will be subchunk-relative, and thus makes sense to compare directly with the vertex
      * positions provided in the SortState.
      * @param indexBuffer a NativeBuffer that should be populated with 32-bit integers
-     * @param numPrimitives the number of primitives to generate the buffer for
-     * @param chunkData the sorting data for the given primitives
-     * @param x x position of the camera
-     * @param y y position of the camera
-     * @param z z position of the camera
      */
     void generateSortedIndexBuffer(ByteBuffer indexBuffer, int numPrimitives, @Nullable SortState chunkData, float x, float y, float z);
 

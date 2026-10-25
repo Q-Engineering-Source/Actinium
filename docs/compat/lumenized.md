@@ -1,7 +1,7 @@
 # Lumenized / GTCEu Bloom 兼容性说明
 
 兼容状态：**兼容**（Lumenized 动态光源 + Bloom 泛光、GTCEu Bloom 泛光均通过同一兼容层工作）
-最后更新：2026-09-08
+最后更新：2026-10-08
 
 ## 模组信息
 
@@ -37,6 +37,22 @@
   `compat/lumenized/BloomStateGuard` 对 GLSM 跟踪状态做快照/恢复（framebuffer 绑定、
   活动纹理单元、**全部**纹理单元的绑定与 TEXTURE_2D 使能、混合/深度/剔除状态、program 0）。
   首次恢复时会把实际发生漂移的字段记录到日志（单次 INFO），用于定位泄漏源。
+
+## 空 ticket 组跳过（`MixinBloomEmptyGroupPostProcess`）
+
+主兼容层内的性能优化 mixin（`BloomEffectUtilInvoker` + `MixinBloomEmptyGroupPostProcess`，
+与兼容层同配置、同类探测门控）。`MixinBloomEmptyGroupPostProcess` 用 `compat/lumenized/BloomSubmissionState`
+跟踪每个 ticket 组：组内没有任何 ticket 进入 `IBloomEffect.renderBloomEffect` 时，跳过该组
+后续的逐组全屏后处理（renderLOG/renderUnity/renderUnreal 第二组与第 4/5 次
+`renderFullImageInFBO` 合成）。判据保守（effect 被调用即视为有内容），不会误跳过真实泛光。
+
+- 结构容错与 `MixinBloomEffectUtilClear` 相同：pass 内重定向同时声明 `renderBloomBlockLayer`
+  与 `renderBloomInternal` 且 `require=0`，覆盖 Lumenized 内联结构与 GTCEu 拆分结构，注入失配
+  只是失去优化、不影响画面；`draw` 内的标记重定向保持 `require=1` fail-fast——两侧 `draw`
+  结构同源一致，失配说明目标类已变化，必须显式失败而非静默吞掉泛光（跟踪已应用而标记未应用
+  会把所有组读成空组）。
+- 视觉等价性依赖"空组写入全零"（composite 为 `src*dstAlpha`、blend 为叠加），已通过自动化
+  检查（`BloomSubmissionStateTest` 覆盖嵌套组），**实机画面对比待验证**。
 
 ## 已修复问题
 

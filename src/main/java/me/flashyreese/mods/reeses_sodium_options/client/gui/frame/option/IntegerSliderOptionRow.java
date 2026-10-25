@@ -26,10 +26,18 @@ final class IntegerSliderOptionRow extends AbstractOptionRow {
     private static final int TRACK_HEIGHT = 10;
     private static final int THUMB_WIDTH = 4;
     private static final int VALUE_GAP = 6;
+    private static final int PRECISION_RANGE_RADIUS = 2;
 
     private final RsoOption option;
     private double thumbPosition;
+    private double lastDragMouseX;
+    private double dragAnchorMouseX;
+    private int dragAnchorValue;
+    private int precisionMin;
+    private int precisionMax;
     private boolean sliderHeld;
+    private boolean dragRelativeMode;
+    private boolean precisionAdjusting;
     private boolean editMode;
     private boolean drawSlider;
     private int contentWidth;
@@ -48,6 +56,10 @@ final class IntegerSliderOptionRow extends AbstractOptionRow {
 
     @Override
     protected void prepareRender(int mouseX, int mouseY, float delta) {
+        if (this.sliderHeld) {
+            this.updatePrecisionMode(GuiScreen.isShiftKeyDown(), this.lastDragMouseX);
+        }
+
         boolean canDrawSlider = this.option.isEnabled() && !this.option.shouldHideControl();
         this.drawSlider = canDrawSlider && (this.isMouseOverRow(mouseX, mouseY) || this.isRowFocused() || this.sliderHeld);
         int valueWidth = this.valueWidth();
@@ -107,7 +119,7 @@ final class IntegerSliderOptionRow extends AbstractOptionRow {
 
     @Override
     protected boolean controlMouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        this.sliderHeld = false;
+        this.stopSliderDrag();
         if (!this.option.isEnabled()
                 || this.option.shouldHideControl()
                 || event.button() != 0
@@ -118,7 +130,11 @@ final class IntegerSliderOptionRow extends AbstractOptionRow {
         if (this.isMouseOverSlider(event.x(), event.y())) {
             this.setValueFromMouse(event.x());
             this.sliderHeld = true;
+            this.lastDragMouseX = event.x();
+            this.dragAnchorMouseX = event.x();
+            this.dragAnchorValue = (Integer) this.option.getPendingValue();
             this.actionButtons.holdLayout(true);
+            this.updatePrecisionMode(GuiScreen.isShiftKeyDown(), event.x());
         }
 
         return true;
@@ -131,7 +147,13 @@ final class IntegerSliderOptionRow extends AbstractOptionRow {
         }
 
         this.actionButtons.holdLayout(true);
-        this.setValueFromMouse(event.x());
+        this.updatePrecisionMode(GuiScreen.isShiftKeyDown(), this.lastDragMouseX);
+        if (this.dragRelativeMode) {
+            this.setValueFromDrag(event.x());
+        } else {
+            this.setValueFromMouse(event.x());
+        }
+        this.lastDragMouseX = event.x();
 
         return true;
     }
@@ -142,7 +164,7 @@ final class IntegerSliderOptionRow extends AbstractOptionRow {
             return false;
         }
 
-        this.sliderHeld = false;
+        this.stopSliderDrag();
         this.actionButtons.releaseLayoutHold();
         this.playClickSound();
 
@@ -164,6 +186,10 @@ final class IntegerSliderOptionRow extends AbstractOptionRow {
 
     @Override
     protected boolean controlKeyPressed(KeyEvent event) {
+        if (this.sliderHeld && event.hasShiftDown()) {
+            this.updatePrecisionMode(true, this.lastDragMouseX);
+        }
+
         if (!this.isRowFocused()) {
             return false;
         }
@@ -203,7 +229,7 @@ final class IntegerSliderOptionRow extends AbstractOptionRow {
 
     @Override
     protected void releaseMouseHold() {
-        this.sliderHeld = false;
+        this.stopSliderDrag();
     }
 
     @Override
@@ -265,23 +291,23 @@ final class IntegerSliderOptionRow extends AbstractOptionRow {
     }
 
     private double thumbPositionForValue(int value) {
-        
-        int min = this.option.sliderMin();
-        int max = this.option.sliderMax();
+        int min = this.sliderMin();
+        int max = this.sliderMax();
 
         if (max == min) {
             return 0.0D;
         }
 
-        return MathHelper.clamp((double) (value - min) / (double) (max - min), 0.0D, 1.0D);
+        return MathHelper.clamp(((double) value - min) / ((double) max - min), 0.0D, 1.0D);
     }
 
     private int valueForThumbPosition() {
-        int step = this.option.sliderInterval();
-        int min = this.option.sliderMin();
-        int max = this.option.sliderMax();
+        int min = this.sliderMin();
+        int max = this.sliderMax();
+        int step = this.sliderInterval();
 
-        return MathHelper.clamp(min + step * (int) Math.round(this.thumbPosition * (max - min) / (double) step), min, max);
+        double value = min + this.thumbPosition * ((double) max - min);
+        return this.snapValue(value, min, max, step);
     }
 
     private void setValueFromMouse(double mouseX) {
@@ -289,14 +315,70 @@ final class IntegerSliderOptionRow extends AbstractOptionRow {
         this.option.modifyValue(this.valueForThumbPosition());
     }
 
+    private void setValueFromDrag(double mouseX) {
+        int min = this.sliderMin();
+        int max = this.sliderMax();
+        double value = this.dragAnchorValue
+                + (mouseX - this.dragAnchorMouseX) * (((double) max - min) / SLIDER_WIDTH);
+        this.option.modifyValue(this.snapValue(value, min, max, this.sliderInterval()));
+        this.thumbPosition = this.thumbPositionForValue((Integer) this.option.getPendingValue());
+    }
+
+    private void updatePrecisionMode(boolean shiftDown, double mouseX) {
+        if (!this.sliderHeld || shiftDown == this.precisionAdjusting) {
+            return;
+        }
+
+        this.precisionAdjusting = shiftDown;
+        this.dragRelativeMode = true;
+        this.dragAnchorMouseX = mouseX;
+        this.dragAnchorValue = (Integer) this.option.getPendingValue();
+        if (shiftDown) {
+            this.precisionMin = (int) Math.max(
+                    this.option.sliderMin(), (long) this.dragAnchorValue - PRECISION_RANGE_RADIUS);
+            this.precisionMax = (int) Math.min(
+                    this.option.sliderMax(), (long) this.dragAnchorValue + PRECISION_RANGE_RADIUS);
+        }
+
+        this.thumbPosition = this.thumbPositionForValue(this.dragAnchorValue);
+    }
+
+    private void stopSliderDrag() {
+        this.sliderHeld = false;
+        this.dragRelativeMode = false;
+        this.precisionAdjusting = false;
+        this.thumbPosition = this.thumbPositionForValue((Integer) this.option.getPendingValue());
+    }
+
+    private int sliderMin() {
+        return this.precisionAdjusting ? this.precisionMin : this.option.sliderMin();
+    }
+
+    private int sliderMax() {
+        return this.precisionAdjusting ? this.precisionMax : this.option.sliderMax();
+    }
+
+    private int sliderInterval() {
+        return this.precisionAdjusting ? 1 : this.option.sliderInterval();
+    }
+
+    private int snapValue(double value, int min, int max, int interval) {
+        double clampedValue = Math.max(min, Math.min(max, value));
+        long stepCount = Math.round((clampedValue - min) / interval);
+        long snappedValue = (long) min + stepCount * interval;
+        return (int) Math.max(min, Math.min(max, snappedValue));
+    }
+
     private boolean adjustValue(int direction) {
         if (direction == 0) {
             return false;
         }
 
-        int step = this.option.sliderInterval();
+        int step = this.sliderInterval();
         int value = (Integer) this.option.getPendingValue();
-        int nextValue = MathHelper.clamp(value + step * direction, this.option.sliderMin(), this.option.sliderMax());
+        int min = this.sliderMin();
+        int max = this.sliderMax();
+        int nextValue = (int) Math.max(min, Math.min(max, (long) value + (long) step * direction));
 
         if (nextValue == value) {
             return false;

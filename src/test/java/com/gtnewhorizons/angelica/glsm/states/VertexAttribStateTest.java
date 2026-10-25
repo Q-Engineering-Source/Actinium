@@ -30,6 +30,18 @@ class VertexAttribStateTest {
         VertexAttribState.init(0);
     }
 
+    @Test
+    void resetKeepsCurrentVaoReadyForAttributeUpdates() {
+        final int location = Usage.POSITION.getAttributeLocation();
+        VertexAttribState.onBindVertexArray(7);
+
+        VertexAttribState.reset();
+        VertexAttribState.setEnabled(location, true);
+
+        assertTrue(VertexAttribState.isAttribEnabled(location));
+        assertFalse(VertexAttribState.hasAnyClientSideEnabledAttrib());
+    }
+
     private static void enableClientArray(Usage usage) {
         final int location = usage.getAttributeLocation();
         VertexAttribState.set(location, 3, GL11.GL_FLOAT, false, 12, VERTEX_DATA, 0);

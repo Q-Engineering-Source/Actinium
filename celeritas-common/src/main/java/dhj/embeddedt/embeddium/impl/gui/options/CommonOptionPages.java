@@ -4,7 +4,9 @@ import dhj.embeddedt.embeddium.api.options.control.ControlValueFormatter;
 import dhj.embeddedt.embeddium.api.options.control.CyclingControl;
 import dhj.embeddedt.embeddium.api.options.control.SliderControl;
 import dhj.embeddedt.embeddium.api.options.control.TickBoxControl;
+import dhj.embeddedt.embeddium.api.options.OptionIdentifier;
 import dhj.embeddedt.embeddium.api.options.structure.*;
+import dhj.embeddedt.embeddium.impl.common.util.ScratchRetentionWindow;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
 import dhj.embeddedt.embeddium.impl.gui.framework.TextComponent;
 import dhj.embeddedt.embeddium.impl.render.ShaderModBridge;
@@ -28,6 +30,7 @@ public class CommonOptionPages {
                         .setBinding((opts, value) -> opts.performance.useTranslucentFaceSorting = value, opts -> opts.performance.useTranslucentFaceSorting)
                         .setEnabled(!ShaderModBridge.isNvidiumEnabled())
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(true)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)
                         .setId(StandardOptions.Option.CHUNK_FADE_IN_DURATION.cast())
@@ -37,6 +40,7 @@ public class CommonOptionPages {
                         .setImpact(OptionImpact.LOW)
                         .setBinding((opts, value) -> opts.quality.chunkFadeInDuration = value, opts -> opts.quality.chunkFadeInDuration)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(0)
                         .build())
                 .build();
     }
@@ -57,6 +61,7 @@ public class CommonOptionPages {
                         .setImpact(OptionImpact.HIGH)
                         .setBinding((opts, value) -> opts.performance.chunkBuilderThreads = value, opts -> opts.performance.chunkBuilderThreads)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(0)
                         .build()
                 )
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
@@ -67,6 +72,20 @@ public class CommonOptionPages {
                         .setImpact(OptionImpact.HIGH)
                         .setBinding((opts, value) -> opts.performance.alwaysDeferChunkUpdates = value, opts -> opts.performance.alwaysDeferChunkUpdates)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_UPDATE)
+                        .setDefaultValue(true)
+                        .build())
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create("actinium", "trim_chunk_build_scratch", boolean.class))
+                        .setName(TextComponent.translatable("actinium.options.trim_chunk_build_scratch.name"))
+                        .setTooltip(TextComponent.translatable("actinium.options.trim_chunk_build_scratch.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setImpact(OptionImpact.LOW)
+                        .setBinding((opts, value) -> {
+                            opts.performance.trimChunkBuildScratch = value;
+                            ScratchRetentionWindow.setEnabled(value);
+                        },
+                            opts -> opts.performance.trimChunkBuildScratch)
+                        .setDefaultValue(true)
                         .build())
                 .add(OptionImpl.createBuilder(AsyncOcclusionMode.class, sodiumOpts)
                         .setId(StandardOptions.Option.ASYNC_GRAPH_SEARCH.cast())
@@ -80,6 +99,7 @@ public class CommonOptionPages {
                         .setImpact(OptionImpact.MEDIUM)
                         .setBinding((opts, value) -> opts.performance.asyncOcclusionMode = value, opts -> opts.performance.asyncOcclusionMode)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(AsyncOcclusionMode.ONLY_SHADOW)
                         .build())
                 .build()
         );
@@ -94,6 +114,7 @@ public class CommonOptionPages {
                         .setImpact(OptionImpact.MEDIUM)
                         .setBinding((opts, value) -> opts.performance.useBlockFaceCulling = value, opts -> opts.performance.useBlockFaceCulling)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(true)
                         .build()
                 )
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
@@ -106,6 +127,7 @@ public class CommonOptionPages {
                             opts.performance.useCompactVertexFormat = value;
                         }, opts -> opts.performance.useCompactVertexFormat)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(true)
                         .build()
                 )
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
@@ -116,6 +138,7 @@ public class CommonOptionPages {
                         .setBinding((opts, value) -> opts.performance.useFogOcclusion = value, opts -> opts.performance.useFogOcclusion)
                         .setImpact(OptionImpact.MEDIUM)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_UPDATE)
+                        .setDefaultValue(true)
                         .build()
                 )
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
@@ -126,6 +149,7 @@ public class CommonOptionPages {
                         .setBinding((opts, value) -> opts.performance.useRasterOcclusionCulling = value, opts -> opts.performance.useRasterOcclusionCulling)
                         .setImpact(OptionImpact.VARIES)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(true)
                         .build()
                 )
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
@@ -135,6 +159,7 @@ public class CommonOptionPages {
                         .setControl(TickBoxControl::new)
                         .setImpact(OptionImpact.MEDIUM)
                         .setBinding((opts, value) -> opts.performance.useEntityCulling = value, opts -> opts.performance.useEntityCulling)
+                        .setDefaultValue(true)
                         .build()
                 )
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
@@ -145,6 +170,7 @@ public class CommonOptionPages {
                         .setImpact(OptionImpact.HIGH)
                         .setBinding((opts, value) -> opts.performance.animateOnlyVisibleTextures = value, opts -> opts.performance.animateOnlyVisibleTextures)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_UPDATE)
+                        .setDefaultValue(true)
                         .build()
                 )
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
@@ -155,6 +181,7 @@ public class CommonOptionPages {
                         .setImpact(OptionImpact.LOW)
                         .setBinding((opts, value) -> opts.performance.useRenderPassConsolidation = value, opts -> opts.performance.useRenderPassConsolidation)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(true)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(StandardOptions.Option.RENDER_PASS_OPTIMIZATION.cast())
@@ -164,6 +191,7 @@ public class CommonOptionPages {
                         .setImpact(OptionImpact.LOW)
                         .setBinding((opts, value) -> opts.performance.useRenderPassOptimization = value, opts -> opts.performance.useRenderPassOptimization)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(true)
                         .build())
                 .build());
 

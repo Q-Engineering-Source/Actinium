@@ -13,21 +13,15 @@ import static com.mitchej123.lwjgl.LWJGLServiceProvider.LWJGL;
 /**
  * Captures the real GL state around an external renderer's hooks and prints only the fields that changed.
  *
- * <p>Motivation: while diagnosing "translucent terrain (stained-glass / water) renders as a solid colour
- * block while Distant Horizons' transparent LOD pass is active", the DH developer asked the host to take
- * this measurement, because a DH build carrying its own GL state logging crashes when combined with
- * Actinium. DH's own {@code GLStateSnapshot} / {@code diffAndPrint} (in its {@code MixinRenderGlobal},
- * currently disabled behind {@code DEBUG_GL_STATE = false}) is the model; this is the Actinium
- * equivalent. It is hooked twice - around DH's injection point and around Celeritas' translucent draw -
- * so a leaked state can be attributed to one of the two.</p>
+ * Motivation: translucent terrain rendered as a solid colour block while Distant Horizons' transparent
+ * LOD pass was active; a DH build carrying its own GL state logging crashes when combined with Actinium,
+ * so this is the Actinium equivalent of DH's {@code GLStateSnapshot} / {@code diffAndPrint}. It is hooked
+ * twice, around DH's injection point and around Celeritas' translucent draw, so a leaked state change can
+ * be attributed to one of the two.
  *
- * <p>The snapshot deliberately reads state through the LWJGL service (the driver's values) instead of
- * glsm's tracked values: the question being answered is precisely whether what the driver holds matches
- * what the state tracker believes.</p>
- *
- * <p>Gated by the in-game "Actinium GL debug" option ({@code SodiumGameOptions.debug}).
- * {@link #capture()} returns {@code null} while the option is off, so the disabled path allocates
- * nothing.</p>
+ * State is read through the LWJGL service (the driver's values) instead of glsm's tracked values: the
+ * question is whether the driver and the state tracker agree. Gated by the in-game "Actinium GL debug"
+ * option; {@link #capture()} returns {@code null} while it is off.
  */
 public final class GlStateDiffProbe {
 
@@ -36,11 +30,6 @@ public final class GlStateDiffProbe {
     private GlStateDiffProbe() {
     }
 
-    /**
-     * Whether state capture is requested.
-     *
-     * @return true when the in-game GL debug option is enabled
-     */
     public static boolean isEnabled() {
         return ActiniumRuntime.options().debug.enableActiniumGlDebug;
     }
@@ -64,8 +53,6 @@ public final class GlStateDiffProbe {
      * <p>Both arguments may be {@code null} (capture disabled), in which case nothing is logged.</p>
      *
      * @param label  identifies the measured span, e.g. {@code "dh-injection-translucent-pass1"}
-     * @param before snapshot taken before the span
-     * @param after  snapshot taken after the span
      */
     public static void diffAndPrint(String label, Snapshot before, Snapshot after) {
         if (before == null || after == null) {
@@ -173,9 +160,6 @@ public final class GlStateDiffProbe {
          *
          * <p>The alpha test reference value is intentionally not captured: the LWJGL service exposes no
          * float query, and the function selector is enough to spot a leaked alpha test.</p>
-         *
-         * @param pname the state to read
-         * @return the four components rendered as {@code [a, b, c, d]}
          */
         private static String queryString(int pname) {
             int[] values = new int[QUERY_SIZE];

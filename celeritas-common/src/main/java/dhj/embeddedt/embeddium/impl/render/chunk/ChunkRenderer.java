@@ -13,10 +13,6 @@ public interface ChunkRenderer {
     /**
      * Renders the given chunk render list to the active framebuffer.
      *
-     * @param matrices    The camera matrices to use for rendering
-     * @param commandList The command list which OpenGL commands should be serialized to
-     * @param renderLists The collection of render lists
-     * @param pass        The block render pass to execute
      * @param occlusionCamera The camera context that should be used for block face culling
      * @param camera      The camera context containing chunk offsets for the current render
      */
@@ -28,8 +24,5 @@ public interface ChunkRenderer {
      */
     void delete(CommandList commandList);
 
-    /**
-     * Get the render pass configuration used by this renderer.
-     */
     RenderPassConfiguration<?> getRenderPassConfiguration();
 }

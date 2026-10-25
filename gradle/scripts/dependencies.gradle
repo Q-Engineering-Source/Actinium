@@ -68,7 +68,7 @@ dependencies {
 
 //    modRuntimeOnly 'curse.maven:catalogue-vintage-1465746:7872634'
 //    compileOnly 'maven.modrinth:DistantHorizonsApi:5.1.0'
-    modImplementation "maven.modrinth:uCdwusMi:Sa0ttGJr"  // Distant Horizons 3.3.0-1.12.2 (first release with b15b57cf/ae21a1a0: DH binds IIrisAccessor itself and drives its own LOD passes)
+    modImplementation "maven.modrinth:uCdwusMi:1PczaQGZ"  // Distant Horizons 3.3.3-1.12.2 (first release with b15b57cf/ae21a1a0: DH binds IIrisAccessor itself and drives its own LOD passes)
     // XaeroLib 1.7.3 + Xaero's Minimap 26.5.1 + Xaero's World Map 1.46.0 (issue #175: both maps
     // render their 64x64 terrain as flat colour, and the world map's GuiTexturedButton plates come
     // out opaque while the minimap's entity radar is on). Dev-runtime, not just compiled against:
@@ -96,6 +96,10 @@ dependencies {
     modImplementation 'curse.maven:stellarcore-1064321:8406201'
     modImplementation 'curse.maven:modern-splash-629058:8487408'
 
+    // FindMe + HEI versions from issue #202, available in the dev runtime for particle regression checks.
+    modRuntimeOnly 'curse.maven:findme-291936:2682853'
+    modRuntimeOnly 'maven.modrinth:had-enough-items:4.35.0'
+
     // Mekanism-CE-Unofficial 10.0.5.021 (issue #194: shader rendering repro on large machines).
     // Runtime-only because Actinium has no compile-time references to Mekanism.
     modRuntimeOnly 'curse.maven:mekanism-ce-unofficial-840735:8862568'
@@ -103,6 +107,16 @@ dependencies {
     // Immersive Engineering 0.12-98 (issue #197: exercise the Garden Cloche translucent block-entity pass).
     // Runtime-only because Actinium does not compile against IE classes.
     modRuntimeOnly 'curse.maven:immersive-engineering-231951:2974106'
+
+    // AE2 Unofficial Extended Life 0.56.6 (issue #191: the CUTOUT controller face lost its animated
+    // lights to mipmap sampling at distance). Runtime-only; no compile-time AE2 references.
+    modRuntimeOnly 'curse.maven:ae2-extended-life-570458:5411078'
+    
+    // Tinkers' Construct + Mantle + Construct's Armory: repro set for the conarm dynamic-texture crash.
+    // conarm requires tconstruct and mantle; runtime-only, Actinium does not compile against them.
+    modRuntimeOnly 'curse.maven:tinkers-construct-74072:2902483'
+    modRuntimeOnly 'curse.maven:mantle-74924:2713386'
+    modRuntimeOnly 'curse.maven:constructs-armory-287683:3174535'
 
     // Draconic Evolution
     modCompileOnly 'maven.modrinth:draconic-evolution:2.3.28.354'
@@ -226,12 +240,12 @@ dependencies {
     // dev-verifies mixins.actinium.obscuretooltips.json)
     modImplementation 'curse.maven:obscure-tooltips-715660:8522661'
 
-    // CensoredASM / Chibi 5.33 (issue #159: its on-demand animated textures @Overwrite
+    // CensoredASM / Chibi 5.34 (issue #159: its on-demand animated textures @Overwrite
     // TextureMap.updateAnimations and BufferBuilder.tex -- the same members Actinium injects into
     // and overwrites -- and its BakedQuad squasher rewrites the fields MixinBakedQuad shadows.
     // LoliASM switches both features off by itself once it sees a Celeritas-family marker, so the
     // org.taumc.celeritas.core marker class is what this dev entry exercises.)
-    modRuntimeOnly 'curse.maven:chibi-460609:8225778'
+    modRuntimeOnly 'curse.maven:chibi-460609:8957115'
 
     // Component Model Hider 1.0 (mod id component_model_hider, CurseForge project 940949 file
     // 4885858): the standalone extraction of Multiblocked's block-model hiding API that Modular

@@ -9,17 +9,13 @@ import net.minecraftforge.client.model.BakedModelWrapper;
 /**
  * Missing-model detection for the terrain render pipeline.
  *
- * <p>Actinium builds chunk meshes on worker threads, where {@code getQuads} must not touch
- * main-thread GL state. Forge's fallback for models that failed to load is
- * {@code FancyMissingModel}, which lazily renders its "missing texture" label through the font
- * renderer on the first {@code getQuads} call; the font renderer requires a current OpenGL
- * context and throws {@link IllegalStateException} off the render thread (Extra Utilities 2
- * red orchid block). The vanilla missing model has no renderable quads either, so both variants
- * are skipped by the renderers instead of being drawn.</p>
- *
- * <p>Mods wrap every baked model at model-bake time (e.g. NeoContinuity's emissive wrapper), so
- * the model handed to the renderer may be a {@link BakedModelWrapper} around a missing model.
- * The wrapper chain is unwrapped before the missing-model check.</p>
+ * <p>Chunk meshes are built on worker threads where {@code getQuads} must not touch main-thread
+ * GL state, but Forge's {@code FancyMissingModel} lazily renders its "missing texture" label
+ * through the font renderer on first use, which requires a current GL context and throws off the
+ * render thread (Extra Utilities 2 red orchid block). The vanilla missing model has no renderable
+ * quads either, so both variants are skipped instead of drawn. Mods wrap baked models at bake
+ * time (e.g. NeoContinuity's emissive wrapper), so wrapper chains are unwrapped before the
+ * check.</p>
  */
 public final class MissingModelCompat {
     private MissingModelCompat() {

@@ -54,6 +54,7 @@ public class RenderSystem {
     private static volatile int glesVersion;
     private static volatile boolean glesDetected;
     private static volatile boolean hasClipCullDistance;
+    private static volatile boolean isMobileGlues;
 
     private static volatile boolean isLTW;
     private static volatile boolean ltwDetected;
@@ -111,9 +112,17 @@ public class RenderSystem {
         supportsSSBO = GLStateManager.capabilities.OpenGL43 || GLStateManager.capabilities.GL_ARB_shader_storage_buffer_object;
         supportsBufferStorage = !isGLES && (GLStateManager.capabilities.OpenGL44 || GLStateManager.capabilities.GL_ARB_buffer_storage);
         supportsClearTexture = GLStateManager.capabilities.OpenGL44 || GLStateManager.capabilities.GL_ARB_clear_texture;
-        hasClipCullDistance = !isGLES || hasExtension("GL_EXT_clip_cull_distance");
+        // MobileGlues masquerades as desktop GL but compiles shaders through ESSL translation,
+        // where gl_ClipDistance needs GL_EXT_clip_cull_distance (issue #214). MobileGlues advertises
+        // that extension only when the real ES backend supports it, so the plain extension query
+        // stays authoritative; without the MobileGlues check it would be overruled by !isGLES.
+        final String glVersion = RENDER_BACKEND.getString(GL11.GL_VERSION);
+        isMobileGlues = (glVersion != null && glVersion.contains("MobileGlues")) || hasExtension("GL_MG_mobileglues");
+        hasClipCullDistance = resolveClipCullDistanceSupport(hasExtension("GL_EXT_clip_cull_distance"), isGLES, isMobileGlues);
+        if (isMobileGlues) {
+            GLStateManager.LOGGER.info("MobileGlues detected, clip distance support: {}", hasClipCullDistance);
+        }
 
-        // Cache maximum image units
         if (supportsImageLoadStore) {
             if (GLStateManager.capabilities.OpenGL42) {
                 maxImageUnits = RENDER_BACKEND.getInteger(GL42.GL_MAX_IMAGE_UNITS);
@@ -126,7 +135,6 @@ public class RenderSystem {
             maxImageUnits = 0;
         }
 
-        // Cache maximum SSBO bindings
         if (supportsSSBO) {
             if (GLStateManager.capabilities.OpenGL43) {
                 maxSSBOBindings = RENDER_BACKEND.getInteger(GL43.GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS);
@@ -137,7 +145,6 @@ public class RenderSystem {
             maxSSBOBindings = 0;
         }
 
-        // Check for sampler objects support (GL 3.3+ or ARB extension)
         supportsSamplerObjects = GLStateManager.capabilities.OpenGL33 || GLStateManager.capabilities.GL_ARB_sampler_objects;
         if (supportsSamplerObjects) {
             samplers = new int[RENDER_BACKEND.getInteger(GL20.GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS)];
@@ -353,6 +360,14 @@ public class RenderSystem {
 
     public static boolean hasClipCullDistance() {
         return hasClipCullDistance;
+    }
+
+    /**
+     * gl_ClipDistance is core in desktop GLSL 130+, but on ES — including translation layers like
+     * MobileGlues that report a desktop GL version — it requires GL_EXT_clip_cull_distance.
+     */
+    static boolean resolveClipCullDistanceSupport(boolean frontendHasExtension, boolean isGLES, boolean isMobileGlues) {
+        return frontendHasExtension || (!isGLES && !isMobileGlues);
     }
 
     private static boolean hasExtension(String name) {
@@ -586,6 +601,11 @@ public class RenderSystem {
             throw new IllegalArgumentException("maximumGlslVersion must not be negative");
         }
         maxGlslVersion = maximumGlslVersion;
+    }
+
+    /** Supplies a deterministic clip-distance capability for headless shader transformation tests. */
+    public static void initializeClipCullDistanceSupportForTesting(boolean supported) {
+        hasClipCullDistance = supported;
     }
 
     public static boolean supportsGpuShader4() {

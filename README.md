@@ -1,11 +1,10 @@
 # Actinium
-
 [English](README.en.md)
 
 Actinium 是一个面向 Minecraft 1.12.2 / Cleanroom Loader 的实验性渲染与光影兼容模组。它尝试把更现代的渲染管线带回旧版本客户端，同时兼顾经典模组内容、光影包行为和性能导向的渲染路径。
 
 项目目前围绕 Celeritas、GLSM、GTNHLib 以及类似 Iris 的光影管线展开。重点不是单纯替换某一段渲染代码，而是让地形、实体、阴影、后处理、uniform、framebuffer 归属和 OpenGL 状态切换在旧版客户端中尽量稳定、可控。
-
+![actinium.png](docs/image/actinium.png)
 ## 项目目标
 
 - 重构 Minecraft 1.12.2 客户端的部分渲染路径，使其更接近现代渲染管线。
@@ -28,12 +27,26 @@ Actinium 仍处于活跃开发阶段。它还不是一个能覆盖所有 Minecra
 
 MakeUp、BSL、Complementary 等光影包是开发过程中的重要验证目标，但它们目前更适合作为兼容性测试对象，而不是已经完成承诺的兼容矩阵。
 
-## 运行环境
+## 设备兼容性
+
+桌面端与手机端共用同一套硬性前提：
 
 - Minecraft 1.12.2
-- Cleanroom Loader
-- Java 25 工具链；构建产物使用 Java 21 字节码
-- 能够运行目标光影包的图形环境
+- Cleanroom Loader **0.6.13-alpha 或更早版本（低于 0.7.0）**
+- Java 21 及以上运行时；开发工具链为 Java 25，构建产物使用 Java 21 字节码
+- 支持 OpenGL 3.3 及以上 core profile 的图形环境
+
+> [!IMPORTANT]
+> **Actinium 不再支持 Cleanroom Loader 0.7.0-alpha 及以上版本。**
+> 0.7.0 起 CRL 用 SDL 3 取代 GLFW 重写了窗口与输入层，并重构了 LWJGL 模块与类补丁流程，Actinium 未针对这些变更适配。
+> 请在 0.6.x（推荐 0.6.13-alpha）上运行 Actinium；在 0.7.0 及以上版本上出现的问题不在支持范围内。
+
+各设备要满足的都是上面这一套前提，差别只在 core profile 由谁提供：
+
+- **桌面端（Windows / Linux / macOS）**：由显卡驱动提供，近年主流驱动默认满足；光影包的可用性仍取决于显卡性能与驱动行为。
+- **手机（Android）**：由启动器所选的渲染器提供，需选择支持 core profile 的渲染器，例如 MobileGlues（MG）；GL4ES 一类只提供兼容 profile 的渲染器无法满足要求——Actinium 启动时会依次尝试申请 4.6 到 3.3 的 core profile 上下文，给不出 core profile 就会直接启动失败。
+  - **实例**：用支持 Cleanroom Loader 的手机启动器建立 1.12.2 + Cleanroom 实例，再把 Actinium 的 jar 放进 `mods/`。
+  - **光影**：手机 GPU 与显存有限，建议先用较低分辨率、较近渲染距离和较轻的光影包确认能正常进入世界，再逐步调高。
 
 ## 构建
 

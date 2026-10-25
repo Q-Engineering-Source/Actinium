@@ -11,12 +11,11 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 /**
  * Moves Revo UI's full-screen gradient ahead of the HUD so it cannot darken HUD elements.
  *
- * <p>Exception: while a HUD cache capture window is active (Gnetum / StellarCore, mirrored to
- * {@link GLSMConfig#hudCacheOverride}), the gradient draws immediately into the cache
- * framebuffer. Deferring there would only re-register the gradient on the one pass that runs
- * this listener, so the replayed gradient would flicker at 1/numberOfPasses of the frame rate;
- * drawing into the cache reproduces the known-good behavior of Gnetum without Actinium, where
- * the cached blit keeps the gradient visible every frame.</p>
+ * <p>Exception: while a HUD cache capture window is active (Gnetum / StellarCore, mirrored
+ * to {@link GLSMConfig#hudCacheOverride}) the gradient draws immediately into the cache
+ * framebuffer; deferring there would re-register it only on the one pass that runs this
+ * listener, so the replayed gradient would flicker at 1/numberOfPasses of the frame rate,
+ * while drawing into the cache reproduces Gnetum's known-good cached-blit behavior.
  */
 @Pseudo
 @Mixin(targets = "neofontrender.addons.effects.ScreenEffectsRenderer", remap = false)

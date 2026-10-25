@@ -80,7 +80,6 @@ public class OptionGroup {
             if (this.id == null) {
                 this.id = OptionGroup.DEFAULT_ID;
                 // FIXME Actually enforce IDs on groups
-                //Celeritas.logger().warn("Id must be specified in OptionGroup which contains {}, this might throw a exception on a next release", this.options.get(0).getName().getString());
             }
 
             OptionGroupConstructionEvent.BUS.post(new OptionGroupConstructionEvent(this.id, this.options));

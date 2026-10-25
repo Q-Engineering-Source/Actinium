@@ -12,7 +12,7 @@ public class TextureUploadHelper {
 		// Ensure that the pixel storage mode is in a sane state, otherwise the uploaded texture data will be quite
 		// incorrect.
 		//
-		// It is likely that this also avoids the crashes on AMD that I previously experienced with texture creation.
+		// It is likely that this also avoids the crashes on AMD during texture creation.
 		//
 		// This code is from Canvas: https://github.com/grondag/canvas/commit/f0ab652d7a8b7cc9febf0209bee15cffce9eac83
 		GLStateManager.glPixelStorei(GL11.GL_UNPACK_ROW_LENGTH, 0);

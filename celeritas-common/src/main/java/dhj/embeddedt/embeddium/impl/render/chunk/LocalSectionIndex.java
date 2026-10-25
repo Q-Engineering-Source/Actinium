@@ -10,32 +10,26 @@ public class LocalSectionIndex {
         return ((x & X_BITS) << X_OFFSET) | ((y & Y_BITS) << Y_OFFSET) | ((z & Z_BITS) << Z_OFFSET);
     }
 
-    // x + 1
     public static int incX(int idx) {
         return (idx & ~X_MASK) | ((idx + (1 << X_OFFSET)) & X_MASK);
     }
 
-    // x - 1
     public static int decX(int idx) {
         return (idx & ~X_MASK) | ((idx - (1 << X_OFFSET)) & X_MASK);
     }
 
-    // y + 1
     public static int incY(int idx) {
         return (idx & ~Y_MASK) | ((idx + (1 << Y_OFFSET)) & Y_MASK);
     }
 
-    // y - 1
     public static int decY(int idx) {
         return (idx & ~Y_MASK) | ((idx - (1 << Y_OFFSET)) & Y_MASK);
     }
 
-    // z + 1
     public static int incZ(int idx) {
         return (idx & ~Z_MASK) | ((idx + (1 << Z_OFFSET)) & Z_MASK);
     }
 
-    // z - 1
     public static int decZ(int idx) {
         return (idx & ~Z_MASK) | ((idx - (1 << Z_OFFSET)) & Z_MASK);
     }

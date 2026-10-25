@@ -30,13 +30,10 @@ public final class HbmRenderStateCompat {
     }
 
     /**
-     * Returns whether the HBM compatibility layer applies in this install.
-     *
-     * <p>Read per tile-entity entry from a hook that lives on a vanilla class, so the tile-entity
-     * side of the compat has to be inert on vanilla-only installs. The {@link Mods#HBM} flag is
-     * sampled through a holder instead of a field of this class: this class is also loaded by its
-     * unit tests and by early class verification, where reading the flag would touch a launch-time
-     * mod scan that has not run. The first actual call always happens after mod discovery.</p>
+     * Returns whether the HBM compatibility layer applies in this install. The {@link Mods#HBM}
+     * flag is sampled through a holder class because this class is also loaded by its unit tests
+     * and by early class verification, where reading the flag would touch a launch-time mod scan
+     * that has not run.
      */
     public static boolean isHbmInstalled() {
         return HbmPresence.INSTALLED;
@@ -62,14 +59,10 @@ public final class HbmRenderStateCompat {
     }
 
     /**
-     * Sets the current lightmap coordinate from a block entity's world position.
-     *
-     * <p>The dispatcher skips vanilla's lightmap update for fast renderers. HBM has renderers
-     * that issue raw GL draws without a vertex lightmap attribute, so the current coordinate must
-     * be valid before either renderer kind is entered.</p>
-     *
-     * <p>Inert without HBM: the caller is a hook on a vanilla class, so a vanilla-only install
-     * must see no lightmap write and no extra world lookup at all.</p>
+     * Sets the current lightmap coordinate from a block entity's world position. The dispatcher
+     * skips vanilla's lightmap update for fast renderers, but HBM renderers issue raw GL draws
+     * without a vertex lightmap attribute, so the coordinate must be valid before either renderer
+     * kind is entered. Inert without HBM: the caller is a hook on a vanilla class.
      */
     public static void setWorldLightmap(TileEntity tileEntity) {
         if (!isHbmInstalled()) {
@@ -84,14 +77,10 @@ public final class HbmRenderStateCompat {
 
     /**
      * Translates an HBM attribute mask into the GLSM state groups that must be saved for it.
-     *
-     * <p>Bits this class does not map are ignored, mirroring HBM's own {@code pushAttrib}: that
-     * method tests one {@code if ((mask & bit) != 0)} per attribute group and simply captures
-     * nothing for a bit it does not know. Failing on such a bit instead takes the whole client
-     * down, which is how NTM-Space 0.9.2's Stardar GUI crashed the game (issue #170: its
-     * {@code GUIMachineStardar.drawSystemMap} pushes {@code 0x4}, a bit absent from both HBM's
-     * capture chain and this mapping). The only cost of skipping an unmapped bit is that whatever
-     * GL state it stood for is not restored, which is exactly the state HBM itself leaves behind.</p>
+     * Unmapped bits are ignored, mirroring HBM's own {@code pushAttrib}: the cost is only that
+     * the GL state such a bit stands for is not restored, which is the state HBM itself leaves
+     * behind. Failing on an unmapped bit instead takes the whole client down; that is how
+     * NTM-Space 0.9.2's Stardar GUI crashed the game (issue #170, mask {@code 0x4}).
      */
     static int toGlMask(int hbmMask) {
         int normalizedMask = hbmMask == HBM_ALL_BITS ? HBM_MAPPED_BITS : hbmMask;

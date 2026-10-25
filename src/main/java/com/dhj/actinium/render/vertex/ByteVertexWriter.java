@@ -5,13 +5,12 @@ import sun.misc.Unsafe;
 import java.nio.ByteOrder;
 
 /**
- * Writer for BYTE and UBYTE typed elements: every component is stored as a single byte.
- *
- * <p>Only the color encoding deals with byte order. Byte-wise stores have no inherent
- * endianness, but the buffer is also read back as native-order ints by consumers such as
- * the color multipliers, so the four color bytes must be laid out in the order that
- * makes the packed int representation identical on either platform: RGBA on little
- * endian hosts, ARGB read as bytes on big endian hosts.
+ * Writer for BYTE and UBYTE typed elements: every component is stored as a single byte. Only the
+ * color encoding deals with byte order: byte-wise stores have no inherent endianness, but the
+ * buffer is also read back as native-order ints by consumers such as the color multipliers, so
+ * the four color bytes must be laid out in the order that makes the packed int representation
+ * identical on either platform: RGBA on little endian hosts, ARGB read as bytes on big endian
+ * hosts.
  */
 final class ByteVertexWriter implements VertexWriter {
     /** Single pre-built instance handed out by the writer factory. */
@@ -41,10 +40,6 @@ final class ByteVertexWriter implements VertexWriter {
      * Kept explicit so both orderings stay testable on any host.
      *
      * @param target native address of the element's first byte
-     * @param red red component
-     * @param green green component
-     * @param blue blue component
-     * @param alpha alpha component
      * @param littleEndian whether the host reads packed ints little endian
      */
     static void putColorBytes(long target, int red, int green, int blue, int alpha,

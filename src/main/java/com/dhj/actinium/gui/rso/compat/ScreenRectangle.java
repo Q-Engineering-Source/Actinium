@@ -6,7 +6,6 @@ package com.dhj.actinium.gui.rso.compat;
  */
 public record ScreenRectangle(int x, int y, int width, int height) {
 
-    /** Returns an empty rectangle at the origin. */
     public static ScreenRectangle empty() {
         return new ScreenRectangle(0, 0, 0, 0);
     }

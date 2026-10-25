@@ -113,14 +113,12 @@ public final class ClassConstantPoolParser {
             return false;
         }
 
-        // checks the class version
         final int maxSupported = 69; // Java 25
         short major = readShort(6, basicClass);
         if (major > maxSupported || (major == maxSupported && readShort(4, basicClass) > 0)) {
             return false;
         }
 
-        // Loop through each entry in the constant pool, getting the size and content before jumping to the next.
         // Strings get scanned for the searched constants, and if found result in an early exit.
         final int numConstants = readUnsignedShort(8, basicClass);
         int index = 10;

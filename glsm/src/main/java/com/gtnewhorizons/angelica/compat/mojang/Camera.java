@@ -32,12 +32,6 @@ public class Camera {
 
     private Camera() {}
 
-    /**
-     * Updates the camera position and orientation based on the current entity and partial ticks.
-     *
-     * @param entity The entity to track (usually the render view entity)
-     * @param partialTicks The partial tick time for interpolation
-     */
     public void update(EntityLivingBase entity, float partialTicks) {
         this.partialTicks = partialTicks;
         this.isSleeping = entity.isPlayerSleeping();

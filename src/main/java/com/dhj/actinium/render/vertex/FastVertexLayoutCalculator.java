@@ -5,12 +5,11 @@ import net.minecraft.client.renderer.vertex.VertexFormatElement;
 import java.util.List;
 
 /**
- * Computes the offset and element-advance arrays installed on a {@code VertexFormat}.
- *
- * <p>The original write path recomputes the element offset through a boxed list lookup
- * on every attribute write and advances the element cursor with a modulo plus a
- * recursion that skips PADDING elements. Both results are pure functions of the element
- * sequence, so they are derived once per format change and consumed as plain arrays.
+ * Computes the offset and element-advance arrays installed on a {@code VertexFormat}. The
+ * original write path recomputes the element offset through a boxed list lookup on every
+ * attribute write and advances the element cursor with a modulo plus a recursion that skips
+ * PADDING elements; both results are pure functions of the element sequence, so they are
+ * derived once per format change and consumed as plain arrays.
  */
 public final class FastVertexLayoutCalculator {
     private FastVertexLayoutCalculator() {
@@ -26,11 +25,9 @@ public final class FastVertexLayoutCalculator {
     }
 
     /**
-     * Derives the layout for the given element sequence.
-     *
-     * <p>The advance ring never loops indefinitely: a format whose elements are all
-     * PADDING would make the original advance recursion overflow at draw time, which is
-     * reported here instead when the format is built.
+     * Derives the layout for the given element sequence. The advance ring never loops
+     * indefinitely: a format whose elements are all PADDING would make the original advance
+     * recursion overflow at draw time, which is reported here instead when the format is built.
      *
      * @param elements elements in registration order, never modified
      * @return computed offsets and advance ring

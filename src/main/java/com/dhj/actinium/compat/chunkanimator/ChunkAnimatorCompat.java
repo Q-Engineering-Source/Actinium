@@ -14,24 +14,12 @@ import java.util.Objects;
 
 /**
  * Bridges the vanilla-oriented Chunk Animator (mod id {@code chunkanimator}) into the celeritas
- * chunk pipeline.
- *
- * <p>Chunk Animator is an ASM coremod that hooks {@code RenderChunk#setOrigin} to record an
- * animation start timestamp per chunk and {@code ChunkRenderContainer#preRenderChunk} to translate
- * the chunk while rendering. With Actinium, vanilla {@code RenderChunk} objects are never drawn and
- * {@code ChunkRenderContainer#preRenderChunk} is never invoked, so both hooks become inert. This
- * class re-attaches the same two calls to the celeritas section lifecycle:</p>
- *
- * <ul>
- *   <li>{@link #onSectionAdded} mirrors {@code RenderChunk#setOrigin}: the section enters the
- *   render distance, so Chunk Animator starts its animation clock.</li>
- *   <li>{@link #getSectionOffset} mirrors {@code ChunkRenderContainer#preRenderChunk}: the section
- *   is drawn with Chunk Animator's current offset applied.</li>
- * </ul>
- *
- * <p>The section itself is used as the animation identity token; {@link AnimationHandler} keys its
- * timestamps by object identity through a {@code WeakHashMap}, so disposed sections are reclaimed
- * automatically.</p>
+ * chunk pipeline. Chunk Animator is an ASM coremod hooking {@code RenderChunk#setOrigin} (record
+ * animation start) and {@code ChunkRenderContainer#preRenderChunk} (translate while rendering);
+ * neither hook runs under Actinium, so {@link #onSectionAdded} and {@link #getSectionOffset}
+ * re-attach the same two calls to the celeritas section lifecycle. The section serves as the
+ * animation identity token: {@link AnimationHandler} keys timestamps by object identity through
+ * a {@code WeakHashMap}, so disposed sections are reclaimed automatically.
  */
 public final class ChunkAnimatorCompat implements ChunkAnimationProvider {
     private final AnimationHandler animationHandler;

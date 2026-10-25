@@ -49,7 +49,6 @@ public class DhFrameBufferWrapper implements IDhApiFramebuffer {
     @Override
     public void destroy() {
         // ignore
-        //this.framebuffer.destroy();
     }
 
 }

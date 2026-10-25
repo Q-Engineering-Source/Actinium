@@ -45,6 +45,15 @@ DEBUG 页原先与高级/性能页重复的 5 项（模型渲染器批处理、�
 `IrisDebugOptions.Bridge`、`GlStateDiffProbe`、`ActiniumDiagnostics` 热读配置字段。因此
 `enable_debug_tab=false` 时仍可用配置文件开启任一 DEBUG 开关（需要重启的项除外）。
 
+## 性能页 → CHUNK_UPDATES 分组
+
+| 选项 | 字段 | 实现落点 |
+| --- | --- | --- |
+| 释放过大的区块构建缓冲（`actinium:trim_chunk_build_scratch`，默认开） | `performance.trimChunkBuildScratch` | `ScratchRetentionWindow`（开关 + 连续两个 64 任务窗口低负载才释放的判定）、`ChunkMeshBufferBuilder.finishTask` 与 `TranslucentQuadRecorder.finishTask`（释放点，分别回收原生顶点缓冲与半透明排序暂存数组）、`ActiniumRuntime.loadConfig`（配置装载出口统一同步开关） |
+
+释放后容量不丢：后续构建任务需要更大缓冲时按原有扩容路径重新分配。关闭选项只停用
+释放判定，不影响已保留缓冲的复用。
+
 ## 质量页 → DETAILS 分组
 
 | 选项 | 字段 | 实现落点 |
@@ -83,3 +92,10 @@ DEBUG 页原先与高级/性能页重复的 5 项（模型渲染器批处理、�
 
 **维护提示**：`fovModifierHand` 的写入点一旦被上游或其它补丁挪出
 `updateFovModifierHand()`，该 Mixin 会静默失去作用（不会报错），需同步检查。
+
+## 圆形雾（`quality.circularFog`）
+
+默认关闭。开启后，无光影包时的原版雾使用相机到顶点的径向距离：固定管线着色器通过
+`FogDistanceModeBridge` 选择 GLSM 的 eye-radial fog variant，Celeritas 区块着色器通过
+`GLStateManagerFogService` 选择 spherical fog shape。应用设置时重载区块渲染器，以刷新受雾遮挡
+影响的区块搜索范围。光影包自带的雾逻辑不读取该选项。

@@ -1,6 +1,6 @@
 # Modern Splash 兼容（modernsplash 1.5.3）
 
-最后更新：2026-08-15。分支：`feat/modern-splash-compat`。
+最后更新：2026-10-02。分支：`feat/modern-splash-compat`、`fix/modern-splash-fade-crash`。
 
 ## 模组机制（反编译结论）
 
@@ -59,6 +59,39 @@ Modern Splash（CurseForge 项目 629058，文件 8487408，modid `modernsplash`
 正确来源（`font-flush-end` 日志的 `restoreColor=[1.0,1.0,1.0,1.0]` 佐证）。中间另修复了
 调试日志优化引入的 `Boolean` 拆箱 NPE（splash 线程连锁崩溃）。
 
+## 启动末尾崩溃修复（issue #200，本分支新增）
+
+**症状**：安装 Modern Splash 后偶发在加载末尾 JVM 直接中止：
+`FATAL ERROR in native method: No context is current...`，栈顶为
+`GL11.glPushAttrib` ← `ModernSplash.drawFadeOverlay` ← `onGuiDrawPost`
+（`GuiScreenEvent.DrawScreenEvent.Post`，主菜单打开后 500ms 淡出窗口内）。
+
+**根因**（运行时因果链已定位）：
+
+1. Actinium 使用 OpenGL core profile 上下文，`glPushAttrib`/`glBegin` 等 FFP 入口
+   不存在；LWJGL 3 对空函数指针的调用是 native fatal error，不可捕获。
+2. 正常情况下 `AngelicaRedirectorTransformer`（`AngelicaLateTweaker` 注册）会把
+   该类的 `GL11.xxx` 改写为 `GLStateManager.xxx`（GLSM 模拟，映射表完整覆盖
+   `drawFadeOverlay` 的全部调用）。
+3. 但 transformer 只改写**注册之后**加载的类。`MSLoadingPlugin` 构造函数在
+   coremod 阶段（无 SortingIndex，先于 Actinium 的 1500）调用
+   `TimeHistory.getEstimateTime()`，其 `IOException` 分支引用
+   `ModernSplash.LOGGER`——当 `config/time.history` 缺失或读取失败（首跑、
+   Windows AV/索引锁竞态）时，`gkappa.modernsplash.ModernSplash` **抢在重定向器
+   注册之前完成类加载**，永久保留裸 GL 字节码。
+4. 偶发性 = 「`time.history` 读取失败」与「首帧落在淡出窗口内」两个时序条件叠加。
+
+**修复**（运行时手段，字节码路线对先行定义的类物理无解）：
+
+- `AngelicaLateTweaker.getLaunchArguments()` 注册重定向器**之前**调用
+  `ModernSplashOverlayCompat.markIfLoadedBeforeRedirector()`，用
+  `Launch.classLoader.isClassLoaded(...)`（`findLoadedClass` 语义，不触发加载）
+  探测该类是否已逃逸；
+- 逃逸时，`MixinSplashProgress.celeritas$finishSplash`（splash finish，主菜单打开前）
+  调用 `ModernSplashOverlayCompat.neutralizeLogoOverlayIfEscaped()`：经 GLSM 删除
+  splash logo 纹理并把 `ModernSplash.logoGlTextureName` 置 0，使淡出层跳过裸 GL 块
+  （背景淡出仍走已转换的 vanilla 路径）。未逃逸时完全不干预，logo 淡出动画保留。
+
 ## 文件清单
 
 - `src/main/java/com/gtnewhorizons/angelica/client/font/BatchingFontRenderer.java`
@@ -68,6 +101,12 @@ Modern Splash（CurseForge 项目 629058，文件 8487408，modid `modernsplash`
 - `src/test/java/com/gtnewhorizons/angelica/client/font/BatchingFontRendererColorTest.java`
   （新增，5 用例）
 - `gradle/scripts/dependencies.gradle`（`modImplementation curse.maven:modern-splash-629058:8487408`）
+- `src/main/java/com/dhj/actinium/compat/modernsplash/ModernSplashOverlayCompat.java`
+  （issue #200：逃逸探测 + 淡出层中和）
+- `src/main/java/com/gtnewhorizons/angelica/loading/fml/tweakers/AngelicaLateTweaker.java`
+  （注册重定向器前探测逃逸）
+- `src/main/java/com/dhj/actinium/mixin/vintage/core/startup/MixinSplashProgress.java`
+  （splash finish 时中和逃逸类的 logo 淡出层）
 
 ## 验证记录
 
@@ -77,6 +116,10 @@ Modern Splash（CurseForge 项目 629058，文件 8487408，modid `modernsplash`
 - [x] 字体颜色修复人工确认（白天 `0xFFFFFF` 白 / 夜间 `0xF3F5F8` 浅灰白生效；
   `font-draw-zero` 调试日志确认全部 splash 文字 `glColor=0xffffffff`）。
 - [ ] 光影开启场景回归（启动画面阶段不涉及光影，待确认无副作用）。
+- [x] issue #200：`compileJava` / `check` 通过。
+- [ ] issue #200 逃逸场景实测：删除实例 `config/time.history` 后启动，不再崩溃、
+  日志出现 `ActiniumModernSplashCompat` 的 WARN/INFO，主菜单背景淡出正常无 logo。
+- [ ] issue #200 回归场景实测：`time.history` 存在时启动，logo 淡出动画与修复前一致。
 
 ## 参考
 

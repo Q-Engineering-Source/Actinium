@@ -95,9 +95,6 @@ public class GlImage extends GlObject {
 
 	/**
 	 * This makes the image aware of a new render target. Depending on the image's properties, it may not follow these targets.
-	 *
-	 * @param width  The width of the main render target.
-	 * @param height The height of the main render target.
 	 */
 	public void updateNewSize(int width, int height) {
 

@@ -8,15 +8,12 @@ import java.nio.IntBuffer;
 /**
  * Live GL state queries for the Extra Utilities 2 GUI compatibility (issue #48).
  *
- * <p>Extra Utilities 2's {@code GLStateAttributes} snapshots vanilla
- * {@code GlStateManager} fields so its {@code restore()} can bring the GL state
- * back after each GUI widget renders. Under Actinium those fields are never
- * updated (the GLSM redirector takes over the method calls), so the snapshot is
- * stale. Re-reading the state through the GLSM {@code GLStateManager} returns the
- * cached logical state where a cache exists (texture binding/enable, blend
- * factors, alpha test, fog, depth ...) and falls back to the live GL state
- * otherwise, which is correct on the core-profile context Actinium creates
- * (plain GPU queries for e.g. {@code GL_TEXTURE_2D} are invalid there).</p>
+ * <p>Extra Utilities 2's {@code GLStateAttributes} snapshots vanilla {@code GlStateManager}
+ * fields so its {@code restore()} can bring the GL state back after each widget renders. Under
+ * Actinium those fields are never updated (GLSM redirects the method calls), so the snapshot is
+ * stale. Re-reading through GLSM returns the cached logical state where a cache exists and falls
+ * back to live queries otherwise, which is correct on the core-profile context (plain queries
+ * for e.g. {@code GL_TEXTURE_2D} are invalid there).</p>
  */
 public final class ExtraUtils2GLStateCompat {
     private ExtraUtils2GLStateCompat() {

@@ -16,21 +16,11 @@ public class ColorABGR implements ColorU8 {
 
     /**
      * Packs the specified color components into ABGR format. The alpha component is fully opaque.
-     * @param r The red component of the color
-     * @param g The green component of the color
-     * @param b The blue component of the color
      */
     public static int pack(float r, float g, float b) {
         return pack(r, g, b, COMPONENT_MASK);
     }
 
-    /**
-     * Packs the specified color components into ABGR format.
-     * @param r The red component of the color
-     * @param g The green component of the color
-     * @param b The blue component of the color
-     * @param a The alpha component of the color
-     */
     public static int pack(int r, int g, int b, int a) {
         return ((a & COMPONENT_MASK) << ALPHA_COMPONENT_OFFSET) |
                 ((b & COMPONENT_MASK) << BLUE_COMPONENT_OFFSET) |
@@ -38,20 +28,10 @@ public class ColorABGR implements ColorU8 {
                 ((r & COMPONENT_MASK) << RED_COMPONENT_OFFSET);
     }
 
-    /**
-     * Packs the specified color components into ABGR format.
-     * @param rgb The red/green/blue component of the color
-     * @param alpha The alpha component of the color
-     */
     public static int withAlpha(int rgb, float alpha) {
         return withAlpha(rgb, ColorU8.normalizedFloatToByte(alpha));
     }
 
-    /**
-     * Packs the specified color components into ABGR format.
-     * @param rgb The red/green/blue component of the color
-     * @param alpha The alpha component of the color
-     */
     public static int withAlpha(int rgb, int alpha) {
         return (alpha << ALPHA_COMPONENT_OFFSET) | (rgb & ~(COMPONENT_MASK << ALPHA_COMPONENT_OFFSET));
     }
@@ -67,34 +47,18 @@ public class ColorABGR implements ColorU8 {
                 ColorU8.normalizedFloatToByte(a));
     }
 
-    /**
-     * @param color The packed 32-bit ABGR color to unpack
-     * @return The red color component in the range of 0..255
-     */
     public static int unpackRed(int color) {
         return (color >> RED_COMPONENT_OFFSET) & COMPONENT_MASK;
     }
 
-    /**
-     * @param color The packed 32-bit ABGR color to unpack
-     * @return The green color component in the range of 0..255
-     */
     public static int unpackGreen(int color) {
         return (color >> GREEN_COMPONENT_OFFSET) & COMPONENT_MASK;
     }
 
-    /**
-     * @param color The packed 32-bit ABGR color to unpack
-     * @return The blue color component in the range of 0..255
-     */
     public static int unpackBlue(int color) {
         return (color >> BLUE_COMPONENT_OFFSET) & COMPONENT_MASK;
     }
 
-    /**
-     * @param color The packed 32-bit ABGR color to unpack
-     * @return The red color component in the range of 0..255
-     */
     public static int unpackAlpha(int color) {
         return (color >> ALPHA_COMPONENT_OFFSET) & COMPONENT_MASK;
     }

@@ -70,7 +70,6 @@ public class BakedQuadGroupAnalyzer {
                 if (flagMask == -1) {
                     flagMask = newFlag;
                 } else if (newFlag != flagMask) {
-                    // Disable reorienting
                     quadRenderingFlags &= ~USE_REORIENTING;
                 }
 
@@ -106,7 +105,6 @@ public class BakedQuadGroupAnalyzer {
             // Can use cutout_mipped with no visual difference
             return renderPassConfiguration.defaultCutoutMippedMaterial();
         } else {
-            // Have to use default
             return defaultMaterial;
         }
     }

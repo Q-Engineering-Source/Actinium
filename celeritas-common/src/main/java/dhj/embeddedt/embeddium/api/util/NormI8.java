@@ -34,9 +34,6 @@ public class NormI8 {
     /**
      * Packs the specified vector components into a 32-bit integer in XYZ ordering with the 8 bits of padding at the
      * end.
-     * @param x The x component of the normal's vector
-     * @param y The y component of the normal's vector
-     * @param z The z component of the normal's vector
      */
     public static int pack(float x, float y, float z) {
         int normX = encode(x);
@@ -57,7 +54,6 @@ public class NormI8 {
 
     /**
      * Unpacks the x-component of the packed normal, denormalizing it to a float in the range of -1.0..1.0.
-     * @param norm The packed normal
      */
     public static float unpackX(int norm) {
         return ((byte) ((norm >> X_COMPONENT_OFFSET) & 0xFF)) * NORM;
@@ -65,7 +61,6 @@ public class NormI8 {
 
     /**
      * Unpacks the y-component of the packed normal, denormalizing it to a float in the range of -1.0..1.0.
-     * @param norm The packed normal
      */
     public static float unpackY(int norm) {
         return ((byte) ((norm >> Y_COMPONENT_OFFSET) & 0xFF)) * NORM;
@@ -73,7 +68,6 @@ public class NormI8 {
 
     /**
      * Unpacks the z-component of the packed normal, denormalizing it to a float in the range of -1.0..1.0.
-     * @param norm The packed normal
      */
     public static float unpackZ(int norm) {
         return ((byte) ((norm >> Z_COMPONENT_OFFSET) & 0xFF)) * NORM;

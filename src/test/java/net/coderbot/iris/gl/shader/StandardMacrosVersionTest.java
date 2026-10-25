@@ -14,8 +14,8 @@ class StandardMacrosVersionTest {
 
     @Test
     void letterPrefixedGitShaDoesNotProduceLeadingZeroValue() {
-        // alpha-0.0.5-da83c59 -> major=0, minor=0, patch=5, sub=8359; previously encoded as
-        // "000058359", which jcpp parses as octal and rejects on the 8/9 digits.
+        // alpha-0.0.5-da83c59 -> major=0, minor=0, patch=5, sub=8359. A leading zero
+        // ("000058359") would be lexed as an octal constant by jcpp and rejected on the 8/9 digits.
         assertEquals("58359", StandardMacros.formatActiniumVersion("alpha-0.0.5-da83c59"));
     }
 

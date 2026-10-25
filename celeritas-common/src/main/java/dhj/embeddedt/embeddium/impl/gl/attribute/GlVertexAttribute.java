@@ -21,10 +21,8 @@ public class GlVertexAttribute {
     private final String name;
 
     /**
-     * @param format The format used
-     * @param count The number of components in the vertex attribute
      * @param normalized Specifies whether or not fixed-point data values should be normalized (true) or used directly
- *                   as fixed-point values (false)
+     *                   as fixed-point values (false)
      * @param pointer The offset to the first component in the attribute
      */
     public GlVertexAttribute(GlVertexAttributeFormat format, String name, int count, boolean normalized, int pointer, int stride, boolean intType) {

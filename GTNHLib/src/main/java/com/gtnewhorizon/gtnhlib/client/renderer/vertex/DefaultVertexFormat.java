@@ -18,8 +18,6 @@ public final class DefaultVertexFormat {
 
     public static final VertexFormat[] ALL_FORMATS = new VertexFormat[BITSET_SIZE];
 
-    // --------------- ELEMENTS ---------------
-
     public static final VertexFormatElement POSITION_ELEMENT = new VertexFormatElement(
             0,
             Type.FLOAT,
@@ -56,8 +54,6 @@ public final class DefaultVertexFormat {
             NORMAL_BIT,
             new NormalVertexAttributeWriter(),
             1);
-
-    // --------------- FORMATS ---------------
 
     public static final VertexFormat POSITION = new VertexFormat(POSITION_ELEMENT);
 

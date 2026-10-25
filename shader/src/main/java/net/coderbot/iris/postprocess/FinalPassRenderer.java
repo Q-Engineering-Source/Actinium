@@ -348,7 +348,6 @@ public class FinalPassRenderer {
 		GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
 
 		for (int i = 0; i < renderTargets.getRenderTargetCount(); i++) {
-			// Reset mipmapping states at the end of the frame.
 			resetRenderTarget(renderTargets.get(i));
 		}
 

@@ -67,7 +67,6 @@ public final class CompiledDisplayList {
             }
         }
 
-        // Close VBOs
         if (ownedVbos != null) {
             ownedVbos.delete();
         }
@@ -106,8 +105,6 @@ public final class CompiledDisplayList {
     public List<IndexedDrawBatch> getIndexedBatches() {
         return indexedBatches;
     }
-
-    // === Test inspection methods ===
 
     /**
      * Get counts of each command type in the buffer.
