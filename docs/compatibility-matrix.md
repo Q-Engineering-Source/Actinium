@@ -16,6 +16,17 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 > 确认 dev 客户端可正常启动。提交 `7a5b9361`，报告环境与验证细节见
 > [docs/compat/forge-splash-progress.md](compat/forge-splash-progress.md)。
 
+> 2026-10-19 追加：方块选择框在某些观察方向出现斜线（[issue #21](https://github.com/Q-Engineering-Source/Actinium/issues/21)）
+> 已修复，用户确认实机验证完成。原版 `RenderGlobal.drawBoundingBox` 用 `GL_LINE_STRIP` 串起包围框，
+> 并用透明端点隐藏连接段；Actinium shader 的平滑颜色插值使两条斜向连接段仍有可见透明度，
+> 随观察方向及深度遮挡显露。修复由 `BoundingBoxOutline` 生成 12 条独立的 `GL_LINES` 边，
+> 经现有 `MixinRenderGlobal` 接入独立包围框绘制入口，保留传入的边界、颜色和透明度。
+> 验证产物为 `Actinium-alpha-0.0.13-b99034f8.jar`（基于 `b99034f8` 的
+> `fix/block-selection-outline` 工作区）；用户未逐项记录光影包、模组、Java/Cleanroom 版本和硬件环境。
+> `./gradlew check build --no-daemon` 通过：791 项测试，0 失败、4 跳过；新增 4 项直接使用
+> `BufferBuilder` 验证原版斜向连接段、完整及非完整方块的 12 条独立边、颜色和透明度。
+> 测试用 `ClippingHelperImpl` 同步恢复原版继承关系和构造入口，保证可直接加载 `RenderGlobal`。
+
 > 2026-10-18 追加：Actinium 0.0.12 alpha + Cleanroom 0.6.13-alpha 下，Complementary Reimagined r5.9.3
 > 与 Derivative Main d24.4.14 手持火把完全没有动态光照。根因是 `ItemIrisMixin` 只把
 > `IrisItemLightProvider` 接口加到 `Item`，而 provider 默认恒返回 0；`IdMapUniforms` 因此每帧向
@@ -72,7 +83,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 > 查询抽成 `BiomeLookup`：越界坐标夹到快照边缘（最近处的 biome 优于固定 PLAINS 兜底），未持有快照或
 > 缺失数据返回 PLAINS，坐标以 long 做差避免极端坐标回绕。回归测试与红-绿验证通过，实机验证待用户
 > 确认，详见 [docs/compat/betterbiomeblend.md](compat/betterbiomeblend.md)。
-> 
+
 > 2026-09-25 追加：ReplayMod 1.12.2-2.6.13 使用 BSL_v10.1p1 导出视频时崩溃已修复并由用户实机确认——
 > ReplayMod 在视频捕获时取消 `RenderGlobal.drawSelectionBox`，旧 outline HEAD/RETURN 注入因此漏掉清理；
 > PBO 捕获调用的 `glReadPixels(..., long)` 也缺 GLSM 路由。修复细节及 Cleanroom 实测环境见下方
@@ -106,6 +117,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 > 即 (0,0,0,1)），每张 64×64 区块贴图只采到一个纹素。修复为 UV 元素统一走
 > `Usage.uvAttributeLocation`（0→2、1→3、2→5、3→6），与顶点着色器声明的槽位同表；无槽单位改为
 > 一次性告警而非静默丢弃。dev 实机确认小地图与世界地图地形恢复细节（用户截图对比）。
+
 > 2026-09-22 追加：同一 issue 下世界地图图标按钮的白底也已修复——Xaero 的
 > `RadarRenderer#postRender`（仅「实体雷达」启用时注册，世界地图复用小地图的元素渲染器）关闭 alpha test
 > 且不恢复；而 vanilla `FontRenderer.drawString` 第一行的 `enableAlpha()`
@@ -157,7 +169,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 > 彻底删除）；修复改为从 Depths 公开 API
 > （`DepthsUpdateAPI.getHeightInfo`）推导 section 范围，并按其 storage 布局映射读取（commit
 > `6d8fc24`，dev 实测 Y<0 与 Y>255 区域正常渲染）。
-> 
+
 > 2026-08-18 追加：EnderIO CEu 5.4.2 流体罐在光影开启时罐内液体不渲染的修复（#58）——见下方
 > [模组与环境](#模组与环境) 的 EnderIO 行。根因是 Iris celeritas 地形接口对所有 terrain pass
 > 无条件强制 `glDepthMask(true)`，translucent 层里的罐体玻璃窗因此写出深度，遮挡了其后绘制的
@@ -170,7 +182,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 > 在 mcmod.info 硬依赖 `celeritas` mod id，将拒绝加载，需其作者发布 Actinium 适配版；
 > celeritas-dynamic-lights / celeritasleafculling 的已发布版本失去选项页与 renderer 增强，
 > 但其 vanilla 注入的核心逻辑仍生效，二者本地源码的 Actinium 适配方案已立项。
->
+
 > 2026-09-02 追加：上述修复曾被 #85（`da83c59`）回潮——该提交把 translucent terrain pass
 > 翻转为写深度，依据的"vanilla 半透明阶段保持写深度"前提不实：vanilla 1.12.2 将整个
 > translucent 阶段（半透明地形 + pass-1 方块实体重绘）包在 `depthMask(false)` 内
@@ -179,7 +191,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 > （`VintageRenderPassConfigurationBuilder`），水 pass 保持写深度；光影路径由
 > Iris celeritas 接口对 translucent 语义 pass 统一不写深度兜底。无光影/光影双路径、
 > 水与玻璃叠层、mipmap 切换均回归通过。
-> 
+
 > 2026-08-18 追加：Snow! Real Magic! 0.7.4（issue #35）带雪栅栏不渲染的修复——见下方
 > [模组与环境](#模组与环境) 的 Snow! Real Magic! 行。根因是 SRM 把被雪覆盖的方块替换为携带
 > `SnowTile` 的 `snow_layer`，并只在 `BlockRendererDispatcher.renderBlock` 内重绘被覆盖方块，
@@ -210,7 +222,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 > `OpenGlHelper.glBlendFunc` 上的预乘 alpha 覆盖钩子，缓存 FBO 写入直 alpha 而 blit 按预乘
 > 合成；修复为 `GnetumHudCachingCompatTransformer` 把 `Gnetum.rendering` 窗口镜像到
 > `GLSMConfig.hudCacheOverride`（commit `5d820b0e`，生产实机回归已确认）。
->
+
 > 2026-09-07 再追加：Gnetum 与 Revo UI 共存时打开/关闭 GUI 背景渐变随缓存 pass 轮转
 > 闪烁——Gnetum 把 uie 的 `RenderGameOverlayEvent.Post` 监听器收入分帧缓存，Actinium 的
 > 渐变 defer/replay 管线因此被降为 1/3 帧率；修复为缓存捕捉窗口内
@@ -288,7 +300,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 | VoxelMap         | 部分 | 条件 Mixin（CPU 纹理路径 + 线性过滤 + scissor 重路由 + HudCaching alpha 保护） | 1.9.25 小地图黑屏/黑块已修复（dev 验证圆内正常显示地图内容、HUD 不被缓存隐藏，见 [docs/compat/voxelmap.md](compat/voxelmap.md)）；已知缺口：与 StellarCore `HudCaching` 组合时小地图圆周仍可能残留黑块（VoxelMap 全屏清 alpha + DST_ALPHA 混合与 HUD 缓存 FBO 的第三方冲突，`HudCaching=false` 即消失，非本模组缺陷）；验证 VoxelMap 需停用 JourneyMap（二者频道冲突） |
 | ModernUI         | 代码支持 | GUI scale hook                     | 尚缺当前运行时验证记录      |
 | Mekanism-CE-Unofficial | 部分 | 条件 Mixin（Mekanism glow pass 的 deferred alpha blend 与 Iris blend lock 桥接） | 10.0.5.021（CurseForge `840735:8862568`）：MakeUp UltraFast 9.1f 下大型化学清洗机贴图已恢复，详见 [docs/compat/mekanism.md](compat/mekanism.md)；其他光影包及手持模型回归待验证 |
-| HBM's Nuclear Tech - Community Edition | 已验证 | 条件 Mixin（RenderUtil 状态栈 + Sedna 武器手部深度）+ early Mixin（TileEntityRendererDispatcher 世界 lightmap 同步，注入体按 `isHbmInstalled()` 门控） | 2.5.0.5（CurseForge 1312314:8330665）：FENSU 与其他 HBM 机器的 WaveFront raw VAO 模型在实际场景中正常显示；修复前的 stale lightmap、黑色剪影和 depth 恢复异常不再复现；第一人称手持 Sedna 系武器在光影下清空世界深度导致的深度崩坏已修复（2026-09-21，Complementary Reimagined r5.5.1 + Distant Horizons 实测确认，详见 [docs/compat/hbm.md](compat/hbm.md)）；Java 25.0.3、Cleanroom 0.6.12-alpha dev 回归通过；2.6.1.0 + NTM-Space 0.9.2：issue #170 的 Stardar GUI 未映射 attribute 位崩溃已修复，星图实机确认待补充（详见 [docs/compat/hbm.md](compat/hbm.md)） |
+| HBM's Nuclear Tech - Community Edition | 已验证 | 条件 Mixin（RenderUtil 状态栈 + Sedna 武器手部深度 + 切块模型收集）+ early Mixin（TileEntityRendererDispatcher 世界 lightmap 同步，注入体按 `isHbmInstalled()` 门控） | 2.5.0.5（CurseForge 1312314:8330665）：FENSU 与其他 HBM 机器的 WaveFront raw VAO 模型在实际场景中正常显示；修复前的 stale lightmap、黑色剪影和 depth 恢复异常不再复现；第一人称手持 Sedna 系武器在光影下清空世界深度导致的深度崩坏已修复（2026-09-21，Complementary Reimagined r5.5.1 + Distant Horizons 实测确认，详见 [docs/compat/hbm.md](compat/hbm.md)）；Java 25.0.3、Cleanroom 0.6.12-alpha dev 回归通过；裁决剑、高频剑、超硬钢剑切块效果不显示已修复，模型批处理路径的已渲染状态现可被 HBM 识别（2026-10-19，用户 dev 实机验收通过）；2.6.1.0 + NTM-Space 0.9.2：issue #170 的 Stardar GUI 未映射 attribute 位崩溃已修复，星图实机确认待补充（详见 [docs/compat/hbm.md](compat/hbm.md)） |
 | Depths Update    | 已验证 | 兼容门控（`compat/depthsupdate`：公开 API 推导 section 范围 + storage 索引映射） | 1.0.0-a10：扩展世界高度（默认 -64..320）下 Y<0 与 Y>255 的方块不再缺失（渲染器原先硬编码 0-255）；dev 实测正常；无 Depths 时回退 vanilla 行为 |
 | EnderIO CEu / EnderCore CEu | 已验证 | 无（核心渲染语义修复，非模组接入） | 5.4.2 + EnderCore 0.5.81：光影开启时流体罐内液体被罐体玻璃窗深度遮挡的问题已修复（`cb4feaa5`，translucent terrain pass 不再写深度）；MakeUp Ultra Fast 9.4c + Cleanroom 0.5.17-alpha 实测通过；2026-09-02 修复 #85（`da83c59`）引入的回潮——translucent pass 被错误翻转为写深度导致有无光影流体均被玻璃遮挡，已恢复 vanilla 深度语义，双路径实测通过 |
 | Snow! Real Magic! | 已验证 | 兼容门控（SRM 的 snow_layer 块退回 vanilla dispatcher 路径） | 0.7.4：带雪栅栏不渲染已修复（SRM 把被覆盖方块替换为带 SnowTile 的雪层、仅在 `BlockRendererDispatcher.renderBlock` 内重绘，快速区块路径已绕过）；`6aee395`，dev 运行验证通过（MakeUp Ultra Fast 下无光影 + 光影各验一次） |
@@ -307,13 +319,14 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 | Obscure Tooltips | 已验证 | 条件 Mixin（`mixins.actinium.obscuretooltips.json`：tooltip 盔甲预览的实体渲染包裹进 GUI entity surface，Iris 盔甲 item ID/glint 钩子在该 surface 内跳过） | 3.10.2（CurseForge 715660:8522661）：tooltip 内渲染盔甲架实体时 Iris 盔甲钩子把世界渲染 GBuffer/item ID 状态带进 GUI pass，可产生全屏黑罩（PR #142）；修复仅在该 surface 激活期间跳过盔甲钩子，世界盔甲渲染不变；dev 实机回归通过（光影下悬停盔甲 tooltip 无黑罩，世界盔甲渲染正常） |
 | CensoredASM / Chibi（LoliASM） | 已验证（dev） | 无侵入（提供 `org.taumc.celeritas.core.CeleritasLoadingPlugin` 探测标记类，触发 LoliASM 自带的 Celeritas 让位路径） | 5.33（CurseForge 460609:8225778，issue #159）：共存启动崩溃已修复——其 on-demand animated textures 与 Actinium 在 `TextureMap.updateAnimations` / `BufferBuilder.tex` 上双重 overwrite，`squashBakedQuads` 亦与 `MixinBakedQuad` 的 `@Shadow` 字段冲突；LoliASM 本就会在探测到 Celeritas 系时关闭两者，Actinium 移除 Celeritas 桥后该探测失效。dev 实机验证：LoliASM 两条让位日志出现、无 Mixin 失败、进世界正常；生产整合包回归待用户确认，详见 [docs/compat/censoredasm.md](compat/censoredasm.md) |
 | NeverEnoughAnimation | 已验证 | 顶点 alpha 覆写扩展点（`ItemVertexAlphaOverrides`：外部缩放激活时，快速物品路径跳过 raw append 与 display list 缓存，改走 `renderQuads`） | 1.0.7（CurseForge 1062347:7289408，issue #145）：GUI 开/关淡入的顶点 alpha 被 display list 缓存烘焙成永久透明（raw append 分支则整条丢弃该缩放），导致箱子／背包 GUI 物品不可见；dev 实机回归通过（物品随 GUI 淡入并最终完全可见，背包与世界物品无回归）。附带归因记录：NEA 的 dev-only `drawScreenDebug` 会在 `BackgroundDrawnEvent` 留下标准物品光照，使 `GuiChest` 面板变暗，属上游调试代码缺陷，详见 [docs/compat/neverenoughanimation.md](compat/neverenoughanimation.md) |
-| Xaero's Minimap / World Map / XaeroLib | 部分 | 无 Mixin（glsm 顶点格式映射修复：UV 元素按 legacy texture unit 分配属性槽） | 26.5.1 / 1.46.0 / 1.7.3（issue #175）：两张地图的地形渲染成 64×64 纯色方块已修复——Xaero 的地形格式是 `POSITION + 每个纹理单元一组 UV`（unit 0..3）并配合 unit 0/2/3 的固定管线 `GL_COMBINE`，而 glsm 的顶点格式映射只认 UV `index` 0/1，unit 2/3 的属性槽从未下发，FFP 退回常量 `u_CurrentTexCoord2/3` 导致每张贴图只采一个纹素；装了世界地图时小地图复用其绘制路径，故两者同因。dev 实机确认地形细节恢复；已知缺口：世界地图界面内的图标按钮仍渲染异常（非本次修复引入、与 TexEnv/多纹理路径无关，待单独处理），详见 [docs/compat/xaero.md](compat/xaero.md) |
+| Xaero's Minimap / World Map / XaeroLib | 部分 | 无 Mixin（glsm UV 属性槽映射、字体 alpha test 状态及 PBO 偏移回读修复） | 26.5.1 / 1.46.0 / 1.7.3（issue #175）：两张地图地形的 64×64 纯色方块与世界地图图标按钮白底已修复并实机确认。26.6.0 / 1.47.0 / 1.7.3（issue #237，无光影）：世界地图缩小到 0.5x 附近后原生崩溃已修复并由用户实机确认；分支纹理回读使用 PBO 偏移 `0L`，`glGetTexImage(long)` 原先错误解绑 pack PBO，使偏移变成空 CPU 指针，现保留调用者绑定；客户端内存重载行为不变。其余已知缺口及验证记录见 [docs/compat/xaero.md](compat/xaero.md) |
 | Component Model Hider | 代码支持（实机待验） | 兼容门控（`compat/componentmodelhider`：网格构建期置位模组的 `isBuildingChunk`，隐藏位置跳过模型渲染，快速路径自行补上"邻格隐藏则仍绘制该面"规则） | 1.0（CurseForge 940949:4885858，modid `component_model_hider`）：其隐藏机制挂在 `RenderChunk.rebuildChunk` 上，Actinium 的 mesher 从不走该路径，导致 `isBuildingChunk` 永不置位、隐藏方块照旧渲染且仍剔除邻面；详见 [docs/compat/component-model-hider.md](compat/component-model-hider.md) |
 | LagGoggles（TickCentral） | 部分 | 无侵入（实体上下文 hook 的锚点由 `renderEntity` 内调用点改为方法入口，`@WrapMethod`） | 5.9（CurseForge 283525）+ TickCentral 3.2（issue #166）：共存启动必崩——`com.github.terminatornl.laggoggles.tickcentral.RenderManagerTransformer` 把 `RenderManager.renderEntity` 方法体搬进 `laggoggles_trueRender`、原方法只剩转发桩，Actinium 原有 `@Redirect` 在方法内找不到 `Render.doRender` 调用点，`require = 1` 失败使 `RenderManager` 类变换整体失败（下游 ContentTweaker `NoClassDefFoundError`）；修复后入口方法在两种布局下都命中，`RenderManagerIrisAnchorTest` 复刻该搬迁变换锁定锚点（含变异校验），`./gradlew check` 通过，**实机验证待用户确认**，详见 [docs/compat/laggoggles.md](compat/laggoggles.md) |
 | DragonCore 自定义字体 | 部分 | 无侵入（字体批处理器按渲染器类名让位，`Mods.DRAGONCORE` 门控） | 2.0.1（元素之诗整合包）：服务器 FontConfig 下发的自定义字体无法渲染已修复——DragonCore 用 `bt`（extends `FontRenderer`）替换 `fontRendererObj` 并在覆写的 `renderStringAtPos` 中绘制自字形，而 Actinium 批处理路径绕过该方法；检测 `eos.moe.dragoncore.` 包前缀后 batcher 让位（同 NeoFontRender 逻辑），详见 [docs/compat/dragoncore.md](compat/dragoncore.md) |
 | Mobends / DragonCore | 已验证 | 无侵入（glsm 纹理绑定回调 + 根项目回写 vanilla `GlStateManager.TEXTURES[].textureName` 镜像） | 1.0 / 2.0.1（元素之诗整合包，无光影）：所有玩家皮肤纯白已修复——Mobends `ModelPart` 皮肤覆盖层反射读 vanilla 纹理镜像做恢复绑定，而 GLSMRedirector 使 vanilla `bindTexture` 方法体从不执行、镜像恒 0，恢复时 `bindTexture(0)` 解绑 unit0 导致后续 display list 回放无纹理；修复在每次 GL_TEXTURE_2D 绑定后（含缓存命中）同步镜像，详见 [docs/compat/mobends.md](compat/mobends.md) |
 | GalaxySpace（AsmodeusCore 天空） | 已验证 | 无（glsm 核心颜色语义修复，非模组接入） | `dev_1.12.2` 分支 + AsmodeusCore 1.0.4（issue #164）：夜晚 Overworld 自定义 skybox 发白、银河贴图呈灰块已修复——`SkyProviderBase#render` 以 `glColor3f(skyColor - playerY/400)` 画天球，夜晚为负值，GLSM `changeColor` 未按 GL 规范钳到 [0,1]，FFP `sanitizeUniformColor` 把负色误判为 dirty sentinel 洗成白色；修复为入口 `Color4.clamp01`，`./gradlew check` 通过，用户实机确认夜晚天空恢复正常、白天与 JourneyMap 网格/GUI 字体颜色无回归，详见 [docs/compat/galaxyspace.md](compat/galaxyspace.md) |
 | Goslingcord（Emojicord fork） | 已验证 | 无侵入（检测到 `emojicord` 时字体批处理器整体让位，`Mods.EMOJICORD` 门控） | 2.1.1（CurseForge 1207865:7269343，issue #204）：emoji 选择面板文字全部乱码已修复——Goslingcord 用 ASM 把 emoji 替换织入 vanilla `FontRenderer` 本体的 `renderStringAtPos`/`renderChar`/`getCharWidth`（`\u0000` 占位符 + 每字符绑定 emoji 纹理），而 `MixinFontRenderer` 在 `drawString`/`renderString` HEAD 改走 `BatchingFontRenderer` 绕过这些方法，占位符被当普通字符从字体图集随机取格；渲染器类名不变故无法按类名让位，改为按模组存在性整体让位（同 NeoFontRender）；实机确认面板/聊天 emoji 与文字正常，开/关光影无回归，详见 [docs/compat/goslingcord.md](compat/goslingcord.md) |
+| FindMe | 已验证 | 无侵入（延迟粒子批处理捕获并回放深度测试开关，刷新后恢复入口状态） | 1.1.0-8 + HEI 4.35.0（issue #202）：无光影时箱子定位粒子几乎不可见的问题已修复；原因为 FindMe 临时关闭深度测试的绘制被延迟到其重新开启深度测试后执行，而批处理遗漏了该状态。用户实机验证通过，详见 [docs/compat/findme.md](compat/findme.md) |
 
 ## 验证记录模板
 

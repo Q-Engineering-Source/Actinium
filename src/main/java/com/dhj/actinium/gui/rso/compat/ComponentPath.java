@@ -13,17 +13,14 @@ public final class ComponentPath {
         this.child = child;
     }
 
-    /** Creates a leaf path for a widget that directly holds focus. */
     public static ComponentPath leaf(GuiEventListener component) {
         return new ComponentPath(component, null);
     }
 
-    /** Creates a path whose deepest segment is a child path inside the given container. */
     public static ComponentPath path(ContainerEventHandler container, ComponentPath childPath) {
         return new ComponentPath(container, childPath);
     }
 
-    /** Returns the leaf widget at the end of this path. */
     public GuiEventListener leafComponent() {
         return this.child == null ? this.component : this.child.leafComponent();
     }

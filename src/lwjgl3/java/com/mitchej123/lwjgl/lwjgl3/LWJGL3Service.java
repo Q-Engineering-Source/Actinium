@@ -28,9 +28,6 @@ public record LWJGL3Service(
     private static final Logger LOGGER = LogManager.getLogger("Celeritas/LWJGL3Service");
     private static final LWJGL3DebugSupport debugSupport = new LWJGL3DebugSupport();
 
-    // ===================== CAPABILITIES =====================
-
-
     @Override
     public boolean isOpenGLVersionSupported(int major, int minor) {
         GLCapabilities caps = GL.getCapabilities();
@@ -85,8 +82,6 @@ public record LWJGL3Service(
     public int getPointerSize() {
         return Pointer.POINTER_SIZE;
     }
-
-    // ===================== BUFFER OPERATIONS =====================
 
     @Override
     public int glGenBuffers() {
@@ -285,8 +280,6 @@ public record LWJGL3Service(
         GL20C.glEnableVertexAttribArray(index);
     }
 
-    // ===================== SHADER OPERATIONS =====================
-
     @Override
     public int glCreateShader(int type) {
         return GL20C.glCreateShader(type);
@@ -377,8 +370,6 @@ public record LWJGL3Service(
         GL30C.glBindFragDataLocation(program, colorNumber, name);
     }
 
-    // ===================== UNIFORM OPERATIONS =====================
-
     @Override
     public int glGetUniformLocation(int program, CharSequence name) {
         return GL20C.glGetUniformLocation(program, name);
@@ -459,8 +450,6 @@ public record LWJGL3Service(
         GL20C.glUniformMatrix4fv(location, transpose, value);
     }
 
-    // ===================== DRAW OPERATIONS =====================
-
     @Override
     public void glDrawElementsBaseVertex(int mode, int count, int type, long indices, int basevertex) {
         GL32C.glDrawElementsBaseVertex(mode, count, type, indices, basevertex);
@@ -475,8 +464,6 @@ public record LWJGL3Service(
     public void glMultiDrawElementsIndirect(int mode, int type, long indirect, int drawcount, int stride) {
         GL43C.glMultiDrawElementsIndirect(mode, type, indirect, drawcount, stride);
     }
-
-    // ===================== SYNC OPERATIONS =====================
 
     @Override
     public long glFenceSync(int condition, int flags) {
@@ -502,8 +489,6 @@ public record LWJGL3Service(
     public void glDeleteSync(long sync) {
         GL32C.glDeleteSync(sync);
     }
-
-    // ===================== QUERY OPERATIONS =====================
 
     @Override
     public int glGenQueries() {
@@ -532,8 +517,6 @@ public record LWJGL3Service(
             case NONE -> 0L;
         };
     }
-
-    // ===================== DEBUG OPERATIONS =====================
 
     @Override
     public PrintStream getDebugStream() { return APIUtil.DEBUG_STREAM; }
@@ -568,8 +551,6 @@ public record LWJGL3Service(
             KHRDebug.glPopDebugGroup();
         }
     }
-
-    // ===================== TEXTURE OPERATIONS =====================
 
     @Override
     public int glGenTextures() {
@@ -622,8 +603,6 @@ public record LWJGL3Service(
         GL42C.glBindImageTexture(unit, texture, level, layered, layer, access, format);
     }
 
-    // ===================== FRAMEBUFFER OPERATIONS =====================
-
     @Override
     public int glGenFramebuffers() {
         return GL30C.glGenFramebuffers();
@@ -648,8 +627,6 @@ public record LWJGL3Service(
     public void glFramebufferTexture2D(int target, int attachment, int textarget, int texture, int level) {
         GL30C.glFramebufferTexture2D(target, attachment, textarget, texture, level);
     }
-
-    // ===================== STATE OPERATIONS =====================
 
     @Override
     public void glEnable(int cap) {
@@ -706,8 +683,6 @@ public record LWJGL3Service(
         return GL11C.glGetError();
     }
 
-    // ===================== COMPATIBILITY PROFILE (GL1.x) =====================
-
     @Override
     public void glMatrixMode(int mode) {
         GL11.glMatrixMode(mode);
@@ -717,8 +692,6 @@ public record LWJGL3Service(
     public void glLoadMatrixf(FloatBuffer m) {
         GL11.glLoadMatrixf(m);
     }
-
-    // ===================== MISC GL =====================
 
     @Override
     public int glGetInteger(int pname) {
@@ -745,14 +718,10 @@ public record LWJGL3Service(
         return GL20C.glGetAttribLocation(program, name);
     }
 
-    // ===================== MEMORY STACK OPERATIONS =====================
-
     @Override
     public MemoryStack stackPush() {
         return new LWJGL3MemoryStack(org.lwjgl.system.MemoryStack.stackPush());
     }
-
-    // ===================== NATIVE MEMORY OPERATIONS =====================
 
     @Override
     public long nmemAlloc(long size) {

@@ -230,7 +230,6 @@ public class VintageBlockRenderer {
         final int[] vertexColors = this.quadColors;
 
         if (colorProvider != null && quad.hasColor()) {
-            // Force full alpha on all colors
             Arrays.fill(vertexColors, 0xFF000000 | ColorARGB.toABGR(colorProvider.colorMultiplier(this.currentState, this.currentBlockAccess, pos, quad.getColorIndex())));
         } else {
             Arrays.fill(vertexColors, 0xFFFFFFFF);
@@ -255,7 +254,6 @@ public class VintageBlockRenderer {
 
             BakedQuadView quadView = (BakedQuadView)quad;
 
-            // Run through our light pipeline
             var light = this.getVertexLight(lighter, pos, cullFace, quadView);
             var colors = this.getVertexColors(pos, colorProvider, quadView);
 

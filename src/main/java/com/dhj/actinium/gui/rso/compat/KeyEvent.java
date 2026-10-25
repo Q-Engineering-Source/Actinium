@@ -68,23 +68,19 @@ public record KeyEvent(int key, int scancode, int modifiers) {
         };
     }
 
-    /** Creates an event from a 1.12.2 keyboard state snapshot. */
     public static KeyEvent fromLwjgl2(int lwjgl2Key, boolean shift, boolean control, boolean alt) {
         int modifiers = (shift ? MODIFIER_SHIFT : 0) | (control ? MODIFIER_CONTROL : 0) | (alt ? MODIFIER_ALT : 0);
         return new KeyEvent(toGlfw(lwjgl2Key), lwjgl2Key, modifiers);
     }
 
-    /** Returns whether the shift modifier is held. */
     public boolean hasShiftDown() {
         return (this.modifiers & MODIFIER_SHIFT) != 0;
     }
 
-    /** Returns whether the control modifier is held. */
     public boolean hasControlDown() {
         return (this.modifiers & MODIFIER_CONTROL) != 0;
     }
 
-    /** Returns whether the alt modifier is held. */
     public boolean hasAltDown() {
         return (this.modifiers & MODIFIER_ALT) != 0;
     }
@@ -94,77 +90,62 @@ public record KeyEvent(int key, int scancode, int modifiers) {
         return this.key == KEY_ENTER || this.key == KEY_KP_ENTER;
     }
 
-    /** Returns whether this event is the select-all shortcut. */
     public boolean isSelectAll() {
         return this.key == KEY_A && this.hasControlDown();
     }
 
-    /** Returns whether this event is the copy shortcut. */
     public boolean isCopy() {
         return this.key == KEY_C && this.hasControlDown();
     }
 
-    /** Returns whether this event is the paste shortcut. */
     public boolean isPaste() {
         return this.key == KEY_V && this.hasControlDown();
     }
 
-    /** Returns whether this event is the cut shortcut. */
     public boolean isCut() {
         return this.key == KEY_X && this.hasControlDown();
     }
 
-    /** Returns whether this event is the left arrow key. */
     public boolean isLeft() {
         return this.key == KEY_LEFT;
     }
 
-    /** Returns whether this event is the right arrow key. */
     public boolean isRight() {
         return this.key == KEY_RIGHT;
     }
 
-    /** Returns whether this event is the up arrow key. */
     public boolean isUp() {
         return this.key == KEY_UP;
     }
 
-    /** Returns whether this event is the down arrow key. */
     public boolean isDown() {
         return this.key == KEY_DOWN;
     }
 
-    /** Returns whether this event is an arrow key. */
     public boolean isArrow() {
         return this.isLeft() || this.isRight() || this.isUp() || this.isDown();
     }
 
-    /** Returns whether this event is Escape. */
     public boolean isEscape() {
         return this.key == KEY_ESCAPE;
     }
 
-    /** Returns whether this event is Tab. */
     public boolean isTab() {
         return this.key == KEY_TAB;
     }
 
-    /** Returns whether this event is Home. */
     public boolean isHome() {
         return this.key == KEY_HOME;
     }
 
-    /** Returns whether this event is End. */
     public boolean isEnd() {
         return this.key == KEY_END;
     }
 
-    /** Returns whether this event is Page Up. */
     public boolean isPageUp() {
         return this.key == KEY_PAGE_UP;
     }
 
-    /** Returns whether this event is Page Down. */
     public boolean isPageDown() {
         return this.key == KEY_PAGE_DOWN;
     }

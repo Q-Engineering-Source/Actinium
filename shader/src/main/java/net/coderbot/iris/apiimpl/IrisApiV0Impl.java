@@ -37,7 +37,6 @@ public class IrisApiV0Impl implements IrisApi {
 	public Object openMainIrisScreenObj(Object parent) {
         return new Object();
         // TODO: GUI
-        //		return new ShaderPackScreen((GuiScreen) parent);
 	}
 
 	@Override

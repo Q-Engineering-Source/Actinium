@@ -23,13 +23,11 @@ public class EventHandlerRegistrar<T extends EmbeddiumEvent> {
 
     /**
      * Post the given event to all registered listeners.
-     * @param event The event to post
      * @return true if the event is cancelable and was canceled, false otherwise
      */
     public boolean post(T event) {
         boolean canceled = false;
 
-        // Skip doing work if the handler list is empty
         if(!handlerList.isEmpty()) {
             boolean isCancelable = event.isCancelable();
             for(Handler<T> handler : handlerList) {

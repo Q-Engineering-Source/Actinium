@@ -123,10 +123,8 @@ public final class ChunkBuildBuffers {
 
         if (pass.isSorted()) {
             int numPrimitives = vertexCount / primitiveType.getVerticesPerPrimitive();
-            // Generate the canonical index buffer
             mergedIndexBuffer = new NativeBuffer(primitiveType.getIndexBufferSize(numPrimitives));
 
-            // Do the initial sort now
             primitiveType.generateSortedIndexBuffer(mergedIndexBuffer.getDirectBuffer(), numPrimitives, sortState, camX, camY, camZ);
         } else {
             mergedIndexBuffer = null;

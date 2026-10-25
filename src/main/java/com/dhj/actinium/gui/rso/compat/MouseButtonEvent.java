@@ -6,17 +6,14 @@ package com.dhj.actinium.gui.rso.compat;
  */
 public record MouseButtonEvent(int button, double x, double y) {
 
-    /** Returns whether the left mouse button was involved. */
     public boolean isLeft() {
         return this.button == 0;
     }
 
-    /** Returns whether the right mouse button was involved. */
     public boolean isRight() {
         return this.button == 1;
     }
 
-    /** Returns whether the middle mouse button was involved. */
     public boolean isMiddle() {
         return this.button == 2;
     }

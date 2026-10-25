@@ -27,7 +27,6 @@ public class ItemMaterialHelper {
      * For ItemBlock: checks block.properties first, then item.properties.
      * For other items: checks item.properties only.
      *
-     * @param itemStack The item stack to get material ID for
      * @return The material ID, or -1 if not found
      */
     public static int getMaterialId(ItemStack itemStack) {
@@ -43,7 +42,6 @@ public class ItemMaterialHelper {
             return -1;
         }
 
-        // Check cache first
         Int2IntMap metadataCache = MATERIAL_CACHE.get(item);
         if (metadataCache != null) {
             int cached = metadataCache.getOrDefault(metadata, CACHE_MISS_SENTINEL);
@@ -52,7 +50,6 @@ public class ItemMaterialHelper {
             }
         }
 
-        // Cache miss
         int materialId = lookupMaterialId(item, metadata);
 
         if (metadataCache == null) {

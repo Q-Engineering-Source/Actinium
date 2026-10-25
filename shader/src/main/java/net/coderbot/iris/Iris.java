@@ -110,7 +110,6 @@ public class Iris {
 
     @Getter
     private static final Map<String, String> shaderPackOptionQueue = new HashMap<>();
-    // Flag variable used when reloading
     // Used in favor of queueDefaultShaderPackOptionValues() for resetting as the
     // behavior is more concrete and therefore is more likely to repair a user's issues
     private static boolean resetShaderPackOptions = false;
@@ -281,7 +280,6 @@ public class Iris {
             synchronized (lock) {
                 final ExecutorService current = executor;
                 if (current == null || current.isShutdown()) {
-                    // Executor already gone, shut down scheduler
                     if (scheduler != null && !scheduler.isShutdown()) {
                         scheduler.shutdown();
                         scheduler = null;
@@ -304,7 +302,6 @@ public class Iris {
                     // Clear transformation caches - no longer needed after loading
                     TransformPatcher.clearCache();
                 } else {
-                    // Still active (or in-flight), schedule another check.
                     final long remainingSeconds = Math.max(1, IDLE_TIMEOUT_SECONDS - idleSeconds + 1);
                     scheduleIdleCheck(remainingSeconds);
                 }
@@ -485,7 +482,6 @@ public class Iris {
             return;
         }
 
-        // Attempt to load an external shaderpack if it is available
         final Optional<String> externalName = irisConfig.getShaderPackName();
 
         if (externalName.isEmpty()) {
@@ -781,10 +777,8 @@ public class Iris {
         // allows shaderpacks to be changed at runtime
         irisConfig.initialize();
 
-        // Destroy all allocated resources
         destroyEverything();
 
-        // Load the new shaderpack
         loadShaderpack();
 
         // Very important - we need to re-create the pipeline straight away.

@@ -11,15 +11,12 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Brackets the bloom pass with a GLSM state snapshot/restore.
- *
- * <p>The bloom pass re-binds framebuffers, runs external CCL shader programs and
- * re-points texture units 0/1 at its own FBO textures. Whatever it fails to restore
- * leaks into the passes that follow the translucent terrain pass; the first-person
- * hand and held item render fully black as a result. The pass body is identical in
- * Lumenized ({@code renderBloomBlockLayer} inline) and GregTech CEu (split into the
- * {@code renderBloomBlockLayer} wrapper plus {@code renderBloomInternal}); hooking the
- * public entry method covers both.
+ * Brackets the bloom pass with a GLSM state snapshot/restore: the pass re-binds framebuffers,
+ * runs external CCL shader programs and re-points texture units 0/1 at its own FBO textures,
+ * and whatever it fails to restore leaks into the passes that follow the translucent terrain
+ * pass (first-person hand and held item render fully black). The public entry method covers
+ * both pass layouts: Lumenized keeps {@code renderBloomBlockLayer} inline, GregTech CEu 2.8
+ * splits it into the wrapper plus {@code renderBloomInternal}.
  */
 @Mixin(value = BloomEffectUtil.class, remap = false)
 public abstract class MixinBloomEffectUtilStateGuard {

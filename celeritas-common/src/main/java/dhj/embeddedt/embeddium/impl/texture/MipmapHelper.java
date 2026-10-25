@@ -58,15 +58,12 @@ public class MipmapHelper {
         float twoG = ColorSRGB.srgbToLinear(ColorARGB.unpackGreen(two)) * relativeWeightTwo;
         float twoB = ColorSRGB.srgbToLinear(ColorARGB.unpackBlue(two)) * relativeWeightTwo;
 
-        // Combine the color components of each color
         float linearR = oneR + twoR;
         float linearG = oneG + twoG;
         float linearB = oneB + twoB;
 
-        // Take the average alpha of both alpha values
         int averageAlpha = (alphaOne + alphaTwo) >> 1;
 
-        // Convert to sRGB and pack the colors back into an integer.
         return ColorSRGB.linearToSrgb(linearR, linearG, linearB, averageAlpha);
     }
 

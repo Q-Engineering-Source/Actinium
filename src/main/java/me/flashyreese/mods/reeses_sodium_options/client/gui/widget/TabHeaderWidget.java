@@ -92,17 +92,13 @@ public class TabHeaderWidget extends BaseWidget {
         double offset; // [0..overflow]
 
         if (t < DWELL_MS) {
-            // pause at start
             offset = 0.0;
         } else if (t < DWELL_MS + travelMs) {
-            // scroll forward 0 -> overflow
             long tt = t - DWELL_MS;
             offset = Math.min(overflow, tt * speedPxPerMs);
         } else if (t < DWELL_MS + travelMs + DWELL_MS) {
-            // pause at end
             offset = overflow;
         } else {
-            // scroll back overflow -> 0
             long tt = t - (DWELL_MS + travelMs + DWELL_MS);
             offset = Math.max(0.0, overflow - tt * speedPxPerMs);
         }

@@ -9,7 +9,6 @@ public interface DepthCopyStrategy {
 	// FB -> T
 	class Gl20CopyTexture implements DepthCopyStrategy {
 		private Gl20CopyTexture() {
-			// private
 		}
 
 		@Override
@@ -41,7 +40,6 @@ public interface DepthCopyStrategy {
 	// FB -> FB
 	class Gl30BlitFbCombinedDepthStencil implements DepthCopyStrategy {
 		private Gl30BlitFbCombinedDepthStencil() {
-			// private
 		}
 
 		@Override
@@ -62,7 +60,6 @@ public interface DepthCopyStrategy {
 	// Fastest
 	class Gl43CopyImage implements DepthCopyStrategy {
 		private Gl43CopyImage() {
-			// private
 		}
 
 		@Override
@@ -91,7 +88,7 @@ public interface DepthCopyStrategy {
 	 * responsible for ensuring that they are restored to sensible values, or that the previous values are not relied
 	 * on. The callee is responsible for ensuring that texture bindings are not modified.
 	 *
-	 * @param destFb The destination framebuffer. If {@link #needsDestFramebuffer()} returns false, then this param
+	 * @param destFb If {@link #needsDestFramebuffer()} returns false, then this param
 	 *               will not be used, and it can be null.
 	 */
 	void copy(GlFramebuffer sourceFb, int sourceTexture, GlFramebuffer destFb, int destTexture, int width, int height);

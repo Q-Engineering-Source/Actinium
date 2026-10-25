@@ -127,7 +127,6 @@ public class Parser {
 	 *     <li>{@link UnfinishedArgsExpression}, {@link #expressionReducePop} => {@link UnfinishedArgsExpression}</li>
 	 * </ul>
 	 *
-	 * @param index the current reader index, for exception throwing.
 	 * @throws ClassCastException if the top is not an expression
 	 */
 	private void commaReduce(int index) throws ParseException {
@@ -194,8 +193,6 @@ public class Parser {
 	 *     <li>{@link IdToken} {@link UnfinishedArgsExpression} => {@link FunctionCall}</li>
 	 *     <li>{@link UnfinishedArgsExpression}, {@link #expressionReducePop} => {@link ExpressionElement}</li>
 	 * </ul>
-	 *
-	 * @param index the current reader index, for exception throwing.
 	 */
 	void visitClosingParenthesis(int index) throws ParseException {
 		//

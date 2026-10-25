@@ -126,8 +126,8 @@ class CompatShaderTransformerTest {
         String transformed = CompatShaderTransformer.transform(source, true);
 
         // USE_PORTAL_COLOR is undefined, so the #else branch is kept (and transformed) while the
-        // dead branch is dropped; previously this shader fell back to version-fixup-only output
-        // that could not compile under core profile.
+        // dead branch is dropped; a version-fixup-only fallback would emit output that cannot
+        // compile under core profile.
         assertFalse(transformed.contains("portalColor"), transformed);
         assertTrue(transformed.contains("fallbackColor"), transformed);
         assertTrue(transformed.contains("actinium_FragData0"), transformed);
@@ -287,8 +287,8 @@ class CompatShaderTransformerTest {
         assertFalse(hasIdentifier(transformed, "textureCube"), transformed);
         assertCall(transformed, "texture", "cubemap");
 
-        // The mod's own uniforms must stay declared before main; a recovered broken AST used to
-        // displace them into the function body, which the driver then rejected.
+        // The mod's own uniforms must stay declared before main; a recovered broken AST would
+        // displace them into the function body, which the driver then rejects.
         assertOrdered(transformed, "uniform vec4 color", "uniform bool useTexture", "void main");
 
         assertFalse(hasIdentifier(transformed, "gl_FragColor"), transformed);

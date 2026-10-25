@@ -1,16 +1,14 @@
 package com.dhj.actinium.render;
 
 /**
- * Counts nested {@code EntityRenderer.renderWorldPass} invocations on the render thread.
- *
- * <p>The Iris integration in {@code EntityRendererIrisMixin} may only run on the outermost pass: a
- * nested pass would observe a swapped {@code Minecraft.world} and switch the active pipeline
- * mid-pass, corrupting the outer pass that is still rendering. BetterPortals Refitted renders
- * portal views as <b>sequential sibling</b> {@code renderWorld} calls (never nested) and is served
- * by {@code PipelineManager}'s per-dimension pipeline cache instead; this guard is the defensive
- * net for mods that truly recurse {@code renderWorldPass}.
- *
- * <p>Minecraft renders on a single thread, so a plain counter is sufficient.
+ * Counts nested {@code EntityRenderer.renderWorldPass} invocations on the render thread. The Iris
+ * integration in {@code EntityRendererIrisMixin} may only run on the outermost pass: a nested pass
+ * would observe a swapped {@code Minecraft.world} and switch the active pipeline mid-pass,
+ * corrupting the outer pass that is still rendering. BetterPortals Refitted renders portal views
+ * as sequential sibling {@code renderWorld} calls (never nested) and is served by
+ * {@code PipelineManager}'s per-dimension pipeline cache; this guard is the defensive net for mods
+ * that truly recurse {@code renderWorldPass}. Minecraft renders on a single thread, so a plain
+ * counter is sufficient.
  */
 public final class RenderWorldRecursionGuard {
     private static int depth;

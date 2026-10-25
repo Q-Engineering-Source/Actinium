@@ -1091,7 +1091,6 @@ public class CompatShaderTransformer {
         final String suffix = isFragment ? ".frag.glsl" : ".vert.glsl";
         try {
             Files.createDirectories(DUMP_DIR);
-            // Capture caller info for identification
             final String caller = identifyCaller();
             final String header = "// Compat shader dump #" + id + " (" + (isFragment ? "fragment" : "vertex") + ")"
                 + "\n// Transformed: " + wasTransformed
@@ -1132,9 +1131,6 @@ public class CompatShaderTransformer {
 
     /**
      * Generate a passthrough vertex shader for a fragment-only program.
-     *
-     * @param fragmentSource the transformed fragment shader source
-     * @return a complete vertex shader source string
      */
     public static String generatePassthroughVertexShader(String fragmentSource) {
         final StringBuilder sb = new StringBuilder(512);

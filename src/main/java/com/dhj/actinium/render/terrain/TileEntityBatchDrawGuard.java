@@ -11,10 +11,6 @@ public final class TileEntityBatchDrawGuard {
 
     /**
      * Draws a batch only while its BufferBuilder is still building, preserving failures from a real draw.
-     *
-     * @param building whether the batch BufferBuilder is currently building
-     * @param draw the original Forge batch draw operation
-     * @return {@code true} when the draw operation ran
      */
     public static boolean drawIfBuilding(boolean building, Runnable draw) {
         Objects.requireNonNull(draw, "draw");

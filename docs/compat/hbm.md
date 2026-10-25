@@ -1,7 +1,7 @@
 # HBM's Nuclear Tech - Community Edition 兼容性说明
 
 兼容状态:**已验证**（dev 实测确认；生产整合包回归待做）
-最后更新:2026-09-21
+最后更新:2026-10-19
 
 ## 验证范围
 
@@ -186,3 +186,42 @@ RenderUtil.pushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_LI
 与两个哨兵常量完全一致，均无 `0x4` 分支，所以本修复对两个版本都成立。NTM-Space 0.9.2
 的字节码中该调用点常量按 `sipush` 解出为 `0x6004`，而崩溃报告是 `0x4`（源码为 `0x204`）——
 三者都含 `0x4` 且都不在 Actinium 映射表内，因此该差异不影响修复结论，仅记录备查。
+
+## 裁决剑、高频剑、超硬钢剑的生物切块效果不渲染
+
+### 现象与环境
+
+HBM-CE 2.5.0.5（当前 dev 依赖，CurseForge `1312314:8330665`）下，裁决剑、高频剑、
+超硬钢剑对生物的切块效果不显示。用户确认在项目 dev 环境可以复现。
+
+### 根因与触发链
+
+无光影且启用模型批处理时，`ModelRendererIrisMixin` 在 `ModelRenderer.render` 和
+`renderWithRotation` 的入口接管绘制，使用自有显示列表或直接批量提交模型顶点。
+这条路径不经过原版 `compileDisplayList`，因此模型虽然已经渲染，原版 `compiled` 字段
+仍为 `false`。
+
+HBM 的 `ModelRendererUtil.generateCutParticles` 通过 `getBoxesFromMob` 收集模型部件。
+其 `generateList` 仅在 `!isHidden && showModel && compiled` 时收集当前部件并递归子部件。
+Actinium 批处理路径未置位的 `compiled` 使部件被过滤，最终没有可供切割、封口和生成
+`ParticleSlicedMob` 的几何数据。
+
+不能直接把原版 `compiled` 置为 `true`：该字段同时表示原版显示列表已经创建；
+切换光影、关闭批处理或调用 `postRender` 时，原版可能因此跳过编译并调用不存在的显示列表。
+
+### 修复
+
+- 新增 mixin 包外的 `ModelRenderState` 接口，由 `ModelRendererIrisMixin` 记录自有路径
+  已渲染过的部件；标记发生在空 `cubeList` 返回前，使空父节点下的已渲染子部件仍可被收集。
+- 在 HBM 条件配置中注册 `MixinModelRendererUtil`，仅修改 `generateList` 对 `compiled`
+  的读取，通过 `HbmModelRenderCompat` 接受原版已编译或 Actinium 已渲染的部件。
+- 保留 HBM 的隐藏与显示条件，以及原版 `compiled`、显示列表的所有权和生命周期。
+  对 Minecraft 字段的注入锚点单独启用 remap，生产映射为 `field_78812_q`。
+
+### 验证记录
+
+- 2026-10-19：用户在 dev 环境实机验收通过，确认本次报告的三把剑切块效果修复。
+  用户未单独提供光影包名称及各设置组合的验证结果，不将这些组合记为已验证。
+- `./gradlew check --no-daemon` 通过，包含 `MixinConfigurationTest`、模块边界与分发 Jar 结构校验。
+- 已核对分发 Jar 的 refmap，`ModelRenderer.compiled` 正确映射到 `field_78812_q`。
+- 生产整合包回归待做。

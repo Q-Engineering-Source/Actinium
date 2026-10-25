@@ -17,8 +17,6 @@ public final class WorldTimeUniforms {
 
 	/**
 	 * Makes world time uniforms available to the given program
-	 *
-	 * @param uniforms the program to make the uniforms available to
 	 */
 	public static void addWorldTimeUniforms(UniformHolder uniforms) {
 		uniforms

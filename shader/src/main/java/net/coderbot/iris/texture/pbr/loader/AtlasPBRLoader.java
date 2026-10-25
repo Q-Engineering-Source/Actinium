@@ -136,7 +136,6 @@ public class AtlasPBRLoader implements PBRTextureLoader<TextureMap> {
                 }
 
                 // This is no longer closeable either
-//                nativeImage.close();
                 nativeImage = scaledImage;
 
                 frameWidth = targetFrameWidth;

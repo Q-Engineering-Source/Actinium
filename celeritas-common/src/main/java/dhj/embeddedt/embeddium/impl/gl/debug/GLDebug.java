@@ -103,8 +103,6 @@ public final class GLDebug {
 		return "Unknown (0x" + Integer.toHexString(token).toUpperCase() + ")";
 	}
 
-	// ===================== GL43/KHR_debug lookups =====================
-
 	private static String getDebugSource(int source) {
 		return switch (source) {
 			case GL43.GL_DEBUG_SOURCE_API -> "API";
@@ -139,8 +137,6 @@ public final class GLDebug {
 			default -> unknownToken(severity);
 		};
 	}
-
-	// ===================== Debug state management =====================
 
 	public static void reloadDebugState() {
 		if (Boolean.getBoolean("celeritas.enableGLDebug") &&

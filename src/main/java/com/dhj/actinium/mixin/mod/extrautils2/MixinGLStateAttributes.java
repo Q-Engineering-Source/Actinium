@@ -18,22 +18,15 @@ import java.nio.IntBuffer;
 import java.util.ArrayList;
 
 /**
- * Fixes Extra Utilities 2 GUI rendering under Actinium (issue #48: opening a
- * Slightly-Larger Chest renders the GUI fully transparent with white items).
+ * Fixes Extra Utilities 2 GUI rendering (issue #48: opening a Slightly-Larger Chest renders
+ * the GUI fully transparent with white items).
  *
- * <p>{@code GLStateAttributes.loadStates()} snapshots vanilla
- * {@code GlStateManager} state fields so {@code restore()} can bring the GL state
- * back after each widget renders. Under Actinium every vanilla
- * {@code GlStateManager} method call is redirected to the GLSM cache, so those
- * fields are never updated and the snapshot reads stale values (e.g. texture
- * binding 0); {@code restore()} then unbinds the GUI texture, which renders the
- * whole GUI transparent and the items white.</p>
- *
- * <p>The constructor injection re-reads every snapshotted state through
- * {@link ExtraUtils2GLStateCompat} (the GLSM state cache where available, the
- * live GL state otherwise), so the snapshot and the restore behave exactly like
- * vanilla. Texture-generation states are left at their constructed values: they
- * are never enabled during GUI rendering.</p>
+ * <p>{@code GLStateAttributes.loadStates()} snapshots vanilla {@code GlStateManager} state
+ * fields, which never update under the GLSM redirect; {@code restore()} then unbinds the
+ * GUI texture. The constructor injection re-reads every snapshotted state through
+ * {@link ExtraUtils2GLStateCompat} (the GLSM state cache where available, the live GL
+ * state otherwise). Texture-generation states stay at their constructed values: they are
+ * never enabled during GUI rendering.
  */
 @Mixin(value = GLStateAttributes.class, remap = false)
 public abstract class MixinGLStateAttributes {

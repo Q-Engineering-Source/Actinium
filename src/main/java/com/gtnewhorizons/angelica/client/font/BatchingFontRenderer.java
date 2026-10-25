@@ -111,8 +111,6 @@ public class BatchingFontRenderer {
         );
     }
 
-    // === Batched rendering
-
     private static final int INITIAL_BATCH_SIZE = 2048;
     private static final ResourceLocation DUMMY_RESOURCE_LOCATION = new ResourceLocation("angelica$dummy",
         "this is invalid!");
@@ -340,7 +338,6 @@ public class BatchingFontRenderer {
             final FontDrawCmd lastCmd = batchCommands.get(batchCommands.size() - 1);
             final int prevEndVtx = lastCmd.startVtx + lastCmd.idxCount;
             if (prevEndVtx == startIdx && lastCmd.texture == texture) {
-                // Coalesce into one
                 lastCmd.idxCount += idxCount;
                 return;
             }
@@ -417,7 +414,6 @@ public class BatchingFontRenderer {
         }
         batchDepth--;
         if (batchDepth == 0) {
-            // We finished any nested batches
             flushBatch();
         }
     }
@@ -438,14 +434,12 @@ public class BatchingFontRenderer {
             populateEBO(resources, requiredEboCapacity);
         }
 
-        // Upload first (to reduce stalls)
         GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, resources.vbo);
         vertexData.limit(vertexDataPos);
         vboCapacity = StreamingUploader.upload(vertexData, vboCapacity);
 
         final int prevProgram = GLStateManager.glGetInteger(GL20.GL_CURRENT_PROGRAM);
 
-        // Sort&Draw
         batchCommands.sort(FontDrawCmd.DRAW_ORDER_COMPARATOR);
 
         final boolean isAlphaTestEnabledBefore = GLStateManager.glIsEnabled(GL11.GL_ALPHA_TEST);
@@ -587,7 +581,6 @@ public class BatchingFontRenderer {
     }
 
     private void clearBatch() {
-        // Clear for the next batch
         batchCommandPool.addAll(batchCommands);
         batchCommands.clear();
         vertexDataPos = 0;
@@ -617,8 +610,6 @@ public class BatchingFontRenderer {
         GLStateManager.glDisableVertexAttribArray(4);
 
     }
-
-    // === Actual text mesh generation
 
     public static boolean charInRange(char what, char fromInclusive, char toInclusive) {
         return (what >= fromInclusive) && (what <= toInclusive);

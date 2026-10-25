@@ -11,18 +11,13 @@ import org.lwjgl.opengl.GL30;
 /**
  * Save/restore of the GLSM-tracked GL state around the GTCEu/Lumenized bloom pass.
  *
- * <p>The bloom pass ({@code BloomEffectUtil.renderBloomBlockLayer}) re-binds framebuffers,
- * runs external CCL shader programs and re-points texture units at its own FBO
- * textures. The default Unreal pipeline ({@code BloomEffect.renderUnreal}) enables
- * {@code GL_TEXTURE_2D} on units 0..nMips-1 and afterwards only unbinds the textures —
- * it never disables the units. Vanilla code never touches units above 1, so the leaked
- * enables on units 2/3/4 (bound to texture 0) flow into GLSM's fixed-function shader
- * key: every enabled unit is sampled and modulated, texture 0 samples as black, and the
- * first-person hand and held item render fully black.
- *
- * <p>Snapshots the tracked state of <b>all</b> texture units on entry and restores it on
- * exit, so the bloom pass cannot leak state into clouds, the first-person hand or the GUI.
- * The first restore logs which fields actually diverged, to identify the leak source.
+ * <p>The bloom pass re-binds framebuffers, runs external CCL shader programs and re-points
+ * texture units at its own FBO textures. Its Unreal pipeline enables {@code GL_TEXTURE_2D} on
+ * units 0..nMips-1 and only unbinds the textures afterwards, never disabling the units. Vanilla
+ * code never touches units above 1, so the leaked enables on units 2/3/4 (bound to texture 0)
+ * enter GLSM's fixed-function shader key: texture 0 samples as black and the first-person hand
+ * and held item render fully black. Snapshot the tracked state of all texture units on entry and
+ * restore it on exit; the first restore logs the diverged fields to identify the leak source.
  */
 public final class BloomStateGuard {
 

@@ -45,8 +45,6 @@ public class ModelQuadUtil {
     public static final int DEFAULT_COLOR = 0xFFFFFFFF;
     public static final int DEFAULT_LIGHTMAP = 15 << 20 | 15 << 4;
 
-    /// @param vertexIndex The index of the vertex to access
-    /// @return The starting offset of the vertex's attributes
     public static int vertexOffset(int vertexIndex) {
         return vertexIndex * VERTEX_SIZE;
     }
@@ -110,13 +108,10 @@ public class ModelQuadUtil {
         final float y3 = quad.getY(3);
         final float z3 = quad.getZ(3);
 
-        // nx = Σ (yi - yi+1)(zi + zi+1)
         float normX = (y0 - y1) * (z0 + z1) + (y1 - y2) * (z1 + z2) + (y2 - y3) * (z2 + z3) + (y3 - y0) * (z3 + z0);
 
-        // ny = Σ (zi - zi+1)(xi + xi+1)
         float normY = (z0 - z1) * (x0 + x1) + (z1 - z2) * (x1 + x2) + (z2 - z3) * (x2 + x3) + (z3 - z0) * (x3 + x0);
 
-        // nz = Σ (xi - xi+1)(yi + yi+1)
         float normZ = (x0 - x1) * (y0 + y1) + (x1 - x2) * (y1 + y2) + (x2 - x3) * (y2 + y3) + (x3 - x0) * (y3 + y0);
 
         float l = (float) Math.sqrt(normX * normX + normY * normY + normZ * normZ);
@@ -132,7 +127,6 @@ public class ModelQuadUtil {
 
     @SuppressWarnings("unused")
     public static int mergeBakedLight(int packedLight, int vanillaLightEmission, int calcLight) {
-        // bail early in most cases
         if (packedLight == 0 && vanillaLightEmission == 0) return calcLight;
 
         int psl = (packedLight >> 16) & 0xFF;
@@ -146,10 +140,6 @@ public class ModelQuadUtil {
 
     /**
      * Deep copies a list of quads.
-
-     *
-     * @param sourceQuads The quads to copy
-     * @return A new list containing deep copies of all quads
      */
     public static List<ModelQuadViewMutable> deepCopyQuads(List<ModelQuadViewMutable> sourceQuads) {
         final int size = sourceQuads.size();

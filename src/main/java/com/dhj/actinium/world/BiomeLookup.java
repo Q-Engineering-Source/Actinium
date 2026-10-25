@@ -4,30 +4,22 @@ import net.minecraft.init.Biomes;
 import net.minecraft.world.biome.Biome;
 
 /**
- * Biome lookup over the chunk neighbourhood captured by a {@link WorldSlice}.
+ * Biome lookup over the chunk neighbourhood captured by a {@link WorldSlice}. Biome colours are not
+ * only requested for the section being built: mods that blend biome colours walk the 3x3 chunk
+ * neighbourhood (Better Biome Blend gathers the nine chunks around the queried one through
+ * {@code IBlockAccess#getBiome}, issue #162), so a chunk build centred next to the origin chunk can
+ * reach one chunk outside the captured neighbourhood.
  *
- * <p>Motivation: biome colours are not only requested for the section that is being built. Mods
- * that blend biome colours build a whole chunk's colour table and walk the 3x3 chunk neighbourhood
- * of that chunk — Better Biome Blend gathers the nine chunks around the queried one through
- * {@code IBlockAccess#getBiome} (issue #162). A chunk build centred on the chunk next to the
- * slice's origin chunk therefore reaches one chunk outside the captured neighbourhood, and the
- * previous lookup fed that raw negative offset straight into the slice's chunk table
- * ({@code ArrayIndexOutOfBoundsException: Index -4 out of bounds for length 64}).</p>
+ * A query beyond the captured range is clamped onto the nearest captured position: that biome is a
+ * far better approximation than the fixed plains fallback, and biome data is continuous across chunk
+ * borders, so biome-blended colours stay sane at the snapshot edge. A slice holding no snapshot
+ * resolves to plains.
  *
- * <p>The lookup never indexes outside its table: a query beyond the captured range is clamped onto
- * the nearest captured position. The biome next to the requested position is a far better
- * approximation than the fixed plains fallback, and biome data is continuous across chunk borders,
- * so biome-blended colours stay sane at the edge of the snapshot instead of mixing in a foreign
- * biome colour. A slice that currently holds no snapshot resolves to plains, matching how the rest
- * of the slice treats a snapshot it no longer owns.</p>
- *
- * <p>Not thread-safe by itself. A slice belongs to exactly one chunk build task at a time, and this
- * lookup shares that lifetime: {@link #beginSnapshot(int, int)} and {@link #clearSnapshot()} are
- * called by the owning slice's task thread.</p>
+ * Not thread-safe by itself: {@link #beginSnapshot(int, int)} and {@link #clearSnapshot()} are called
+ * by the owning slice's task thread, which is the only caller.
  */
 final class BiomeLookup {
 
-    // The number of blocks on one axis of a captured chunk.
     private static final int CHUNK_BLOCK_LENGTH = 16;
 
     // The mask and shift used to split a snapshot-local block offset into its chunk and
@@ -35,10 +27,8 @@ final class BiomeLookup {
     private static final int CHUNK_BLOCK_MASK = CHUNK_BLOCK_LENGTH - 1;
     private static final int CHUNK_BLOCK_SHIFT = Integer.bitCount(CHUNK_BLOCK_MASK);
 
-    // The number of chunks captured along each horizontal axis.
     private final int chunkSpan;
 
-    // The number of blocks covered by chunkSpan chunks on one axis.
     private final int blockSpan;
 
     // Per-chunk biome tables, indexed by chunkIndex. An entry stays null until its chunk is
@@ -82,9 +72,6 @@ final class BiomeLookup {
     /**
      * Marks the snapshot as held and records the block coordinates it starts at. The chunk tables
      * themselves are published through {@link #setChunk(int, int, Biome[])}.
-     *
-     * @param baseX the snapshot's minimum block x coordinate
-     * @param baseZ the snapshot's minimum block z coordinate
      */
     void beginSnapshot(int baseX, int baseZ) {
         this.baseX = baseX;
@@ -102,8 +89,6 @@ final class BiomeLookup {
      * its nearest edge, so this method is total: it never throws and never reads outside the
      * captured tables.
      *
-     * @param blockX the world block x coordinate
-     * @param blockZ the world block z coordinate
      * @return the biome at the position, or {@link Biomes#PLAINS} when the snapshot holds no data
      *         for it
      */
@@ -131,7 +116,6 @@ final class BiomeLookup {
         return chunkZ * this.chunkSpan + chunkX;
     }
 
-    /** Clamps a snapshot-local block offset onto {@code [0, blockSpan - 1]}. */
     private int clampOffset(long offset) {
         if (offset <= 0) {
             return 0;
