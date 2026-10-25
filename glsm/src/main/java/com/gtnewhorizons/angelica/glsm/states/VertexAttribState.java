@@ -17,34 +17,48 @@ public class VertexAttribState {
     public static final int MAX_ATTRIBS = 16;
 
     private static final Int2ObjectOpenHashMap<Attrib[]> vaoAttribs = new Int2ObjectOpenHashMap<>();
-    private static Attrib[] current;
+    private static volatile Attrib[] current;
+    private static int currentVAO;
     private static final ArrayDeque<Attrib[]> pool = new ArrayDeque<>();
     private static int clientSideEnabledCount;
 
-    public static void init(int defaultVAO) {
+    public static synchronized void init(int defaultVAO) {
         vaoAttribs.clear();
         pool.clear();
         current = allocAttribArray();
+        currentVAO = defaultVAO;
         vaoAttribs.put(defaultVAO, current);
         clientSideEnabledCount = 0;
     }
 
-    public static void onBindVertexArray(int newVAO) {
-        current = vaoAttribs.computeIfAbsent(newVAO, k -> allocAttribArray());
-        recomputeClientSideCount();
+    public static synchronized void onBindVertexArray(int newVAO) {
+        final Attrib[] attribs = vaoAttribs.computeIfAbsent(newVAO, k -> allocAttribArray());
+        currentVAO = newVAO;
+        current = attribs;
+        recomputeClientSideCount(attribs);
     }
 
-    public static void onDeleteVertexArray(int vaoId) {
+    public static synchronized void onDeleteVertexArray(int vaoId) {
         final Attrib[] arr = vaoAttribs.remove(vaoId);
         if (arr != null) {
             pool.addLast(arr);
         }
     }
 
-    public static void reset() {
+    public static synchronized void reset() {
+        reset(currentVAO);
+    }
+
+    /**
+     * Clears tracked VAO attributes while keeping the currently bound VAO ready to receive new state.
+     * This prevents GL calls issued after a reset from observing an uninitialized current array.
+     */
+    public static synchronized void reset(int boundVAO) {
         vaoAttribs.clear();
         pool.clear();
-        current = null;
+        current = allocAttribArray();
+        currentVAO = boundVAO;
+        vaoAttribs.put(boundVAO, current);
         clientSideEnabledCount = 0;
     }
 
@@ -147,10 +161,10 @@ public class VertexAttribState {
 
 
 
-    private static void recomputeClientSideCount() {
+    private static void recomputeClientSideCount(Attrib[] attribs) {
         int count = 0;
         for (int i = 0; i < MAX_ATTRIBS; i++) {
-            if (current[i].isClientSide()) count++;
+            if (attribs[i].isClientSide()) count++;
         }
         clientSideEnabledCount = count;
     }

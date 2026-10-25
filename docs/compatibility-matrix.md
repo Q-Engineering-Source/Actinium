@@ -9,6 +9,13 @@
 本轮验证环境：Actinium `30c7ffb`、Java 25.0.3、Cleanroom 0.5.12-alpha、Distant Horizons 3.1.2-b、
 Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 
+> 2026-10-19 追加：Forge SplashProgress 绘制内存条时的启动崩溃（issue #216）已修复。客户端 reset 与 splash
+> 线程绑定 VAO 可并发执行；旧实现清空 `VertexAttribState.current`，`onBindVertexArray` 随后在重算 client-side
+> attribute 数量时读取到 null。修复将 VAO map 的生命周期操作串行化，并在 reset 后为当前绑定 VAO 建立空状态数组；
+> 计数从本次绑定的数组快照计算。旧实现上的回归用例复现 NPE，修复后 `./gradlew check --no-daemon` 通过；用户
+> 确认 dev 客户端可正常启动。提交 `7a5b9361`，报告环境与验证细节见
+> [docs/compat/forge-splash-progress.md](compat/forge-splash-progress.md)。
+
 > 2026-10-19 追加：方块选择框在某些观察方向出现斜线（[issue #21](https://github.com/Q-Engineering-Source/Actinium/issues/21)）
 > 已修复，用户确认实机验证完成。原版 `RenderGlobal.drawBoundingBox` 用 `GL_LINE_STRIP` 串起包围框，
 > 并用透明端点隐藏连接段；Actinium shader 的平滑颜色插值使两条斜向连接段仍有可见透明度，
@@ -76,7 +83,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 > 查询抽成 `BiomeLookup`：越界坐标夹到快照边缘（最近处的 biome 优于固定 PLAINS 兜底），未持有快照或
 > 缺失数据返回 PLAINS，坐标以 long 做差避免极端坐标回绕。回归测试与红-绿验证通过，实机验证待用户
 > 确认，详见 [docs/compat/betterbiomeblend.md](compat/betterbiomeblend.md)。
-> 
+
 > 2026-09-25 追加：ReplayMod 1.12.2-2.6.13 使用 BSL_v10.1p1 导出视频时崩溃已修复并由用户实机确认——
 > ReplayMod 在视频捕获时取消 `RenderGlobal.drawSelectionBox`，旧 outline HEAD/RETURN 注入因此漏掉清理；
 > PBO 捕获调用的 `glReadPixels(..., long)` 也缺 GLSM 路由。修复细节及 Cleanroom 实测环境见下方
@@ -110,6 +117,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 > 即 (0,0,0,1)），每张 64×64 区块贴图只采到一个纹素。修复为 UV 元素统一走
 > `Usage.uvAttributeLocation`（0→2、1→3、2→5、3→6），与顶点着色器声明的槽位同表；无槽单位改为
 > 一次性告警而非静默丢弃。dev 实机确认小地图与世界地图地形恢复细节（用户截图对比）。
+
 > 2026-09-22 追加：同一 issue 下世界地图图标按钮的白底也已修复——Xaero 的
 > `RadarRenderer#postRender`（仅「实体雷达」启用时注册，世界地图复用小地图的元素渲染器）关闭 alpha test
 > 且不恢复；而 vanilla `FontRenderer.drawString` 第一行的 `enableAlpha()`
@@ -161,7 +169,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 > 彻底删除）；修复改为从 Depths 公开 API
 > （`DepthsUpdateAPI.getHeightInfo`）推导 section 范围，并按其 storage 布局映射读取（commit
 > `6d8fc24`，dev 实测 Y<0 与 Y>255 区域正常渲染）。
-> 
+
 > 2026-08-18 追加：EnderIO CEu 5.4.2 流体罐在光影开启时罐内液体不渲染的修复（#58）——见下方
 > [模组与环境](#模组与环境) 的 EnderIO 行。根因是 Iris celeritas 地形接口对所有 terrain pass
 > 无条件强制 `glDepthMask(true)`，translucent 层里的罐体玻璃窗因此写出深度，遮挡了其后绘制的
@@ -174,7 +182,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 > 在 mcmod.info 硬依赖 `celeritas` mod id，将拒绝加载，需其作者发布 Actinium 适配版；
 > celeritas-dynamic-lights / celeritasleafculling 的已发布版本失去选项页与 renderer 增强，
 > 但其 vanilla 注入的核心逻辑仍生效，二者本地源码的 Actinium 适配方案已立项。
->
+
 > 2026-09-02 追加：上述修复曾被 #85（`da83c59`）回潮——该提交把 translucent terrain pass
 > 翻转为写深度，依据的"vanilla 半透明阶段保持写深度"前提不实：vanilla 1.12.2 将整个
 > translucent 阶段（半透明地形 + pass-1 方块实体重绘）包在 `depthMask(false)` 内
@@ -183,7 +191,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 > （`VintageRenderPassConfigurationBuilder`），水 pass 保持写深度；光影路径由
 > Iris celeritas 接口对 translucent 语义 pass 统一不写深度兜底。无光影/光影双路径、
 > 水与玻璃叠层、mipmap 切换均回归通过。
-> 
+
 > 2026-08-18 追加：Snow! Real Magic! 0.7.4（issue #35）带雪栅栏不渲染的修复——见下方
 > [模组与环境](#模组与环境) 的 Snow! Real Magic! 行。根因是 SRM 把被雪覆盖的方块替换为携带
 > `SnowTile` 的 `snow_layer`，并只在 `BlockRendererDispatcher.renderBlock` 内重绘被覆盖方块，
@@ -214,7 +222,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 > `OpenGlHelper.glBlendFunc` 上的预乘 alpha 覆盖钩子，缓存 FBO 写入直 alpha 而 blit 按预乘
 > 合成；修复为 `GnetumHudCachingCompatTransformer` 把 `Gnetum.rendering` 窗口镜像到
 > `GLSMConfig.hudCacheOverride`（commit `5d820b0e`，生产实机回归已确认）。
->
+
 > 2026-09-07 再追加：Gnetum 与 Revo UI 共存时打开/关闭 GUI 背景渐变随缓存 pass 轮转
 > 闪烁——Gnetum 把 uie 的 `RenderGameOverlayEvent.Post` 监听器收入分帧缓存，Actinium 的
 > 渐变 defer/replay 管线因此被降为 1/3 帧率；修复为缓存捕捉窗口内
@@ -272,6 +280,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 | 组件               | 状态   | 接入方式                               | 备注               |
 |------------------|------|------------------------------------|------------------|
 | Cleanroom Loader | 必需   | Forge/Cleanroom 启动与 MixinBootstrap | 当前目标运行环境         |
+| Forge SplashProgress | 已验证（dev 启动） | GLSM 对 reset / VAO bind 生命周期操作串行化，reset 后保留当前 VAO 的空跟踪状态 | issue #216：Cleanroom 0.6.13-alpha、CleanMix 0.7.2、MixinBooter 11.8、Java 25.0.1；用户确认修复后 dev 可正常启动，详见 [docs/compat/forge-splash-progress.md](compat/forge-splash-progress.md)，commit `7a5b9361` |
 | Immersive Engineering | 部分（Solas V3.7b 场景已验证） | 无 Mixin（Iris `BlockTrans` 默认 blend 状态修正） | 0.12-98：Garden Cloche 玻璃不透明（issue #197）已由用户在 Solas V3.7b 下确认修复；ITT 3.2 与 Photon v1.3b 因各自 1.12.2 shader fallback 仍呈现泛白/发黑，详见 [docs/compat/immersiveengineering.md](compat/immersiveengineering.md) |
 | LittleTiles      | 部分（Photon v1.3b 实测通过） | 条件 Mixin（shader quad context + 独立 AO 顶点通道） | 1.5.87 + CreativeCore 1.10.71（issue #193）：放置的微型方块在光影下比相邻原版方块暗；已修复并经用户确认，Solas 与其他 shader pack 待回归，详见 [docs/compat/littletiles.md](compat/littletiles.md) |
 | ArchitectureCraft | 部分（Photon v1.3b 实测通过） | 条件 Mixin（`RenderTargetWorld#setLight` 的 AO / 方向着色拆分） | 1.12-3.108：用户发现放置 shape 有同类偏暗现象；与原版木板、LittleTiles 同场验证，其他 shader pack 待回归，详见 [docs/compat/architecturecraft.md](compat/architecturecraft.md) |

@@ -426,7 +426,7 @@ public class GLStateManager {
         ctx().modelViewMatrix.clear();
         ctx().projectionMatrix.clear();
         vaoEboMap.clear();
-        VertexAttribState.reset();
+        VertexAttribState.reset(ctx().boundVAO);
     }
 
     /**
