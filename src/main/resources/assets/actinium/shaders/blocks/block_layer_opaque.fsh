@@ -55,6 +55,8 @@ out vec4 fragColor; // The output fragment for the color framebuffer
 #define fragColor gl_FragColor
 #endif
 
+#ifndef LEGACY
+
 /**
  * Snaps the sample point to a texel centre, with the transition spread over the width of one screen pixel in
  * texels so a texel boundary does not flicker while a texel is still roughly one pixel wide.
@@ -189,8 +191,14 @@ vec4 sampleRGSS(sampler2D tex, vec2 uv, vec2 texelSize) {
 }
 #endif
 
+#endif
+
 void main() {
-#ifdef USE_TEXEL_SNAP
+#if defined(LEGACY)
+    // The GLSL 120 downlevel has no textureLod, so sampling stays two-argument and the GL filter state
+    // picks the level.
+    vec4 diffuseColor = texture(u_BlockTex, v_TexCoord);
+#elif defined(USE_TEXEL_SNAP)
     vec2 texelSize = 1.0 / vec2(textureSize(u_BlockTex, 0));
 #ifdef USE_RGSS
     vec4 diffuseColor = sampleRGSS(u_BlockTex, v_TexCoord, texelSize);
@@ -198,10 +206,13 @@ void main() {
     vec4 diffuseColor = sampleTexelSnapped(u_BlockTex, v_TexCoord, texelSize);
 #endif
 #else
-    // The texture's own filter state picks the level. This is what a player who turned filtering off and
-    // asked for nearest texels gets, and it is also what keeps alpha-test fragments alive at level
-    // boundaries, where a derivative-derived level can be the wrong one.
-    vec4 diffuseColor = texture(u_BlockTex, v_TexCoord, v_MaterialMipBias);
+    // The texture's own filter state picks the level, which is what a player who turned filtering off and
+    // asked for nearest texels gets, and what keeps alpha-test fragments alive at level boundaries. A
+    // negative bias means the layer is not mipped: vanilla samples BlockRenderLayer.CUTOUT at level 0, and
+    // every cutout layer shares one render pass here, so the material bit selects that level (#191).
+    vec4 diffuseColor = v_MaterialMipBias < 0.0
+            ? textureLod(u_BlockTex, v_TexCoord, 0.0)
+            : texture(u_BlockTex, v_TexCoord);
 #endif
 
 #ifdef USE_FRAGMENT_DISCARD

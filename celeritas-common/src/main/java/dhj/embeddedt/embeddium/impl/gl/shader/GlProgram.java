@@ -15,9 +15,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 
-/**
- * An OpenGL shader program.
- */
 public class GlProgram<T> extends GlObject implements ShaderBindingContext {
     private static final Logger LOGGER = LogManager.getLogger(GlProgram.class);
 
@@ -126,10 +123,6 @@ public class GlProgram<T> extends GlObject implements ShaderBindingContext {
          * Links the attached shaders to this program and returns a user-defined container which wraps the shader
          * program. This container can, for example, provide methods for updating the specific uniforms of that shader
          * set.
-         *
-         * @param factory The factory which will create the shader program's interface
-         * @param <U> The interface type for the shader program
-         * @return An instantiated shader container as provided by the factory
          */
         public <U> GlProgram<U> link(Function<ShaderBindingContext, U> factory) {
             ensureOpen();

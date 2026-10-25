@@ -45,44 +45,34 @@ import java.util.Arrays;
  * Object pooling should be used to avoid huge allocations as this class contains many large arrays.
  */
 public class WorldSlice implements ActiniumBlockAccess {
-    // The number of blocks on each axis in a section.
     private static final int SECTION_BLOCK_LENGTH = 16;
 
-    // The number of blocks in a section.
     private static final int SECTION_BLOCK_COUNT = SECTION_BLOCK_LENGTH * SECTION_BLOCK_LENGTH * SECTION_BLOCK_LENGTH;
 
-    // The radius of blocks around the origin chunk that should be copied.
     private static final int NEIGHBOR_BLOCK_RADIUS = 2;
 
-    // The radius of chunks around the origin chunk that should be copied.
     private static final int NEIGHBOR_CHUNK_RADIUS = MathHelper.roundUp(NEIGHBOR_BLOCK_RADIUS, 16) >> 4;
 
-    // The number of sections on each axis of this slice.
     private static final int SECTION_LENGTH = 1 + (NEIGHBOR_CHUNK_RADIUS * 2);
 
-    // The size of the lookup tables used for mapping values to coordinate int pairs. The lookup table size is always
-    // a power of two so that multiplications can be replaced with simple bit shifts in hot code paths.
+    // The lookup table size is always a power of two so that multiplications can be replaced with
+    // simple bit shifts in hot code paths.
     private static final int TABLE_LENGTH = MathHelper.smallestEncompassingPowerOfTwo(SECTION_LENGTH);
 
-    // The number of bits needed for each X/Y/Z component in a lookup table.
     private static final int TABLE_BITS = Integer.bitCount(TABLE_LENGTH - 1);
 
     // The default block state used for out-of-bounds access
     private static final IBlockState EMPTY_BLOCK_STATE = Blocks.AIR.getDefaultState();
 
-    // The array size for the section lookup table.
     private static final int SECTION_TABLE_ARRAY_SIZE = TABLE_LENGTH * TABLE_LENGTH * TABLE_LENGTH;
 
-    // The world this slice has copied data from
     private final World world;
     private final WorldType worldType;
     private final int defaultSkyLightValue;
 
 
-    // Local Section->BlockState table.
     private final IBlockState[][] blockStatesArrays;
 
-    // Local Section->FluidState table.
     private final Object[][] fluidStatesArrays;
 
     // Local section copies. Read-only. The array itself belongs to this slice and is reused across
@@ -90,17 +80,15 @@ public class WorldSlice implements ActiniumBlockAccess {
     // the element references so no ClonedChunkSection outlives its task inside this pooled object.
     private final ClonedChunkSection[] sections = new ClonedChunkSection[SECTION_TABLE_ARRAY_SIZE];
 
-    // Biome data of the captured chunk neighbourhood. Biome tables are per chunk, so this covers
-    // SECTION_LENGTH chunks per axis rather than one table per section (see BiomeLookup).
+    // Biome tables are per chunk, so this covers SECTION_LENGTH chunks per axis rather than one
+    // table per section (see BiomeLookup).
     private final BiomeLookup biomeLookup = new BiomeLookup(SECTION_LENGTH);
 
-    // The biome blend caches for each color resolver type
     private final BiomeColorCache biomeColorCache;
 
     // The starting point from which this slice captures blocks
     private int baseX, baseY, baseZ;
 
-    // The chunk origin of this slice
     private SectionPos origin;
 
     // Bounding box reused for every snapshot volume. copyData rewrites all six coordinates in full
@@ -111,7 +99,6 @@ public class WorldSlice implements ActiniumBlockAccess {
     @Nullable
     private StructureBoundingBox volume;
 
-    // A fallback BlockPos object to use when retrieving data from the level directly
     private final BlockPos.MutableBlockPos fallbackPos = new BlockPos.MutableBlockPos();
 
     public static ChunkRenderContext prepare(World world, SectionPos origin, ClonedChunkSectionCache sectionCache) {
@@ -119,16 +106,14 @@ public class WorldSlice implements ActiniumBlockAccess {
         int storageIndex = DepthsUpdateCompat.toStorageIndex(world, origin.y());
         ExtendedBlockStorage section = storageIndex >= 0 ? chunk.getBlockStorageArray()[storageIndex] : null;
 
-        // If the chunk section is absent or empty, simply terminate now. There will never be anything in this chunk
-        // section to render, so we need to signal that a chunk render task shouldn't created. This saves a considerable
-        // amount of time in queueing instant build tasks and greatly accelerates how quickly the world can be loaded.
+        // An absent or empty section has nothing to render, so signal that no chunk render task
+        // should be created; skipping the queueing keeps world loading fast.
         if (section == null || section.isEmpty()) {
             return null;
         }
 
         // The snapshot volume is derived from the origin by the consuming slice, so the context
         // only carries the section coordinates and the cloned sections acquired here.
-        // The min/max bounds of the chunks copied by this slice
         final int minChunkX = origin.x() - NEIGHBOR_CHUNK_RADIUS;
         final int minChunkY = origin.y() - NEIGHBOR_CHUNK_RADIUS;
         final int minChunkZ = origin.z() - NEIGHBOR_CHUNK_RADIUS;
@@ -303,15 +288,13 @@ public class WorldSlice implements ActiniumBlockAccess {
     }
 
     /**
-     * Whether the given block coordinate lies inside the given snapshot volume.
-     *
-     * <p>A {@code null} volume is legal: the slice is a reused snapshot object that only covers
+     * A {@code null} volume is legal: the slice is a reused snapshot object that only covers
      * anything between {@link #copyData(ChunkRenderContext)} and {@link #reset()}. Renderers
      * outside the chunk build pipeline may retain the {@link IBlockAccess} instance handed to
      * {@code BlockRendererDispatcher} and query it later on the main thread (MalisisCore's
      * {@code AnimatedRenderer} does exactly this from {@code RenderWorldLastEvent}, see issue
      * #57); after the slice has been reset it covers nothing, so every coordinate is out of
-     * bounds and the callers' fallback paths apply instead of dereferencing a null box.</p>
+     * bounds and the callers' fallback paths apply instead of dereferencing a null box.
      */
     static boolean blockBoxContains(@Nullable StructureBoundingBox box, int x, int y, int z) {
         if (box == null) {
@@ -475,12 +458,10 @@ public class WorldSlice implements ActiniumBlockAccess {
     }
 
     /**
-     * Gets the biome at the given global coordinates from the captured snapshot.
-     *
-     * <p>{@code y} is ignored: biome data is stored per chunk column, so every height of a column
+     * {@code y} is ignored: biome data is stored per chunk column, so every height of a column
      * carries the same biome table. Positions outside the captured chunk neighbourhood resolve to
      * the nearest captured position instead of failing, which is what biome-blending callers
-     * (Better Biome Blend, issue #162) rely on; see {@link BiomeLookup}.</p>
+     * (Better Biome Blend, issue #162) rely on; see {@link BiomeLookup}.
      */
     public Biome getBiome(int x, int y, int z) {
         return this.biomeLookup.getBiome(x, z);
@@ -509,8 +490,6 @@ public class WorldSlice implements ActiniumBlockAccess {
 
         return EMPTY_BLOCK_STATE;
     }
-
-    // Fluidlogged compat
 
     @Override
     @Optional.Method(modid = FluidloggedCompat.MODID)

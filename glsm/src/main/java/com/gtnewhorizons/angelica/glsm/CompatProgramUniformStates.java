@@ -26,8 +26,6 @@ final class CompatProgramUniformStates {
 
     /**
      * Removes all cached locations and upload generations for a program before linking or deleting it.
-     *
-     * @param program the program whose linked executable is no longer valid
      */
     synchronized long invalidate(long shareGroupId, int program) {
         final ProgramKey key = new ProgramKey(shareGroupId, program);
@@ -50,10 +48,8 @@ final class CompatProgramUniformStates {
      * Stores locations from a successful link when the program exposes at least one compat uniform and has not been
      * invalidated since its locations were queried.
      *
-     * @param program the linked program identifier
-     * @param lifecycleEpoch lifecycle token returned before the link began
-     * @param locations queried locations in {@link CompatUniformManager} index order
-     * @return whether locations were stored for a current program with compat uniforms
+     * @param lifecycleEpoch returned before the link began
+     * @param locations in {@link CompatUniformManager} index order
      */
     synchronized boolean storeLinkedProgram(long shareGroupId, int program, long lifecycleEpoch, int[] locations) {
         final ProgramKey key = new ProgramKey(shareGroupId, program);
@@ -80,8 +76,7 @@ final class CompatProgramUniformStates {
     /**
      * Gets the location and upload state for a program.
      *
-     * @param program the program identifier
-     * @return its state, or {@code null} when it has no compat uniforms
+     * @return {@code null} when the program has no compat uniforms
      */
     synchronized CompatProgramUniformState get(int program) {
         return get(0L, program);
@@ -93,9 +88,6 @@ final class CompatProgramUniformStates {
 
     /**
      * Reports whether a linked program currently has cached compat locations.
-     *
-     * @param program the program identifier
-     * @return whether a state is present
      */
     synchronized boolean contains(int program) {
         return contains(0L, program);

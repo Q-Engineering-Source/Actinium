@@ -114,10 +114,8 @@ public class ChunkMeshBufferBuilder {
     }
 
     private void grow(int bytesNeeded) {
-        // Grow by a factor of 2, or by however many bytes more we need, whichever is larger.
         int currentCapacity = this.directBuffer != null ? this.directBuffer.capacity() : 0;
         int newCapacity = Math.max(currentCapacity * 2, currentCapacity + bytesNeeded);
-        // Ensure we allocate at least initialCapacity bytes
         newCapacity = Math.max(newCapacity, this.initialCapacity);
 
         long oldCapacity = this.buffer != null ? this.buffer.getLength() : 0;

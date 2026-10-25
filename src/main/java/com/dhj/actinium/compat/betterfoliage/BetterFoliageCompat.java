@@ -14,14 +14,7 @@ import net.minecraft.world.IBlockAccess;
  * Boundary for the original Better Foliage 1.12.2 rendering hooks used by Actinium's chunk mesher.
  */
 public interface BetterFoliageCompat {
-    /**
-     * Applies Better Foliage's additional cutout-layer decision during terrain layer selection.
-     *
-     * @param block block whose render layer is being checked
-     * @param state state being rendered
-     * @param layer current terrain layer
-     * @return whether Better Foliage wants this state processed for the layer
-     */
+    /** Applies Better Foliage's additional cutout-layer decision during terrain layer selection. */
     boolean canRenderBlockInLayer(Block block, IBlockState state, BlockRenderLayer layer);
 
     /**
@@ -36,12 +29,6 @@ public interface BetterFoliageCompat {
     /**
      * Routes vanilla-dispatcher rendering through Better Foliage's replacement for RenderChunk calls.
      *
-     * @param dispatcher vanilla block renderer
-     * @param state state being rendered
-     * @param pos block position
-     * @param blockAccess current chunk snapshot
-     * @param buffer layer buffer
-     * @param layer current terrain layer
      * @return whether Better Foliage rendered the block
      */
     boolean renderVanillaBlock(
@@ -57,11 +44,6 @@ public interface BetterFoliageCompat {
     /**
      * Uses Better Foliage's dispatcher only when one of its feature renderers handles this block.
      *
-     * @param state state being rendered
-     * @param pos block position
-     * @param blockAccess current chunk snapshot
-     * @param buildContext active chunk build context
-     * @param layer current terrain layer
      * @return true when Better Foliage handled this block and the fast renderer should be skipped
      */
     boolean tryRenderFastBlock(

@@ -401,7 +401,6 @@ public abstract class RenderSectionManager {
                 double camDelta = (dx * dx) + (dy * dy) + (dz * dz);
 
                 if (camDelta < 1) {
-                    // Didn't move enough, ignore
                     continue;
                 }
 
@@ -414,7 +413,6 @@ public abstract class RenderSectionManager {
                 }
 
                 section.setPendingUpdate(update);
-                // Inject it into the appropriate list
                 rebuildLists.get(update).add(section);
 
                 section.lastCameraX = cameraPosition.x;
@@ -673,7 +671,6 @@ public abstract class RenderSectionManager {
 
         blockingRebuilds.awaitCompletion(this.builder);
 
-        // Tick singlethreaded rebuilds
         this.builder.tick();
     }
 
@@ -727,7 +724,6 @@ public abstract class RenderSectionManager {
         for (var holder : filtered) {
             var result = holder.output();
 
-            // whether this result belongs to the most recently submitted build
             boolean latest = result.buildTime >= result.render.getLastSubmittedFrame();
 
             if (result instanceof ChunkBuildOutput buildResult) {

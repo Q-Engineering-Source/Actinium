@@ -10,23 +10,15 @@ import java.util.Set;
 /**
  * Runtime gate for {@code mixins.actinium.kirino.json}.
  *
- * <p>Kirino Engine's {@code KirinoConfigHub} is loaded very early
- * ({@code KirinoCommonCore} static initialisation runs inside
- * {@code FMLClientHandler#beginMinecraftLoading}, before the late mixin loader
- * queues its configs), so a late/conditional config cannot target it: the mixin
- * would fail with {@code MixinTargetAlreadyLoadedException}. The config is
- * therefore registered by {@link MixinEarly} instead, and this plugin makes the
- * application conditional at transform time:
- *
- * <ul>
- *   <li>When Kirino is absent its classes never load, {@code shouldApplyMixin}
- *       is never asked about them and the mixin is a no-op.</li>
- *   <li>When Kirino is present, {@code KirinoConfigHub} is transformed on first
- *       load (after the early config was registered) and the mixin applies,
- *       pinning {@code isEnableRenderDelegate()} to {@code false}.</li>
- * </ul>
- *
- * <p>No Kirino class is referenced here; the gate is a plain class-name check.
+ * <p>Kirino Engine's {@code KirinoConfigHub} is loaded very early ({@code KirinoCommonCore}
+ * static initialisation runs inside {@code FMLClientHandler#beginMinecraftLoading}, before
+ * the late mixin loader queues its configs), so a late/conditional config cannot target it:
+ * the mixin would fail with {@code MixinTargetAlreadyLoadedException}. The config is
+ * therefore registered by {@link MixinEarly}, and this plugin makes the application
+ * conditional at transform time: when Kirino is absent its classes never load and the mixin
+ * is a no-op, and when Kirino is present {@code KirinoConfigHub} is transformed on first
+ * load and the mixin applies, pinning {@code isEnableRenderDelegate()} to {@code false}.
+ * No Kirino class is referenced here; the gate is a plain class-name check.
  */
 public final class KirinoMixinConfigPlugin implements IMixinConfigPlugin {
 

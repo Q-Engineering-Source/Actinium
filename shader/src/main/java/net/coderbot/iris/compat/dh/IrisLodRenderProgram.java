@@ -212,8 +212,6 @@ public class IrisLodRenderProgram {
 
         setUniform(mircoOffsetUniform, 0.01f); // 0.01 block offset
 
-        // setUniform(skyLightUniform, skyLight);
-
         if (worldYOffsetUniform != -1) setUniform(worldYOffsetUniform, (float) worldYOffset);
 
         // Fog/Clip Uniforms

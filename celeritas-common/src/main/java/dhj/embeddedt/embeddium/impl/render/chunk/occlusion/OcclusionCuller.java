@@ -649,7 +649,6 @@ public class OcclusionCuller {
         return viewport.isBoxVisible((chunkX << 4) + 8, (chunkY << 4) + 8, (chunkZ << 4) + 8, CHUNK_SECTION_SIZE);
     }
 
-    // --------------------------------------------------------------------------------------------------------
     // Legacy object-node API — HBM-CE compatibility seam.
     //
     // HBM-CE's MixinOcclusionCuller (hbm.mod.mixin.json) applies MixinExtras @WrapOperation injections

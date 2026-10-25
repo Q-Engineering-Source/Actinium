@@ -18,12 +18,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * Skips particles whose bounding box falls outside the last rendered viewport.
  *
  * <p>ParticleCulling declares its own plain {@code @Redirect} on exactly the same two
- * {@code Particle.renderParticle} call sites used here (one in {@code renderParticles},
- * one in {@code renderLitParticles}). Plain redirects cannot be chained: the injector that
- * runs second finds no INVOKE left to redirect and aborts startup with an
- * {@code InjectionError}. Because ParticleCulling already culls particles, this class is
- * skipped entirely by {@code IrisMixinConfigPlugin} when that mod is detected, so its
- * functionality is not lost while the conflicting redirects never coexist.
+ * {@code Particle.renderParticle} call sites; plain redirects cannot be chained, so the
+ * second injector finds no INVOKE left and aborts with {@code InjectionError}.
+ * {@code IrisMixinConfigPlugin} therefore skips this class when that mod is detected.
  */
 @Mixin(ParticleManager.class)
 public class ParticleManagerCullingMixin {

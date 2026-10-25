@@ -76,7 +76,6 @@ public final class CompiledDisplayList {
             }
         }
 
-        // Close VBOs
         if (ownedVbos != null) {
             ownedVbos.delete();
         }
@@ -120,8 +119,6 @@ public final class CompiledDisplayList {
     public GLContextIdentity getCompilationIdentity() {
         return compilationIdentity;
     }
-
-    // === Test inspection methods ===
 
     /**
      * Get counts of each command type in the buffer.

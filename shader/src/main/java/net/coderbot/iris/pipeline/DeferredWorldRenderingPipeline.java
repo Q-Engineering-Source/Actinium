@@ -327,7 +327,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 			whitePixel = new NativeImageBackedSingleColorTexture(255, 255, 255, 255);
 
-			// Initialize custom images
 			this.customImages = new HashSet<>();
 			final var customImageInfos = programs.getPack().getCustomImages();
 			final List<GlImage> clearList = new ArrayList<>();
@@ -349,7 +348,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			}
 			this.imagesToClear = clearList.toArray(new GlImage[0]);
 
-			// Initialize SSBOs
 			final var bufferObjectInfos = programs.getPack().getBufferObjects();
 			if (!bufferObjectInfos.isEmpty() && RenderSystem.supportsSSBO()) {
 				Int2ObjectArrayMap<ShaderStorageInfo> ssboOverrides = new Int2ObjectArrayMap<>();
@@ -532,8 +530,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 				RenderSystem.memoryBarrier(GL42.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL42.GL_TEXTURE_FETCH_BARRIER_BIT | GL43.GL_SHADER_STORAGE_BARRIER_BIT);
 			}
 
-			// Terrain pipeline sampler/image factory setup follows.
-
 			Supplier<ImmutableSet<Integer>> flipped = () -> isBeforeTranslucent ? flippedAfterPrepare : flippedAfterTranslucent;
 
 			IntFunction<ProgramSamplers> createTerrainSamplers = (programId) -> {
@@ -658,7 +654,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	}
 
 	private void checkWorld() {
-		// If we're not in a world, then obviously we cannot possibly be rendering a world.
 		if (Minecraft.getMinecraft().world == null) {
 			isRenderingWorld = false;
 			current = null;
@@ -990,7 +985,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		final GlFramebuffer framebufferBeforeTranslucents = renderTargets.createGbufferFramebuffer(flippedAfterPrepare, new int[] {0});
 		final GlFramebuffer framebufferAfterTranslucents = renderTargets.createGbufferFramebuffer(flippedAfterTranslucent, new int[] {0});
 
-
 		return new Pass(null, framebufferBeforeTranslucents, framebufferAfterTranslucents, null,
 			null, Collections.emptyList(), false);
 	}
@@ -1112,7 +1106,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		}
 
 		if (transformed == null) {
-			// Fallback to synchronous transform if not pre-computed
 			transformed = TransformPatcher.patchAttributes(
 				source.getVertexSource().orElseThrow(NullPointerException::new),
 				source.getGeometrySource().orElse(null),
@@ -1458,7 +1451,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		}
 
 		// Destroy the composite rendering pipeline
-		//
 		// This destroys all the loaded composite programs as well.
 		if (beginRenderer != null) {
 			beginRenderer.destroy();
@@ -1485,7 +1477,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
         compositeOutputTimer = null;
         finalOutputTimer = null;
 
-		// Destroy setup compute programs
 		if (setup != null) {
 			for (ComputeProgram compute : setup) {
 				if (compute != null) {
@@ -1494,7 +1485,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			}
 		}
 
-		// Destroy shadow compute programs
 		if (shadowComputes != null) {
 			for (ComputeProgram compute : shadowComputes) {
 				if (compute != null) {
@@ -1503,7 +1493,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			}
 		}
 
-		// Destroy shadow composite renderer
 		if (shadowCompositeRenderer != null) {
 			shadowCompositeRenderer.destroy();
 		}
@@ -1516,7 +1505,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		GLStateManager.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
 
 		// Destroy our render targets
-		//
 		// While it's possible to just clear them instead and reuse them, we'd need to investigate whether or not this
 		// would help performance.
 		if (renderTargets != null) {
@@ -1526,7 +1514,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			dhCompat.clearPipeline();
 		}
 
-		// destroy the shadow render targets
 		if (shadowRenderTargets != null) {
 			shadowRenderTargets.destroy();
 		}
@@ -1539,7 +1526,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			whitePixel.deleteGlTexture();
 		}
 
-		// Destroy custom images
 		if (customImages != null) {
 			for (GlImage image : customImages) {
 				image.destroy();
@@ -1547,7 +1533,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			customImages.clear();
 		}
 
-		// Destroy SSBOs
 		if (adaptiveShadowBoundsStats != null) {
 			AdaptiveShadowBoundsStats.deactivate(adaptiveShadowBoundsStats);
 			adaptiveShadowBoundsStats.destroy();
@@ -1597,7 +1582,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
                     GLStateManager.glGetError();
                 }
 
-
 				ImmutableList<ClearPass> passes;
 
 				for (ComputeProgram computeProgram : shadowComputes) {
@@ -1643,12 +1627,10 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			this.clearPassesFull = ClearPassCreator.createClearPasses(renderTargets, true, packDirectives.getRenderTargetDirectives());
 			this.clearPasses = ClearPassCreator.createClearPasses(renderTargets, false, packDirectives.getRenderTargetDirectives());
 
-			// Resize custom images if needed
 			for (GlImage image : customImages) {
 				image.updateNewSize(main.framebufferWidth, main.framebufferHeight);
 			}
 
-			// Resize SSBOs if needed
 			if (ssboHolder != null) {
 				ssboHolder.hasResizedScreen(main.framebufferWidth, main.framebufferHeight);
 			}
@@ -1688,7 +1670,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			clearPass.execute(fogColor);
 		}
 
-		// Reset framebuffer and viewport
         MinecraftFramebufferHelper.restoreMainFramebuffer(true);
 	}
 
@@ -1827,7 +1808,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		renderTargets.copyPreTranslucentDepth();
         IrisGlDebug.check("level:begin-translucents:copy-depth");
 
-
 		// needed to remove blend mode overrides and similar
 		beginPass(null);
         IrisGlDebug.check("level:begin-translucents:begin-pass-null");
@@ -1928,7 +1908,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		isPostChain = false;
 		phase = WorldRenderingPhase.NONE;
 		overridePhase = null;
-//		HandRenderer.INSTANCE.getBufferSource().resetDrawCalls();
 
 		checkWorld();
 
@@ -1947,10 +1926,8 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
         this.customUniforms.update();
 
-		// Get ready for world rendering
 		prepareRenderTargets();
 
-		// Clear custom images that need clearing each frame
 		for (GlImage image : imagesToClear) {
 			image.clear();
 		}
@@ -1965,7 +1942,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		// while rendering the sky.
 		//
 		// A lot of dimension mods touch sky rendering, FabricSkyboxes injects at HEAD and cancels, etc.
-//		DimensionSpecialEffects.SkyType skyType = Minecraft.getMinecraft().theWorld.effects().skyType();
 
 		if (true/*skyType == DimensionSpecialEffects.SkyType.NORMAL*/) {
             GLStateManager.glDisable(GL11.GL_TEXTURE_2D);

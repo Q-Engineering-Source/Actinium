@@ -123,9 +123,7 @@ public class ShaderPack {
 	 * @throws IOException if there are any IO errors during shader pack loading.
 	 */
 	public ShaderPack(Path root, Map<String, String> changedConfigs, Iterable<StringPair> environmentDefines) throws IOException, IllegalStateException {
-		// A null path is not allowed.
 		Objects.requireNonNull(root);
-
 
 		final ImmutableList.Builder<AbsolutePackPath> starts = ImmutableList.builder();
 		final ImmutableList<String> potentialFileNames = ShaderPackSourceNames.POTENTIAL_STARTS;
@@ -198,7 +196,6 @@ public class ShaderPack {
 				Iris.logger.warn("Failed to scan for dimension folders", e);
 			}
 
-			// Set up dimension mappings
 			// Unmapped legacy dimensions also use world0 when no world{ID} folder is available.
 			if (foundFolders.contains("world0")) {
 				dimensionMap.put(DimensionId.OVERWORLD.getCanonicalId(), "world0");
@@ -224,7 +221,6 @@ public class ShaderPack {
 
 		this.languageMap = new LanguageMap(root.resolve("lang"));
 
-		// Discover, merge, and apply shader pack options
 		this.shaderPackOptions = new ShaderPackOptions(graph, changedConfigs);
 		graph = this.shaderPackOptions.getIncludes();
 
@@ -248,7 +244,6 @@ public class ShaderPack {
 				.map(source -> new ShaderProperties(source, shaderPackOptions, finalEnvironmentDefines, RenderSystem::supportsBufferBlending))
 				.orElseGet(ShaderProperties::empty);
 
-		// Build the set of active feature flags from required and optional flags
 		this.activeFeatures = new HashSet<>();
 		for (String flag : shaderProperties.getRequiredFeatureFlags()) {
 			activeFeatures.add(FeatureFlags.getValue(flag));
@@ -268,10 +263,8 @@ public class ShaderPack {
 		ProfileSet profiles = ProfileSet.fromTree(shaderProperties.getProfiles(), this.shaderPackOptions.getOptionSet());
 		this.profile = profiles.scan(this.shaderPackOptions.getOptionSet(), this.shaderPackOptions.getOptionValues());
 
-		// Get programs that should be disabled from the detected profile
 		List<String> disabledPrograms = new ArrayList<>();
 		this.profile.current.ifPresent(profile -> disabledPrograms.addAll(profile.disabledPrograms));
-		// Add programs that are disabled by shader options
 		shaderProperties.getConditionallyEnabledPrograms().forEach((program, shaderOption) -> {
 			if ("true".equals(shaderOption)) return;
 
@@ -294,10 +287,8 @@ public class ShaderPack {
 
 		Iris.logger.info(this.profileInfo);
 
-		// Prepare our include processor
 		IncludeProcessor includeProcessor = new IncludeProcessor(graph);
 
-		// Set up our source provider for creating ProgramSets
 		Iterable<StringPair> finalEnvironmentDefines1 = finalEnvironmentDefines;
 		this.sourceProvider = (path) -> {
 			String pathString = path.getPathString();
@@ -305,7 +296,6 @@ public class ShaderPack {
 			// extension in order to represent the path as its program name
 			String programString = pathString.substring(pathString.indexOf("/") == 0 ? 1 : 0, pathString.lastIndexOf("."));
 
-			// Return an empty program source if the program is disabled by the current profile
 			if (disabledPrograms.contains(programString)) {
 				return null;
 			}
@@ -435,16 +425,13 @@ public class ShaderPack {
 			// Extract folder name (e.g., "world0" from "dimension.world0")
 			String folderName = key.substring(keyPrefix.length());
 
-			// Skip empty folder names
 			if (folderName.isEmpty()) {
 				Iris.logger.warn("Ignoring dimension.properties entry with empty folder name: {}", key);
 				return;
 			}
 
-			// Parse dimension names
 			List<String> dimensionNames = IdMap.parseIdentifierList(value, "dimension.properties", key);
 
-			// Skip if no dimension names are specified
 			if (dimensionNames.isEmpty()) {
 				Iris.logger.warn("Ignoring dimension.properties entry '{}' with no dimension names", key);
 				return;
@@ -627,23 +614,19 @@ public class ShaderPack {
 			return;
 		}
 
-		// Count non-pinned entries
 		long nonPinnedCount = dimensionProgramSets.entrySet().stream()
 			.filter(e -> !pinnedFolders.contains(e.getKey()))
 			.count();
 
 		int maxNonPinned = Math.max(0, MAX_DIMENSION_CACHE - PINNED_DIMENSIONS.size());
 
-		// Evict oldest non-pinned dimensions until we're at the limit
 		while (nonPinnedCount > maxNonPinned) {
-			// Log once when we first hit the limit
 			if (!hasLoggedCacheLimitReached) {
 				Iris.logger.info("Dimension shader cache limit reached (max {} total: {} vanilla + {} modded). Now evicting least recently used dimensions.",
 					MAX_DIMENSION_CACHE, PINNED_DIMENSIONS.size(), maxNonPinned);
 				hasLoggedCacheLimitReached = true;
 			}
 
-			// Find the first (oldest/least recently used) non-pinned entry
 			String toEvict = null;
 			for (Map.Entry<String, ProgramSet> entry : dimensionProgramSets.entrySet()) {
 				if (!pinnedFolders.contains(entry.getKey())) {
@@ -710,12 +693,10 @@ public class ShaderPack {
 			mappedByDimensionProperties
 		);
 
-		// If we have a folder name that contains shader files, try to get or create its ProgramSet
 		if (folderName != null && foldersWithShaderFiles.contains(folderName)) {
 			ProgramSet programSet = dimensionProgramSets.get(folderName);
 
 			if (programSet == null) {
-				// Create ProgramSet on-demand for dimension folder
 				try {
 					programSet = new ProgramSet(
 						AbsolutePackPath.fromAbsolutePath("/" + folderName),
@@ -725,7 +706,6 @@ public class ShaderPack {
 					);
 					dimensionProgramSets.put(folderName, programSet);
 
-					// Check cache size limit and evict LRU dimensions if needed
 					evictOldDimensions();
 				} catch (Exception e) {
 					// This shouldn't happen but just in case.

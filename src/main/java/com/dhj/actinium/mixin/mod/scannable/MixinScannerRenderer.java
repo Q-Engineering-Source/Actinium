@@ -10,16 +10,15 @@ import org.spongepowered.asm.mixin.injection.ModifyArgs;
 import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
 
 /**
- * Fixes the depth-copy texture format of Scannable's shader-mod path (issue #94 follow-up).
- *
- * <p>{@code installDepthTexture}'s OPTIFINE branch allocates the depth copy with
- * {@code (GL_R32F, GL_RED, GL_UNSIGNED_BYTE)}. {@code GL_R32F} only accepts {@code GL_FLOAT} or
- * {@code GL_HALF_FLOAT} as the pixel type, so the allocation fails with GL_INVALID_OPERATION and
- * the texture never receives storage: the copy pass then draws into an incomplete framebuffer and
- * the scan wave samples undefined values, displacing the wave's rendered region (mismatched scan
- * area, most visible over wide open surfaces such as grass-bound scans). Switch the pixel type to
- * {@code GL_FLOAT} so the copy actually carries depth; the copy shader already writes plain
- * floats, and {@code GL_R32F} is color-renderable in the core-profile contexts Actinium targets.</p>
+ * Fixes the depth-copy texture format of Scannable's shader-mod path (issue #94 follow-up):
+ * {@code installDepthTexture}'s OPTIFINE branch allocates the depth copy with
+ * {@code (GL_R32F, GL_RED, GL_UNSIGNED_BYTE)}, but {@code GL_R32F} only accepts
+ * {@code GL_FLOAT} or {@code GL_HALF_FLOAT} as the pixel type, so the allocation fails with
+ * GL_INVALID_OPERATION, the copy pass draws into an incomplete framebuffer and the scan wave
+ * samples undefined values (mismatched scan area, most visible over wide open surfaces such
+ * as grass-bound scans). Switch the pixel type to {@code GL_FLOAT} so the copy actually
+ * carries depth; the copy shader already writes plain floats, and {@code GL_R32F} is
+ * color-renderable in the core-profile contexts Actinium targets.
  */
 @Mixin(value = ScannerRenderer.class, remap = false)
 public abstract class MixinScannerRenderer {

@@ -542,19 +542,16 @@ public class GlBufferArena {
     }
 
     public boolean upload(CommandList commandList, Stream<PendingUpload> stream) {
-        // Record the buffer object before we start any work
         // If the arena needs to re-allocate a buffer, this will allow us to check and return an appropriate flag
         GlBuffer buffer = this.arenaBuffer;
 
         // A linked list is used as we'll be randomly removing elements and want O(1) performance
         List<PendingUpload> queue = stream.collect(Collectors.toCollection(LinkedList::new));
 
-        // Try to upload all of the data into free segments first
         this.tryUploads(commandList, queue);
 
         // If we weren't able to upload some buffers, they will have been left behind in the queue
         if (!queue.isEmpty()) {
-            // Calculate the amount of memory needed for the remaining uploads
             int remainingElements = (int)queue.stream()
                     .mapToLong(upload -> this.elementsFor(upload.getDataBuffer().getLength()))
                     .sum();
@@ -562,15 +559,12 @@ public class GlBufferArena {
                     ? queue.stream().mapToLong(upload -> upload.getDataBuffer().getLength()).sum()
                     : 0L;
 
-            // Ask the arena to grow to accommodate the remaining uploads
             // This will force a re-allocation and compaction, which will leave us a continuous free segment
             // for the remaining uploads
             this.ensureCapacity(commandList, remainingElements, requestBytes);
 
-            // Try again to upload any buffers that failed last time
             this.tryUploads(commandList, queue);
 
-            // If we still had failures, something has gone wrong
             if (!queue.isEmpty()) {
                 throw new RuntimeException("Failed to upload all buffers");
             }
@@ -596,7 +590,6 @@ public class GlBufferArena {
             return false;
         }
 
-        // Copy the data into our staging buffer, then copy it into the arena's buffer
         this.stagingBuffer.enqueueCopy(commandList, data, this.arenaBuffer, (long)dst.getOffset() * this.stride);
 
         upload.setResult(dst);

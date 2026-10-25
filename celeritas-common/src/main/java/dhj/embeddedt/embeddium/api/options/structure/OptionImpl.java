@@ -270,7 +270,6 @@ public class OptionImpl<S, T> implements Option<T> {
             if (this.id == null) {
                 // FIXME enforce IDs and make nullable
                 this.id = (OptionIdentifier<T>)OptionIdentifier.EMPTY;
-                //Celeritas.logger().warn("Id must be specified in option '{}', this might throw a exception on a future release", this.name.getString());
             } else {
                 if (this.name == null) {
                     this.name = TextComponent.translatable(this.id.getModId() + ".options." + this.id.getPath() + ".name");

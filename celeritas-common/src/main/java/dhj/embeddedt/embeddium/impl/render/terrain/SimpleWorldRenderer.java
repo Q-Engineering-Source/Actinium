@@ -50,17 +50,14 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
     }
 
     public void setWorld(WORLD world) {
-        // Check that the world is actually changing
         if (this.world == world) {
             return;
         }
 
-        // If we have a world is already loaded, unload the renderer
         if (this.world != null) {
             this.unloadWorld();
         }
 
-        // If we're loading a new world, load the renderer
         if (world != null) {
             this.loadWorld(world);
         }

@@ -38,6 +38,22 @@ class VertexAttribStateTest {
         state.setEnabledForContext(location, true);
     }
 
+    /**
+     * A reset during startup runs while another thread may already have issued client-array calls, so the
+     * model has to stay usable for the VAO that is still bound (#216).
+     */
+    @Test
+    void resetStateKeepsCurrentVaoReadyForAttributeUpdates() {
+        final int location = Usage.POSITION.getAttributeLocation();
+        state.bindVertexArray(7);
+
+        state.resetState();
+        state.setEnabledForContext(location, true);
+
+        assertTrue(state.isAttribEnabledForContext(location));
+        assertFalse(state.hasAnyClientSideEnabledAttribForContext());
+    }
+
     @Test
     void positionOnlyDrawYieldsNoFormatFlags() {
         enableClientArray(Usage.POSITION);

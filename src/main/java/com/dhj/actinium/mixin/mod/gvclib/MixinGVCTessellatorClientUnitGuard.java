@@ -11,10 +11,9 @@ import org.spongepowered.asm.mixin.Pseudo;
 /**
  * Pins the client texture unit to GL_TEXTURE0 while a scoped GVCLib first-person model draws.
  *
- * <p>{@code objmodel.Tessellator2#draw()} issues {@code glTexCoordPointer} for the base UVs
- * without first selecting a client texture unit, so it silently targets whatever unit the
- * previous renderer left active. A leftover non-zero unit corrupts the model's texture
- * coordinates (issue #198).</p>
+ * <p>{@code objmodel.Tessellator2#draw()} issues {@code glTexCoordPointer} without first
+ * selecting a client texture unit, so it targets whatever unit the previous renderer left
+ * active; a leftover non-zero unit corrupts the model's texture coordinates (issue #198).
  */
 @Pseudo
 @Mixin(targets = "objmodel.Tessellator2", remap = false)

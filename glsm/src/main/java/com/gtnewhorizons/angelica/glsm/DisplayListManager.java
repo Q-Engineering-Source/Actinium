@@ -345,7 +345,6 @@ public class DisplayListManager {
             return;
         }
 
-
         // Save pending transform ops for logging (before we clear them)
         if (owner.matrixSources != null && owner.pendingTransformOps != null) {
             if (owner.pendingTransformOps.isEmpty()) {
@@ -357,7 +356,6 @@ public class DisplayListManager {
             owner.pendingTransformOps.clear();
         }
 
-        // Record the collapsed MultMatrix command (for playback)
         if (owner.recorder != null) {
             owner.recorder.recordMultMatrix(owner.relativeTransform);
             owner.stateGeneration++;
@@ -420,7 +418,6 @@ public class DisplayListManager {
         session().recorder.recordDisable(cap);
     }
 
-    // ==================== NON-BARRIER COMMANDS ====================
     // Clear commands don't affect subsequent draws, just clear buffers.
 
     public static void recordClear(int mask) {
@@ -442,8 +439,6 @@ public class DisplayListManager {
         if (session().recorder == null) return;
         session().recorder.recordClearStencil(s);
     }
-
-    // ==================== MORE DRAW BARRIER COMMANDS ====================
 
     public static void recordBlendColor(float r, float g, float b, float a) {
         if (session().recorder == null) return;
@@ -540,14 +535,12 @@ public class DisplayListManager {
 
     public static void recordPushMatrix() {
         if (session().recorder == null) return;
-        // Flush any pending delta, then record push.
         flushMatrix();
         session().recorder.recordPushMatrix();
     }
 
     public static void recordPopMatrix() {
         if (session().recorder == null) return;
-        // Flush any pending delta, then record pop.
         flushMatrix();
         session().recorder.recordPopMatrix();
     }
@@ -814,9 +807,7 @@ public class DisplayListManager {
         session().recorder.recordBindVAO(vao);
     }
 
-
     // recordOrtho/recordFrustum removed - these now accumulate into session().relativeTransform
-    // via updateRelativeTransformOrtho/updateRelativeTransformFrustum
 
     /**
      * Add an immediate mode draw to the current display list compilation.
@@ -830,7 +821,6 @@ public class DisplayListManager {
     public static void addImmediateModeDraw(DirectTessellator tessellator) {
         final DisplayListCompilationSession owner = session();
         if (!tessellator.isEmpty() && owner.recorder != null) {
-            // Get relative transform (changes since glNewList, not absolute matrix state)
             addAccumulatedDraw(owner, tessellator, tessellator.getVertexFormat() != DefaultVertexFormat.POSITION);
         }
         tessellator.reset();
@@ -1052,7 +1042,6 @@ public class DisplayListManager {
             throw new IllegalStateException("Display-list compilation requires a registered current context");
         }
         sessionFor(currentIdentity);
-        // Handle nested compilation - push current context onto stack
         final boolean isNested = session().listMode > 0;
 
         if (isNested) {
@@ -1062,7 +1051,6 @@ public class DisplayListManager {
                     "Another context already owns an active display-list compilation");
             }
             // Nested display list compilation violates OpenGL spec, but some of our optimizations require it
-            // Save current compilation context and start fresh for nested list
             final DisplayListCompilationSession.Frame parentContext = new DisplayListCompilationSession.Frame(
                 session().listId, session().listMode, session().virtualStateScopes.depth(), session().captureActive,
                 session().capture, session().recorder, session().accumulatedDraws, session().relativeTransform,
@@ -1072,7 +1060,6 @@ public class DisplayListManager {
             session().parents.push(parentContext);
         }
 
-        // Initialize fresh context for this (possibly nested) list
         session().listId = list;
         session().listMode = mode;
         session().virtualStateScopes.clear();
@@ -1087,7 +1074,6 @@ public class DisplayListManager {
         session().stateGeneration = 0;  // Reset state generation for fresh list
         session().stackTrace = LOG_DISPLAY_LIST_COMPILATION ? Thread.currentThread().getStackTrace() : null;
 
-        // Initialize debug logging fields (only when logging enabled)
         if (LOG_DISPLAY_LIST_COMPILATION) {
             session().pendingTransformOps = new ArrayList<>();
             session().matrixSources = new ArrayList<>();
@@ -1132,7 +1118,6 @@ public class DisplayListManager {
         flushMatrix();
         final boolean isNested = !session().parents.isEmpty();
 
-        // Stop compiling mode (works for both root and nested lists now)
         if (!session().captureActive) {
             abortCompilation();
             throw new IllegalStateException("Display-list compilation lost its tessellator capture");
@@ -1226,11 +1211,9 @@ public class DisplayListManager {
             logCompiledDisplayList(session().listId, compiled, session().stackTrace);
         }
 
-        // Handle nested compilation - restore parent context
         if (isNested) {
             final DisplayListCompilationSession.Frame parentContext = session().parents.pop();
 
-            // Restore parent context
             session().listId = parentContext.listId();
             session().listMode = parentContext.listMode();
             session().virtualStateScopes.restore(parentContext.virtualStateDepth());
@@ -1248,7 +1231,6 @@ public class DisplayListManager {
             // Note: TessellatorManager callback stack was popped by stopCompiling()
             // Parent's COMPILING callback is now active again
         } else {
-            // Not nested - clear all compilation state
             session().recorder = null;
             session().recordingThread = null;
             session().virtualStateScopes.clear();
@@ -1282,7 +1264,6 @@ public class DisplayListManager {
             return;
         }
 
-        // Merge the previous draw call if possible
         final AccumulatedDraw previous = owner.accumulatedDraws.get(owner.accumulatedDraws.size() - 1);
         if (previous.format == tessellator.getVertexFormat() && previous.stateGeneration == owner.stateGeneration) {
             previous.mergeDraw(tessellator, copyLast);
@@ -1338,8 +1319,6 @@ public class DisplayListManager {
         // An uncached positive-ID list = no-op (per OpenGL spec)
     }
 
-    // ==================== DEBUG LOGGING ====================
-
     public static void logCompiledDisplayList(int listId, CompiledDisplayList compiled, StackTraceElement[] stackTrace) {
         GLStateManager.LOGGER.debug(getCompiledDisplayListString(listId, compiled, stackTrace));
     }
@@ -1348,10 +1327,8 @@ public class DisplayListManager {
         final StringBuilder sb = new StringBuilder();
         sb.append("\n========== Display List Compiled: ID=").append(listId).append(" ==========\n");
 
-        // Identify probable source mod from stack trace
         sb.append("Source: ").append(identifySourceFromStackTrace(stackTrace)).append("\n");
 
-        // Log commands if not empty
         if (compiled == CompiledDisplayList.EMPTY) {
             sb.append("Contents: EMPTY (no commands or draws)\n");
         } else {
@@ -1364,7 +1341,6 @@ public class DisplayListManager {
             }
         }
 
-        // Log full stack trace
         sb.append("\nFull Stack Trace:\n");
         if (stackTrace != null) {
             for (StackTraceElement element : stackTrace) {
@@ -1401,7 +1377,6 @@ public class DisplayListManager {
                 continue;
             }
 
-            // Try to extract mod name from package
             final String modGuess = guessModFromClassName(className);
             return modGuess + " (" + element.getClassName() + "." + element.getMethodName() +
                    ":" + element.getLineNumber() + ")";
@@ -1470,7 +1445,6 @@ public class DisplayListManager {
             final String cmdName = GLCommand.getName(opcode);
             sb.append("  ").append(cmdNum++).append(": ").append(cmdName);
 
-            // Add command-specific details
             switch (opcode) {
                 case GLCommand.ENABLE, GLCommand.DISABLE -> {
                     final int cap = memGetInt(ptr + 4);
@@ -1484,7 +1458,6 @@ public class DisplayListManager {
                 case GLCommand.DRAW_RANGE -> {
                     final int vboIdx = memGetInt(ptr + 4);
                     sb.append("(vbo=").append(vboIdx).append(")");
-                    // Show draw source if available
                     if (session().drawSources != null && drawRangeIdx < session().drawSources.size()) {
                         sb.append(" [from: ").append(session().drawSources.get(drawRangeIdx)).append("]");
                     }
@@ -1497,7 +1470,6 @@ public class DisplayListManager {
                     final int brightness = memGetInt(ptr + 16);
                     sb.append("(vbo=").append(vboIdx).append(", start=").append(start)
                         .append(", count=").append(count).append(", brightness=").append(brightness != 0).append(")");
-                    // Show draw source if available
                     if (session().drawSources != null && drawRangeIdx < session().drawSources.size()) {
                         sb.append(" [from: ").append(session().drawSources.get(drawRangeIdx)).append("]");
                     }

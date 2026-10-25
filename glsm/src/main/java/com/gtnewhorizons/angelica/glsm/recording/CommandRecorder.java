@@ -50,8 +50,6 @@ public final class CommandRecorder {
         buffer.free();
     }
 
-    // ==================== Recording Methods ====================
-
     public void recordEnable(int cap) {
         buffer.writeEnable(cap);
         commandCount++;

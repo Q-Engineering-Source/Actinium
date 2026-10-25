@@ -215,10 +215,8 @@ class AoFaceData {
         // FIX: Normalize corner vectors correctly to the minimum non-zero value between each one to prevent
         // strange issues
         if ((a == 0) || (b == 0) || (c == 0) || (d == 0)) {
-            // Find the minimum value between all corners
             final int min = minNonZero(minNonZero(a, b), minNonZero(c, d));
 
-            // Normalize the corner values
             a = Math.max(a, min);
             b = Math.max(b, min);
             c = Math.max(c, min);

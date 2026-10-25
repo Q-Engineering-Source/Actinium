@@ -36,7 +36,6 @@ public class LightDataCache extends LightDataAccess {
 
         int lu = state.getLightValue(world, pos);
 
-        // OPTIMIZE: Do not calculate light data if the block is full and opaque and does not emit light.
         int bl;
         int sl;
         if (fo && lu == 0) {
@@ -49,7 +48,6 @@ public class LightDataCache extends LightDataAccess {
             sl = LightDataAccess.unpackSky(packedCoords);
         }
 
-        // FIX: Do not apply AO from blocks that emit light
         float vanillaAo = lu == 0 ? state.getAmbientOcclusionLightValue() : 1.0f;
         float aoLevel = BlockRenderingSettings.INSTANCE.getAmbientOcclusionLevel();
         float ao = lu == 0 ? applyAmbientOcclusionLevel(vanillaAo, aoLevel) : 1.0f;

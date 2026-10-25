@@ -82,7 +82,6 @@ public class VintageRenderPassConfigurationBuilder {
         // reflects the current mipmap setting.
         boolean mipEnabled = Minecraft.getMinecraft().gameSettings.mipmapLevels > 0;
 
-        // First, build the main passes
         TerrainRenderPass solidPass, cutoutMippedPass, translucentPass, fluidPass;
 
         solidPass = builderForRenderType(BlockRenderLayer.SOLID, vertexType, mipEnabled)
@@ -125,7 +124,6 @@ public class VintageRenderPassConfigurationBuilder {
 
         ImmutableListMultimap.Builder<BlockRenderLayer, TerrainRenderPass> vanillaRenderStages = ImmutableListMultimap.builder();
 
-        // Build the materials for the vanilla render passes
         Material solidMaterial, cutoutMaterial, cutoutMippedMaterial, translucentMaterial, fluidMaterial;
         solidMaterial = new Material(solidPass, AlphaCutoffParameter.ZERO, mipEnabled);
         translucentMaterial = new Material(translucentPass, AlphaCutoffParameter.ZERO, mipEnabled);
@@ -136,6 +134,8 @@ public class VintageRenderPassConfigurationBuilder {
         vanillaRenderStages.put(BlockRenderLayer.TRANSLUCENT, fluidPass);
         vanillaRenderStages.put(BlockRenderLayer.TRANSLUCENT, translucentPass);
 
+        // Vanilla samples BlockRenderLayer.CUTOUT at mip level 0 while CUTOUT_MIPPED is mipmapped.
+        // Both layers share the consolidated pass here, so the material carries that bit (#191).
         if (ActiniumRuntime.options().performance.useRenderPassConsolidation) {
             cutoutMaterial = new Material(cutoutMippedPass, AlphaCutoffParameter.ONE_TENTH, false);
             vanillaRenderStages.put(BlockRenderLayer.CUTOUT, cutoutMippedPass);
@@ -143,7 +143,7 @@ public class VintageRenderPassConfigurationBuilder {
         } else {
             TerrainRenderPass cutoutPass;
 
-            cutoutPass = builderForRenderType(BlockRenderLayer.CUTOUT, vertexType, mipEnabled)
+            cutoutPass = builderForRenderType(BlockRenderLayer.CUTOUT, vertexType, false)
                     .name("cutout")
                     .fragmentDiscard(true)
                     .useReverseOrder(false)
@@ -156,7 +156,6 @@ public class VintageRenderPassConfigurationBuilder {
             vanillaRenderStages.put(BlockRenderLayer.CUTOUT_MIPPED, cutoutMippedPass);
         }
 
-        // Now build the material map
         Map<BlockRenderLayer, Material> renderTypeToMaterialMap = new Reference2ReferenceOpenHashMap<>(4,
                 Reference2ReferenceOpenHashMap.VERY_FAST_LOAD_FACTOR);
 

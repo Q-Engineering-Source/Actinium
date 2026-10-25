@@ -92,9 +92,6 @@ public class StringReader {
 
 	/**
 	 * Try to read a character.
-	 *
-	 * @param c the character to read
-	 * @return whether it could read the character.
 	 */
 	public boolean tryRead(char c) {
 		if (!this.canRead()) {

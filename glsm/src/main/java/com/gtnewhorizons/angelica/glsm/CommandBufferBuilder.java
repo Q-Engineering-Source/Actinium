@@ -30,10 +30,8 @@ public final class CommandBufferBuilder {
 
         AccumulatedDraw draw;
         while (rawBuffer.hasRemaining()) {
-            // Read and process the command
             CommandBufferProcessor.copyCommand(rawBuffer, finalBuffer);
 
-            // Emit draw ranges at this command position
             while (rangeIndex < accumulatedDraws.size() && (draw = accumulatedDraws.get(rangeIndex)).commandIndex == cmdIndex) {
                 emitDrawRangeToBuffer(draw, finalBuffer, rangeIndex);
                 rangeIndex++;
@@ -61,7 +59,6 @@ public final class CommandBufferBuilder {
             return;
         }
 
-        // Write the draw range command
         out.writeDrawRange(vboIdx);
     }
 }

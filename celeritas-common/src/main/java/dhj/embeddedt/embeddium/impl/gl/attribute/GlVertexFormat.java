@@ -97,7 +97,6 @@ public class GlVertexFormat {
         /**
          * Adds an vertex attribute which will be bound to the given generic attribute type.
          *
-         * @param attribute The attribute to bind
          * @throws IllegalStateException If an attribute is already bound to the generic type
          */
         private Builder addElement(GlVertexAttribute attribute) {
@@ -127,8 +126,6 @@ public class GlVertexFormat {
             ArrayList<GlVertexAttribute> allAttributes = new ArrayList<>(this.attributes.values());
 
             allAttributes.sort(Comparator.comparingInt(GlVertexAttribute::getPointer));
-
-            // Check that no attributes overlap
 
             GlVertexAttribute prevAttribute = null;
 

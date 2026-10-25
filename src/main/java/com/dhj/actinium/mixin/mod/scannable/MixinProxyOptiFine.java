@@ -10,19 +10,17 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 /**
  * Routes Scannable's shader-mod probes to Actinium (issue #94).
  *
- * <p>Scannable drives its scan-wave rendering off two OptiFine queries. With no OptiFine present
- * it falls back to mode {@code INJECT}, which swaps the main framebuffer's depth attachment and
- * restores it via the vanilla {@code Framebuffer.depthBuffer} renderbuffer — a buffer Actinium's
- * {@code FramebufferIrisMixin} never creates (depth lives in a shared texture instead), so the
- * restore detaches the attachment and terrain loses depth testing (see-through ground); with a
- * shader pack the same code additionally churns the gbuffer depth attachment and draws the scan
- * quad into Iris render targets (white screen with ghosting).</p>
- *
- * <p>By answering "shader pack loaded" here, Scannable picks its dedicated external-shader-mod
- * path: mode {@code OPTIFINE} copies the provided depth texture into a private FBO after world
- * rendering and draws the wave during the overlay phase, never touching the main framebuffer's
- * attachments. {@link ScannableShaderCompat} supplies the shared main-framebuffer depth texture,
- * which carries the world depth both with and without a shader pack.</p>
+ * <p>Scannable drives its scan-wave rendering off two OptiFine queries. With no OptiFine
+ * present it falls back to mode INJECT, which swaps the main framebuffer's depth attachment
+ * via the vanilla {@code Framebuffer.depthBuffer} renderbuffer, a buffer
+ * {@code FramebufferIrisMixin} never creates (depth lives in a shared texture): the restore
+ * detaches the attachment and terrain loses depth testing (see-through ground); with a
+ * shader pack the same code additionally churns the gbuffer depth attachment and draws the
+ * scan quad into Iris render targets (white screen with ghosting). Answering "shader pack
+ * loaded" here selects Scannable's dedicated OPTIFINE path, which copies the provided depth
+ * texture into a private FBO after world rendering and never touches the main framebuffer's
+ * attachments; {@link ScannableShaderCompat} supplies the shared main-framebuffer depth
+ * texture, which carries the world depth both with and without a shader pack.
  */
 @Mixin(value = ProxyOptiFine.class, remap = false)
 public abstract class MixinProxyOptiFine {

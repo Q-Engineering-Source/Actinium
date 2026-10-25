@@ -11,10 +11,9 @@ import vazkii.botania.client.core.handler.BoundTileRenderer;
 /**
  * Restores GL_TEXTURE_2D enablement after Botania's bound-tile wireframe pass.
  *
- * <p>Same GLSM state-cache leak as {@code BlockHighlightRenderHandler}: the handler
- * disables texture sampling to draw coordinate-bound outlines and can leave the active
- * texture unit disabled when it returns, so the following held-item pass renders flat
- * white. Re-enable the units so item rendering samples the atlas again.</p>
+ * <p>Same GLSM state-cache leak as {@code BlockHighlightRenderHandler}: drawing the
+ * coordinate-bound outlines can leave the active texture unit disabled, so the
+ * following held-item pass renders flat white.
  */
 @Mixin(value = BoundTileRenderer.class, remap = false)
 public abstract class MixinBoundTileRenderer {

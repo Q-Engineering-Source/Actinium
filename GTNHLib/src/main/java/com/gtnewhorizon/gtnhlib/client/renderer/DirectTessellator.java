@@ -246,9 +246,6 @@ public class DirectTessellator {
         this.brightness = p_78380_1_;
     }
 
-    /**
-     * Uploads the Tessellator to a VBO.
-     */
     public final IVertexArrayObject uploadToVBO(VertexBufferType bufferType) {
         if (this.drawMode == GL11.GL_QUADS) {
             return VertexOptimizer.optimizeQuads(bufferType, format, vertexCount, getWriteBuffer());
@@ -292,8 +289,6 @@ public class DirectTessellator {
     /**
      * Allocates a new ByteBuffer with the contents of the tessellator's draw. <br>
      * The buffer needs to be freed with {@link com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities#memFree}
-     *
-     * @return The buffer copy
      */
     public final ByteBuffer allocateBufferCopy() {
         final int size = bufferLimit();
@@ -311,7 +306,6 @@ public class DirectTessellator {
         final int vertexCount = this.vertexCount;
         final int newBufferSize = vertexCount * newFormat.getVertexSize();
 
-        // Allocate temp buffer
         ByteBuffer temp = memAlloc(newBufferSize);
         long tempPtr = memAddress0(temp);
 
@@ -336,7 +330,7 @@ public class DirectTessellator {
         memCopy(tempPtr, startPtr, newBufferSize);
         writePtr = startPtr + newBufferSize;
 
-        memFree(temp); // free temporary buffer
+        memFree(temp);
         this.format = newFormat;
     }
 

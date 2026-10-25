@@ -7,18 +7,15 @@ import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 
 /**
- * Resolves the native memory address of direct {@link ByteBuffer} instances and holds the
- * shared {@code Unsafe} for the vertex package.
- *
- * <p>Motivation: the vertex write hot path performs absolute stores straight into the
- * staging buffer of {@code BufferBuilder} to avoid the per-call index and bounds work of
- * {@code ByteBuffer.putXxx}. The address itself comes from GTNHLib
- * {@code MemoryUtilities#memAddress0}, the same non-reflective entry point the other
- * raw-memory paths in this codebase already use. The single reflective lookup of
+ * Resolves the native memory address of direct {@link ByteBuffer} instances and holds the shared
+ * {@code Unsafe} for the vertex package. The vertex write hot path performs absolute stores
+ * straight into the staging buffer of {@code BufferBuilder} to avoid the per-call index and
+ * bounds work of {@code ByteBuffer.putXxx}; the address comes from GTNHLib
+ * {@code MemoryUtilities#memAddress0}. The single reflective lookup of
  * {@code sun.misc.Unsafe#theUnsafe} remains because no in-repo facility exposes an
- * {@code Unsafe} instance and the FFM API is unavailable under {@code --release 21};
- * all raw stores of the vertex writers route through this holder so
- * {@code sun.misc.Unsafe} is referenced from exactly one place.
+ * {@code Unsafe} instance and the FFM API is unavailable under {@code --release 21}; all raw
+ * stores of the vertex writers route through this holder so {@code sun.misc.Unsafe} is
+ * referenced from exactly one place.
  */
 public final class DirectBufferAddress {
     /** Shared {@code Unsafe} instance consumed by the vertex writer singletons. */

@@ -19,9 +19,8 @@ import java.util.Map;
 
 /**
  * Wires shader pack lang directory translations into the vanilla I18n lookup chain so the
- * shader pack option GUI (option names, values, comments and sub-screen titles) follows the
- * game language. The lookup logic lives in {@link ShaderPackTranslationLookup}; this class
- * only injects and collects the language order.
+ * shader pack option GUI follows the game language. Lookup logic lives in
+ * {@link ShaderPackTranslationLookup}; this class only injects and collects the language order.
  */
 @Mixin(Locale.class)
 public class LocaleIrisMixin {
@@ -32,9 +31,8 @@ public class LocaleIrisMixin {
     private boolean unicode;
 
     /**
-     * Fallback code of the language chain: en_us is the vanilla fallback language, so packs
-     * without a lang file for the current game language degrade to English instead of raw
-     * keys or numeric values.
+     * en_us is the vanilla fallback language, so packs without a lang file for the current
+     * game language degrade to English instead of raw keys or numeric values.
      */
     @Unique
     private static final String actinium$FALLBACK_LANGUAGE_CODE = "en_us";
@@ -75,10 +73,9 @@ public class LocaleIrisMixin {
     }
 
     /**
-     * Collects the language lookup order: current game language first, en_us fallback, matching
-     * the vanilla Locale load order. Motivation: the order must be read live (gameSettings.language
-     * changes whenever the language settings screen is used); caching a snapshot from the resource
-     * reload callback breaks the whole chain when the snapshot goes stale or out of sync.
+     * The order must be read live because gameSettings.language changes whenever the language
+     * screen is used; a snapshot cached at resource reload goes stale and breaks the chain.
+     * Order matches the vanilla Locale load order.
      */
     @Unique
     private static List<String> actinium$preferredLanguageCodes() {

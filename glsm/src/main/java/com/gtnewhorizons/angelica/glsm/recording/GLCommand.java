@@ -10,7 +10,6 @@ import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memGetInt;
 public final class GLCommand {
     private GLCommand() {}
 
-    // === Single int commands (8 bytes: opcode + param) ===
     public static final int ENABLE = 1;              // [cmd:4][cap:4]
     public static final int DISABLE = 2;             // [cmd:4][cap:4]
     public static final int CLEAR = 3;               // [cmd:4][mask:4]
@@ -31,7 +30,6 @@ public final class GLCommand {
     public static final int DEPTH_MASK = 18;         // [cmd:4][flag:4] (0 or 1)
     public static final int FRONT_FACE = 19;         // [cmd:4][mode:4]
 
-    // === Two int commands (12 bytes) ===
     public static final int BIND_TEXTURE = 20;       // [cmd:4][target:4][texture:4]
     public static final int POLYGON_MODE = 21;       // [cmd:4][face:4][mode:4]
     public static final int COLOR_MATERIAL = 22;     // [cmd:4][face:4][mode:4]
@@ -40,12 +38,10 @@ public final class GLCommand {
     public static final int FOGI = 25;               // [cmd:4][pname:4][param:4]
     public static final int HINT = 26;               // [cmd:4][target:4][mode:4]
 
-    // === Three int commands (16 bytes) ===
     public static final int STENCIL_FUNC = 30;       // [cmd:4][func:4][ref:4][mask:4]
     public static final int STENCIL_OP = 31;         // [cmd:4][fail:4][zfail:4][zpass:4]
     public static final int TEX_PARAMETERI = 32;     // [cmd:4][target:4][pname:4][param:4]
 
-    // === Four int commands (20 bytes) ===
     public static final int VIEWPORT = 40;           // [cmd:4][x:4][y:4][width:4][height:4]
     public static final int BLEND_FUNC = 41;         // [cmd:4][srcRgb:4][dstRgb:4][srcAlpha:4][dstAlpha:4]
     public static final int COLOR_MASK = 42;         // [cmd:4][r:4][g:4][b:4][a:4] (0 or 1 each)
@@ -53,7 +49,6 @@ public final class GLCommand {
     public static final int STENCIL_OP_SEPARATE = 44; // [cmd:4][face:4][sfail:4][dpfail:4][dppass:4]
     public static final int SCISSOR = 45;             // [cmd:4][x:4][y:4][width:4][height:4]
 
-    // === Float commands ===
     public static final int POINT_SIZE = 50;         // [cmd:4][size:4f]
     public static final int LINE_WIDTH = 51;         // [cmd:4][width:4f]
     public static final int POLYGON_OFFSET = 52;     // [cmd:4][factor:4f][units:4f]
@@ -63,7 +58,6 @@ public final class GLCommand {
     public static final int BLEND_COLOR = 56;        // [cmd:4][r:4f][g:4f][b:4f][a:4f]
     public static final int SECONDARY_COLOR = 57;    // [cmd:4][r:4f][g:4f][b:4f]
 
-    // === Mixed int+float commands ===
     public static final int ALPHA_FUNC = 60;         // [cmd:4][func:4][ref:4f]
     public static final int FOGF = 61;               // [cmd:4][pname:4][param:4f]
     public static final int LIGHTF = 62;             // [cmd:4][light:4][pname:4][param:4f]
@@ -73,7 +67,6 @@ public final class GLCommand {
     public static final int MATERIALF = 66;          // [cmd:4][face:4][pname:4][param:4f]
     public static final int TEX_PARAMETERF = 67;     // [cmd:4][target:4][pname:4][param:4f]
 
-    // === Double commands ===
     public static final int TRANSLATE = 70;          // [cmd:4][mode:4][x:8d][y:8d][z:8d] = 32 bytes
     public static final int ROTATE = 71;             // [cmd:4][mode:4][angle:8d][x:8d][y:8d][z:8d] = 40 bytes
     public static final int SCALE = 72;              // [cmd:4][mode:4][x:8d][y:8d][z:8d] = 32 bytes
@@ -81,18 +74,15 @@ public final class GLCommand {
     public static final int FRUSTUM = 74;            // [cmd:4][left:8d][right:8d][bottom:8d][top:8d][zNear:8d][zFar:8d] = 52 bytes
     public static final int CLEAR_DEPTH = 75;        // [cmd:4][depth:8d] = 12 bytes
 
-    // === Matrix commands (72 bytes) ===
     public static final int MULT_MATRIX = 80;        // [cmd:4][mode:4][m00-m33:64f] = 72 bytes
     public static final int LOAD_MATRIX = 81;        // [cmd:4][mode:4][m00-m33:64f] = 72 bytes
 
-    // === Buffer commands (inline 4 floats max) ===
     public static final int FOG = 90;                // [cmd:4][pname:4][count:4][params:16f] = 28 bytes
     public static final int LIGHT = 91;              // [cmd:4][light:4][pname:4][count:4][params:16f] = 32 bytes
     public static final int LIGHT_MODEL = 92;        // [cmd:4][pname:4][count:4][params:16f] = 28 bytes
     public static final int MATERIAL = 93;           // [cmd:4][face:4][pname:4][count:4][params:16f] = 32 bytes
     public static final int CLIP_PLANE = 94;         // [cmd:4][plane:4][a:8d][b:8d][c:8d][d:8d] = 40 bytes
 
-    // === Draw commands ===
     public static final int DRAW_RANGE = 100;        // [cmd:4][vboIndex:4] = 8 bytes
     public static final int DRAW_RANGE_RESTORE = 101; // [cmd:4][vboIndex:4][flags:4][color:4][normal:4][lastTexCoord:8f] = 28 bytes
     public static final int CALL_LIST = 102;         // [cmd:4][listId:4] = 8 bytes
@@ -107,11 +97,9 @@ public final class GLCommand {
      */
 
 
-    // === Bind commands ===
     public static final int BIND_VBO = 120;
     public static final int BIND_VAO = 121;
 
-    // === Complex object reference ===
     public static final int COMPLEX_REF = 255;       // [cmd:4][index:4] = 8 bytes
 
     /**
@@ -199,10 +187,8 @@ public final class GLCommand {
      */
     public static int getCommandSize(int cmd, long ptr) {
         return switch (cmd) {
-            // Opcode-only commands (4 bytes)
             case GLCommand.LOAD_IDENTITY, GLCommand.PUSH_MATRIX, GLCommand.POP_MATRIX -> 4;
 
-            // Single int commands (8 bytes)
             case GLCommand.ENABLE, GLCommand.DISABLE, GLCommand.CLEAR, GLCommand.CLEAR_STENCIL,
                  GLCommand.CULL_FACE, GLCommand.DEPTH_FUNC, GLCommand.SHADE_MODEL, GLCommand.LOGIC_OP,
                  GLCommand.MATRIX_MODE, GLCommand.ACTIVE_TEXTURE, GLCommand.USE_PROGRAM,
@@ -211,43 +197,34 @@ public final class GLCommand {
                  GLCommand.CALL_LIST, GLCommand.COMPLEX_REF, GLCommand.DRAW_RANGE, GLCommand.BIND_VBO,
                  GLCommand.BIND_VAO -> 8;
 
-            // Two int commands (12 bytes)
             case GLCommand.BIND_TEXTURE, GLCommand.POLYGON_MODE, GLCommand.COLOR_MATERIAL,
                  GLCommand.LINE_STIPPLE, GLCommand.STENCIL_MASK_SEPARATE, GLCommand.FOGI,
                  GLCommand.HINT, GLCommand.POLYGON_OFFSET, GLCommand.ALPHA_FUNC, GLCommand.FOGF,
                  GLCommand.LIGHT_MODELF, GLCommand.LIGHT_MODELI -> 12;
 
-            // Three int commands (16 bytes)
             case GLCommand.STENCIL_FUNC, GLCommand.STENCIL_OP, GLCommand.TEX_PARAMETERI,
                  GLCommand.LIGHTF, GLCommand.LIGHTI,
                  GLCommand.MATERIALF, GLCommand.TEX_PARAMETERF, GLCommand.DRAW_ARRAYS,
                  GLCommand.SECONDARY_COLOR -> 16;
 
-            // Four int commands (20 bytes)
             case GLCommand.VIEWPORT, GLCommand.BLEND_FUNC, GLCommand.COLOR_MASK,
                  GLCommand.STENCIL_FUNC_SEPARATE, GLCommand.STENCIL_OP_SEPARATE,
                  GLCommand.SCISSOR,
                  GLCommand.COLOR, GLCommand.CLEAR_COLOR, GLCommand.BLEND_COLOR -> 20;
 
-            // DRAW_RANGE_RESTORE: 28 bytes
             case GLCommand.DRAW_RANGE_RESTORE -> 28;
 
-            // DRAW_BUFFER: 8 bytes [cmd:4][mode:4]
             case GLCommand.DRAW_BUFFER -> 8;
 
-            // DRAW_BUFFERS: 40 bytes [cmd:4][count:4][bufs:4*8]
             case GLCommand.DRAW_BUFFERS -> 40;
 
-            // Double commands
             case GLCommand.TRANSLATE, GLCommand.SCALE -> 28;  // cmd + 3 doubles
             case GLCommand.CLEAR_DEPTH -> 12;  // cmd + 1 double
             case GLCommand.ROTATE -> 36;  // cmd + 4 doubles
             case GLCommand.ORTHO, GLCommand.FRUSTUM -> 52;  // cmd + 6 doubles
 
-            // Matrix commands
             case GLCommand.MULT_MATRIX, GLCommand.LOAD_MATRIX -> 68;  // cmd + 16 floats
 
-            // Buffer commands (variable, read count)
             case GLCommand.FOG, GLCommand.LIGHT_MODEL -> {
                 final int count = memGetInt(ptr + 8);  // pname at +4, count at +8
                 yield 12 + count * 4;

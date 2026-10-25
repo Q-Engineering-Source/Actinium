@@ -15,36 +15,19 @@ import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 
 /**
- * Bridges StellarCore's HudCaching with the GLSM state cache.
+ * Bridges StellarCore's HudCaching with the GLSM state cache. StellarCore renders the HUD into a
+ * cached framebuffer while {@code HUDCaching.renderingCacheOverride} is true, forcing alpha factors
+ * {@code (ONE, ONE_MINUS_SRC_ALPHA)} and opaque colors via its own mixins; under Actinium those
+ * callers are redirected to the GLSM cache, so the interceptors never run and the cached-HUD blit
+ * shows per-element alpha areas as fully transparent.
  *
- * <p>StellarCore renders the HUD into a cached framebuffer while
- * {@code HUDCaching.renderingCacheOverride} is true, and its own mixins
- * intercept the vanilla {@code GlStateManager} blend/color calls during that
- * window to force alpha factors {@code (ONE, ONE_MINUS_SRC_ALPHA)} and opaque
- * colors. Under Actinium those callers are redirected to the GLSM cache
- * instead, so StellarCore's interceptors never run; without the same overrides
- * the cache buffer ends up with per-element alpha (e.g. 0.3 for the JourneyMap
- * grid, 0 for the reticle) and the cached-HUD blit — whose RGB blend depends
- * on alpha — shows those areas as fully transparent, revealing the scene
- * behind the map GUI.</p>
- *
- * <p>{@code HUDCaching} is loaded by StellarCore's own early mixin loader
- * during tweak bootstrap, before any mixin prepare phase can run; a mixin
- * targeting it fails with {@code MixinTargetAlreadyLoadedException} no matter
- * how early the config is registered. A launchwrapper transformer is the only
- * hook that runs before the class is defined regardless of when it is loaded,
- * so this transformer rewrites {@code renderCachedHud} directly:</p>
- *
- * <ul>
- *   <li>after each {@code renderingCacheOverride} store, mirror the value onto
- *       {@code GLSMConfig.hudCacheOverride} so the GLSM blend/color paths apply
- *       the same overrides StellarCore would have applied;</li>
- *   <li>right before the {@code GuiIngame.renderGameOverlay} call inside the
- *       override window, restore the HUD baseline (alpha test {@code GREATER/0.1}
- *       etc.), since the call site that normally carries the baseline
- *       restoration in {@code EntityRenderer.updateCameraAndRender} is replaced
- *       by StellarCore's {@code @Redirect}.</li>
- * </ul>
+ * {@code HUDCaching} is loaded by StellarCore's own early mixin loader before any mixin prepare phase
+ * can run; a mixin targeting it fails with {@code MixinTargetAlreadyLoadedException}, so this
+ * transformer rewrites {@code renderCachedHud} directly: after each {@code renderingCacheOverride}
+ * store it mirrors the value onto {@code GLSMConfig.hudCacheOverride}, and right before the
+ * {@code GuiIngame.renderGameOverlay} call inside the override window it restores the HUD baseline,
+ * whose normal call site in {@code EntityRenderer.updateCameraAndRender} is replaced by StellarCore's
+ * {@code @Redirect}.
  */
 public final class StellarCoreHudCachingCompatTransformer implements IClassTransformer {
     private static final Logger LOGGER = LogManager.getLogger("Actinium");

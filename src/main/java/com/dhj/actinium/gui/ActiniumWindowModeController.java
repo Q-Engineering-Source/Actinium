@@ -11,14 +11,16 @@ public final class ActiniumWindowModeController {
     private static final Logger LOGGER = ActiniumRuntime.logger();
     private static boolean synchronizing;
     private static String loggedInvalidFullscreenMode;
+    private static final boolean androidRuntime = System.getenv("POJAV_RENDERER") != null;
     private static final boolean borderlessSupported;
     private static boolean borderlessActive;
     private static boolean loggedBorderlessUnsupported;
+    // Android can start fullscreen before LWJGLXX has saved a window geometry to restore.
+    private static boolean windowedGeometryCaptured;
 
     static {
-        // FCL's Android runtime ships a stripped GLFW whose glfwGetWindowPos lacks the IntBuffer
-        // overload, so Display.isBorderless() throws NoSuchMethodError there. Probe once and degrade
-        // borderless to exclusive instead of crashing on every tick.
+        // Some Android runtimes omit glfwGetWindowPos(IntBuffer), making Display.isBorderless()
+        // throw NoSuchMethodError. Probe once and use exclusive fullscreen when borderless is unavailable.
         boolean supported = false;
         try {
             borderlessActive = Display.isBorderless();
@@ -168,10 +170,12 @@ public final class ActiniumWindowModeController {
 
     private static void applyWindowed(Minecraft client) {
         if (borderlessActive) {
-            Display.setBorderless(false);
+            if (!androidRuntime || windowedGeometryCaptured) {
+                Display.setBorderless(false);
+            }
             borderlessActive = false;
         }
-        if (Display.isFullscreen()) {
+        if (Display.isFullscreen() && (!androidRuntime || windowedGeometryCaptured)) {
             Display.setFullscreen(false);
         }
         setFullscreenState(client, false);
@@ -180,19 +184,23 @@ public final class ActiniumWindowModeController {
 
     private static void applyExclusiveFullscreen(Minecraft client) {
         if (borderlessActive) {
-            Display.setBorderless(false);
+            if (!androidRuntime || windowedGeometryCaptured) {
+                Display.setBorderless(false);
+            }
             borderlessActive = false;
         }
         Display.setFullscreen(true);
+        windowedGeometryCaptured = true;
         setFullscreenState(client, true);
         updateClientDisplaySize(client);
     }
 
     private static void applyBorderlessFullscreen(Minecraft client) {
-        if (Display.isFullscreen()) {
+        if (Display.isFullscreen() && (!androidRuntime || windowedGeometryCaptured)) {
             Display.setFullscreen(false);
         }
         Display.setBorderless(true);
+        windowedGeometryCaptured = true;
         borderlessActive = true;
         setFullscreenState(client, true);
         updateClientDisplaySize(client);

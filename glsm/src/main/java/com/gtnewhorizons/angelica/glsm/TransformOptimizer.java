@@ -18,9 +18,9 @@ import java.util.List;
  * </ul>
  */
 class TransformOptimizer {
-    private final Matrix4f accumulated = new Matrix4f();  // Current accumulated transform
-    private final Matrix4f lastEmitted = new Matrix4f();  // Last emitted transform
-    private final Deque<Matrix4f> stack = new ArrayDeque<>();  // For Push/Pop
+    private final Matrix4f accumulated = new Matrix4f();
+    private final Matrix4f lastEmitted = new Matrix4f();
+    private final Deque<Matrix4f> stack = new ArrayDeque<>();
     private final int listId;  // For logging
     private boolean absoluteMatrixFlag = false;  // True after LoadMatrix, cleared by LoadIdentity emit
 
@@ -59,15 +59,11 @@ class TransformOptimizer {
         return DisplayListManager.isIdentity(accumulated);
     }
 
-    /**
-     * Check if there's a pending transform that hasn't been emitted yet.
-     */
     boolean hasPendingTransform() {
         return !accumulated.equals(lastEmitted);
     }
 
     /**
-     * Emit a MultMatrix command if accumulated differs from lastEmitted.
      * Updates lastEmitted to match accumulated after emission.
      */
     void emitPendingTransform(List<DisplayListCommand> output) {
@@ -80,47 +76,36 @@ class TransformOptimizer {
      * Emit a MultMatrix command to make GL state match a target transform.
      * Used when a draw expects a specific transform that may differ from accumulated.
      * Updates lastEmitted to match target after emission.
-     *
-     * @param output The command list to emit to
-     * @param target The target transform to reach
      */
     void emitTransformTo(List<DisplayListCommand> output, Matrix4f target) {
         if (target.equals(lastEmitted)) {
-            // Already at target - nothing to emit
             return;
         }
 
-        // Calculate delta: what we need to multiply to go from lastEmitted to target
         // delta = inverse(lastEmitted) * target
         // But for simplicity, if lastEmitted is identity, just emit target
         if (DisplayListManager.isIdentity(lastEmitted)) {
-            // Simple case: just emit target
             output.add(MultMatrixCmd.create(target));
         } else {
-            // Need to emit delta: inv(lastEmitted) * target
             final Matrix4f delta = new Matrix4f(lastEmitted).invert().mul(target);
             output.add(MultMatrixCmd.create(delta));
         }
         lastEmitted.set(target);
     }
 
-    /**
-     * Check if a draw's expected transform differs from what we've emitted.
-     */
     boolean needsTransformForDraw(Matrix4f drawTransform) {
         return !drawTransform.equals(lastEmitted);
     }
 
     /**
-     * Mark that the GL matrix is at an absolute value (after LoadMatrix).
-     * Subsequent LoadIdentity commands must be emitted to actually reset GL to identity.
+     * After LoadMatrix the GL matrix is absolute, so subsequent LoadIdentity commands must be
+     * emitted to actually reset GL to identity.
      */
     void markAbsoluteMatrix() {
         absoluteMatrixFlag = true;
     }
 
     /**
-     * Check if the GL matrix is at an absolute value and clear the flag.
      * Used to determine if LoadIdentity needs to emit.
      * @return true if LoadMatrix was called and not yet reset by LoadIdentity
      */

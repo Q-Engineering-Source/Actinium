@@ -17,8 +17,6 @@ public final class ViewportUniforms {
 
 	/**
 	 * Makes the viewport uniforms available to the given program
-	 *
-	 * @param uniforms the program to make the uniforms available to
 	 */
 	public static void addViewportUniforms(UniformHolder uniforms) {
 		// TODO: What about the custom scale.composite3 property?

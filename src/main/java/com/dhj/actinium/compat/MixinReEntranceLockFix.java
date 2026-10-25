@@ -12,18 +12,13 @@ import java.util.Set;
 /**
  * Works around a re-entrance lock leak in the Cleanroom sponge-mixin 0.8.7 build.
  *
- * <p>During mixin select/prepare, legacy coremod ASM transformers (e.g. Techguns'
- * TechgunsASMTransformer) may trigger nested class loads via
- * {@code ClassWriter#getCommonSuperClass}. When the nested-loaded class is a mixin
- * target, {@code MixinProcessor.lockAndSelect}/{@code applyMixins} throw
- * {@code ReEntrantTransformerError} without popping the processor's
- * {@link ReEntranceLock}. The leaked lock depth makes every later
- * {@code applyMixins} call throw, which aborts the launch with
- * {@code NoClassDefFoundError: net/minecraft/client/Minecraft}.
- *
- * <p>Once mixin select has completed and no transform is in progress on the
- * current thread, the lock depth must be zero; anything above zero is leaked.
- * Calling {@link #clearLeakedLock()} at that point restores the balanced state.
+ * <p>During mixin select/prepare, legacy coremod ASM transformers (e.g. Techguns') may trigger
+ * nested class loads via {@code ClassWriter#getCommonSuperClass}. When the nested-loaded class
+ * is a mixin target, {@code MixinProcessor.lockAndSelect}/{@code applyMixins} throw
+ * {@code ReEntrantTransformerError} without popping the {@link ReEntranceLock}; the leaked depth
+ * makes every later {@code applyMixins} call throw, aborting the launch with
+ * {@code NoClassDefFoundError: net/minecraft/client/Minecraft}. Outside an active transform the
+ * depth must be zero; {@link #clearLeakedLock()} restores that state.</p>
  */
 public final class MixinReEntranceLockFix {
 
@@ -91,10 +86,9 @@ public final class MixinReEntranceLockFix {
     }
 
     /**
-     * Records classes that callers loaded up front so their transformations
-     * (including mixins) are complete before a nested transform can resolve them.
-     * Used for targets such as Tessellator whose hierarchy Techguns may resolve
-     * from inside another class's transform.
+     * Logs classes the caller loaded up front so their transformations (including mixins) are
+     * complete before a nested transform can resolve them (e.g. Tessellator, whose hierarchy
+     * Techguns may resolve from inside another class's transform).
      */
     public static void preloadClasses(Class<?>... classes) {
         for (Class<?> clazz : classes) {

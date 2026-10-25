@@ -121,8 +121,6 @@ public class PBRTextureManager {
 
 	public void close() {
 		clear();
-//		defaultNormalTexture.close();
-//		defaultSpecularTexture.close();
 	}
 
 	private void closeHolder(PBRTextureHolder holder) {

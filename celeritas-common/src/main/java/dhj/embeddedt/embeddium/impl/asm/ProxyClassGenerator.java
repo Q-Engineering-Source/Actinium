@@ -92,7 +92,6 @@ public class ProxyClassGenerator<DELEGATE, INTERFACE> {
 
         classVisitor.visitSource(null, null);
 
-        // Generate constructor first
         methodVisitor = classVisitor.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "(" + worldSliceDesc + ")V", null, null);
         methodVisitor.visitCode();
         Label label0 = new Label();
@@ -110,19 +109,15 @@ public class ProxyClassGenerator<DELEGATE, INTERFACE> {
         methodVisitor.visitMaxs(2, 2);
         methodVisitor.visitEnd();
 
-        // Now generate delegates for each method on WorldSlice's interfaces
         for(Method method : this.delegateClass.getMethods()) {
-            // Only delegate for public, non-static methods implemented by WorldSlice or an interface
             if(Modifier.isPublic(method.getModifiers()) && !Modifier.isStatic(method.getModifiers()) && !method.getDeclaringClass().isAssignableFrom(Object.class)) {
                 int maxStack = 0;
                 String methodDescription = Type.getMethodDescriptor(method);
                 methodVisitor = classVisitor.visitMethod(Opcodes.ACC_PUBLIC, method.getName(), methodDescription, null, null);
                 methodVisitor.visitCode();
-                // push WorldSlice
                 methodVisitor.visitVarInsn(Opcodes.ALOAD, 0);
                 methodVisitor.visitFieldInsn(Opcodes.GETFIELD, this.proxyClassName, "view", worldSliceDesc);
                 maxStack++;
-                // push each argument
                 int maxLocals = 1;
                 for (Type t : Type.getArgumentTypes(method)) {
                     int size = t.getSize();
@@ -130,7 +125,6 @@ public class ProxyClassGenerator<DELEGATE, INTERFACE> {
                     maxLocals += size;
                     maxStack += size;
                 }
-                // invoke the method on WorldSlice
                 boolean itf = method.getDeclaringClass().isInterface();
                 methodVisitor.visitMethodInsn(itf ? Opcodes.INVOKEINTERFACE : Opcodes.INVOKEVIRTUAL, Type.getInternalName(method.getDeclaringClass()), method.getName(), methodDescription, itf);
                 Type returnType = Type.getReturnType(methodDescription);

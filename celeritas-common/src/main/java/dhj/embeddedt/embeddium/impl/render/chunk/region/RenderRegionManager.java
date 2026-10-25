@@ -157,10 +157,8 @@ public class RenderRegionManager {
         }
 
         private void processBuildResult(ChunkBuildOutput result) {
-            // Delete all existing data for the section in the region
             region.removeMeshes(result.render.getSectionIndex());
 
-            // Add uploads for any new data
             for (var entry : fastIterable(result.meshes)) {
                 BuiltSectionMeshParts mesh = Objects.requireNonNull(entry.getValue());
 
@@ -199,7 +197,6 @@ public class RenderRegionManager {
                 }
             }
 
-            // If we have nothing to upload, abort!
             if (uploadsByPass.isEmpty()) {
                 return;
             }
@@ -231,17 +228,14 @@ public class RenderRegionManager {
 
             int previousPassCookie = region.getPassSetUpdateCount();
 
-            // Collect the upload results
             for (var uploads : uploadsByPass.values()) {
                 for (PendingSectionUpload upload : uploads) {
                     var storage = region.createStorage(upload.pass(), renderPassConfiguration);
                     if (upload instanceof PendingMeshRebuildUpload meshUpload) {
-                        // Replace meshes
                         var indexResult = upload.indexUpload() != null ? upload.indexUpload().getResult() : null;
                         storage.setMeshes(upload.section().getSectionIndex(),
                                 upload.vertexUpload().getResult(), indexResult, meshUpload.meshData().ranges());
                     } else if (upload instanceof PendingMeshSortUpload) {
-                        // Replace index buffer
                         storage.replaceIndexBuffer(upload.section().getSectionIndex(), upload.indexUpload().getResult());
                     } else {
                         throw new IllegalStateException();
@@ -526,7 +520,6 @@ public class RenderRegionManager {
             return null;
         }
     }
-
 
     private static StagingBuffer createStagingBuffer(CommandList commandList) {
         if (MappedStagingBuffer.isSupported(RenderDevice.INSTANCE)) {

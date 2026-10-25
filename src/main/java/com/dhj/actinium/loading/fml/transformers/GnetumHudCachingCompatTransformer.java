@@ -14,31 +14,17 @@ import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.MethodNode;
 
 /**
- * Bridges Gnetum's HUD caching with the GLSM state cache.
+ * Bridges Gnetum's HUD caching with the GLSM state cache. Gnetum renders HUD elements into its own
+ * cache framebuffers while {@code Gnetum.rendering} is true, forcing alpha factors
+ * {@code (ONE, ONE_MINUS_SRC_ALPHA)} so the cache texture holds premultiplied alpha for the final
+ * blit; under Actinium every caller is redirected to the GLSM cache, so Gnetum's interceptors never
+ * run and the cache holds straight alpha, showing translucent HUD elements with flickering wrong
+ * opacity.
  *
- * <p>Gnetum renders HUD elements into its own cache framebuffers while
- * {@code Gnetum.rendering} is true, and relies on its own mixins on the vanilla
- * {@code GlStateManager#blendFunc} and {@code OpenGlHelper#glBlendFunc} methods
- * to force alpha factors {@code (ONE, ONE_MINUS_SRC_ALPHA)} during that window,
- * so the cache texture holds premultiplied alpha for the final blit (which
- * composites with {@code tryBlendFuncSeparate(ONE, ONE_MINUS_SRC_ALPHA, ZERO,
- * ONE)}). Under Actinium every caller is redirected to the GLSM cache instead,
- * so Gnetum's interceptors never run; the cache then holds straight alpha and
- * the premultiplied blit shows translucent HUD elements (chat background,
- * subtitles, boss bar) with wrong opacity that changes as each pass refreshes —
- * visible as HUD flickering.</p>
- *
- * <p>Gnetum registers its mixin configs through MixinBooter's early loader
- * during tweak bootstrap, so a mixin targeting its classes cannot be guaranteed
- * to apply; a launchwrapper transformer runs before the class is defined
- * regardless of load timing. This transformer mirrors every constant
- * {@code Gnetum.rendering} store inside {@code GuiIngameForgeMixin} onto
- * {@code GLSMConfig.hudCacheOverride}, so the GLSM blend/color paths apply the
- * same overrides Gnetum's mixins would have applied. The shared override path
- * is reused as-is: its only divergence from native Gnetum is forcing alpha to 1
- * when a color is written with blending disabled, which reproduces vanilla's
- * blend-disabled opaque overwrite inside the cache and keeps the blit's
- * coverage invariant intact.</p>
+ * Gnetum registers its mixin configs through MixinBooter's early loader, so a mixin targeting its
+ * classes cannot be guaranteed to apply; a launchwrapper transformer runs before the class is defined
+ * regardless of load timing. This transformer mirrors every constant {@code Gnetum.rendering} store
+ * inside {@code GuiIngameForgeMixin} onto {@code GLSMConfig.hudCacheOverride}.
  */
 public final class GnetumHudCachingCompatTransformer implements IClassTransformer {
     private static final Logger LOGGER = LogManager.getLogger("Actinium");

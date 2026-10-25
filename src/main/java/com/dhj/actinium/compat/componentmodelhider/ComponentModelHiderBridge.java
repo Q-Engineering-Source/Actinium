@@ -4,13 +4,10 @@ import com.cleanroommc.multiblocked.persistence.MultiblockWorldSavedData;
 import net.minecraft.util.math.BlockPos;
 
 /**
- * The hider's own API surface, isolated in its own class so that {@link ComponentModelHiderCompat}
- * and its call sites link while the mod is absent: this class is only loaded once
- * {@link ComponentModelHiderCompat#IS_LOADED} is true.
- *
- * <p>It deliberately exposes nothing beyond the three calls the mesher needs, and it delegates the
- * hiding predicate to the hider's own {@code MultiblockWorldSavedData#isModelDisabled} rather than
- * reading the disabled-position set directly, so the gating semantics stay owned by the mod.</p>
+ * The hider's own API surface, isolated so {@link ComponentModelHiderCompat} and its call sites
+ * link while the mod is absent; only loaded once {@link ComponentModelHiderCompat#IS_LOADED} is
+ * true. Exposes exactly the three calls the mesher needs and delegates the predicate to the
+ * hider's {@code isModelDisabled}, keeping the gating semantics owned by the mod.
  */
 final class ComponentModelHiderBridge {
     private ComponentModelHiderBridge() {
@@ -24,19 +21,12 @@ final class ComponentModelHiderBridge {
         return MultiblockWorldSavedData.isModelDisabled(pos);
     }
 
-    /**
-     * Sets the hider's per-thread "a chunk is being meshed" flag, which is what arms its
-     * {@code Block#doesSideBlockRendering} hook, its {@code BlockModelRenderer} redirects and its
-     * CodeChickenLib hooks.
-     */
+    /** Sets the hider's per-thread build flag, arming its {@code BlockModelRenderer} redirects and CodeChickenLib hooks. */
     static void beginBuild() {
         MultiblockWorldSavedData.isBuildingChunk.set(Boolean.TRUE);
     }
 
-    /**
-     * Clears the flag set by {@link #beginBuild()}. The thread local is initialised to false, so
-     * clearing it restores the state an unarmed build thread observes.
-     */
+    /** Clears the flag set by {@link #beginBuild()}; the thread local defaults to false. */
     static void endBuild() {
         MultiblockWorldSavedData.isBuildingChunk.set(Boolean.FALSE);
     }

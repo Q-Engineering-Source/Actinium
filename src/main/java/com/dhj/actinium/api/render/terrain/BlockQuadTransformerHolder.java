@@ -27,14 +27,12 @@ public final class BlockQuadTransformerHolder {
     private static final CopyOnWriteArrayList<BlockQuadTransformer> TRANSFORMERS =
             new CopyOnWriteArrayList<>();
 
-    /** Prevents instantiation of this static registry. */
     private BlockQuadTransformerHolder() {
     }
 
     /**
      * Registers a transformer at the end of the current registration order.
      *
-     * @param transformer the transformer to register
      * @throws IllegalArgumentException if the transformer is null or the same
      *         instance is already registered
      */
@@ -53,8 +51,6 @@ public final class BlockQuadTransformerHolder {
     /**
      * Removes a previously registered transformer by instance identity.
      *
-     * @param transformer the transformer to unregister
-     * @return {@code true} if the transformer was removed
      * @throws IllegalArgumentException if the transformer is null
      */
     public static boolean unregister(BlockQuadTransformer transformer) {
@@ -74,13 +70,8 @@ public final class BlockQuadTransformerHolder {
      * returned immediately. A transformer that throws {@link RuntimeException}
      * is logged and rethrown.</p>
      *
-     * @param state the extended block state being rendered
-     * @param pos the block position being rendered
      * @param blockAccess thread-safe access to the block state and neighbors
-     * @param layer the block render layer currently being built
      * @param side the face these quads belong to, or {@code null} for unassigned quads
-     * @param quads the initial quad list from the block model
-     * @return the final transformed quad list
      */
     public static List<BakedQuad> transform(IBlockState state, BlockPos pos,
                                             ActiniumBlockAccess blockAccess,

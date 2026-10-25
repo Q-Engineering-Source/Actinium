@@ -149,14 +149,14 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
         return super.getLastViewport();
     }
 
-    /**
-     * Captures the iChun recursive terrain matrices while leaving ordinary and shadow rendering unchanged.
-     */
-
     @Override
     public void markSectionGraphDirty() {
         getRenderSectionManager().markGraphDirty();
     }
+
+    /**
+     * Captures the iChun recursive terrain matrices while leaving ordinary and shadow rendering unchanged.
+     */
     public void setPortalCamera(boolean portalCamera) {
         this.portalCamera = portalCamera;
         this.portalMatrices = portalCamera ? PortalChunkRenderMatrices.capture() : null;
@@ -273,8 +273,7 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
             try {
                 return super.renderBlockEntities(tileEntityRenderContext);
             } finally {
-                // TESRs leak GL state during the render loop; flush the FastTESR batch with
-                // the clean entry state (see TileEntityGlStateGuard.restoreForBatch).
+                // Flush the FastTESR batch with the clean entry state (see TileEntityGlStateGuard.restoreForBatch).
                 TileEntityGlStateGuard.restoreForBatch();
                 TileEntityRendererDispatcher.instance.drawBatch(pass);
             }

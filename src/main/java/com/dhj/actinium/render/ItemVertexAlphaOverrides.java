@@ -6,21 +6,14 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Query point for the {@link ItemVertexAlphaOverride}s that make Actinium's fast lit item path
- * unsound.
- *
- * <p>{@code ForgeHooksClient.renderLitItem} is intercepted by Actinium whenever no shader pack is in
- * use, and the interception either appends the baked quad data directly
- * ({@link FastLitItemDisplayListCache} aside) or compiles it into a cached display list keyed by
- * model identity and quad tint colours. A mod that scales item vertex alpha during a GUI
- * open/close animation - NeverEnoughAnimation does, through its {@code LightUtil.renderQuadColor}
- * and {@code BufferBuilder.color} hooks - is invisible to both shortcuts: the raw append drops the
- * scaling, and the display list bakes the alpha of the compile frame into the cache, which
- * {@code glCallList} then replays for every later frame (leaving chest GUI items permanently
- * transparent when the first frame of the fade is compiled).</p>
- *
- * <p>Registered sources are therefore polled before the fast path accepts a model; while any of
- * them is active the item is drawn through Forge's own {@code renderLitItem}, which keeps the fade
- * visible and never caches it.</p>
+ * unsound. {@code ForgeHooksClient.renderLitItem} is intercepted by Actinium whenever no shader
+ * pack is in use; a mod that scales item vertex alpha during a GUI open/close animation
+ * (NeverEnoughAnimation, through its {@code LightUtil.renderQuadColor} and
+ * {@code BufferBuilder.color} hooks) is invisible to both the raw append (which drops the
+ * scaling) and the display list cache (which bakes the alpha of the compile frame into the cache
+ * and replays it for every later frame). Registered sources are therefore polled before the fast
+ * path accepts a model; while any of them is active the item is drawn through Forge's own
+ * {@code renderLitItem}, which keeps the fade visible and never caches it.
  */
 public final class ItemVertexAlphaOverrides {
 

@@ -12,11 +12,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.function.Consumer;
 
 /**
- * Lumenized composites the bloom onto the main framebuffer with a full-screen quad and
- * no depth handling of its own; it relies on the depth test state left by world
- * rendering. In Actinium's render stack that state is not guaranteed to be enabled at
- * this point, so the glow ends up drawn over everything, visible through walls. Enable
- * the depth test explicitly so geometry in front of the light source occludes the glow.
+ * Lumenized composites the bloom onto the main framebuffer with a full-screen quad and no
+ * depth handling of its own, relying on the depth test state left by world rendering; in
+ * Actinium's render stack that state is not guaranteed to be enabled at this point, so the
+ * glow is drawn over everything, visible through walls. Enable the depth test explicitly so
+ * geometry in front of the light source occludes the glow.
  */
 @Mixin(value = Shaders.class, remap = false)
 public abstract class MixinShadersDepthTest {

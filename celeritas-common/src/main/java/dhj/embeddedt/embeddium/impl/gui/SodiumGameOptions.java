@@ -358,7 +358,6 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         // Use a temporary location next to the config's final destination
         Path tempPath = config.configPath.resolveSibling(config.configPath.getFileName() + ".tmp");
 
-        // Write the file to our temporary location
         Files.writeString(tempPath, GSON.toJson(config));
 
         // Atomically replace the old config file (if it exists) with the temporary file

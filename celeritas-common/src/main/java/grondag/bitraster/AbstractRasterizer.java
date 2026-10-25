@@ -650,7 +650,6 @@ public abstract class AbstractRasterizer {
 			populateFlatEvents(pos3, IDX_DX0);
 		};
 		EVENT_FILLERS[EVENT_0123_FFFF] = () -> {
-			// fill it
 			populateLeftEvents();
 			populateRightEvents();
 			populateFlatEvents(pos0, IDX_AX0);
@@ -770,7 +769,6 @@ public abstract class AbstractRasterizer {
 		}
 		if (STATS) STAT_DRAW_QUADS++;
 
-		// Don't draw single points
 		if (minPixelX == maxPixelX && minPixelY == maxPixelY) {
 			return;
 		}
@@ -1655,7 +1653,6 @@ public abstract class AbstractRasterizer {
 
 		if (STATS) STAT_DRAW_QUADS++;
 
-		// Don't draw single points
 		if (minPixelX == maxPixelX && minPixelY == maxPixelY) {
 			return;
 		}
