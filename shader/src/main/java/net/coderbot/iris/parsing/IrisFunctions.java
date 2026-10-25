@@ -79,7 +79,6 @@ public class IrisFunctions {
 		{
 			// Unary ops
 			{
-				// negate
 				IrisFunctions.<I2IFunction>addVectorizable("negate", (a) -> -a);
 				IrisFunctions.<F2FFunction>add("negate", (a) -> -a);
 
@@ -91,7 +90,6 @@ public class IrisFunctions {
 		{
 			// binary ops
 			{
-				// add
 				IrisFunctions.<II2IFunction>addVectorizable("add", Integer::sum);
 				IrisFunctions.<FF2FFunction>add("add", Float::sum);
 
@@ -101,7 +99,6 @@ public class IrisFunctions {
 			}
 
 			{
-				// subtract
 				IrisFunctions.<II2IFunction>addVectorizable("subtract", (a, b) -> a - b);
 				IrisFunctions.<FF2FFunction>add("subtract", (a, b) -> a - b);
 
@@ -111,7 +108,6 @@ public class IrisFunctions {
 			}
 
 			{
-				// multiply
 				IrisFunctions.<II2IFunction>addVectorizable("multiply", (a, b) -> a * b);
 				IrisFunctions.<FF2FFunction>add("multiply", (a, b) -> a * b);
 
@@ -121,7 +117,6 @@ public class IrisFunctions {
 			}
 
 			{
-				// divide
 				IrisFunctions.<FF2FFunction>add("divide", (a, b) -> a / b);
 
 				IrisFunctions.addBinaryOpJOML("divide", VectorType.VEC2, Vector2f::div);
@@ -130,13 +125,9 @@ public class IrisFunctions {
 			}
 
 			{
-				// remainder
 				IrisFunctions.<II2IFunction>addVectorizable("remainder", (a, b) -> a % b);
 				IrisFunctions.<FF2FFunction>add("remainder", (a, b) -> a % b);
 
-				// IrisFunctions.addBinaryOpJOML("multiply", VectorType.VEC2, Vector2f::??);
-				// IrisFunctions.addBinaryOpJOML("multiply", VectorType.VEC3, Vector3f::??);
-				// IrisFunctions.addBinaryOpJOML("multiply", VectorType.VEC4, Vector4f::??);
 			}
 		}
 		{
@@ -211,7 +202,6 @@ public class IrisFunctions {
 				IrisFunctions.<F2FFunction>add("log2", (a) -> (float) (Math.log(a) / Math.log(2)));
 
 				IrisFunctions.<F2FFunction>add("sqrt", (a) -> (float) Math.sqrt(a));
-				// IrisFunctions.<F2FFunction>addVectorizable("inversesqrt", (a) -> (float) Math.(a));
 
 				// optifine
 				IrisFunctions.<F2FFunction>add("log10", (a) -> (float) Math.log10(a));
@@ -236,15 +226,9 @@ public class IrisFunctions {
 
 
 				IrisFunctions.<F2FFunction>add("sign", Math::signum);
-				// IrisFunctions.addUnaryOpJOML("abs", VectorType.VEC2, Vector2f::??);
-				// IrisFunctions.addUnaryOpJOML("abs", VectorType.VEC3, Vector3f::??);
-				// IrisFunctions.addUnaryOpJOML("abs", VectorType.VEC4, Vector4f::??);
 
 				// optifine
 				IrisFunctions.<F2FFunction>add("signum", Math::signum);
-				// IrisFunctions.addUnaryOpJOML("abs", VectorType.VEC2, Vector2f::??);
-				// IrisFunctions.addUnaryOpJOML("abs", VectorType.VEC3, Vector3f::??);
-				// IrisFunctions.addUnaryOpJOML("abs", VectorType.VEC4, Vector4f::??);
 
 				// because my type checker can handle (float) -> float and (float) -> int,
 				// floor doesn't require a cast to int, but does not cause issues if the float is too big and
@@ -266,15 +250,9 @@ public class IrisFunctions {
 
 				IrisFunctions.<F2FFunction>add("frac", (a) -> (float) (a - Math.floor(a)));
 
-				// IrisFunctions.addUnaryOpJOML("frac", VectorType.VEC2, Vector2f::??);
-				// IrisFunctions.addUnaryOpJOML("frac", VectorType.VEC3, Vector3f::??);
-				// IrisFunctions.addUnaryOpJOML("frac", VectorType.VEC4, Vector4f::??);
-
 				// optifine
 				// TODO: why does Math.round give an int?
-				// IrisFunctions.<F2FFunction>addVectorizable("round", (a) -> (float) Math.round(a));
 				// TODO maybe add round with a specifyable precission?
-				// IrisFunctions.<F2IFunction>addVectorizable("round", (a) -> (int) Math.round(a));
 
 
 				// mod is also already an operator
@@ -400,17 +378,14 @@ public class IrisFunctions {
 			}
 
 			{
-				// Geometric Functions
 				// TODO: Geometric Functions
 			}
 
 			{
-				// Matrix Functions
 				// TODO: Add matrices
 			}
 
 			{
-				// Vector Relational Functions
 				// TODO: These might clash with the operators
 				// Although we can have multiple return values so
 			}
@@ -418,7 +393,6 @@ public class IrisFunctions {
 
 			{
 				{
-					// fmod
 					IrisFunctions.<II2IFunction>addVectorizable("fmod", Math::floorMod);
 					IrisFunctions.<FF2FFunction>add("fmod", (a, b) -> (a % b + b) % b);
 				}
@@ -435,7 +409,6 @@ public class IrisFunctions {
 						min + random.nextFloat() * (max - min));
 				}
 				{
-					// IF
 					// if(boolean, primitive, primitive) -> primitive
 					// if(boolean, xvec, xvec) -> xvec
 					// TODO: REDO: if(bvec, xvec, xvec) -> xvec
@@ -497,7 +470,6 @@ public class IrisFunctions {
 					}
 				}
 				{
-					// smooth
 
 					// smooth(target)
 					builder.addDynamicFunction("smooth", Type.Float, () ->

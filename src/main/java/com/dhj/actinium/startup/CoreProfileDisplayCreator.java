@@ -17,17 +17,14 @@ import org.lwjgl.opengl.PixelFormat;
  * Creates a core-profile display while leaving Minecraft's surrounding startup method intact.
  */
 public final class CoreProfileDisplayCreator {
-    /** Logger used for rejected context candidates and display cleanup failures. */
     private static final Logger LOGGER = LogManager.getLogger("Celeritas");
 
-    /** Prevents instantiation because display creation is a stateless startup operation. */
     private CoreProfileDisplayCreator() {
     }
 
     /**
      * Tries supported core-profile versions until one creates a usable OpenGL context.
      *
-     * @param format pixel format requested by Minecraft, with the stencil buffer enabled
      * @throws LWJGLException if no attempted profile creates an OpenGL 3.3 or newer context
      */
     public static void create(PixelFormat format) throws LWJGLException {
@@ -45,7 +42,6 @@ public final class CoreProfileDisplayCreator {
         }
     }
 
-    /** Attempts supported profiles in descending version order and validates the resulting context. */
     private static void createWithFallback(PixelFormat format, boolean lwjglDebug) throws LWJGLException {
         int maxMajor = 4;
         boolean macos = LWJGLUtil.getPlatform() == LWJGLUtil.PLATFORM_MACOSX;
@@ -114,13 +110,11 @@ public final class CoreProfileDisplayCreator {
         throw new LWJGLException("Failed to create an OpenGL 3.3+ core profile context", lastException);
     }
 
-    /** Wraps a runtime GL version parsing failure in the checked failure type expected by startup. */
     private static Exception createContextValidationFailure(RuntimeException e) {
         // Keep the return type as Exception so CleanMix can still resolve the lastException frame during transformation.
         return new LWJGLException("Created context does not provide valid OpenGL 3.3+", e);
     }
 
-    /** Creates one candidate display and rejects implementations that return without a window. */
     private static void createDisplay(PixelFormat format, ContextAttribs attribs) throws LWJGLException {
         Display.create(format, attribs);
         if (!Display.isCreated()) {

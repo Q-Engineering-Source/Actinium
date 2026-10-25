@@ -27,7 +27,7 @@ public class DSAUnsupported implements DSAAccess {
         final int cachedBinding = GLStateManager.getBoundTextureForServerState();
         RENDER_BACKEND.bindTexture(target, texture);
         RENDER_BACKEND.texImage2D(target, level, internalformat, width, height, border, format, type, pixels);
-        RENDER_BACKEND.bindTexture(target, cachedBinding); // Restore to cache value
+        RENDER_BACKEND.bindTexture(target, cachedBinding);
     }
 
     @Override

@@ -68,7 +68,6 @@ public class OptionPageFrame extends AbstractFrame {
         int y = 0;
         for (OptionGroup group : this.page.getGroups()) {
             boolean needPadding = false;
-            // Add each option's control element
             for (Option<?> option : group.getOptions()) {
                 if(!optionFilter.test(option)) {
                     continue;
@@ -78,13 +77,11 @@ public class OptionPageFrame extends AbstractFrame {
                 ControlElement<?> element = control.createElement(dim);
                 this.children.add(element);
 
-                // Move down to the next option
                 y += 18;
                 needPadding = true;
             }
 
             if(needPadding) {
-                // Add padding beneath each option group
                 y += 4;
             }
         }
@@ -130,7 +127,6 @@ public class OptionPageFrame extends AbstractFrame {
 
         int boxWidth = dim.width();
 
-        //Offset based on mouse position, width and height of content and width and height of the window
         int boxY = dim.getLimitY();
         int boxX = dim.x();
 
@@ -155,7 +151,6 @@ public class OptionPageFrame extends AbstractFrame {
         int boxYLimit = boxY + boxHeight;
         int boxYCutoff = this.dim.getLimitY();
 
-        // If the box is going to be cutoff on the Y-axis, move it back up the difference
         if (boxYLimit > boxYCutoff) {
             boxY -= boxHeight + dim.height();
         }

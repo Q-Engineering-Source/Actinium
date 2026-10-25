@@ -14,19 +14,14 @@ import net.minecraft.entity.Entity;
 import org.spongepowered.asm.mixin.Mixin;
 
 /**
- * Publishes the entity that is being rendered to the shader pipeline: the Iris
- * entity id consumed by {@code entityId} uniforms and the entities gbuffer phase
- * for the duration of {@link RenderManager#renderEntity} and
- * {@link RenderManager#renderMultipass}.
+ * Publishes the rendered entity to the shader pipeline (the Iris entity id consumed by
+ * {@code entityId} uniforms and the entities gbuffer phase) for
+ * {@link RenderManager#renderEntity} and {@link RenderManager#renderMultipass}.
  *
- * <p>Both hooks wrap their whole target method instead of redirecting the
- * {@code Render#doRender} / {@code Render#renderMultipass} call sites. ASM
- * coremods rewrite this class before Mixin sees it — LagGoggles (via TickCentral)
- * moves the body of {@code renderEntity} into a {@code laggoggles_trueRender}
- * method and leaves a forwarding stub in its place — so a {@code @Redirect} on a
- * call site of the original body has nothing left to inject into, and the failed
- * injection check aborts the whole class transform. Wrapping the entry point
- * works for every body layout. See docs/compat/laggoggles.md.
+ * <p>Both hooks wrap the whole target method because ASM coremods rewrite this class
+ * before Mixin: LagGoggles (via TickCentral) moves the {@code renderEntity} body into
+ * {@code laggoggles_trueRender}, so a {@code @Redirect} on the original call site aborts
+ * the whole class transform (docs/compat/laggoggles.md).
  */
 @Mixin(RenderManager.class)
 public class RenderManagerIrisMixin {

@@ -6,12 +6,10 @@ package com.dhj.actinium.gui.rso.compat;
  */
 public record CharacterEvent(int codepoint) {
 
-    /** Returns the code point as a String. */
     public String codepointAsString() {
         return new String(Character.toChars(this.codepoint));
     }
 
-    /** Returns whether this code point may be typed into a text field. */
     public boolean isAllowedChatCharacter() {
         return this.codepoint != 167 && this.codepoint >= 32 && this.codepoint != 127;
     }

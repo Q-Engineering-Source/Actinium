@@ -179,14 +179,6 @@ public class ShadowRenderer {
 		this.sunPathRotation = directives.getSunPathRotation();
 		this.celestialUniforms = new CelestialUniforms(this.sunPathRotation);
 
-//		this.buffers = new RenderBuffers();
-//
-//		if (this.buffers instanceof RenderBuffersExt) {
-//			this.renderBuffersExt = (RenderBuffersExt) buffers;
-//		} else {
-//			this.renderBuffersExt = null;
-//		}
-
 		configureSamplingSettings(shadowDirectives);
 	}
 
@@ -197,7 +189,6 @@ public class ShadowRenderer {
 	public static MatrixStack createShadowModelView(float sunPathRotation, float intervalSize) {
 		final Vector3d entityPos = getShadowCameraAnchor(CapturedRenderingState.INSTANCE.getTickDelta());
 
-		// Set up our modelview matrix stack
 		final MatrixStack modelView = new MatrixStack();
 		ShadowMatrices.createModelViewMatrix(modelView, getShadowAngle(), intervalSize, sunPathRotation, entityPos.x, entityPos.y, entityPos.z);
 
@@ -291,7 +282,6 @@ public class ShadowRenderer {
 		}
 
 		if (!settings.getNearest()) {
-			// Make sure that things are smoothed
 			RenderSystem.texParameteri(glTextureId, GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
 			RenderSystem.texParameteri(glTextureId, GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
 		} else {
@@ -454,14 +444,11 @@ public class ShadowRenderer {
 	}
 
 	private void setupGlState(Matrix4f projMatrix) {
-		// Bind shadow framebuffer and set viewport to shadow resolution
 		targets.getDepthSourceFb().bind();
 		GLStateManager.glViewport(0, 0, resolution, resolution);
 
-		// Set up our projection matrix and load it into the legacy matrix stack
 		RenderSystem.setupProjectionMatrix(projMatrix);
 
-		// Disable backface culling
 		// This partially works around an issue where if the front face of a mountain isn't visible, it casts no
 		// shadow.
 		//
@@ -472,13 +459,10 @@ public class ShadowRenderer {
 	}
 
 	private void restoreGlState() {
-		// Restore backface culling
         GLStateManager.enableCull();
 
-		// Make sure to unload the projection matrix
 		RenderSystem.restoreProjectionMatrix();
 
-		// Restore main framebuffer and viewport
 		Minecraft mc = Minecraft.getMinecraft();
 		MinecraftFramebufferHelper.restoreMainFramebuffer(false);
 		GLStateManager.glViewport(0, 0, mc.displayWidth, mc.displayHeight);
@@ -497,12 +481,17 @@ public class ShadowRenderer {
 
 		final boolean playerIsSpectator = GameModeUtil.isSpectator();
 		final EntityPlayer player = Minecraft.getMinecraft().player;
+		final RenderManager renderManager = Minecraft.getMinecraft().getRenderManager();
 
 		for (Entity entity : getLevel().loadedEntityList) {
 			if (playerIsSpectator && entity == player) continue;
 			if (Rfp2Compat.isPlayerDummy(entity)) continue;
 
-			if (!entity.ignoreFrustumCheck && !frustum.isBoundingBoxInFrustum(entity.getEntityBoundingBox())) continue;
+			// Vanilla only reaches renderEntityStatic for entities that pass RenderManager#shouldRender, whose
+			// first clause is Entity#isInRangeToRender3d. An entity that opts out of range rendering there
+			// (placeholder/proxy entities do, while their target is missing) must not be drawn here either:
+			// nothing in this pass stands in front of the lightmap lookup renderEntityStatic starts with.
+			if (!renderManager.shouldRender(entity, frustum, cameraX, cameraY, cameraZ)) continue;
 
 			renderedEntitiesList.add(entity);
 		}
@@ -515,7 +504,6 @@ public class ShadowRenderer {
 
 		setupEntityShadowState(modelView, cameraX, cameraY, cameraZ);
 		try {
-			RenderManager renderManager = Minecraft.getMinecraft().getRenderManager();
 			for (Entity entity : renderedEntitiesList) {
 				renderManager.renderEntityStatic(entity, tickDelta, false);
 			}
@@ -614,15 +602,16 @@ public class ShadowRenderer {
 		profiler.startSection("cull");
 
 		Entity player = Minecraft.getMinecraft().player;
+		RenderManager renderManager = Minecraft.getMinecraft().getRenderManager();
 
-		// Skip if spectating or outside frustum
+		// Skip if spectating, or if the player would not be drawn in the main pass either
 		if (GameModeUtil.isSpectator()) {
 			profiler.endSection();
 			renderedShadowEntities = 0;
 			return;
 		}
 
-		if (!player.ignoreFrustumCheck && !frustum.isBoundingBoxInFrustum(player.getEntityBoundingBox())) {
+		if (!renderManager.shouldRender(player, frustum, cameraX, cameraY, cameraZ)) {
 			profiler.endSection();
 			renderedShadowEntities = 0;
 			return;
@@ -634,7 +623,6 @@ public class ShadowRenderer {
 
 		setupEntityShadowState(modelView, cameraX, cameraY, cameraZ);
 		try {
-			RenderManager renderManager = Minecraft.getMinecraft().getRenderManager();
 			for (Entity passenger : player.getPassengers()) {
 				renderManager.renderEntityStatic(passenger, tickDelta, false);
 				shadowEntities++;
@@ -748,13 +736,10 @@ public class ShadowRenderer {
 
 		// NB: We store the previous player buffers in order to be able to allow mods rendering entities in the shadow pass (Flywheel) to use the shadow buffers instead.
         // TODO: Render
-//		RenderBuffers playerBuffers = levelRenderer.getRenderBuffers();
-//		levelRenderer.setRenderBuffers(buffers);
 
 		visibleTileEntities.clear();
 		globalTileEntities.clear();
 
-		// Create our camera
 		final MatrixStack modelView = getShadowModelView();
 		MODELVIEW.set(modelView.peek().getModel());
 
@@ -805,7 +790,6 @@ public class ShadowRenderer {
 		final double renderOriginY = entityY;
 		final double renderOriginZ = entityZ;
 
-		// Center the frustum on the player position
 		terrainFrustumHolder.getFrustum().setPosition(entityX, entityY, entityZ);
 
 		profiler.endSection();
@@ -814,9 +798,6 @@ public class ShadowRenderer {
 		// TODO: Only schedule a terrain update if the sun / moon is moving, or the shadow map camera moved.
 		// We have to ensure that we don't regenerate clouds every frame, since that's what needsUpdate ends up doing.
 		// This took up to 10% of the frame time before we applied this fix! That's really bad!
-//		boolean regenerateClouds = levelRenderer.shouldRegenerateClouds();
-//		((LevelRenderer) levelRenderer).needsUpdate();
-//		levelRenderer.setShouldRegenerateClouds(regenerateClouds);
 
 		// Mark the shadow graph as needing update before terrain setup
 		// Modern Celeritas does this to ensure the shadow render lists get populated
@@ -850,13 +831,11 @@ public class ShadowRenderer {
 		// Don't forget to increment the frame counter! This variable is arbitrary and only used in terrain setup,
 		// and if it's not incremented, the vanilla culling code will get confused and think that it's already seen
 		// chunks during traversal, and break rendering in concerning ways.
-//		levelRenderer.setFrameId(levelRenderer.getFrameId() + 1);
 
 		profiler.endStartSection("terrain");
 
 		setupGlState(PROJECTION);
 
-		// Render all opaque terrain unless pack requests not to
 		if (shouldRenderTerrain) {
             mc.renderEngine.bindTexture(TextureMap.LOCATION_BLOCKS_TEXTURE);
 			TerrainPhaseScope.runOpaque(renderingPipeline,
@@ -889,8 +868,6 @@ public class ShadowRenderer {
 		if (IrisDebugOptions.enableCeleritas()) {
 			WorldRendererCompatBridge.instance().setCurrentViewport(((ViewportProvider)entityShadowFrustum).sodium$createViewport());
 		}
-
-		// Render nearby entities
 
 		if (shouldRenderEntities) {
 			renderEntities(levelRenderer, entityShadowFrustum, null, modelView, renderOriginX, renderOriginY, renderOriginZ, tickDelta);
@@ -927,11 +904,6 @@ public class ShadowRenderer {
 		}
 
 		// Note: Apparently tripwire isn't rendered in the shadow pass.
-		// worldRenderer.invokeRenderType(RenderType.getTripwire(), modelView, cameraX, cameraY, cameraZ);
-
-//		if (renderBuffersExt != null) {
-//			renderBuffersExt.endLevelRendering();
-//		}
 
 		profiler.endStartSection("generate mipmaps");
 

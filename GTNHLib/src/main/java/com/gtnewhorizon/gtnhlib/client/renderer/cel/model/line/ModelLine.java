@@ -101,9 +101,6 @@ public class ModelLine implements ModelPrimitiveView {
 
     /**
      * Sets vertex data from a raw tessellator buffer.
-     *
-     * @param rawBuffer The tessellator's raw int[] buffer
-     * @param srcOffset Offset to the first vertex in the source buffer
      */
     public void setState(int[] rawBuffer, int srcOffset) {
         System.arraycopy(rawBuffer, srcOffset, data, 0, VERTEX_SIZE * 2);
@@ -113,9 +110,7 @@ public class ModelLine implements ModelPrimitiveView {
      * Copies a single vertex from a raw buffer directly to this line's data. Avoids int→float→int conversions by
      * copying raw ints directly.
      *
-     * @param rawBuffer The tessellator's raw int[] buffer
-     * @param srcOffset Offset to the vertex in the source buffer
-     * @param destIdx   Destination vertex index (0 or 1)
+     * @param destIdx 0 or 1
      */
     public void copyVertexFromBuffer(int[] rawBuffer, int srcOffset, int destIdx) {
         System.arraycopy(rawBuffer, srcOffset, data, vertexOffset(destIdx), VERTEX_SIZE);
@@ -131,10 +126,6 @@ public class ModelLine implements ModelPrimitiveView {
 
     /**
      * Applies a position offset to all vertices.
-     *
-     * @param offsetX X offset to add to all vertices
-     * @param offsetY Y offset to add to all vertices
-     * @param offsetZ Z offset to add to all vertices
      */
     public void applyOffset(int offsetX, int offsetY, int offsetZ) {
         if (offsetX == 0 && offsetY == 0 && offsetZ == 0) return;
@@ -150,9 +141,6 @@ public class ModelLine implements ModelPrimitiveView {
         }
     }
 
-    /**
-     * Copy data from another ModelLine.
-     */
     public ModelLine copyFrom(ModelLine source) {
         System.arraycopy(source.data, 0, this.data, 0, VERTEX_SIZE * 2);
         this.shaderBlockId = source.shaderBlockId;

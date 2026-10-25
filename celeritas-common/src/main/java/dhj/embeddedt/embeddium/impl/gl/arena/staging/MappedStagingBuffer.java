@@ -73,7 +73,6 @@ public class MappedStagingBuffer implements StagingBuffer {
 
         int remaining = this.capacity - this.pos;
 
-        // Split the transfer in two if we have enough available memory at the end and start of the buffer
         if (length > remaining) {
             int split = length - remaining;
 

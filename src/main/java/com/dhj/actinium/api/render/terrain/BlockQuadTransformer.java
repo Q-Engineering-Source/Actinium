@@ -26,14 +26,10 @@ public interface BlockQuadTransformer {
      * Transforms the quads produced for one block face or the unassigned quads
      * of a block model.
      *
-     * @param state the extended block state being rendered
-     * @param pos the block position being rendered
      * @param blockAccess thread-safe access to the block state and neighbors
-     * @param layer the block render layer currently being built
      * @param side the face these quads belong to, or {@code null} for unassigned quads
-     * @param quads the current quad list to transform
-     * @return the transformed quad list; must not be {@code null}, an empty
-     *         final result tells the renderer to skip this side
+     * @return must not be {@code null}; an empty final result tells the
+     *         renderer to skip this side
      */
     List<BakedQuad> transform(IBlockState state, BlockPos pos,
                               ActiniumBlockAccess blockAccess, BlockRenderLayer layer,

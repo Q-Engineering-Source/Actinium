@@ -8,10 +8,9 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 /**
  * Keeps HBM's Sedna weapon renderers from clearing the depth buffer inside the shader hand pass.
  *
- * <p>The renderer reads both halves of its hand-depth strategy from these two probes, so answering
- * them with the shader pipeline's own state rather than OptiFine's absent one makes the renderer
- * keep the world depth and compress the weapon projection instead (see
- * {@link HbmWeaponDepthCompat}).</p>
+ * <p>Answering the two probes with the shader pipeline's own state instead of OptiFine's
+ * absent one makes the renderer keep the world depth and compress the weapon projection
+ * instead (see {@link HbmWeaponDepthCompat}).
  */
 @Mixin(targets = "com.hbm.render.item.weapon.sedna.ItemRenderWeaponBase", remap = false)
 public abstract class MixinItemRenderWeaponBase {

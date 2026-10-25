@@ -222,10 +222,8 @@ public final class FragmentShaderGenerator {
             effectiveFunc = combineFunc;
         }
 
-        // Determine how many args we need
         final int numArgs = combineNumArgs(effectiveFunc);
 
-        // Emit argument resolution
         for (int a = 0; a < numArgs; a++) {
             final int source = isRgb ? key.unitSourceRgb(unit, a) : key.unitSourceAlpha(unit, a);
             final int operand = isRgb ? key.unitOperandRgb(unit, a) : key.unitOperandAlpha(unit, a);
@@ -235,7 +233,6 @@ public final class FragmentShaderGenerator {
             sb.append("    ").append(type).append(" ").append(argName).append(" = ").append(operandExpr).append(";\n");
         }
 
-        // Emit combine operation
         final String resultName = "comb" + suffix + unit;
         final String a0 = "arg" + suffix + "0_" + unit;
         final String a1 = "arg" + suffix + "1_" + unit;
@@ -257,13 +254,11 @@ public final class FragmentShaderGenerator {
         }
         sb.append(";\n");
 
-        // Apply scale
         if (scaleShift > 0) {
             final String scaleFactor = scaleShift == 1 ? "2.0" : "4.0";
             sb.append("    ").append(resultName).append(" *= ").append(scaleFactor).append(";\n");
         }
 
-        // Clamp
         sb.append("    ").append(resultName).append(" = clamp(").append(resultName).append(", ")
             .append(isRgb ? "vec3(0.0), vec3(1.0)" : "0.0, 1.0").append(");\n");
     }

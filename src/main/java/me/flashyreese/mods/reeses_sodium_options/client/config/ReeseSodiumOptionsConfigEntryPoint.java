@@ -44,7 +44,7 @@ public final class ReeseSodiumOptionsConfigEntryPoint {
     private static OptionGroup createGeneralOptions() {
         return OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(MOD_ID, "general"))
-                .add(booleanOption("enabled",
+                .add(booleanOption("enabled", true,
                         () -> ReeseSodiumOptionsConfig.config().isEnabled(),
                         value -> ReeseSodiumOptionsConfig.config().setEnabled(value)))
                 .build();
@@ -53,44 +53,45 @@ public final class ReeseSodiumOptionsConfigEntryPoint {
     private static OptionGroup createAppearanceOptions() {
         return OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(MOD_ID, "appearance"))
-                .add(booleanOption("tab_header_icons",
+                .add(booleanOption("tab_header_icons", true,
                         () -> ReeseSodiumOptionsConfig.config().isTabHeaderIcons(),
                         value -> ReeseSodiumOptionsConfig.config().setTabHeaderIcons(value)))
-                .add(booleanOption("tab_header_version_labels",
+                .add(booleanOption("tab_header_version_labels", true,
                         () -> ReeseSodiumOptionsConfig.config().isTabHeaderVersionLabels(),
                         value -> ReeseSodiumOptionsConfig.config().setTabHeaderVersionLabels(value)))
-                .add(enumOption("tab_header_collapse_mode", ReeseSodiumOptionsConfig.TabHeaderCollapseMode.class,
+                .add(enumOption("tab_header_collapse_mode", ReeseSodiumOptionsConfig.DEFAULT_TAB_HEADER_COLLAPSE_MODE,
+                        ReeseSodiumOptionsConfig.TabHeaderCollapseMode.class,
                         () -> ReeseSodiumOptionsConfig.config().getTabHeaderCollapseMode(),
                         value -> ReeseSodiumOptionsConfig.config().setTabHeaderCollapseMode(value)))
-                .add(booleanOption("tab_headers",
+                .add(booleanOption("tab_headers", true,
                         () -> ReeseSodiumOptionsConfig.config().isTabHeaders(),
                         value -> ReeseSodiumOptionsConfig.config().setTabHeaders(value)))
-                .add(booleanOption("collapse_single_page_groups",
+                .add(booleanOption("collapse_single_page_groups", true,
                         () -> ReeseSodiumOptionsConfig.config().isCollapseSinglePageGroups(),
                         value -> ReeseSodiumOptionsConfig.config().setCollapseSinglePageGroups(value)))
-                .add(booleanOption("collapsible_groups",
+                .add(booleanOption("collapsible_groups", true,
                         () -> ReeseSodiumOptionsConfig.config().isCollapsibleGroups(),
                         value -> ReeseSodiumOptionsConfig.config().setCollapsibleGroups(value)))
-                .add(intOption("tooltip_delay",
+                .add(intOption("tooltip_delay", ReeseSodiumOptionsConfig.DEFAULT_TOOLTIP_DELAY_MS,
                         () -> ReeseSodiumOptionsConfig.config().getTooltipDelayMs(),
                         value -> ReeseSodiumOptionsConfig.config().setTooltipDelayMs(value),
                         ReeseSodiumOptionsConfig.MIN_TOOLTIP_DELAY_MS,
                         ReeseSodiumOptionsConfig.MAX_TOOLTIP_DELAY_MS,
                         100,
                         value -> TextComponent.translatable("rso.options.value.milliseconds", value)))
-                .add(booleanOption("tooltip_option_ids",
+                .add(booleanOption("tooltip_option_ids", false,
                         () -> ReeseSodiumOptionsConfig.config().isTooltipOptionIds(),
                         value -> ReeseSodiumOptionsConfig.config().setTooltipOptionIds(value)))
-                .add(booleanOption("color_themes",
+                .add(booleanOption("color_themes", true,
                         () -> ReeseSodiumOptionsConfig.config().isColorThemes(),
                         value -> ReeseSodiumOptionsConfig.config().setColorThemes(value)))
-                .add(booleanOption("themed_headers_and_labels",
+                .add(booleanOption("themed_headers_and_labels", true,
                         () -> ReeseSodiumOptionsConfig.config().isThemedHeadersAndLabels(),
                         value -> ReeseSodiumOptionsConfig.config().setThemedHeadersAndLabels(value)))
-                .add(booleanOption("themed_tooltip_borders",
+                .add(booleanOption("themed_tooltip_borders", true,
                         () -> ReeseSodiumOptionsConfig.config().isThemedTooltipBorders(),
                         value -> ReeseSodiumOptionsConfig.config().setThemedTooltipBorders(value)))
-                .add(booleanOption("reduced_motion",
+                .add(booleanOption("reduced_motion", false,
                         () -> ReeseSodiumOptionsConfig.config().isReducedMotion(),
                         value -> ReeseSodiumOptionsConfig.config().setReducedMotion(value)))
                 .build();
@@ -99,47 +100,50 @@ public final class ReeseSodiumOptionsConfigEntryPoint {
     private static OptionGroup createBehaviorOptions() {
         return OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(MOD_ID, "behavior"))
-                .add(booleanOption("reverse_cycling_controls",
+                .add(booleanOption("reverse_cycling_controls", true,
                         () -> ReeseSodiumOptionsConfig.config().isReverseCyclingControls(),
                         value -> ReeseSodiumOptionsConfig.config().setReverseCyclingControls(value)))
-                .add(booleanOption("shift_scroll_slider_adjustments",
+                .add(booleanOption("shift_scroll_slider_adjustments", true,
                         () -> ReeseSodiumOptionsConfig.config().isShiftScrollSliderAdjustments(),
                         value -> ReeseSodiumOptionsConfig.config().setShiftScrollSliderAdjustments(value)))
-                .add(intOption("search_result_limit",
+                .add(intOption("search_result_limit", ReeseSodiumOptionsConfig.DEFAULT_SEARCH_RESULT_LIMIT,
                         () -> ReeseSodiumOptionsConfig.config().getSearchResultLimit(),
                         value -> ReeseSodiumOptionsConfig.config().setSearchResultLimit(value),
                         ReeseSodiumOptionsConfig.MIN_SEARCH_RESULT_LIMIT,
                         ReeseSodiumOptionsConfig.MAX_SEARCH_RESULT_LIMIT,
                         1,
                         value -> TextComponent.translatable("rso.options.value.results", value)))
-                .add(booleanOption("hide_non_matching_options",
+                .add(booleanOption("hide_non_matching_options", true,
                         () -> ReeseSodiumOptionsConfig.config().isHideNonMatchingOptions(),
                         value -> ReeseSodiumOptionsConfig.config().setHideNonMatchingOptions(value)))
-                .add(booleanOption("hide_non_matching_tabs",
+                .add(booleanOption("hide_non_matching_tabs", true,
                         () -> ReeseSodiumOptionsConfig.config().isHideNonMatchingTabs(),
                         value -> ReeseSodiumOptionsConfig.config().setHideNonMatchingTabs(value)))
-                .add(enumOption("disabled_option_visibility", ReeseSodiumOptionsConfig.DisabledOptionVisibility.class,
+                .add(enumOption("disabled_option_visibility", ReeseSodiumOptionsConfig.DEFAULT_DISABLED_OPTION_VISIBILITY,
+                        ReeseSodiumOptionsConfig.DisabledOptionVisibility.class,
                         () -> ReeseSodiumOptionsConfig.config().getDisabledOptionVisibility(),
                         value -> ReeseSodiumOptionsConfig.config().setDisabledOptionVisibility(value)))
-                .add(enumOption("focus_border_mode", ReeseSodiumOptionsConfig.FocusBorderMode.class,
+                .add(enumOption("focus_border_mode", ReeseSodiumOptionsConfig.DEFAULT_FOCUS_BORDER_MODE,
+                        ReeseSodiumOptionsConfig.FocusBorderMode.class,
                         () -> ReeseSodiumOptionsConfig.config().getFocusBorderMode(),
                         value -> ReeseSodiumOptionsConfig.config().setFocusBorderMode(value)))
-                .add(booleanOption("controller_guides",
+                .add(booleanOption("controller_guides", true,
                         () -> ReeseSodiumOptionsConfig.config().isControllerGuides(),
                         value -> ReeseSodiumOptionsConfig.config().setControllerGuides(value)))
-                .add(booleanOption("reset_button_overlay",
+                .add(booleanOption("reset_button_overlay", true,
                         () -> ReeseSodiumOptionsConfig.config().isResetButtonOverlay(),
                         value -> ReeseSodiumOptionsConfig.config().setResetButtonOverlay(value)))
-                .add(booleanOption("undo_button_overlay",
+                .add(booleanOption("undo_button_overlay", true,
                         () -> ReeseSodiumOptionsConfig.config().isUndoButtonOverlay(),
                         value -> ReeseSodiumOptionsConfig.config().setUndoButtonOverlay(value)))
-                .add(booleanOption("always_show_action_buttons",
+                .add(booleanOption("always_show_action_buttons", false,
                         () -> ReeseSodiumOptionsConfig.config().isAlwaysShowActionButtons(),
                         value -> ReeseSodiumOptionsConfig.config().setAlwaysShowActionButtons(value)))
                 .build();
     }
 
     private static OptionImpl<Object, Boolean> booleanOption(String name,
+                                                             boolean defaultValue,
                                                              Supplier<Boolean> getter,
                                                              Consumer<Boolean> setter) {
         RsoStorage storage = new RsoStorage();
@@ -149,11 +153,12 @@ public final class ReeseSodiumOptionsConfigEntryPoint {
                 .setTooltip(TextComponent.translatable("rso.options." + name + ".tooltip"))
                 .setControl(TickBoxControl::new)
                 .setBinding((ignored, value) -> setter.accept(value), ignored -> getter.get())
-                .setDefaultValue(getter.get())
+                .setDefaultValue(defaultValue)
                 .build();
     }
 
     private static OptionImpl<Object, Integer> intOption(String name,
+                                                         int defaultValue,
                                                          Supplier<Integer> getter,
                                                          Consumer<Integer> setter,
                                                          int min, int max, int step,
@@ -165,11 +170,12 @@ public final class ReeseSodiumOptionsConfigEntryPoint {
                 .setTooltip(TextComponent.translatable("rso.options." + name + ".tooltip"))
                 .setControl(option -> new SliderControl(option, min, max, step, formatter))
                 .setBinding((ignored, value) -> setter.accept(value), ignored -> getter.get())
-                .setDefaultValue(getter.get())
+                .setDefaultValue(defaultValue)
                 .build();
     }
 
     private static <E extends Enum<E>> OptionImpl<Object, E> enumOption(String name,
+                                                                         E defaultValue,
                                                                          Class<E> enumClass,
                                                                          Supplier<E> getter,
                                                                          Consumer<E> setter) {
@@ -185,7 +191,7 @@ public final class ReeseSodiumOptionsConfigEntryPoint {
                 .setTooltip(TextComponent.translatable("rso.options." + name + ".tooltip"))
                 .setControl(option -> new CyclingControl<>(option, enumClass, names))
                 .setBinding((ignored, value) -> setter.accept(value), ignored -> getter.get())
-                .setDefaultValue(getter.get())
+                .setDefaultValue(defaultValue)
                 .build();
     }
 

@@ -51,13 +51,17 @@ public final class GLDebug {
         requireInstalledCallback(result, BackendManager.RENDER_BACKEND.getName());
         if (result == 1) {
             LOGGER.info("OpenGL debug callback installed on a debug context");
-        } else {
+        } else if (result == 2) {
             LOGGER.warn("OpenGL debug callback installed, but the context has no debug flag");
         }
         return result;
     }
 
     static void requireInstalledCallback(int result, String backendName) {
+        if (result == 3) {
+            LOGGER.info("OpenGL debug output is not applicable on {}; the backend's own debug channel is used instead", backendName);
+            return;
+        }
         if (result != 1 && result != 2) {
             String message = "OpenGL debug output was explicitly enabled, but " + backendName
                 + " could not install a debug callback (result=" + result + ")";

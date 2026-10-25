@@ -10,8 +10,6 @@ public class ItemIdManager {
      * Set the item ID for an armor piece or held item.
      * If the ItemStack is null/empty, resets to 0.
      * Otherwise, looks up the material ID and sets it.
-     *
-     * @param itemStack The armor or item being rendered
      */
     public static void setItemId(ItemStack itemStack) {
         if (itemStack == null || itemStack.isEmpty() || itemStack.getItem() == null) {

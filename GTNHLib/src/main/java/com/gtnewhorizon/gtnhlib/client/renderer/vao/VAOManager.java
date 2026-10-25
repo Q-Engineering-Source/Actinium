@@ -53,8 +53,6 @@ public final class VAOManager {
         return new IndexedVAO(vbo, ebo); // TODO add VAO unsupported compat if it ever becomes an issue (likely won't)
     }
 
-    // --------------- Mutable VAO's ---------------
-
     /**
      * Creates a mutable VBO, wrapped inside a VAO.
      */
@@ -84,8 +82,6 @@ public final class VAOManager {
             int vertexCount, IndexBuffer ebo) {
         return vao(new VertexBuffer(format, drawMode, data, vertexCount), ebo);
     }
-
-    // --------------- Immutable VAO's ---------------
 
     /**
      * Creates an immutable VBO, wrapped inside a VAO.

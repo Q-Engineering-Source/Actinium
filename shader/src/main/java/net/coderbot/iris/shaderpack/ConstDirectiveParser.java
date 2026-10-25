@@ -39,26 +39,20 @@ public class ConstDirectiveParser {
 			return Optional.empty();
 		}
 
-		// Trim any surrounding whitespace (such as indentation) from the line before processing it.
 		line = line.trim();
 
-		// A valid declaration must have a trimmed line starting with const
 		if (!line.startsWith("const")) {
 			return Optional.empty();
 		}
 
-		// Remove the const part from the string
 		line = line.substring("const".length());
 
-		// There must be at least one whitespace character between the "const" keyword and the type keyword
 		if (!startsWithWhitespace(line)) {
 			return Optional.empty();
 		}
 
-		// Trim all whitespace between the const keyword and the type keyword
 		line = line.trim();
 
-		// Valid const declarations have a type that is either an int, a float, a vec4, or a bool.
 		Type type;
 
 		if (line.startsWith("int")) {
@@ -83,34 +77,27 @@ public class ConstDirectiveParser {
 			return Optional.empty();
 		}
 
-		// There must be at least one whitespace character between the type keyword and the key of the const declaration
 		if (!startsWithWhitespace(line)) {
 			return Optional.empty();
 		}
 
-		// Split the declaration at the equals sign
 		int equalsIndex = line.indexOf('=');
 
 		if (equalsIndex == -1) {
-			// No equals sign found, not a valid const declaration
 			return Optional.empty();
 		}
 
-		// The key comes before the equals sign
 		String key = line.substring(0, equalsIndex).trim();
 
-		// The key must be a "word" (alphanumeric & underscore characters)
 		if (!isWord(key)) {
 			return Optional.empty();
 		}
 
-		// Everything after the equals sign but before the semicolon is the value
 		String remaining = line.substring(equalsIndex + 1);
 
 		int semicolonIndex = remaining.indexOf(';');
 
 		if (semicolonIndex == -1) {
-			// No semicolon found, not a valid const declaration
 			return Optional.empty();
 		}
 

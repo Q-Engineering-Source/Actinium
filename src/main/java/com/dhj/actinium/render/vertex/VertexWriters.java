@@ -3,12 +3,11 @@ package com.dhj.actinium.render.vertex;
 import net.minecraft.client.renderer.vertex.VertexFormatElement;
 
 /**
- * Selects the pre-built {@link VertexWriter} singleton for an element type.
- *
- * <p>The four writer families cover the complete {@code EnumType} set: positions and
- * texture coordinates only ever switch on the type, so grouping INT with UINT, SHORT
- * with USHORT and BYTE with UBYTE reproduces the original dispatch exactly. The usage of
- * an element never influences the encoding.
+ * Selects the pre-built {@link VertexWriter} singleton for an element type. The four writer
+ * families cover the complete {@code EnumType} set: positions and texture coordinates only ever
+ * switch on the type, so grouping INT with UINT, SHORT with USHORT and BYTE with UBYTE
+ * reproduces the original dispatch exactly. The usage of an element never influences the
+ * encoding.
  */
 public final class VertexWriters {
     private VertexWriters() {

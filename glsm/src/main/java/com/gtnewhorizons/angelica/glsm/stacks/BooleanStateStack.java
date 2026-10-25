@@ -52,8 +52,6 @@ public class BooleanStateStack extends BooleanState implements IStateStack<Boole
         stack = new boolean[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
     }
 
-    // ==================== Traditional Stack Operations ====================
-
     @Override
     public BooleanStateStack push() {
         if (savedDepth >= stack.length) {
@@ -93,8 +91,6 @@ public class BooleanStateStack extends BooleanState implements IStateStack<Boole
     public boolean isEmpty() {
         return savedDepth == 0;
     }
-
-    // ==================== Lazy Copy-on-Write Operations ====================
 
     @Override
     public int pushDepth() {

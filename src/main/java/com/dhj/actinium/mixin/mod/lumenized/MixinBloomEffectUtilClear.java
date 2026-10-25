@@ -13,12 +13,10 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Lumenized creates its bloom FBO without clearing it, so the first frames' content is
- * whatever GPU memory the texture happened to reuse (often the previous main-framebuffer
- * frame). That ghost content shows up as glow that ignores depth (visible through walls).
- *
- * <p>Clear right after the bloom FBO is bound so only content actually rendered in this
- * pass contributes to the bloom.
+ * Lumenized creates its bloom FBO without clearing it, so the first frames show whatever GPU
+ * memory the texture happened to reuse (often the previous main-framebuffer frame) as glow
+ * that ignores depth (visible through walls). Clear right after the bloom FBO is bound so
+ * only content actually rendered in this pass contributes to the bloom.
  */
 @Mixin(value = BloomEffectUtil.class, remap = false)
 public abstract class MixinBloomEffectUtilClear {

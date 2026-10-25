@@ -13,20 +13,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Scopes VoxelMap's minimap alpha preparation to the minimap rectangle while StellarCore's HUD
- * cache is active.
- *
- * <p>VoxelMap clears the whole color buffer (masked to alpha-only) before drawing its circular
- * mask. Outside the HUD-cache window that is fine: the framebuffer is the plain screen and the
- * cleared alpha only shapes the minimap. Inside the cache window the framebuffer is the cached HUD
- * texture, so the clear wipes the alpha of every HUD element already drawn (making the cached blit
- * transparent) - unless the clear is skipped, in which case the map rectangle keeps the cache's
- * opaque alpha and the map quad (blended against {@code DstAlpha}) is drawn over the whole
- * rectangle, showing map content around the circular mask.</p>
- *
- * <p>This mixin scopes the clear to the same rectangle VoxelMap later uses for the map draw (see
- * {@code Map.renderMap}): the HUD elements outside the rectangle keep their alpha, the map area is
- * prepared normally, and the map draw blends against the freshly cleared alpha inside the
- * rectangle only.</p>
+ * cache is active: VoxelMap clears the whole color buffer (masked to alpha-only) before drawing
+ * its circular mask. Outside the cache window that only shapes the minimap on the plain screen
+ * framebuffer; inside the cache window the clear wipes the alpha of every HUD element already
+ * drawn (the cached blit turns them transparent), while skipping it instead leaves the cache's
+ * opaque alpha, so the map quad blended against {@code DstAlpha} draws over the whole rectangle.
+ * Scoping the clear to the same rectangle VoxelMap later uses for the map draw
+ * ({@code Map.renderMap}) keeps both sides correct.
  */
 @Mixin(value = Map.class, remap = false)
 public abstract class MixinVoxelMapRenderMap {

@@ -24,6 +24,10 @@ import com.dhj.actinium.render.EndPortalCompositeRenderer;
 
 @Mixin(value = OpenGlHelper.class, priority = 100)
 public class MixinOpenGlHelper {
+    // GLContext.getCapabilities() call sites (including the one in initializeTextures) are rewritten
+    // to GLStateManager.currentContextCapabilities() by the GLSM ASM redirector, so no @Redirect is
+    // needed here — and keeping one would fail injection once the ASM pass removes its target.
+
     @Inject(method = "initializeTextures", at = @At("RETURN"))
     private static void celeritas$initializeGLStateManager(CallbackInfo ci) {
         final Minecraft mc = Minecraft.getMinecraft();

@@ -9,6 +9,7 @@ import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 
@@ -113,6 +114,7 @@ public abstract class RenderBackend {
     public void drawElements(int mode, ShortBuffer indices) {}
     public void drawElements(int mode, int count, int type, ByteBuffer indices) {}
     public abstract void multiDrawElementsIndirect(int mode, int type, long indirect, int drawcount, int stride);
+    public abstract void multiDrawArraysIndirect(int mode, long indirect, int drawcount, int stride);
     public void multiDrawArraysIndirectCount(int mode, long indirect, long drawcount, int maxdrawcount, int stride) { throw new UnsupportedOperationException(getName() + ": indirect draw-count buffers unsupported"); }
     public void multiDrawElementsIndirectCount(int mode, int type, long indirect, long drawcount, int maxdrawcount, int stride) { throw new UnsupportedOperationException(getName() + ": indirect draw-count buffers unsupported"); }
     public abstract void copyBufferSubData(int readTarget, int writeTarget, long readOffset, long writeOffset, long size);
@@ -135,6 +137,7 @@ public abstract class RenderBackend {
         drawElementsBaseVertex(mode, count, type, indices, baseVertex);
     }
     public abstract void multiDrawArrays(int mode, IntBuffer firsts, IntBuffer counts);
+    public void multiDrawArrays(int mode, int[] firsts, int[] counts) { multiDrawArrays(mode, IntBuffer.wrap(firsts), IntBuffer.wrap(counts)); }
     public abstract void primitiveRestartIndex(int index);
     public abstract void pointParameterf(int pname, float param);
     public abstract void pointParameteri(int pname, int param);
@@ -165,6 +168,11 @@ public abstract class RenderBackend {
     public void copyTexImage2D(int target, int level, int internalFormat, int x, int y, int width, int height, int border) {}
     public void copyTexSubImage1D(int target, int level, int xoffset, int x, int y, int width) {}
     public void copyTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int x, int y, int width, int height) {}
+    public abstract void compressedTexImage2D(int target, int level, int internalFormat, int width, int height, int border, ByteBuffer pixels);
+    public abstract void compressedTexImage2D(int target, int level, int internalFormat, int width, int height, int border, int imageSize, long data);
+    public abstract void compressedTexImage3D(int target, int level, int internalFormat, int width, int height, int depth, int border, ByteBuffer pixels);
+    public abstract void compressedTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, ByteBuffer pixels);
+    public abstract void getCompressedTexImage(int target, int level, ByteBuffer pixels);
     public abstract void texParameteri(int target, int pname, int param);
     public abstract void texParameterf(int target, int pname, float param);
     public abstract void texParameteriv(int target, int pname, IntBuffer params);
@@ -199,6 +207,7 @@ public abstract class RenderBackend {
     public abstract void blitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1, int dstX0, int dstY0, int dstX1, int dstY1, int mask, int filter);
     public abstract void drawBuffers(int buffer);
     public abstract void drawBuffers(IntBuffer bufs);
+    public void drawBuffers(int[] bufs) { drawBuffers(IntBuffer.wrap(bufs)); }
     public abstract void readBuffer(int mode);
     public abstract void readPixels(int x, int y, int width, int height, int format, int type, ByteBuffer pixels);
     public abstract void readPixels(int x, int y, int width, int height, int format, int type, FloatBuffer pixels);
@@ -228,17 +237,29 @@ public abstract class RenderBackend {
         return getShaderInfoLog(shader, getShaderi(shader, GL20.GL_INFO_LOG_LENGTH));
     }
     public abstract void getShaderInfoLog(int shader, IntBuffer length, ByteBuffer infoLog);
+    public void getShaderInfoLog(int shader, int[] length, ByteBuffer infoLog) {
+        getShaderInfoLog(shader, length == null ? null : IntBuffer.wrap(length), infoLog);
+    }
     public abstract String getProgramInfoLog(int program, int maxLength);
     public String getProgramInfoLog(int program) {
         return getProgramInfoLog(program, getProgrami(program, GL20.GL_INFO_LOG_LENGTH));
     }
     public abstract void getProgramInfoLog(int program, IntBuffer length, ByteBuffer infoLog);
+    public void getProgramInfoLog(int program, int[] length, ByteBuffer infoLog) {
+        getProgramInfoLog(program, length == null ? null : IntBuffer.wrap(length), infoLog);
+    }
     public abstract int getShaderi(int shader, int pname);
     public abstract int getProgrami(int program, int pname);
     public abstract void getProgramiv(int program, int pname, IntBuffer params);
     public abstract String getActiveUniform(int program, int index, int maxLength, IntBuffer sizeType);
     public abstract void getActiveUniform(int program, int index, IntBuffer length, IntBuffer size, IntBuffer type, ByteBuffer name);
+    public void getActiveUniform(int program, int index, int[] length, int[] size, int[] type, ByteBuffer name) {
+        getActiveUniform(program, index, length == null ? null : IntBuffer.wrap(length), size == null ? null : IntBuffer.wrap(size), type == null ? null : IntBuffer.wrap(type), name);
+    }
     public abstract void getActiveAttrib(int program, int index, IntBuffer length, IntBuffer size, IntBuffer type, ByteBuffer name);
+    public void getActiveAttrib(int program, int index, int[] length, int[] size, int[] type, ByteBuffer name) {
+        getActiveAttrib(program, index, length == null ? null : IntBuffer.wrap(length), size == null ? null : IntBuffer.wrap(size), type == null ? null : IntBuffer.wrap(type), name);
+    }
     public abstract String getActiveAttrib(int program, int index, int maxLength, IntBuffer sizeType);
     public abstract void bindAttribLocation(int program, int index, CharSequence name);
     public void bindFragDataLocation(int program, int colorNumber, CharSequence name) {}
@@ -252,12 +273,25 @@ public abstract class RenderBackend {
     public void getAttachedShaders(int program, IntBuffer count, IntBuffer shaders) {
         if (count != null) count.put(0, 0);
     }
+    public void getAttachedShaders(int program, int[] count, int[] shaders) {
+        getAttachedShaders(program, count == null ? null : IntBuffer.wrap(count), shaders == null ? null : IntBuffer.wrap(shaders));
+    }
     public String getShaderSource(int shader, int maxLength) { return ""; }
     public abstract void getShaderSource(int shader, IntBuffer length, ByteBuffer source);
+    public void getShaderSource(int shader, int[] length, ByteBuffer source) {
+        getShaderSource(shader, length == null ? null : IntBuffer.wrap(length), source);
+    }
 
     public abstract void uniform1i(int location, int v0);
+    public abstract void uniform1ui(int location, int v0);
+    public abstract void uniform2ui(int location, int v0, int v1);
+    public abstract void uniform3ui(int location, int v0, int v1, int v2);
+    public abstract void uniform4ui(int location, int v0, int v1, int v2, int v3);
+    /** GL40 double uniform. */
+    public abstract void uniform1d(int location, double v0);
     public abstract void uniform1f(int location, float v0);
     public void uniform1fv(int location, FloatBuffer values) {}
+    public void uniform1fv(int location, float[] values) {}
     public abstract void uniform2f(int location, float v0, float v1);
     public abstract void uniform2i(int location, int v0, int v1);
     public abstract void uniform3f(int location, float v0, float v1, float v2);
@@ -286,6 +320,8 @@ public abstract class RenderBackend {
     public abstract void uniformMatrix3(int location, boolean transpose, FloatBuffer value);
     public abstract void uniformMatrix4(int location, boolean transpose, FloatBuffer value);
     public void uniformMatrix2(int location, boolean transpose, FloatBuffer matrices) {}
+    public void uniformMatrix3(int location, boolean transpose, float[] matrices) {}
+    public void uniformMatrix4(int location, boolean transpose, float[] matrices) {}
     public void getUniformfv(int program, int location, FloatBuffer params) {}
     public void getUniformiv(int program, int location, IntBuffer params) {}
 
@@ -300,6 +336,9 @@ public abstract class RenderBackend {
     public abstract void bindBufferBase(int target, int index, int buffer);
     public abstract void bindBufferRange(int target, int index, int buffer, long offset, long size);
     public abstract int getUniformBlockIndex(int program, CharSequence name);
+    public int getUniformBlockIndex(int program, ByteBuffer name) {
+        return getUniformBlockIndex(program, StandardCharsets.UTF_8.decode(name.slice()).toString().trim());
+    }
     public abstract void uniformBlockBinding(int program, int blockIndex, int binding);
     public abstract int getIndexedBufferBinding(int target, int index);
     public abstract void bufferData(int target, long size, int usage);
@@ -368,6 +407,7 @@ public abstract class RenderBackend {
     public abstract void vertexAttribIPointer(int index, int size, int type, int stride, long pointer);
     public abstract void enableVertexAttribArray(int index);
     public abstract void disableVertexAttribArray(int index);
+    public abstract void getVertexAttribi(int index, int pname, IntBuffer params);
     public abstract void vertexAttribDivisor(int index, int divisor);
     public abstract void bindVertexBuffer(int bindingindex, int buffer, long offset, int stride);
     public abstract void vertexAttribFormat(int attribindex, int size, int type, boolean normalized, int relativeoffset);
@@ -405,6 +445,19 @@ public abstract class RenderBackend {
     public abstract float getTextureParameterf(int texture, int target, int pname);
     public abstract int getTextureLevelParameteri(int texture, int level, int pname);
 
+    public abstract void textureSubImage3D(int texture, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, int type, ByteBuffer pixels);
+    public abstract void compressedTextureSubImage3D(int texture, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, ByteBuffer pixels);
+    public abstract void copyTextureSubImage3D(int texture, int level, int xoffset, int yoffset, int zoffset, int x, int y, int width, int height);
+    /** {@code data} holds a single clear pixel in {@code format}/{@code type}, or is null for zero. */
+    public abstract void clearTexSubImage(int texture, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, int type, ByteBuffer data);
+    public abstract void textureParameterfv(int texture, int target, int pname, FloatBuffer params);
+    public abstract void texParameterIiv(int target, int pname, IntBuffer params);
+    public abstract void texParameterIuiv(int target, int pname, IntBuffer params);
+    public abstract void textureParameterIiv(int texture, int target, int pname, IntBuffer params);
+    public abstract void textureParameterIuiv(int texture, int target, int pname, IntBuffer params);
+    public abstract void getTextureImage(int texture, int level, int format, int type, ByteBuffer pixels);
+    public abstract void getCompressedTextureImage(int texture, int level, ByteBuffer pixels);
+
     public abstract int getInteger(int pname);
     public abstract void getInteger(int pname, IntBuffer params);
     public abstract int getIntegerIndexed(int pname, int index);
@@ -430,7 +483,9 @@ public abstract class RenderBackend {
     public void beginQuery(int target, int id) { throw new UnsupportedOperationException("occlusion queries unsupported"); }
     public void endQuery(int target) { throw new UnsupportedOperationException("occlusion queries unsupported"); }
     public void getQueryObjectui(int id, int pname, IntBuffer params) { throw new UnsupportedOperationException("occlusion queries unsupported"); }
+    public int getQueryObjectui(int id, int pname) { throw new UnsupportedOperationException("occlusion queries unsupported"); }
     public int getQueryObjecti(int id, int pname) { throw new UnsupportedOperationException("occlusion queries unsupported"); }
+    public void getQueryObjecti(int id, int pname, IntBuffer params) { throw new UnsupportedOperationException("occlusion queries unsupported"); }
     public void queryCounter(int id, int target) { throw new UnsupportedOperationException("timer queries unsupported"); }
     public long getQueryObjectui64(int id, int pname) { throw new UnsupportedOperationException("timer queries unsupported"); }
 
@@ -447,6 +502,13 @@ public abstract class RenderBackend {
 
     // Debug output
     public boolean supportsDebugOutput() { return false; }
+
+    /**
+     * Installs a GL-style debug message callback.
+     *
+     * @return 1 = installed on a debug context, 2 = installed without the debug flag, 3 = the
+     * backend has no GL debug channel (not an error), anything else = installation failed
+     */
     public int setupDebugOutput(DebugMessageHandler handler) { return 0; }
     public int disableDebugOutput() { return 0; }
 

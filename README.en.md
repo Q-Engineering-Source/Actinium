@@ -28,12 +28,26 @@ The current development direction is compatibility-first:
 
 Shader packs such as MakeUp, BSL, and Complementary are useful compatibility targets during development, but support should be treated as ongoing work rather than a finished compatibility matrix.
 
-## Requirements
+## Device Compatibility
+
+Desktops and phones share the same hard requirements:
 
 - Minecraft 1.12.2
-- Cleanroom Loader
-- Java 25 toolchain; produced bytecode targets Java 21
-- A graphics environment capable of running the shader packs used for testing
+- Cleanroom Loader **0.6.13-alpha or older (below 0.7.0)**
+- Java 21 or newer at runtime; the toolchain is Java 25 and the produced bytecode targets Java 21
+- A graphics environment exposing an OpenGL 3.3+ core profile
+
+> [!IMPORTANT]
+> **Actinium no longer supports Cleanroom Loader 0.7.0-alpha and newer.**
+> Starting with 0.7.0, CRL replaced GLFW with SDL 3 for windowing and input, and reworked its LWJGL modules and class-patching flow; Actinium is not adapted to those changes.
+> Run Actinium on 0.6.x (0.6.13-alpha recommended); issues seen on 0.7.0 and newer are outside the support scope.
+
+Every device needs exactly the requirements above; they differ only in who provides that core profile:
+
+- **Desktop (Windows / Linux / macOS)**: the GPU driver does, and current mainstream drivers do so by default; shader pack usability still depends on GPU performance and driver behavior.
+- **Mobile (Android)**: the renderer selected in the launcher does. Pick a core-profile-capable renderer such as MobileGlues (MG); compatibility-profile renderers such as GL4ES cannot satisfy this requirement - Actinium requests a core profile context from 4.6 down to 3.3 at startup, so a renderer that cannot provide one makes the game fail to launch.
+  - **Instance**: create a 1.12.2 + Cleanroom instance with a phone launcher that supports Cleanroom Loader, then drop the Actinium jar into `mods/`.
+  - **Shaders**: phone GPUs and memory are limited, so start with a lower resolution, a shorter render distance, and a lighter shader pack before scaling up.
 
 ## Building
 

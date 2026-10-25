@@ -62,7 +62,6 @@ public class CeleritasVideoOptionsController implements Renderable {
     protected BasicFrame.Builder parentFrameBuilder() {
         BasicFrame.Builder basicFrameBuilder;
 
-        // Apply aspect ratio clamping on wide enough screens
         int newWidth = this.width;
         if (newWidth > MINIMUM_WIDTH && (float) this.width / (float) this.height > ASPECT_RATIO) {
             newWidth = Math.max(MINIMUM_WIDTH, (int) (this.height * ASPECT_RATIO));

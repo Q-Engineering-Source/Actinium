@@ -6,27 +6,13 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * Co-existence support for Kirino Engine (shipped with Cleanroom Loader,
- * mod id {@code kirino_engine}; sub-modules {@code kirino_ecs}/{@code kirino_gl}).
- *
- * <p>Kirino and Actinium are mutually exclusive render owners: in Graphics mode
- * Kirino replaces {@code EntityRenderer#renderWorld} altogether, which starves
- * every Actinium render hook anchored to vanilla {@code renderWorldPass}
- * (iris pipeline, terrain renderer, entity batching, ...). The co-existence path
- * ("path 1") is Kirino's Headless mode: {@code isEnable()} stays {@code true} so
- * Kirino's ECS/analysis runtime initialises, while the render delegate is pinned
- * off so vanilla {@code renderWorld} runs and Actinium owns the pipeline.
- *
- * <p>The pinning itself is done by {@code MixinKirinoConfigHub}
- * ({@code mixins.actinium.kirino.json}, gated on {@code kirino_engine}): wherever
- * Kirino asks {@code isEnableRenderDelegate()} the answer is always
- * {@code false}. This class only reports the resulting co-existence state for
- * diagnostics (logs and the F3 debug screen); it performs no state mutation and
- * references no Kirino class.
- *
- * <p>The {@link Loader} query is deferred to first use instead of the static
- * initialiser: class loading must never fail just because a Forge environment
- * initialisation detail is missing, and nothing here may leak into
- * {@code Actinium}'s lifecycle class.
+ * mod id {@code kirino_engine}). Kirino and Actinium are mutually exclusive render owners:
+ * in Graphics mode Kirino replaces {@code EntityRenderer#renderWorld}, starving every Actinium
+ * render hook. The co-existence path is Kirino's Headless mode, where
+ * {@code MixinKirinoConfigHub} answers {@code isEnableRenderDelegate()} with {@code false} so
+ * vanilla {@code renderWorld} runs and Actinium owns the pipeline. This class only reports the
+ * co-existence state for diagnostics; the {@link Loader} query is deferred to first use so class
+ * loading never fails on a missing Forge environment detail.
  */
 public final class KirinoCompat {
     /**
@@ -56,10 +42,8 @@ public final class KirinoCompat {
     }
 
     /**
-     * Installs the co-existence state: when Kirino is present, logs that the
-     * render delegate has been pinned off so Actinium remains the sole render
-     * pipeline owner. Call once from {@code Actinium#onInit} (after the late
-     * mixin config has been queued; the pin itself is enforced by the mixin).
+     * Logs the Headless pin once when Kirino is present. Call from {@code Actinium#onInit} after
+     * the late mixin config has been queued; the pin itself is enforced by the mixin.
      */
     public static void install() {
         if (!isKirinoPresent()) {

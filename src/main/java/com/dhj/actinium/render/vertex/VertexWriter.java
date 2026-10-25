@@ -1,16 +1,13 @@
 package com.dhj.actinium.render.vertex;
 
 /**
- * Encodes the four immediate-mode vertex attribute writes that dominate the
- * {@code BufferBuilder} hot path. Implementations store values with absolute
- * {@code sun.misc.Unsafe} accesses at the native address of the staging buffer, skipping
- * the per-call element lookup, offset arithmetic and bounds work of the NIO views.
- *
- * <p>One singleton implementation exists per {@code VertexFormatElement.EnumType} family
- * because the original write methods switch on the element type only; the element usage
- * never alters the encoding. The staging buffer is created with native byte order, so
- * multi-byte {@code Unsafe} stores match the NIO view byte for byte and no byte swapping
- * is required anywhere in this package.
+ * Encodes the four immediate-mode vertex attribute writes that dominate the {@code BufferBuilder}
+ * hot path. Implementations store values with absolute {@code sun.misc.Unsafe} accesses at the
+ * native address of the staging buffer, skipping the per-call element lookup, offset arithmetic
+ * and bounds work of the NIO views. One singleton implementation exists per
+ * {@code VertexFormatElement.EnumType} family because the original write methods switch on the
+ * element type only; the element usage never alters the encoding. The staging buffer is created
+ * with native byte order, so multi-byte {@code Unsafe} stores match the NIO view byte for byte.
  */
 public interface VertexWriter {
     /**
@@ -35,9 +32,6 @@ public interface VertexWriter {
      *
      * @param target native address of the element's first byte
      * @param red red component in the range the caller supplies
-     * @param green green component
-     * @param blue blue component
-     * @param alpha alpha component
      */
     void writeColor(long target, int red, int green, int blue, int alpha);
 
@@ -46,8 +40,6 @@ public interface VertexWriter {
      * component order per element type.
      *
      * @param target native address of the element's first byte
-     * @param u u coordinate
-     * @param v v coordinate
      */
     void writeTexCoord(long target, double u, double v);
 
@@ -67,9 +59,6 @@ public interface VertexWriter {
      * original {@code normal} method.
      *
      * @param target native address of the element's first byte
-     * @param x normal x component
-     * @param y normal y component
-     * @param z normal z component
      */
     void writeNormal(long target, float x, float y, float z);
 }

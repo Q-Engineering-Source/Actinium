@@ -9,27 +9,16 @@ import org.apache.logging.log4j.Logger;
 /**
  * Crash guard for Modern Splash (modid {@code modernsplash}, issue #200).
  *
- * <p>Modern Splash's coremod {@code MSLoadingPlugin} is instantiated before any
- * Actinium transformer is registered (it carries no {@code SortingIndex}, while
- * Actinium deliberately sorts late). Its constructor reads
- * {@code config/time.history} via {@code TimeHistory.getEstimateTime()}, whose
- * {@code IOException} branch touches {@code ModernSplash.LOGGER} — so when that
- * file is missing or unreadable, {@code gkappa.modernsplash.ModernSplash} is
- * defined <i>before</i> {@code AngelicaRedirectorTransformer} is installed and
- * keeps its raw LWJGL fixed-function calls forever (transformers only rewrite
- * classes loaded after registration).
- *
- * <p>On Actinium's core-profile context those removed entry points
- * ({@code glPushAttrib}, {@code glBegin}, ...) have null function pointers and
- * LWJGL aborts the JVM outright when {@code ModernSplash.drawFadeOverlay} runs
- * during the 500 ms main-menu fade. No bytecode-level fix can reach a class that
- * is already defined, so this guard takes the runtime route: when the class
- * escaped the redirector, the splash logo texture handle is cleared at splash
- * finish, making the fade overlay skip its raw GL block (the background fade
- * still renders through already-transformed vanilla calls). The mod class is
- * referenced directly rather than reflectively: {@link #escapedRedirector} can
- * only be true when the class is already loaded, so the reference never triggers
- * a load, and nothing here executes when the mod is absent.
+ * <p>Modern Splash's coremod {@code MSLoadingPlugin} carries no {@code SortingIndex} and is
+ * instantiated before any Actinium transformer is registered. Its constructor reads
+ * {@code config/time.history}, and the {@code IOException} branch touches
+ * {@code ModernSplash.LOGGER}, so a missing file defines {@code ModernSplash} before
+ * {@code AngelicaRedirectorTransformer} is installed; the class keeps its raw fixed-function GL
+ * calls forever, whose function pointers are null on the core profile and abort the JVM when
+ * {@code drawFadeOverlay} runs during the main-menu fade. No bytecode fix can reach a loaded
+ * class, so the runtime route is used: clear the splash logo texture at splash finish so the
+ * fade overlay skips its raw GL block. The mod class is referenced directly because
+ * {@code escapedRedirector} can only be true when it is already loaded.</p>
  */
 public final class ModernSplashOverlayCompat {
 

@@ -10,14 +10,11 @@ import net.minecraft.client.renderer.OpenGlHelper;
  * Supplies world lightmap coordinates to GVCLib's custom first-person model meshes.
  *
  * <p>GVCLib's first-person gun and arm meshes never write per-vertex light
- * ({@code objmodel.Tessellator2#setBrightness} has no callers in the mod), so every draw
- * falls back to GLSM's current lightmap coordinate. Without intervention that coordinate is
- * whatever the previous renderer left behind — the last entity drawn, a fullbright muzzle
- * flash, or a GUI's fixed 240/240 — which made the held gun's brightness jump between stale
- * values (issue #198 follow-up). Vanilla held items avoid this by calling
- * {@code ItemRenderer#setLightmap()} every frame; this compat does the same for GVCLib by
- * pinning the current lightmap coordinate to the player's packed light at the start of each
- * first-person model scope.</p>
+ * ({@code objmodel.Tessellator2#setBrightness} has no callers in the mod), so every draw falls
+ * back to GLSM's current lightmap coordinate, whatever the previous renderer left behind (issue
+ * #198 follow-up). Vanilla held items avoid this by calling {@code ItemRenderer#setLightmap()}
+ * every frame; this compat pins the current lightmap coordinate to the player's packed light at
+ * the start of each first-person model scope.</p>
  */
 public final class GvclibHandLightingCompat {
     private static int firstPersonModelLightmapScopeDepth;

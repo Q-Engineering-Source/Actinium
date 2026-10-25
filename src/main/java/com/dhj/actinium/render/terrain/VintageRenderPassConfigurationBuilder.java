@@ -57,7 +57,6 @@ public class VintageRenderPassConfigurationBuilder {
         // reflects the current mipmap setting.
         boolean mipEnabled = Minecraft.getMinecraft().gameSettings.mipmapLevels > 0;
 
-        // First, build the main passes
         TerrainRenderPass solidPass, cutoutMippedPass, translucentPass, fluidPass;
 
         solidPass = builderForRenderType(BlockRenderLayer.SOLID, vertexType, mipEnabled)
@@ -100,7 +99,6 @@ public class VintageRenderPassConfigurationBuilder {
 
         ImmutableListMultimap.Builder<BlockRenderLayer, TerrainRenderPass> vanillaRenderStages = ImmutableListMultimap.builder();
 
-        // Build the materials for the vanilla render passes
         Material solidMaterial, cutoutMaterial, cutoutMippedMaterial, translucentMaterial, fluidMaterial;
         solidMaterial = new Material(solidPass, AlphaCutoffParameter.ZERO, mipEnabled);
         translucentMaterial = new Material(translucentPass, AlphaCutoffParameter.ZERO, mipEnabled);
@@ -133,7 +131,6 @@ public class VintageRenderPassConfigurationBuilder {
             vanillaRenderStages.put(BlockRenderLayer.CUTOUT_MIPPED, cutoutMippedPass);
         }
 
-        // Now build the material map
         Map<BlockRenderLayer, Material> renderTypeToMaterialMap = new Reference2ReferenceOpenHashMap<>(4,
                 Reference2ReferenceOpenHashMap.VERY_FAST_LOAD_FACTOR);
 

@@ -127,7 +127,6 @@ public class IrisSamplers {
 		// shader packs that rely on this behavior.
 		final boolean waterShadowEnabled = samplers.hasSampler("watershadow");
 
-		// Get the appropriate sampler for hardware filtering
 		// If separateHardwareSamplers is true, we don't apply HW filtering to the main samplers
 		final GlSampler sampler0 = separateHardwareSamplers ? null : (shadowRenderTargets.isHardwareFiltered(0) ? (shadowRenderTargets.isLinearFiltered(0) ? SHADOW_SAMPLER_LINEAR : SHADOW_SAMPLER_NEAREST) : null);
 		final GlSampler sampler1 = separateHardwareSamplers ? null : (shadowRenderTargets.isHardwareFiltered(1) ? (shadowRenderTargets.isLinearFiltered(1) ? SHADOW_SAMPLER_LINEAR : SHADOW_SAMPLER_NEAREST) : null);

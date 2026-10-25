@@ -24,7 +24,6 @@ public final class CommandBufferProcessor {
      */
     public static void copyCommandData(int opcode, CommandBuffer raw, CommandBuffer out) {
         switch (opcode) {
-            // Single int commands
             case GLCommand.ENABLE -> out.writeEnable(raw.readInt());
             case GLCommand.DISABLE -> out.writeDisable(raw.readInt());
             case GLCommand.CLEAR -> out.writeClear(raw.readInt());
@@ -45,7 +44,6 @@ public final class CommandBufferProcessor {
             case GLCommand.DEPTH_MASK -> out.writeDepthMask(raw.readInt() != 0);
             case GLCommand.FRONT_FACE -> out.writeFrontFace(raw.readInt());
 
-            // Two int commands
             case GLCommand.BIND_TEXTURE -> out.writeBindTexture(raw.readInt(), raw.readInt());
             case GLCommand.POLYGON_MODE -> out.writePolygonMode(raw.readInt(), raw.readInt());
             case GLCommand.COLOR_MATERIAL -> out.writeColorMaterial(raw.readInt(), raw.readInt());
@@ -54,12 +52,10 @@ public final class CommandBufferProcessor {
             case GLCommand.FOGI -> out.writeFogi(raw.readInt(), raw.readInt());
             case GLCommand.HINT -> out.writeHint(raw.readInt(), raw.readInt());
 
-            // Three int commands
             case GLCommand.STENCIL_FUNC -> out.writeStencilFunc(raw.readInt(), raw.readInt(), raw.readInt());
             case GLCommand.STENCIL_OP -> out.writeStencilOp(raw.readInt(), raw.readInt(), raw.readInt());
             case GLCommand.TEX_PARAMETERI -> out.writeTexParameteri(raw.readInt(), raw.readInt(), raw.readInt());
 
-            // Four int commands
             case GLCommand.VIEWPORT -> out.writeViewport(raw.readInt(), raw.readInt(), raw.readInt(), raw.readInt());
             case GLCommand.SCISSOR -> out.writeScissor(raw.readInt(), raw.readInt(), raw.readInt(), raw.readInt());
             case GLCommand.BLEND_FUNC -> out.writeBlendFunc(raw.readInt(), raw.readInt(), raw.readInt(), raw.readInt());
@@ -67,7 +63,6 @@ public final class CommandBufferProcessor {
             case GLCommand.STENCIL_FUNC_SEPARATE -> out.writeStencilFuncSeparate(raw.readInt(), raw.readInt(), raw.readInt(), raw.readInt());
             case GLCommand.STENCIL_OP_SEPARATE -> out.writeStencilOpSeparate(raw.readInt(), raw.readInt(), raw.readInt(), raw.readInt());
 
-            // Float commands
             case GLCommand.POINT_SIZE -> out.writePointSize(raw.readFloat());
             case GLCommand.LINE_WIDTH -> out.writeLineWidth(raw.readFloat());
             case GLCommand.POLYGON_OFFSET -> out.writePolygonOffset(raw.readFloat(), raw.readFloat());
@@ -75,13 +70,10 @@ public final class CommandBufferProcessor {
             case GLCommand.SECONDARY_COLOR -> out.writeSecondaryColor(raw.readFloat(), raw.readFloat(), raw.readFloat());
             case GLCommand.CLEAR_COLOR -> out.writeClearColor(raw.readFloat(), raw.readFloat(), raw.readFloat(), raw.readFloat());
 
-            // Single double commands
             case GLCommand.CLEAR_DEPTH -> out.writeClearDepth(raw.readDouble());
 
-            // Four float commands
             case GLCommand.BLEND_COLOR -> out.writeBlendColor(raw.readFloat(), raw.readFloat(), raw.readFloat(), raw.readFloat());
 
-            // Mixed int+float commands
             case GLCommand.ALPHA_FUNC -> out.writeAlphaFunc(raw.readInt(), raw.readFloat());
             case GLCommand.FOGF -> out.writeFogf(raw.readInt(), raw.readFloat());
             case GLCommand.LIGHTF -> out.writeLightf(raw.readInt(), raw.readInt(), raw.readFloat());
@@ -91,14 +83,12 @@ public final class CommandBufferProcessor {
             case GLCommand.MATERIALF -> out.writeMaterialf(raw.readInt(), raw.readInt(), raw.readFloat());
             case GLCommand.TEX_PARAMETERF -> out.writeTexParameterf(raw.readInt(), raw.readInt(), raw.readFloat());
 
-            // Double commands
             case GLCommand.TRANSLATE -> out.writeTranslate(raw.readDouble(), raw.readDouble(), raw.readDouble());
             case GLCommand.ROTATE -> out.writeRotate(raw.readDouble(), raw.readDouble(), raw.readDouble(), raw.readDouble());
             case GLCommand.SCALE -> out.writeScale(raw.readDouble(), raw.readDouble(), raw.readDouble());
             case GLCommand.ORTHO -> out.writeOrtho(raw.readDouble(), raw.readDouble(), raw.readDouble(), raw.readDouble(), raw.readDouble(), raw.readDouble());
             case GLCommand.FRUSTUM -> out.writeFrustum(raw.readDouble(), raw.readDouble(), raw.readDouble(), raw.readDouble(), raw.readDouble(), raw.readDouble());
 
-            // Matrix commands
             case GLCommand.MULT_MATRIX -> { out.writeMultMatrix(raw.readMatrix4f(tempMatrix)); }
             case GLCommand.LOAD_MATRIX -> { out.writeLoadMatrix(raw.readMatrix4f(tempMatrix)); }
 
@@ -138,7 +128,6 @@ public final class CommandBufferProcessor {
                 out.writeMaterial(face, pname, fb);
             }
 
-            // Clip plane command (4 doubles)
             case GLCommand.CLIP_PLANE -> {
                 final int plane = raw.readInt();
                 final double a = raw.readDouble();
@@ -148,7 +137,6 @@ public final class CommandBufferProcessor {
                 out.writeClipPlane(plane, a, b, c, d);
             }
 
-            // Draw/call commands
             case GLCommand.DRAW_RANGE -> out.writeDrawRange(raw.readInt());
             case GLCommand.CALL_LIST -> out.writeCallList(raw.readInt());
             case GLCommand.DRAW_ARRAYS -> out.writeDrawArrays(raw.readInt(), raw.readInt(), raw.readInt());

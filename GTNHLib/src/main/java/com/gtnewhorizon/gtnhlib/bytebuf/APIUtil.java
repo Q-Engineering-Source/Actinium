@@ -86,8 +86,6 @@ public final class APIUtil {
 
     /**
      * Prints the specified message to the {@link #DEBUG_STREAM} if {@link Checks#DEBUG} is true.
-     *
-     * @param msg the message to print
      */
     public static void apiLog(CharSequence msg) {
         if (DEBUG) {
@@ -140,9 +138,7 @@ public final class APIUtil {
     /** A data class for API versioning information. */
     public static class APIVersion implements Comparable<APIVersion> {
 
-        /** Returns the API major version. */
         public final int major;
-        /** Returns the API minor version. */
         public final int minor;
 
         /** Returns the API revision. May be null. */
@@ -215,8 +211,6 @@ public final class APIUtil {
 
     /**
      * Returns the {@link APIVersion} value of the specified option.
-     *
-     * @param option the option to query
      */
     public static @Nullable APIVersion apiParseVersion(Object option) {
         APIVersion version;
@@ -242,10 +236,6 @@ public final class APIUtil {
      * minor version (integer), {@code REVISION} is the revision version (string, optional) and {@code IMPL} is
      * implementation-specific information (string, optional).
      * </p>
-     *
-     * @param version the version string
-     *
-     * @return the parsed {@link APIVersion}
      */
     public static APIVersion apiParseVersion(String version) {
         Matcher matcher = API_VERSION_PATTERN.matcher(version);
@@ -276,12 +266,6 @@ public final class APIUtil {
      * <p>
      * This method is useful when debugging to quickly identify values returned from an API.
      * </p>
-     *
-     * @param filter       the filter to use (optional)
-     * @param target       the target map (optional)
-     * @param tokenClasses the classes to get tokens from
-     *
-     * @return the token map
      */
     public static Map<Integer, String> apiClassTokens(@Nullable BiPredicate<Field, Integer> filter,
             @Nullable Map<Integer, String> target, Class<?>... tokenClasses) {
@@ -294,7 +278,6 @@ public final class APIUtil {
 
         for (Class<?> tokenClass : tokenClasses) {
             for (Field field : tokenClass.getDeclaredFields()) {
-                // Get only <public static final int> fields.
                 if ((field.getModifiers() & TOKEN_MODIFIERS) == TOKEN_MODIFIERS && field.getType() == int.class) {
                     try {
                         Integer value = field.getInt(null);
@@ -314,13 +297,8 @@ public final class APIUtil {
         return target;
     }
 
-    // ----------------------------------------
-
     /**
      * Stores the specified array of pointer addresses on the specified {@link MemoryStack}.
-     *
-     * @param stack     the stack to use
-     * @param addresses the pointer addresses to store
      *
      * @return the pointer array address on the stack
      */
@@ -338,9 +316,6 @@ public final class APIUtil {
 
     /**
      * Stores the addresses of the specified array of buffers on the specified {@link MemoryStack}.
-     *
-     * @param stack   the stack to use
-     * @param buffers the buffers to store
      *
      * @return the pointer array address on the stack
      */
@@ -361,9 +336,6 @@ public final class APIUtil {
      * contains the buffer remaining bytes is stored immediately after the pointer array. Length values are
      * pointer-sized integers.
      *
-     * @param stack   the stack to use
-     * @param buffers the buffers to store
-     *
      * @return the pointer array address on the stack
      */
     public static long apiArrayp(MemoryStack stack, ByteBuffer... buffers) {
@@ -377,8 +349,6 @@ public final class APIUtil {
         return pointers;
     }
 
-    // ----------------------------------------
-
     public interface Encoder {
 
         ByteBuffer encode(CharSequence text, boolean nullTerminated);
@@ -387,10 +357,6 @@ public final class APIUtil {
     /**
      * Encodes the specified strings with the specified {@link Encoder} and stores an array of pointers to the encoded
      * data on the specified {@link MemoryStack}. The encoded strings include null-termination.
-     *
-     * @param stack   the stack to use
-     * @param encoder the encoder to use
-     * @param strings the strings to encode
      *
      * @return the pointer array address on the stack
      */
@@ -412,10 +378,6 @@ public final class APIUtil {
      * <p>
      * The encoded buffers must be freed with {@link #apiArrayFree}.
      * </p>
-     *
-     * @param stack   the stack to use
-     * @param encoder the encoder to use
-     * @param strings the strings to encode
      *
      * @return the pointer array address on the stack
      */
@@ -443,10 +405,6 @@ public final class APIUtil {
      * The encoded buffers must be freed with {@link #apiArrayFree}.
      * </p>
      *
-     * @param stack   the stack to use
-     * @param encoder the encoder to use
-     * @param strings the strings to encode
-     *
      * @return the pointer array address on the stack
      */
     public static long apiArrayp(MemoryStack stack, Encoder encoder, CharSequence... strings) {
@@ -465,9 +423,6 @@ public final class APIUtil {
 
     /**
      * Frees the specified array of pointers.
-     *
-     * @param pointers the pointer array to free
-     * @param length   the pointer array length
      */
     public static void apiArrayFree(long pointers, int length) {
         for (int i = length; --i >= 0;) {

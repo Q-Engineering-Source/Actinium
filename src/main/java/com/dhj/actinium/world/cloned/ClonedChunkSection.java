@@ -102,7 +102,6 @@ public class ClonedChunkSection {
 
         chunkX *= 16;
         chunkZ *= 16;
-        // Fill biome data
         for(int z = 0; z < 16; z++) {
             for(int x = 0; x < 16; x++) {
                 biomePos.setPos(chunkX + x, 100, chunkZ + z);
@@ -157,12 +156,6 @@ public class ClonedChunkSection {
         this.lastUsedTimestamp = timestamp;
     }
 
-    /**
-     * @param x The local x-coordinate
-     * @param y The local y-coordinate
-     * @param z The local z-coordinate
-     * @return An index which can be used to key entities or blocks within a chunk
-     */
     private static short packLocal(int x, int y, int z) {
         return (short) (x << 8 | z << 4 | y);
     }
