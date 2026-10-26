@@ -44,6 +44,7 @@ public final class AtlasLoadStats {
     private static boolean decodeDesynced;
     private static int mipmapsOffloaded;
     private static int batchedUploaded;
+    private static int framesReloaded;
     private static final Map<MipmapStrategy, Integer> strategies = new EnumMap<>(MipmapStrategy.class);
     private static final AtomicInteger foreignMipmapCalls = new AtomicInteger();
 
@@ -57,8 +58,9 @@ public final class AtlasLoadStats {
                          int anisotropy, boolean texelSnap, int workerThreads, boolean parallelDecode,
                          boolean parallelMipmaps, boolean batchedUpload, int decodeSubmitted, int decoded,
                          int decodeFailures, int decodeCancellations, boolean decodeDesynced, int mipmapsOffloaded,
-                         int batchedUploaded, int prepared, long stitchNanos, long prepareNanos, long assembleNanos,
-                         long totalNanos, Map<MipmapStrategy, Integer> strategies, int foreignMipmapCalls) {}
+                         int batchedUploaded, int framesReloaded, int prepared, long stitchNanos, long prepareNanos,
+                         long assembleNanos, long totalNanos, Map<MipmapStrategy, Integer> strategies,
+                         int foreignMipmapCalls) {}
 
     /** Starts a load's collection, discarding whatever an interrupted previous load left behind. */
     public static void begin() {
@@ -88,6 +90,7 @@ public final class AtlasLoadStats {
         decodeDesynced = false;
         mipmapsOffloaded = 0;
         batchedUploaded = 0;
+        framesReloaded = 0;
         strategies.clear();
         foreignMipmapCalls.set(0);
     }
@@ -127,6 +130,14 @@ public final class AtlasLoadStats {
 
     public static void recordBatchedUploads(int count) {
         if (isCollecting()) batchedUploaded = count;
+    }
+
+    /**
+     * Counts the sprites whose frames had to be loaded a second time because an earlier load had emptied them.
+     * A non-zero value means a mod reset a sprite after the registration loop had passed it.
+     */
+    public static void recordFramesReloaded(int count) {
+        if (isCollecting()) framesReloaded = count;
     }
 
     /**
@@ -174,8 +185,8 @@ public final class AtlasLoadStats {
         final Values values = new Values(atlas, sprites, mipLevels, gutter, filterMode, anisotropy, texelSnap,
             AngelicaWorkers.threads(), decodeSubmitted > 0 || decoded > 0, mipmapsOffloaded > 0, batchedUploaded > 0,
             decodeSubmitted, decoded, decodeFailures, decodeCancellations, decodeDesynced, mipmapsOffloaded,
-            batchedUploaded, prepared, stitchNanos, prepareNanos, assembleNanos, totalNanos, new EnumMap<>(strategies),
-            foreignMipmapCalls.get());
+            batchedUploaded, framesReloaded, prepared, stitchNanos, prepareNanos, assembleNanos, totalNanos,
+            new EnumMap<>(strategies), foreignMipmapCalls.get());
         loadStartNanos = 0L;
         reset();
         return values;
@@ -201,6 +212,7 @@ public final class AtlasLoadStats {
             .append(",decodeCancellations=").append(values.decodeCancellations())
             .append(",decodeDesync=").append(values.decodeDesynced())
             .append(",mipmapsOffloaded=").append(values.mipmapsOffloaded())
+            .append(",framesReloaded=").append(values.framesReloaded())
             .append(",batchedUploaded=").append(values.batchedUploaded())
             .append(",prepared=").append(values.prepared())
             .append(']');

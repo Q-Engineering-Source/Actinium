@@ -14,8 +14,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import javax.imageio.ImageIO;
+
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -67,6 +71,24 @@ class AtlasLoadSessionTest {
     /** The location a sprite's image would live at; nothing reads it while the decode lane is off. */
     private static final Function<TextureAtlasSprite, ResourceLocation> LOCATOR =
         sprite -> new ResourceLocation("minecraft", sprite.getIconName().replace(':', '/') + ".png");
+
+    /** Serves one frame of pixels for any location, which is all a reload needs to fill a frame list. */
+    private static final IResourceManager MANAGER_WITH_FRAMES = new IResourceManager() {
+        @Override
+        public Set<String> getResourceDomains() {
+            return Set.of("minecraft");
+        }
+
+        @Override
+        public IResource getResource(ResourceLocation location) {
+            return new FrameResource(location);
+        }
+
+        @Override
+        public List<IResource> getAllResources(ResourceLocation location) {
+            return List.of(getResource(location));
+        }
+    };
 
     private final String originalDecode = System.getProperty(DECODE_PROPERTY);
     private final String originalMipmaps = System.getProperty(MIPMAPS_PROPERTY);
@@ -287,6 +309,40 @@ class AtlasLoadSessionTest {
         assertEquals(1, stream.closeCount);
     }
 
+    /**
+     * A sprite another mod emptied after its frames were loaded is given its frames back, and its level chain
+     * is rebuilt from them. Without this the atlas upload reads frame 0 of an empty list and throws.
+     */
+    @Test
+    void reloadsTheFramesAModEmptiedBeforeTheUpload() {
+        AtlasLoadStats.begin();
+
+        final TextureMap map = new TextureMap("textures/blocks");
+        final PreparedSprite missing = new PreparedSprite("missingno", null);
+        final FramelessSprite sagmill = new FramelessSprite("enderio:blocks/block_simple_sagmill_front_on", 32, 32);
+        final FramelessSprite controller = new FramelessSprite("modularmachinery:blocks/overlay_parallel_controller_normal", 32, 32);
+
+        final AtlasLoadSession session = AtlasLoadSession.begin(map, MANAGER_WITH_FRAMES, missing, LOCATOR);
+        try {
+            session.beginRegistration(registryOf(sagmill, controller));
+            session.prepare(List.of(sagmill, controller), LEVELS);
+        } finally {
+            session.close();
+        }
+
+        assertEquals(1, sagmill.framesLoaded, "the emptied sprite has its frames loaded again before the upload");
+        assertEquals(1, controller.framesLoaded);
+        assertEquals(1, sagmill.frameCountAfterPrepare, "the sprite is uploadable again, so frame 0 exists");
+        assertEquals(1, controller.frameCountAfterPrepare);
+        assertEquals(1, sagmill.levelsBuilt, "the chain is rebuilt from the frames that came back");
+        assertEquals(1, controller.levelsBuilt);
+
+        final AtlasLoadStats.Values values = AtlasLoadStats.snapshot("textures", 4, 16,
+            TextureFilterMode.NONE, 1, false, 1L);
+
+        assertEquals(2, values.framesReloaded(), "both sprites are reported as reloaded");
+    }
+
     private static int countedSprites(AtlasLoadStats.Values values) {
         return values.strategies().values().stream().mapToInt(Integer::intValue).sum();
     }
@@ -372,6 +428,88 @@ class AtlasLoadSessionTest {
         @Override
         public void close() {
             this.closeCount++;
+        }
+    }
+
+    /** A resource holding a one-texel PNG, which is enough for a frame reload to record a frame. */
+    private static final class FrameResource implements IResource {
+
+        private static final byte[] ONE_TEXEL_PNG = buildOneTexelPng();
+
+        private final ResourceLocation location;
+
+        private FrameResource(ResourceLocation location) {
+            this.location = location;
+        }
+
+        @Override
+        public ResourceLocation getResourceLocation() {
+            return this.location;
+        }
+
+        @Override
+        public InputStream getInputStream() {
+            return new ByteArrayInputStream(ONE_TEXEL_PNG);
+        }
+
+        @Override
+        public boolean hasMetadata() {
+            return false;
+        }
+
+        @Override
+        public <T extends IMetadataSection> T getMetadata(String sectionName) {
+            return null;
+        }
+
+        @Override
+        public String getResourcePackName() {
+            return "frames";
+        }
+
+        @Override
+        public void close() {
+        }
+
+        private static byte[] buildOneTexelPng() {
+            try {
+                final BufferedImage image = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+                final ByteArrayOutputStream out = new ByteArrayOutputStream();
+                ImageIO.write(image, "png", out);
+                return out.toByteArray();
+            } catch (IOException e) {
+                throw new IllegalStateException("the test fixture PNG could not be written", e);
+            }
+        }
+    }
+
+    /**
+     * A vanilla-shaped sprite whose frame list something else emptied before the upload, standing in for a
+     * sprite a mod reset through {@code loadSprite} ahead of the registration loop. It records the frame count
+     * {@code prepare} left behind instead of decoding a real image, which needs a GL context this test has not.
+     */
+    private static final class FramelessSprite extends TextureAtlasSprite {
+
+        private int frameCountAfterPrepare;
+        private int levelsBuilt;
+        private int framesLoaded;
+
+        private FramelessSprite(String name, int width, int height) {
+            super(name);
+            setIconWidth(width);
+            setIconHeight(height);
+        }
+
+        @Override
+        public void loadSpriteFrames(IResource resource, int mipLevels) {
+            this.framesLoaded++;
+            setFramesTextureData(new ArrayList<>(List.<int[][]>of(new int[mipLevels][])));
+        }
+
+        @Override
+        public void generateMipmaps(int level) {
+            this.levelsBuilt++;
+            this.frameCountAfterPrepare = getFrameCount();
         }
     }
 

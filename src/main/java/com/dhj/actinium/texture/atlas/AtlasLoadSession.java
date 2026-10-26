@@ -80,6 +80,7 @@ public final class AtlasLoadSession {
     private final Set<int[][]> uploaded = Collections.newSetFromMap(new IdentityHashMap<>());
     private int mipmapsOffloaded;
     private int batchedUploads;
+    private int framesReloaded;
 
     private boolean closed;
 
@@ -148,18 +149,54 @@ public final class AtlasLoadSession {
             if (sprite == this.missingImage) {
                 continue;
             }
-            if (sprite.getFrameCount() <= 0) {
+            final boolean reloaded = sprite.getFrameCount() <= 0 && reloadFrames(sprite, levels);
+            if (!reloaded && sprite.getFrameCount() <= 0) {
                 // Vanilla throws reading frame 0 in the upload loop; name the mod bug here instead of hiding it.
                 LOGGER.warn("Atlas sprite {} ({}) has no frame to upload: {}x{}, custom loader={}, dependencies={}",
                     sprite.getIconName(), sprite.getClass().getName(), sprite.getIconWidth(), sprite.getIconHeight(),
                     sprite.hasCustomLoader(this.manager, this.locator.apply(sprite)), sprite.getDependencies());
             }
-            if (this.deferredChains.contains(sprite.getIconName())) {
+            // A chain built while the frames were missing has to be rebuilt now that they are back.
+            if (reloaded || this.deferredChains.contains(sprite.getIconName())) {
                 sprite.generateMipmaps(levels);
             }
         }
         joinMipmaps();
         recordStrategies();
+    }
+
+    /**
+     * Loads a sprite's frames again when something emptied them after the loop's own load ran.
+     *
+     * <p>{@code TextureAtlasSprite.loadSprite} clears the frame list before it records a size, so a mod that
+     * calls it ahead of the loop - StellarCore's sprite prefetch does, for every registered sprite - leaves the
+     * sprite sized but frameless. The loop then reaches it and loads the frames back, unless the sprite is one
+     * the loop never visits, and vanilla reads frame 0 for it during the upload and throws. Reloading here
+     * restores the frames; the caller still builds their level chain the way it does for every other sprite.
+     *
+     * @return true when the sprite has frames again, so the caller need not report it
+     */
+    private boolean reloadFrames(TextureAtlasSprite sprite, int levels) {
+        final ResourceLocation location = this.locator.apply(sprite);
+        if (location == null || sprite.hasCustomLoader(this.manager, location)) {
+            return false;
+        }
+
+        IResource resource = null;
+        try {
+            resource = this.manager.getResource(location);
+            sprite.loadSpriteFrames(resource, levels + 1);
+            this.framesReloaded++;
+            LOGGER.info("Atlas sprite {} had no frame left by an earlier load, reloaded {} frame(s) from {}",
+                sprite.getIconName(), sprite.getFrameCount(), location);
+            return sprite.getFrameCount() > 0;
+        } catch (RuntimeException | IOException e) {
+            // Vanilla reports a sprite whose resource cannot be read the same way and keeps it frameless.
+            LOGGER.warn("Unable to reload the frames of atlas sprite {} from {}", sprite.getIconName(), location, e);
+            return false;
+        } finally {
+            closeResource(resource);
+        }
     }
 
     /** Whether a generation belongs to this load. By name: the asking hook may run on a worker thread. */
@@ -392,6 +429,7 @@ public final class AtlasLoadSession {
                 }
                 AtlasLoadStats.recordMipmapsOffloaded(this.mipmapsOffloaded);
                 AtlasLoadStats.recordBatchedUploads(this.batchedUploads);
+                AtlasLoadStats.recordFramesReloaded(this.framesReloaded);
                 AtlasLoadStats.recordPrepared(this.prepared.size());
             });
         if (failure != null) {
@@ -427,6 +465,9 @@ public final class AtlasLoadSession {
     }
 
     private static void closeResource(IResource resource) {
+        if (resource == null) {
+            return;
+        }
         try {
             resource.close();
         } catch (IOException e) {

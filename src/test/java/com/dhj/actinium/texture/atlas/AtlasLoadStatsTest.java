@@ -111,13 +111,14 @@ class AtlasLoadStatsTest {
         strategies.put(MipmapStrategy.STRICT_CUTOUT, 3);
 
         final AtlasLoadStats.Values values = new AtlasLoadStats.Values("textures/blocks", 100, 4, 16,
-            TextureFilterMode.RGSS, 1, true, 8, true, true, true, 100, 99, 1, 2, false, 90, 98, 100,
+            TextureFilterMode.RGSS, 1, true, 8, true, true, true, 100, 99, 1, 2, false, 90, 98, 3, 100,
             1_000_000L, 2_000_000L, 3_000_000L, 7_000_000L, strategies, 7);
 
         assertEquals("Atlas build: atlas=textures/blocks sprites=100 mipLevels=4 gutter=16 filter=RGSS"
             + " anisotropy=1x texelSnap=true workers=8"
             + " parallel=[decode=true,mipmaps=true,batchedUpload=true,submitted=100,decoded=99,decodeFailures=1"
-            + ",decodeCancellations=2,decodeDesync=false,mipmapsOffloaded=90,batchedUploaded=98,prepared=100]"
+            + ",decodeCancellations=2,decodeDesync=false,mipmapsOffloaded=90,framesReloaded=3,batchedUploaded=98"
+            + ",prepared=100]"
             + " phases=[stitchMs=1.000,prepareMs=2.000,assembleMs=3.000,totalMs=7.000]"
             + " strategies=[CUTOUT=12,STRICT_CUTOUT=3] foreignMipmapCalls=7", AtlasLoadStats.describe(values));
     }
