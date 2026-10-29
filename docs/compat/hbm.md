@@ -284,6 +284,6 @@ java.lang.NullPointerException: Cannot load from object array because "this.curr
   `GLStateManager.recreateDefaultVertexArray()`，迁移 CPU client pointer，在 FBO 上调用
   `glDrawArrays` 并验证读回像素；该 fixture 不启动 Cleanroom Mixin 环境。
 - Cleanroom 合成字节 transformer 验证覆盖加载链顺序、注入 descriptor、幂等性与 null-provider
-  透传；运行中的实际 Cleanroom classloader 仍需用户启动验证。
+  原样传递；运行中的实际 Cleanroom classloader 仍需用户启动验证。
 - `./gradlew check --no-daemon` 与 `./gradlew build --no-daemon` 通过。修复后的 HBM 初始模型烘焙、
   进主菜单和其它模组渲染尚未在用户整合包实机复测，不据此记录为已解决。

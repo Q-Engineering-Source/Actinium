@@ -254,7 +254,7 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
 - **主菜单预读**：`Iris.prepareSelectedShaderPack` 在主线程捕获环境宏，后台线程完成包解析与
   `Overworld` ProgramSet，经 `preparedPack` 的软引用 + 代次发布；`invalidatePreparedPack`
   在显式 reload 与「选择变了但未应用」时递增代次，晚到的读取既不能发布也不能被取用。
-  解析阶段不激活任何东西——required feature 不满足的包由主线程按原行为禁用。
+  解析阶段不激活任何东西；required feature 不满足的包由主线程按原行为禁用。
   root 侧 `ShaderWarmup` 由 `MixinGuiMainMenu.initGui` 触发，单条低优先级 daemon 线程，
   失败只记日志；进入世界不等待预读预热（两边提交同一套 key，变换是输入的纯函数）。
 - **全目录预编译与「已编译」marker**：`saveCompiledShaders` 打开时，包加载完成后
@@ -444,7 +444,7 @@ bounded ByteBuffer 视图由 drawRaw 统一创建。此改动已通过自动化�
   celeritas-common 的 `GlProgram` 只暴露 `LinkHook`，由根项目安装为
   `ProgramBinaryCache::markRetrievable`，子项目不反向引用。
 - **`threading/`**：`AngelicaWorkers`（后台 worker 池，`submit`/`run`/`invokeAll`；资源扫描、
-  程序二进制落盘与预读都走这里，worker 上不碰 GL）。
+  程序二进制写入磁盘与预读都由该类负责，worker 线程上不访问 GL）。
 - **`hooks/`**：`GLSMHooks`（静态事件总线集合：纹理绑定/删除、program 切换、blend、fog、
   lightmap 等）、`DeferredAlpha/Blend/DepthColorHandler`（延迟状态应用）、`GLSMConfig`/
   `GLSMInitConfig`、`GpuCommandRecorder/Phase/Type`、`GpuCheckpointType`；`hooks/events/`
