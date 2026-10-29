@@ -17,6 +17,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -145,7 +146,7 @@ class WorldgenInputDiagnosticsMixinAbiTest {
                 }
             }
 
-            java.util.LinkedHashSet<String> names = new java.util.LinkedHashSet<>();
+            LinkedHashSet<String> names = new LinkedHashSet<>();
             String methodName = methodNameOf(declaredTarget);
             String descriptor = descriptorOf(declaredTarget);
             for (JsonObject mappingTable : mappingTables) {

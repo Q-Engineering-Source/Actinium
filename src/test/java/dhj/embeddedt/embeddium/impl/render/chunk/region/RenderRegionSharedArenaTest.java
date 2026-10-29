@@ -10,6 +10,7 @@ import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.ChunkVertexType;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -94,8 +95,8 @@ class RenderRegionSharedArenaTest {
 
     /** Builds a configuration whose only stage declares one pass per supplied vertex type. */
     private static RenderPassConfiguration<String> configuration(ChunkVertexType... vertexTypes) {
-        Map<String, Material> materials = new java.util.LinkedHashMap<>();
-        Map<String, Collection<TerrainRenderPass>> stages = new java.util.LinkedHashMap<>();
+        Map<String, Material> materials = new LinkedHashMap<>();
+        Map<String, Collection<TerrainRenderPass>> stages = new LinkedHashMap<>();
         Material first = null;
 
         for (int index = 0; index < vertexTypes.length; index++) {
