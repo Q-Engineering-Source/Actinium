@@ -1,13 +1,18 @@
 package com.gtnewhorizons.angelica.glsm.states;
 
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.stacks.CowDepths;
+import com.gtnewhorizons.angelica.glsm.stacks.CowStateStack;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import org.lwjgl.opengl.GL11;
 
+import java.util.Arrays;
+
 /**
  * Per-texture-unit storage for texgen mode and plane coefficients. Based on Mesa's texgen.c storage model.
  */
-public class TexGenState {
+public final class TexGenState implements CowStateStack<TexGenState> {
     private int modeS, modeT, modeR, modeQ;
 
     private final float[] objectPlaneS = {1, 0, 0, 0};
@@ -20,8 +25,36 @@ public class TexGenState {
     private final float[] eyePlaneR = {0, 0, 0, 0};
     private final float[] eyePlaneQ = {0, 0, 0, 0};
 
-    private static final Vector4f tempPlane = new Vector4f();
-    private static final Matrix4f tempInverse = new Matrix4f();
+    private final TexGenState[] stack;
+    private final CowDepths cow;
+    private final Vector4f tempPlane;
+    private final Matrix4f tempInverse;
+
+    public TexGenState() {
+        this(-1, -1);
+    }
+
+    public TexGenState(int id, int unitIndex) {
+        this(false, id, unitIndex);
+    }
+
+    private TexGenState(boolean stackEntry, int id, int unitIndex) {
+        if (stackEntry) {
+            stack = null;
+            cow = null;
+            tempPlane = null;
+            tempInverse = null;
+        } else {
+            stack = new TexGenState[GLStateManager.STATE_SLOTS];
+            for (int slot = 0; slot < stack.length; slot++) {
+                stack[slot] = new TexGenState(true, -1, -1);
+            }
+            cow = new CowDepths(0, unitIndex);
+            cow.id = id;
+            tempPlane = new Vector4f();
+            tempInverse = new Matrix4f();
+        }
+    }
 
     public int getMode(int coord) {
         return switch (coord) {
@@ -79,5 +112,63 @@ public class TexGenState {
         dest[1] = tempPlane.y;
         dest[2] = tempPlane.z;
         dest[3] = tempPlane.w;
+    }
+
+    @Override
+    public CowDepths cowDepths() {
+        if (cow == null) throw new IllegalStateException("Cannot push/pop a texgen stack snapshot entry");
+        return cow;
+    }
+
+    @Override
+    public boolean slotChanged(int slot) {
+        return !sameAs(stack[slot]);
+    }
+
+    @Override
+    public void captureSlot(int slot) {
+        stack[slot].copyFrom(this);
+    }
+
+    @Override
+    public void restoreSlot(int slot) {
+        copyFrom(stack[slot]);
+    }
+
+    @Override
+    public boolean topSlotChanged() {
+        return !cowDepths().isEmpty() && slotChanged(cowDepths().top());
+    }
+
+    @Override
+    public int stackId() {
+        return cow == null ? -1 : cow.id;
+    }
+
+    private void copyFrom(TexGenState other) {
+        modeS = other.modeS;
+        modeT = other.modeT;
+        modeR = other.modeR;
+        modeQ = other.modeQ;
+        System.arraycopy(other.objectPlaneS, 0, objectPlaneS, 0, 4);
+        System.arraycopy(other.objectPlaneT, 0, objectPlaneT, 0, 4);
+        System.arraycopy(other.objectPlaneR, 0, objectPlaneR, 0, 4);
+        System.arraycopy(other.objectPlaneQ, 0, objectPlaneQ, 0, 4);
+        System.arraycopy(other.eyePlaneS, 0, eyePlaneS, 0, 4);
+        System.arraycopy(other.eyePlaneT, 0, eyePlaneT, 0, 4);
+        System.arraycopy(other.eyePlaneR, 0, eyePlaneR, 0, 4);
+        System.arraycopy(other.eyePlaneQ, 0, eyePlaneQ, 0, 4);
+    }
+
+    private boolean sameAs(TexGenState other) {
+        return modeS == other.modeS && modeT == other.modeT && modeR == other.modeR && modeQ == other.modeQ
+            && Arrays.equals(objectPlaneS, other.objectPlaneS)
+            && Arrays.equals(objectPlaneT, other.objectPlaneT)
+            && Arrays.equals(objectPlaneR, other.objectPlaneR)
+            && Arrays.equals(objectPlaneQ, other.objectPlaneQ)
+            && Arrays.equals(eyePlaneS, other.eyePlaneS)
+            && Arrays.equals(eyePlaneT, other.eyePlaneT)
+            && Arrays.equals(eyePlaneR, other.eyePlaneR)
+            && Arrays.equals(eyePlaneQ, other.eyePlaneQ);
     }
 }

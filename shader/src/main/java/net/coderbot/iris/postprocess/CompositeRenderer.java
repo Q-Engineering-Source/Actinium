@@ -15,6 +15,7 @@ import net.coderbot.iris.gl.blending.BufferBlendOverride;
 import net.coderbot.iris.gl.framebuffer.GlFramebuffer;
 import net.coderbot.iris.gl.framebuffer.MinecraftFramebufferHelper;
 import net.coderbot.iris.gl.framebuffer.ViewportData;
+import net.coderbot.iris.gl.ResourceCleanup;
 import net.coderbot.iris.gl.image.GlImage;
 import net.coderbot.iris.gl.program.ComputeProgram;
 import net.coderbot.iris.gl.program.Program;
@@ -109,6 +110,8 @@ public class CompositeRenderer {
 			}
 		});
 
+		final List<Pass> ownedPasses = new ArrayList<>();
+		try {
 		for (int i = 0; i < sources.length; i++) {
 			final ProgramSource source = sources[i];
 
@@ -118,13 +121,20 @@ public class CompositeRenderer {
 			if (source == null || !source.isValid()) {
 				if (computes[i] != null) {
 					final ComputeOnlyPass pass = new ComputeOnlyPass();
-					pass.computes = createComputes(computes[i], flipped, flippedAtLeastOnceSnapshot, context.shadowTargetsSupplier());
-					passes.add(pass);
+					try {
+						pass.computes = createComputes(computes[i], flipped, flippedAtLeastOnceSnapshot, context.shadowTargetsSupplier());
+						ownedPasses.add(pass);
+						passes.add(pass);
+					} catch (RuntimeException | Error failure) {
+						ResourceCleanup.runAll(failure, pass::destroy);
+						throw failure;
+					}
 				}
 				continue;
 			}
 
 			final Pass pass = new Pass();
+			try {
 			final ProgramDirectives directives = source.getDirectives();
 
 			Map<PatchShaderType, String> transformed = getTransformed(source, transformFutures, i, stageName);
@@ -174,13 +184,22 @@ public class CompositeRenderer {
 			pass.viewportScale = directives.getViewportScale();
 			pass.mipmappedBuffers = directives.getMipmappedBuffers();
 
+			ownedPasses.add(pass);
 			passes.add(pass);
+			} catch (RuntimeException | Error failure) {
+				ResourceCleanup.runAll(failure, pass::destroy);
+				throw failure;
+			}
 		}
 
 		this.passes = passes.build();
 		this.flippedAtLeastOnceFinal = flippedAtLeastOnce.build();
 
 		GLStateManager.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
+		} catch (RuntimeException | Error failure) {
+			ResourceCleanup.runAll(failure, ownedPasses.stream().<Runnable>map(pass -> pass::destroy).toList());
+			throw failure;
+		}
 	}
 
 	private Map<PatchShaderType, String> getTransformed(ProgramSource source, Map<Integer, CompletableFuture<Map<PatchShaderType, String>>> transformFutures, int index, String stageName) {
@@ -239,12 +258,18 @@ public class CompositeRenderer {
 		List<BufferBlendOverride> bufferBlendOverrides = List.of();
 
 		protected void destroy() {
-			this.program.destroy();
-			for (ComputeProgram compute : this.computes) {
-				if (compute != null) {
-					compute.destroy();
+			final List<Runnable> cleanupActions = new ArrayList<>();
+			if (this.program != null) {
+				cleanupActions.add(this.program::destroy);
+			}
+			if (this.computes != null) {
+				for (ComputeProgram compute : this.computes) {
+					if (compute != null) {
+						cleanupActions.add(compute::destroy);
+					}
 				}
 			}
+			ResourceCleanup.runAll(null, cleanupActions);
 		}
 	}
 
@@ -280,11 +305,16 @@ public class CompositeRenderer {
 	private class ComputeOnlyPass extends Pass {
 		@Override
 		protected void destroy() {
+			if (this.computes == null) {
+				return;
+			}
+			final List<Runnable> cleanupActions = new ArrayList<>();
 			for (ComputeProgram compute : this.computes) {
 				if (compute != null) {
-					compute.destroy();
+					cleanupActions.add(compute::destroy);
 				}
 			}
+			ResourceCleanup.runAll(null, cleanupActions);
 		}
 	}
 
@@ -421,7 +451,7 @@ public class CompositeRenderer {
 		PatchedShaderPrinter.debugPatchedShaders(source.getName(), vertex, geometry, tessControl, tessEval, fragment);
 
 		Objects.requireNonNull(flipped);
-		ProgramBuilder builder;
+		final ProgramBuilder builder;
 
 		try {
 			builder = ProgramBuilder.begin(source.getName(), vertex, geometry, tessControl, tessEval, fragment,
@@ -431,7 +461,8 @@ public class CompositeRenderer {
 			throw new RuntimeException("Shader compilation failed!", e);
 		}
 
-        CommonUniforms.addDynamicUniforms(builder, FogMode.OFF);
+		try (builder) {
+		CommonUniforms.addDynamicUniforms(builder, FogMode.OFF);
         this.customUniforms.assignTo(builder);
 
 		ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor = ProgramSamplers.customTextureSamplerInterceptor(builder, customTextureIds, flippedAtLeastOnceSnapshot);
@@ -457,64 +488,74 @@ public class CompositeRenderer {
 		Program build = builder.build();
 
 	    this.customUniforms.mapholderToPass(builder, build);
+		builder.commit();
 
         return build;
+		}
     }
 
 	private ComputeProgram[] createComputes(ComputeSource[] compute, ImmutableSet<Integer> flipped, ImmutableSet<Integer> flippedAtLeastOnceSnapshot, Supplier<ShadowRenderTargets> shadowTargetsSupplier) {
 		ComputeProgram[] programs = new ComputeProgram[compute.length];
-		for (int i = 0; i < programs.length; i++) {
-			ComputeSource source = compute[i];
-			if (source == null || !source.getSource().isPresent()) {
-				continue;
-			} else {
-				// TODO: Properly handle empty shaders
-				Objects.requireNonNull(flipped);
-				ProgramBuilder builder;
+		try {
+			for (int i = 0; i < programs.length; i++) {
+				ComputeSource source = compute[i];
+				if (source == null || !source.getSource().isPresent()) {
+					continue;
+				}
 
 				try {
+					// TODO: Properly handle empty shaders
+					Objects.requireNonNull(flipped);
 					String transformed = TransformPatcher.patchCompute(source.getName(), source.getSource().orElse(null), this.textureStage, pipeline != null ? pipeline.getTextureMap() : null);
 					PatchedShaderPrinter.debugPatchedShaders(source.getName() + "_compute", null, null, null, transformed);
-					builder = ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
+					try (ProgramBuilder builder = ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS)) {
+						ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor = ProgramSamplers.customTextureSamplerInterceptor(builder, customTextureIds, flippedAtLeastOnceSnapshot);
+						CommonUniforms.addDynamicUniforms(builder, FogMode.OFF);
+						this.customUniforms.assignTo(builder);
+
+						IrisSamplers.addRenderTargetSamplers(customTextureSamplerInterceptor, () -> flipped, renderTargets, true, pipeline);
+						IrisSamplers.addCustomImages(customTextureSamplerInterceptor, customImages);
+						IrisSamplers.addCustomTextures(customTextureSamplerInterceptor, irisCustomTextures);
+						IrisImages.addRenderTargetImages(builder, () -> flipped, renderTargets);
+						IrisImages.addCustomImages(builder, customImages);
+						IrisSamplers.addNoiseSampler(customTextureSamplerInterceptor, noiseTexture);
+						IrisSamplers.addCompositeSamplers(customTextureSamplerInterceptor, renderTargets);
+
+						if (IrisSamplers.hasShadowSamplers(customTextureSamplerInterceptor)) {
+							IrisSamplers.addShadowSamplers(customTextureSamplerInterceptor, shadowTargetsSupplier.get(), null, pipeline != null && pipeline.hasFeature(FeatureFlags.SEPARATE_HARDWARE_SAMPLERS));
+							IrisImages.addShadowColorImages(builder, shadowTargetsSupplier.get(), null);
+						}
+
+						centerDepthSampler.setUsage(builder.addDynamicSampler(centerDepthSampler::getCenterDepthTexture, "iris_centerDepthSmooth"));
+						final ComputeProgram program = builder.buildCompute();
+						customUniforms.mapholderToPass(builder, program);
+						program.setWorkGroupInfo(source.getWorkGroupRelative(), source.getWorkGroups(), null);
+						programs[i] = program;
+						builder.commit();
+					}
 				} catch (RuntimeException e) {
 					// TODO: Better error handling
 					throw new RuntimeException("Shader compilation failed!", e);
 				}
+			}
+			return programs;
+		} catch (RuntimeException | Error failure) {
+			destroyComputePrograms(programs, failure);
+			throw failure;
+		}
+	}
 
-				ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor = ProgramSamplers.customTextureSamplerInterceptor(builder, customTextureIds, flippedAtLeastOnceSnapshot);
-
-				CommonUniforms.addDynamicUniforms(builder, FogMode.OFF);
-
-                this.customUniforms.assignTo(builder);
-
-				IrisSamplers.addRenderTargetSamplers(customTextureSamplerInterceptor, () -> flipped, renderTargets, true, pipeline);
-				IrisSamplers.addCustomImages(customTextureSamplerInterceptor, customImages);
-				IrisSamplers.addCustomTextures(customTextureSamplerInterceptor, irisCustomTextures);
-
-				IrisImages.addRenderTargetImages(builder, () -> flipped, renderTargets);
-				IrisImages.addCustomImages(builder, customImages);
-
-				IrisSamplers.addNoiseSampler(customTextureSamplerInterceptor, noiseTexture);
-				IrisSamplers.addCompositeSamplers(customTextureSamplerInterceptor, renderTargets);
-
-				if (IrisSamplers.hasShadowSamplers(customTextureSamplerInterceptor)) {
-					IrisSamplers.addShadowSamplers(customTextureSamplerInterceptor, shadowTargetsSupplier.get(), null, pipeline != null && pipeline.hasFeature(FeatureFlags.SEPARATE_HARDWARE_SAMPLERS));
-					IrisImages.addShadowColorImages(builder, shadowTargetsSupplier.get(), null);
-				}
-
-				// TODO: Don't duplicate this with FinalPassRenderer
-				centerDepthSampler.setUsage(builder.addDynamicSampler(centerDepthSampler::getCenterDepthTexture, "iris_centerDepthSmooth"));
-
-				programs[i] = builder.buildCompute();
-
-                customUniforms.mapholderToPass(builder, programs[i]);
-
-				programs[i].setWorkGroupInfo(source.getWorkGroupRelative(), source.getWorkGroups(), null);
+	private static void destroyComputePrograms(ComputeProgram[] programs, Throwable failure) {
+		for (ComputeProgram program : programs) {
+			if (program == null) {
+				continue;
+			}
+			try {
+				program.destroy();
+			} catch (RuntimeException | Error cleanupFailure) {
+				failure.addSuppressed(cleanupFailure);
 			}
 		}
-
-
-		return programs;
 	}
 
 	public void destroy() {

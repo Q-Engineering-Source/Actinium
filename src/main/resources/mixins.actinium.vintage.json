@@ -5,7 +5,9 @@
   "target": "@env(DEFAULT)",
   "minVersion": "0.8.5",
   "compatibilityLevel": "JAVA_8",
-  "mixins": [],
+  "mixins": [
+    "features.debug.MixinChunkGeneratorOverworldDiagnostics"
+  ],
   "server": [],
   "client": [
     "core.MinecraftAccessor",
@@ -29,6 +31,7 @@
     "core.startup.MixinSplashProgress",
     "core.terrain.AccessorActiveRenderInfo",
     "core.terrain.AccessorBlockColors",
+    "core.terrain.BlockRendererDispatcherMixin",
     "core.terrain.AccessorChunk",
     "core.terrain.AccessorChunkProviderClient",
     "core.terrain.AccessorEntityRenderer",
@@ -45,6 +48,8 @@
     "core.terrain.MixinWorldClient",
     "core.vertex.MixinVertexBuffer",
     "features.mipmaps.MixinTextureAtlasSprite",
+    "features.mipmaps.MixinTextureMetadataSection",
+    "features.mipmaps.MixinTextureMetadataSectionSerializer",
     "features.mipmaps.MixinTextureUtil",
     "features.options.MixinEntityRenderer",
     "features.options.MixinEntityRendererDynamicFov",
@@ -53,7 +58,10 @@
     "features.render.tileentity.piston.MixinTileEntityPistonRenderer",
     "features.textures.MixinRenderItem",
     "features.textures.MixinTextureAtlas",
+    "features.textures.MixinTextureAtlasParallelLoad",
     "features.textures.MixinTextureAtlasSprite",
+    "features.textures.MixinStitcherHolder",
+    "features.textures.mixinterface.AccessorTextureMap",
     "fontrenderer.MixinFontRenderer",
     "gui.MixinGuiMainMenu"
   ],

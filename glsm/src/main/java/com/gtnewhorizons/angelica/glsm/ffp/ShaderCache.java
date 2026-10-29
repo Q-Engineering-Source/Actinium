@@ -3,6 +3,7 @@ package com.gtnewhorizons.angelica.glsm.ffp;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import lombok.Setter;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -64,7 +65,7 @@ public class ShaderCache {
      * @param fkPacked pre-allocated scratch array with packed fragment key longs
      * @param fkLen number of significant longs in fkPacked (1..4)
      */
-    public Program getOrCreate(long vkPacked, long[] fkPacked, int fkLen) {
+    public synchronized Program getOrCreate(long vkPacked, long[] fkPacked, int fkLen) {
         // Fast-path: compare raw longs inline
         if (vkPacked == lastVK && fkLen == lastFKLen && lastProgram != null
             && fkPacked[0] == lastFK0
@@ -262,7 +263,7 @@ public class ShaderCache {
     }
 
     /** Destroy all cached programs and clear caches. */
-    public void destroy() {
+    public synchronized void destroy() {
         for (int i = 0; i < capacity; i++) {
             if (programs[i] != null) {
                 programs[i].destroy();
@@ -277,7 +278,31 @@ public class ShaderCache {
         geometrySourceCache.clear();
         lastProgram = null;
         lastVK = Long.MIN_VALUE;
+        lastFKLen = 0;
         GLStateManager.LOGGER.debug("FFP shader cache cleared");
+    }
+
+    /** Removes one context's uniform upload markers while shared linked programs remain live. */
+    public synchronized void retireContext(GLContextIdentity identity) {
+        for (Program program : programs) {
+            if (program != null) {
+                program.retireContext(identity);
+            }
+        }
+    }
+
+    /** Drops Java references after the last native context in this share group has been destroyed. */
+    public synchronized void discardContextPrograms() {
+        Arrays.fill(keys, 0);
+        Arrays.fill(programs, null);
+        Arrays.fill(fragSources, null);
+        count = 0;
+        uniqueFragCount = 0;
+        vertexSourceCache.clear();
+        geometrySourceCache.clear();
+        lastProgram = null;
+        lastVK = Long.MIN_VALUE;
+        lastFKLen = 0;
     }
 
     public int getProgramCount() {

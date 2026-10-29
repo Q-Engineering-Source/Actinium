@@ -163,6 +163,7 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
                     this.fontRenderer.drawStringWithShadow(this.hoveredElementCommentBody.get(i), x + 4, (y + 16) + (i * 10), 0xFFFFFF);
                 }
             }
+
         }
 
         // Render everything queued to drawScreen last
@@ -218,7 +219,6 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
         this.buttonList.clear();
 
         if (!this.guiHidden) {
-
             this.buttonList.add(new IrisButton(bottomCenter + 104, this.height - 27, 100, 20,
                 I18n.format("gui.done"), button -> this.onClose()));
 
@@ -404,6 +404,7 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
         } else if (this.notificationDialog != null) {
             this.notificationDialog = null;
         }
+
     }
 
     private void handleDroppedFiles() {
@@ -535,6 +536,13 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
 
         final String previousPackName = Iris.getIrisConfig().getShaderPackName().orElse(null);
         final boolean previousShadersEnabled = Iris.getIrisConfig().areShadersEnabled();
+
+        // The pack read ahead describes the selection that was in place when it was read, so applying
+        // another one has to drop it: the next main menu then reads the pack that is actually selected,
+        // and the load that follows does not compare itself against a pack nothing selected.
+        if (ShaderPackApplyLogic.shouldInvalidateReadAhead(name, previousPackName)) {
+            Iris.invalidatePreparedPack();
+        }
 
         if (ShaderPackApplyLogic.shouldReloadOnApply(name, previousPackName, enabled, previousShadersEnabled,
                 Iris.getShaderPackOptionQueue().isEmpty(), Iris.shouldResetShaderPackOptionsOnNextReload(),

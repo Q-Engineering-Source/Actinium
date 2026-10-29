@@ -3,12 +3,16 @@ package com.dhj.actinium.render.terrain.compile.pipeline;
 import com.dhj.actinium.api.render.terrain.BlockQuadTransformerHolder;
 import com.dhj.actinium.compat.MissingModelCompat;
 import com.dhj.actinium.compat.componentmodelhider.ComponentModelHiderCompat;
+import com.dhj.actinium.render.terrain.compile.DispatchedBlockModel;
+import com.dhj.actinium.render.terrain.compile.DispatchedModelRenderDecision;
+import com.dhj.actinium.render.terrain.compile.QuadEmissionCounter;
 import net.coderbot.iris.debug.ShaderRegressionDebug;
 import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.BlockModelShapes;
 import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.renderer.block.model.IBakedModel;
 import net.minecraft.client.renderer.color.IBlockColor;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
@@ -74,6 +78,7 @@ public class VintageBlockRenderer {
     private final int[] quadColors = new int[4];
     private final ChunkVertexEncoder.Vertex[] vertices = ChunkVertexEncoder.Vertex.uninitializedQuad();
     private final ArrayList<ContextAwareChunkVertexEncoder> usedContextEncoders = new ArrayList<>(4);
+    private final QuadEmissionCounter dispatchedQuadEmissions = new QuadEmissionCounter();
     private final BlockRenderContext blockRenderContext = new BlockRenderContext();
     private final boolean useRenderPassOptimization;
 
@@ -85,8 +90,12 @@ public class VintageBlockRenderer {
     private BlockRenderLayer currentRenderLayer;
 
     private final BakedQuadGroupAnalyzer analyzer = new BakedQuadGroupAnalyzer();
+    private final DispatchedBlockModel dispatchedModel = new DispatchedBlockModel();
 
     private int currentQuadRenderingFlags;
+
+    private boolean dispatchedModelPending;
+    private boolean dispatchedCheckSides;
 
 
     public VintageBlockRenderer(VintageChunkBuildContext context, LightDataCache cache) {
@@ -117,6 +126,40 @@ public class VintageBlockRenderer {
         this.renderBlock(state, pos, blockAccess, layer, true);
     }
 
+    /** Renders the model already selected by BlockRendererDispatcher without resolving it again. */
+    public boolean renderDispatchedModel(IBakedModel model, IBlockState state, BlockPos pos,
+                                         ActiniumBlockAccess blockAccess, BlockRenderLayer layer,
+                                         boolean checkSides, boolean allowRenderPassOptimization) {
+        if (this.dispatchedModelPending) {
+            throw new IllegalStateException("VintageBlockRenderer cannot recursively enter its prepared model path");
+        }
+        if (!this.dispatchedModelPending && MissingModelCompat.isMissingModel(model)) {
+            return false;
+        }
+
+        this.dispatchedModel.prepare(model, state, blockAccess, pos);
+        this.dispatchedModelPending = true;
+        this.dispatchedCheckSides = checkSides;
+        this.dispatchedQuadEmissions.reset();
+
+        try {
+            this.renderBlock(state, pos, blockAccess, layer, allowRenderPassOptimization);
+            return this.dispatchedQuadEmissions.hasEmittedQuads();
+        } finally {
+            this.dispatchedModelPending = false;
+            this.dispatchedModel.clear();
+            this.dispatchedCheckSides = true;
+            this.dispatchedQuadEmissions.reset();
+            this.usedContextEncoders.clear();
+            this.blockRenderContext.reset();
+            this.currentState = null;
+            this.currentBlockAccess = null;
+            this.currentShaderMetadata = 0;
+            this.currentShaderBlockId = -1;
+            this.currentRenderLayer = null;
+        }
+    }
+
     public void renderBlock(IBlockState state, BlockPos pos, ActiniumBlockAccess blockAccess, BlockRenderLayer layer, boolean allowRenderPassOptimization) {
         int defaultFlags = BakedQuadGroupAnalyzer.USE_ALL_THINGS;
         if (!this.useRenderPassOptimization || !allowRenderPassOptimization) {
@@ -125,10 +168,17 @@ public class VintageBlockRenderer {
         this.analyzer.setDefaultRenderingFlags(defaultFlags);
         this.usedContextEncoders.clear();
 
-        if (blockAccess.getWorldType() != WorldType.DEBUG_ALL_BLOCK_STATES) {
-            state = state.getActualState(blockAccess, pos);
+        IBakedModel model;
+        if (this.dispatchedModelPending) {
+            // Dispatcher has already applied its actual-state rule and selected this model.
+            state = this.dispatchedModel.dispatcherState();
+            model = this.dispatchedModel.model();
+        } else {
+            if (blockAccess.getWorldType() != WorldType.DEBUG_ALL_BLOCK_STATES) {
+                state = state.getActualState(blockAccess, pos);
+            }
+            model = this.shapes.getModelForState(state);
         }
-        var model = this.shapes.getModelForState(state);
         if (MissingModelCompat.isMissingModel(model)) {
             // Missing models have no renderable quads; Forge's fancy variant lazily renders a
             // "missing" label through the font renderer, which requires a GL context and crashes
@@ -138,7 +188,9 @@ public class VintageBlockRenderer {
         this.currentBlockAccess = blockAccess;
         this.currentMetadata = state.getBlock().getMetaFromState(state);
         this.currentShaderMetadata = applyShaderStateBits(state, pos, blockAccess, this.currentMetadata);
-        state = state.getBlock().getExtendedState(state, blockAccess, pos);
+        state = this.dispatchedModelPending
+                ? this.dispatchedModel.extendedState()
+                : state.getBlock().getExtendedState(state, blockAccess, pos);
         this.currentState = state;
         this.currentShaderBlockId = resolveShaderBlockId(state, pos);
         this.currentRenderLayer = layer;
@@ -156,6 +208,7 @@ public class VintageBlockRenderer {
         var aoEnabled = Minecraft.isAmbientOcclusionEnabled() && state.getLightValue(blockAccess, pos) == 0 && model.isAmbientOcclusion(state);
 
         var lighter = this.lighters.getLighter(aoEnabled ? LightMode.SMOOTH : LightMode.FLAT);
+        boolean checkSides = !this.dispatchedModelPending || this.dispatchedCheckSides;
 
         AODebug.logRenderDecision(
             "block",
@@ -172,7 +225,9 @@ public class VintageBlockRenderer {
         );
 
         for (var dir : EnumFacing.VALUES) {
-            var quads = model.getQuads(state, dir, rand);
+            var quads = this.dispatchedModelPending
+                    ? this.dispatchedModel.getQuads(dir, rand)
+                    : model.getQuads(state, dir, rand);
 
             // The vanilla face-culling call stays at this call site on purpose: addon mixins
             // @Redirect instructions inside renderBlock (see VintageBlockRendererBindingContractTest),
@@ -181,15 +236,20 @@ public class VintageBlockRenderer {
             // already culled the face: vanilla learns that rule from the hider's redirects inside
             // BlockModelRenderer, which this fast mesher does not go through, so a hidden block would
             // otherwise still occlude and punch a see-through hole into every adjacent block.
-            if (quads.isEmpty()
-                    || (!state.shouldSideBeRendered(blockAccess, pos, dir)
-                            && !ComponentModelHiderCompat.isNeighbourHidden(pos, dir))) {
+            if (!DispatchedModelRenderDecision.hasQuads(quads)) {
+                continue;
+            }
+
+            boolean sideVisible = !checkSides || state.shouldSideBeRendered(blockAccess, pos, dir);
+            boolean neighbourHidden = checkSides && !sideVisible
+                    && ComponentModelHiderCompat.isNeighbourHidden(pos, dir);
+            if (!DispatchedModelRenderDecision.shouldRenderFace(true, checkSides, sideVisible, neighbourHidden)) {
                 continue;
             }
 
             quads = BlockQuadTransformerHolder.transform(
                     state, pos, blockAccess, layer, dir, quads);
-            if (quads.isEmpty()) {
+            if (!DispatchedModelRenderDecision.hasQuads(quads)) {
                 continue;
             }
 
@@ -197,12 +257,14 @@ public class VintageBlockRenderer {
             renderQuadList(buffer, buffers, material, pos, dir, lighter, colorProvider, offset, quads);
         }
 
-        var quads = model.getQuads(state, null, rand);
+        var quads = this.dispatchedModelPending
+                ? this.dispatchedModel.getQuads(null, rand)
+                : model.getQuads(state, null, rand);
 
-        if (!quads.isEmpty()) {
+        if (DispatchedModelRenderDecision.hasQuads(quads)) {
             quads = BlockQuadTransformerHolder.transform(
                     state, pos, blockAccess, layer, null, quads);
-            if (!quads.isEmpty()) {
+            if (DispatchedModelRenderDecision.hasQuads(quads)) {
                 this.currentQuadRenderingFlags = this.analyzer.getFlagsForRendering(ModelQuadFacing.UNASSIGNED, BakedQuadView.ofList(quads));
                 renderQuadList(buffer, buffers, material, pos, null, lighter, colorProvider, offset, quads);
             }
@@ -341,7 +403,7 @@ public class VintageBlockRenderer {
 
         if (BlockRenderingSettings.INSTANCE.getBlockNbtMap() != null && block.hasTileEntity(state)) {
             TileEntity tileEntity = this.currentBlockAccess.getTileEntity(pos);
-            nbtBlockId = BlockRenderingSettings.INSTANCE.resolveBlockNbtId(block, tileEntity);
+            nbtBlockId = BlockRenderingSettings.INSTANCE.resolveBlockNbtId(block, this.currentMetadata, tileEntity);
             if (nbtBlockId != -1) {
                 shaderBlockId = nbtBlockId;
             }
@@ -419,6 +481,9 @@ public class VintageBlockRenderer {
 
         var vertexBuffer = builder.getVertexBuffer(normalFace);
         vertexBuffer.push(vertices, material);
+        if (this.dispatchedModelPending) {
+            this.dispatchedQuadEmissions.recordEmission();
+        }
     }
 }
 

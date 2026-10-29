@@ -14,6 +14,7 @@ import com.dhj.actinium.mixin.vintage.core.terrain.AccessorEntityRenderer;
 import com.dhj.actinium.render.FastLitItemDisplayListCache;
 import com.dhj.actinium.render.terrain.ActiniumWorldRenderer;
 import com.dhj.actinium.runtime.ActiniumRuntime;
+import com.dhj.actinium.startup.ProgramCacheContextReset;
 import com.gtnewhorizons.angelica.proxy.ClientProxy;
 import com.gtnewhorizon.gtnhlib.compat.Mods;
 import net.coderbot.iris.debug.IrisDebugOptions;
@@ -22,12 +23,17 @@ import com.gtnewhorizon.gtnhlib.client.renderer.postprocessing.PostProcessingBri
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
 import com.gtnewhorizons.angelica.glsm.compat.FogDistanceModeBridge;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
+import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import com.gtnewhorizons.angelica.iris.IrisGLSMBridge;
+import com.gtnewhorizons.angelica.utils.AngelicaJar;
 import com.mojang.realmsclient.gui.ChatFormatting;
 import net.coderbot.iris.Iris;
+import net.coderbot.iris.celeritas.WorldRendererCompatBridge;
 import net.coderbot.iris.pipeline.AdaptiveShadowBoundsStats;
 import net.coderbot.iris.compat.dh.DHCompat;
 import net.coderbot.iris.rendertarget.IRenderTargetExt;
+import net.coderbot.iris.texture.pbr.PBRResourceIndex;
+import net.coderbot.iris.texture.pbr.PBRTextureManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.resources.IReloadableResourceManager;
@@ -44,6 +50,7 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import dhj.embeddedt.embeddium.impl.common.util.MathUtil;
 import dhj.embeddedt.embeddium.impl.common.util.NativeBuffer;
 import dhj.embeddedt.embeddium.impl.gl.device.GLRenderDevice;
+import dhj.embeddedt.embeddium.impl.gl.shader.GlProgram;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
 import dhj.embeddedt.embeddium.impl.runtime.EmbeddiumRuntimeOptions;
 import java.io.IOException;
@@ -75,8 +82,7 @@ public class Actinium {
         PostProcessingBridge.setNightVisionBrightnessInvoker(
             (entity, partialTicks) -> ((AccessorEntityRenderer) Minecraft.getMinecraft().entityRenderer)
                 .invokeGetNightVisionBrightness(entity, partialTicks));
-        net.coderbot.iris.celeritas.WorldRendererCompatBridge.setProvider(
-            com.dhj.actinium.render.terrain.ActiniumWorldRenderer::instanceNullable);
+        WorldRendererCompatBridge.setProvider(ActiniumWorldRenderer::instanceNullable);
         IrisDebugOptions.setBridge(new IrisDebugOptions.Bridge() {
             @Override
             public boolean pbrDebugEnabled() {
@@ -161,6 +167,14 @@ public class Actinium {
 
         GLSMHooks.textureBindSyncCallback = VanillaTextureMirrorCompat.createCallback();
 
+        // Celeritas links its own terrain programs, bypassing GLStateManager.glLinkProgram and the
+        // link-time parameters it sets. The hook is installed from here because only the root module sees
+        // both sides: celeritas must not reach into glsm, and glsm must not reach into celeritas.
+        GlProgram.setLinkHook(ProgramBinaryCache::markRetrievable);
+
+        // Same reason: GLSM detects a display-context migration, the program caches live in glsm and shader.
+        ProgramCacheContextReset.install();
+
         ActiniumDiagnostics.logConstruction();
         initializeDistantHorizonsCompat();
         MinecraftForge.EVENT_BUS.register(this);
@@ -183,6 +197,18 @@ public class Actinium {
         }
 
         if (Iris.enabled) {
+            // Configure before pack parsing; classes directories keep the on-disk cache disabled.
+            var container = Loader.instance().getIndexedModList().get(MODID);
+            AngelicaJar.configureShaderDiskCache(
+                container != null ? container.getSource() : null,
+                Minecraft.getMinecraft().gameDir.toPath());
+            // Registration immediately observes the loaded packs and later invalidates on every reload.
+            ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
+                    .registerReloadListener(PBRTextureManager.INSTANCE::onResourceManagerReload);
+            GLSMPerfDebugHooks.addStatsProvider(PBRResourceIndex::statsSummary);
+            // Reports the saved-program cache once it has seen a program; before that the summary is empty
+            // and the perf report leaves it out.
+            GLSMPerfDebugHooks.addStatsProvider(ProgramBinaryCache::statsSummary);
             IrisGLSMBridge.register();
             Iris.INSTANCE.fmlInitEvent();
             MinecraftForge.EVENT_BUS.register(Iris.INSTANCE);

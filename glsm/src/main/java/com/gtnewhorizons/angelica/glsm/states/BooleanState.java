@@ -50,6 +50,7 @@ public class BooleanState implements ISettableState<BooleanState> {
             stateUnknown = false;
             if (!bypass) {
                 this.enabled = enabled;
+                onEnabledChanged();
             }
             if (!ffpStateOnly) {
                 if (enabled) {
@@ -60,6 +61,9 @@ public class BooleanState implements ISettableState<BooleanState> {
             }
         }
     }
+
+    /** Called after a cached enable transition so context-level masks can stay synchronized. */
+    protected void onEnabledChanged() {}
 
     @Override
     public BooleanState set(BooleanState state) {

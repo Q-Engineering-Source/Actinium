@@ -53,10 +53,11 @@ public class Color4 implements ISettableState<Color4> {
     }
 
     public void get(FloatBuffer params) {
-        params.put(0, red);
-        params.put(1, green);
-        params.put(2, blue);
-        params.put(3, alpha);
+        final int pos = params.position();
+        params.put(pos + 0, red);
+        params.put(pos + 1, green);
+        params.put(pos + 2, blue);
+        params.put(pos + 3, alpha);
     }
 
     @Override

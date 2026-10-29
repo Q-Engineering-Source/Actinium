@@ -19,15 +19,7 @@ public class FloatUniform extends Uniform {
 	}
 
 	@Override
-	public void update() {
-		updateValue();
-
-		if (notifier != null) {
-			notifier.setListener(this::updateValue);
-		}
-	}
-
-	private void updateValue() {
+	protected void updateValue() {
 		float newValue = value.getAsFloat();
 
 		if (cachedValue != newValue) {

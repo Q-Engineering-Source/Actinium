@@ -65,11 +65,11 @@ section 的 `animatedSprites`,只要该 region 有任一可见 section 就标记
    合并通道里 `CUTOUT` 与 `CUTOUT_MIPPED` 仍共用 `cutout_mipped` pass（不增加 draw pass,
    `ChunkBuildBuffers.get(material)` 按 pass 取 builder）,但 `CUTOUT` 的 `Material`
    `mipped = false`;不合并的分支里独立的 `cutout` pass 也按 `mipped = false` 构建。
-2. **着色器消费 `useMip` 位**:`chunk_material.glsl` 新增 `_material_use_mip()`,
-   `block_layer_opaque.vsh` 透传 `v_MaterialUseMip`,`block_layer_opaque.fsh` 在
-   `useMip = false` 时用 `textureLod(..., 0.0)` 把采样锁在 mip0。顶点格式未变
-   （`MaterialParameters` bit 0 本来就在编码里）,`LEGACY`/GLSL 120 回退保持原行为,
-   避免老驱动编译失败。
+2. **着色器消费 `useMip` 位**:`chunk_material.glsl` 新增 `_material_mip_bias()`,把该位换算成
+   `-4`（非 mipped）或 `0` 的 mip 偏置;`block_layer_opaque.vsh` 原样传递 `v_MaterialMipBias`,
+   `block_layer_opaque.fsh` 的三个采样路径都折叠这个偏置。顶点格式未变
+   （`MaterialParameters` bit 0 本来就在编码里）。`LEGACY`/GLSL 120 的 downlevel 分支没有
+   `textureLod`,保持两参数 `texture()`,避免老驱动编译失败。
 
 ### 影响面
 

@@ -11,6 +11,11 @@ public final class ActiniumRuntimeOptions {
     private static final String DEFERRED_PARTICLE_BATCHING_PROPERTY = "actinium.deferredParticleBatching";
     private static final String PERF_DEBUG_PROPERTY = "actinium.perfDebug";
     private static final String PBR_DEBUG_PROPERTY = "actinium.pbrDebug";
+    private static final String PARALLEL_ATLAS_DECODE_PROPERTY = "actinium.parallelAtlasDecode";
+    private static final String PARALLEL_ATLAS_MIPMAPS_PROPERTY = "actinium.parallelAtlasMipmaps";
+    private static final String BATCHED_ATLAS_UPLOAD_PROPERTY = "actinium.batchedAtlasUpload";
+    private static final String WORKER_THREADS_PROPERTY = "actinium.workerThreads";
+    private static final int MAX_WORKER_THREADS = 32;
 
     private ActiniumRuntimeOptions() {
     }
@@ -108,6 +113,44 @@ public final class ActiniumRuntimeOptions {
         } catch (RuntimeException | LinkageError ignored) {
             return false;
         }
+    }
+
+    public static boolean enableParallelAtlasDecode() {
+        String override = System.getProperty(PARALLEL_ATLAS_DECODE_PROPERTY);
+        if (override != null) {
+            return Boolean.parseBoolean(override);
+        }
+
+        return ActiniumRuntime.options().performance.enableParallelAtlasDecode;
+    }
+
+    public static boolean enableParallelAtlasMipmaps() {
+        String override = System.getProperty(PARALLEL_ATLAS_MIPMAPS_PROPERTY);
+        if (override != null) {
+            return Boolean.parseBoolean(override);
+        }
+
+        return ActiniumRuntime.options().performance.enableParallelAtlasMipmaps;
+    }
+
+    public static boolean enableBatchedAtlasUpload() {
+        String override = System.getProperty(BATCHED_ATLAS_UPLOAD_PROPERTY);
+        if (override != null) {
+            return Boolean.parseBoolean(override);
+        }
+
+        return ActiniumRuntime.options().performance.enableBatchedAtlasUpload;
+    }
+
+    /** Zero selects the worker pool's bounded CPU-based size. */
+    public static int workerThreadCount() {
+        return resolveWorkerThreadCount(ActiniumRuntime.options().performance.workerThreadCount);
+    }
+
+    public static int resolveWorkerThreadCount(int configuredCount) {
+        String override = System.getProperty(WORKER_THREADS_PROPERTY);
+        int requestedCount = override == null ? configuredCount : Integer.parseInt(override);
+        return Math.max(0, Math.min(MAX_WORKER_THREADS, requestedCount));
     }
 
     public static boolean resolvePbrDebugEnabled(boolean configuredEnabled) {

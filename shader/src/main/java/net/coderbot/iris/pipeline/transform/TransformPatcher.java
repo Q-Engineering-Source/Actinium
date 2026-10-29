@@ -1,6 +1,7 @@
 package net.coderbot.iris.pipeline.transform;
 
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
+import com.gtnewhorizons.angelica.glsm.shader.ShaderDiskCache;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.gbuffer_overrides.matching.InputAvailability;
@@ -128,13 +129,24 @@ public class TransformPatcher {
             }
         }
 
+        final ShaderDiskCache.Key diskKey = TransformDiskCache.graphicsKey(vertex, geometry, tessControl, tessEval,
+            fragment, parameters, key.adaptiveShadowBoundsInstrumentation, key.adaptiveShadowBoundsBinding);
+        if (diskKey != null) {
+            final Map<PatchShaderType, String> diskHit = TransformDiskCache.get(diskKey);
+            if (diskHit != null) {
+                return adoptDiskHit(key, diskHit, CacheDomain.GRAPHICS, logCacheEvents);
+            }
+        }
+
         final long transformStart = logCacheEvents ? System.nanoTime() : 0L;
         final Map<PatchShaderType, String> transformed = ShaderTransformer.transform(vertex, geometry, tessControl, tessEval, fragment, parameters);
         if (!useCache) {
             return finishWithoutCache(transformed, CacheDomain.GRAPHICS, transformStart, logCacheEvents);
         }
 
-        return cacheResult(key, transformed, CacheDomain.GRAPHICS, transformStart, logCacheEvents);
+        final Map<PatchShaderType, String> result = cacheResult(key, transformed, CacheDomain.GRAPHICS, transformStart, logCacheEvents);
+        TransformDiskCache.put(diskKey, result);
+        return result;
     }
 
     static Map<PatchShaderType, String> transformCompute(String compute, Parameters parameters) {
@@ -151,13 +163,24 @@ public class TransformPatcher {
             }
         }
 
+        final ShaderDiskCache.Key diskKey = TransformDiskCache.computeKey(compute, parameters,
+            key.adaptiveShadowBoundsInstrumentation, key.adaptiveShadowBoundsBinding);
+        if (diskKey != null) {
+            final Map<PatchShaderType, String> diskHit = TransformDiskCache.get(diskKey);
+            if (diskHit != null) {
+                return adoptDiskHit(key, diskHit, CacheDomain.COMPUTE, logCacheEvents);
+            }
+        }
+
         final long transformStart = logCacheEvents ? System.nanoTime() : 0L;
         final Map<PatchShaderType, String> transformed = ShaderTransformer.transformCompute(compute, parameters);
         if (!useCache) {
             return finishWithoutCache(transformed, CacheDomain.COMPUTE, transformStart, logCacheEvents);
         }
 
-        return cacheResult(key, transformed, CacheDomain.COMPUTE, transformStart, logCacheEvents);
+        final Map<PatchShaderType, String> result = cacheResult(key, transformed, CacheDomain.COMPUTE, transformStart, logCacheEvents);
+        TransformDiskCache.put(diskKey, result);
+        return result;
     }
 
     private static Map<PatchShaderType, String> getCached(CacheKey key, CacheDomain domain, boolean logCacheEvents) {
@@ -169,6 +192,34 @@ public class TransformPatcher {
             Iris.logger.info("[ShaderTransformCache] {} hit cacheSize={}", domain.logLabel, cacheSize());
         }
         return cached;
+    }
+
+    /**
+     * Publishes a result restored from disk into the in-memory cache and returns the canonical map.
+     *
+     * <p>A concurrent caller may have finished the same transform while this one was reading the entry. The
+     * in-memory map wins in that case so every caller in this session observes one shared instance, which is the
+     * same contract {@link #cacheResult} upholds for locally produced results.
+     */
+    private static Map<PatchShaderType, String> adoptDiskHit(CacheKey key, Map<PatchShaderType, String> loaded,
+                                                             CacheDomain domain, boolean logCacheEvents) {
+        final Map<PatchShaderType, String> immutable = immutableResult(loaded);
+        final Map<PatchShaderType, String> result;
+        final int size;
+        synchronized (cache) {
+            final Map<PatchShaderType, String> existing = cache.get(key);
+            if (existing != null) {
+                result = existing;
+            } else {
+                cache.put(key, immutable);
+                result = immutable;
+            }
+            size = cache.size();
+        }
+        if (logCacheEvents) {
+            Iris.logger.info("[ShaderTransformCache] {} diskHit cacheSize={}", domain.logLabel, size);
+        }
+        return result;
     }
 
     private static Map<PatchShaderType, String> cacheResult(CacheKey key, Map<PatchShaderType, String> transformed,
@@ -209,7 +260,8 @@ public class TransformPatcher {
         return immutable;
     }
 
-    private static int cacheSize() {
+    /** {@return the number of source sets currently cached} */
+    public static int cacheSize() {
         synchronized (cache) {
             return cache.size();
         }

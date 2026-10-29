@@ -3,6 +3,7 @@ package com.gtnewhorizons.angelica.glsm.ffp;
 import com.gtnewhorizons.angelica.glsm.GLDebug;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
+import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
 import lombok.Getter;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
@@ -12,6 +13,8 @@ import org.lwjgl.opengl.GL43;
 import org.lwjgl.opengl.KHRDebug;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
 
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
 
@@ -25,7 +28,7 @@ public class Program {
     @Getter private final int programId;
     @Getter private final VertexKey vertexKey;
     @Getter private final FragmentKey fragmentKey;
-    private final ProgramUniformState uniformState = new ProgramUniformState();
+    private final Map<GLContextIdentity, ProgramUniformState> uniformStates = new ConcurrentHashMap<>();
 
     // Uniform locations (-1 = not present in this variant)
     // Matrices
@@ -198,8 +201,15 @@ public class Program {
         return RENDER_BACKEND.getUniformLocation(programId, name);
     }
 
-    ProgramUniformState getUniformState() {
-        return uniformState;
+    ProgramUniformState getUniformState(GLContextIdentity identity) {
+        if (identity == null) {
+            throw new IllegalStateException("FFP uniform upload requires a registered current context");
+        }
+        return uniformStates.computeIfAbsent(identity, ignored -> new ProgramUniformState());
+    }
+
+    void retireContext(GLContextIdentity identity) {
+        uniformStates.remove(identity);
     }
 
     public void destroy() {

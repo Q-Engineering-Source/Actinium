@@ -20,40 +20,46 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * as having vertex color renders with the black default attribute value).
  */
 class VertexAttribStateTest {
+    private VertexAttribState state;
 
-    // Must be a direct (native) buffer: VertexAttribState.set captures the client pointer's
+    // Must be a direct (native) buffer: the instance model captures the client pointer's
     // native address via MemoryUtilities, which has no valid address for a heap buffer.
     private static final ByteBuffer VERTEX_DATA = ByteBuffer.allocateDirect(256);
 
     @BeforeEach
     void resetState() {
-        VertexAttribState.init(0);
+        state = new VertexAttribState(405L, new BufferGenerationTracker(405L));
+        state.initForContext(0);
     }
 
-    @Test
-    void resetKeepsCurrentVaoReadyForAttributeUpdates() {
-        final int location = Usage.POSITION.getAttributeLocation();
-        VertexAttribState.onBindVertexArray(7);
-
-        VertexAttribState.reset();
-        VertexAttribState.setEnabled(location, true);
-
-        assertTrue(VertexAttribState.isAttribEnabled(location));
-        assertFalse(VertexAttribState.hasAnyClientSideEnabledAttrib());
-    }
-
-    private static void enableClientArray(Usage usage) {
+    private void enableClientArray(Usage usage) {
         final int location = usage.getAttributeLocation();
-        VertexAttribState.set(location, 3, GL11.GL_FLOAT, false, 12, VERTEX_DATA, 0);
-        VertexAttribState.setEnabled(location, true);
+        state.setPointer(location, 3, GL11.GL_FLOAT, false, 12, VERTEX_DATA, 0);
+        state.setEnabledForContext(location, true);
+    }
+
+    /**
+     * A reset during startup runs while another thread may already have issued client-array calls, so the
+     * model has to stay usable for the VAO that is still bound (#216).
+     */
+    @Test
+    void resetStateKeepsCurrentVaoReadyForAttributeUpdates() {
+        final int location = Usage.POSITION.getAttributeLocation();
+        state.bindVertexArray(7);
+
+        state.resetState();
+        state.setEnabledForContext(location, true);
+
+        assertTrue(state.isAttribEnabledForContext(location));
+        assertFalse(state.hasAnyClientSideEnabledAttribForContext());
     }
 
     @Test
     void positionOnlyDrawYieldsNoFormatFlags() {
         enableClientArray(Usage.POSITION);
 
-        assertTrue(VertexAttribState.hasAnyClientSideEnabledAttrib());
-        assertEquals(0, VertexAttribState.currentClientArrayVertexFlags());
+        assertTrue(state.hasAnyClientSideEnabledAttribForContext());
+        assertEquals(0, state.currentClientArrayVertexFlagsForContext());
     }
 
     @Test
@@ -66,38 +72,38 @@ class VertexAttribStateTest {
 
         assertEquals(
             VertexFlags.COLOR_BIT | VertexFlags.NORMAL_BIT | VertexFlags.TEXTURE_BIT | VertexFlags.BRIGHTNESS_BIT,
-            VertexAttribState.currentClientArrayVertexFlags());
+            state.currentClientArrayVertexFlagsForContext());
     }
 
     @Test
     void disabledAttributeContributesNothing() {
         enableClientArray(Usage.POSITION);
         enableClientArray(Usage.COLOR);
-        VertexAttribState.setEnabled(Usage.COLOR.getAttributeLocation(), false);
+        state.setEnabledForContext(Usage.COLOR.getAttributeLocation(), false);
 
-        assertEquals(0, VertexAttribState.currentClientArrayVertexFlags());
+        assertEquals(0, state.currentClientArrayVertexFlagsForContext());
     }
 
     @Test
     void vboBackedAttributeStillCountsAsProvidedData() {
         enableClientArray(Usage.POSITION);
         final int colorLocation = Usage.COLOR.getAttributeLocation();
-        VertexAttribState.set(colorLocation, 4, GL11.GL_UNSIGNED_BYTE, true, 16, 0L, 7);
-        VertexAttribState.setEnabled(colorLocation, true);
+        state.setPointer(colorLocation, 4, GL11.GL_UNSIGNED_BYTE, true, 16, 0L, 7);
+        state.setEnabledForContext(colorLocation, true);
 
-        assertEquals(VertexFlags.COLOR_BIT, VertexAttribState.currentClientArrayVertexFlags());
+        assertEquals(VertexFlags.COLOR_BIT, state.currentClientArrayVertexFlagsForContext());
     }
 
     @Test
     void clientSideDetectionRequiresAClientPointer() {
         enableClientArray(Usage.POSITION);
-        assertTrue(VertexAttribState.hasAnyClientSideEnabledAttrib());
+        assertTrue(state.hasAnyClientSideEnabledAttribForContext());
 
-        VertexAttribState.setEnabled(Usage.POSITION.getAttributeLocation(), false);
-        assertFalse(VertexAttribState.hasAnyClientSideEnabledAttrib());
+        state.setEnabledForContext(Usage.POSITION.getAttributeLocation(), false);
+        assertFalse(state.hasAnyClientSideEnabledAttribForContext());
 
         enableClientArray(Usage.POSITION);
-        VertexAttribState.set(Usage.POSITION.getAttributeLocation(), 3, GL11.GL_FLOAT, false, 12, 0L, 3);
-        assertFalse(VertexAttribState.hasAnyClientSideEnabledAttrib());
+        state.setPointer(Usage.POSITION.getAttributeLocation(), 3, GL11.GL_FLOAT, false, 12, 0L, 3);
+        assertFalse(state.hasAnyClientSideEnabledAttribForContext());
     }
 }

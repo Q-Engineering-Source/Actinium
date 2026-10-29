@@ -13,6 +13,8 @@ import dhj.embeddedt.embeddium.impl.gui.framework.TextComponent;
 import dhj.embeddedt.embeddium.impl.gui.options.TextProvider;
 import dhj.embeddedt.embeddium.impl.render.chunk.MultiDrawMode;
 import dhj.embeddedt.embeddium.impl.render.chunk.occlusion.AsyncOcclusionMode;
+import dhj.embeddedt.embeddium.impl.texture.TexelSampling;
+import dhj.embeddedt.embeddium.impl.texture.TextureFilterMode;
 
 import java.io.FileReader;
 import java.io.IOException;
@@ -28,6 +30,9 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
 
     private static final String DEFAULT_FILE_NAME = "actinium-options.json";
     private static final List<String> LEGACY_FILE_NAMES = List.of("embeddium-options.json");
+
+    /** Mip level count the last loaded block atlas ended up with, or -1 before the first load. */
+    private static int atlasMipmapLevels = -1;
 
     /**
      * Whether the video options screen exposes the DEBUG page. It defaults to
@@ -46,6 +51,16 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
     private boolean readOnly;
 
     private Path configPath;
+
+    /** Records the mip level count of the block atlas that was just loaded. */
+    public static void recordAtlasMipmapLevels(int mipmapLevels) {
+        atlasMipmapLevels = mipmapLevels;
+    }
+
+    /** Returns the recorded block atlas mip level count, or -1 before its first load. */
+    public static int getAtlasMipmapLevels() {
+        return atlasMipmapLevels;
+    }
 
     public static SodiumGameOptions defaults() {
         var options = new SodiumGameOptions();
@@ -92,6 +107,15 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         public boolean useFastBlockRenderer = true;
         public AsyncOcclusionMode asyncOcclusionMode = AsyncOcclusionMode.ONLY_SHADOW;
         public boolean useRasterOcclusionCulling = true;
+
+        // Atlas phases are separate switches so unsupported resource packs can disable only unsafe work.
+        public boolean enableParallelAtlasDecode = true;
+        public boolean enableParallelAtlasMipmaps = true;
+        public boolean enableBatchedAtlasUpload = true;
+        public int workerThreadCount = 0;
+        public String[] atlasTrustedPacks = new String[0];
+        public String[] atlasDistrustedPacks = new String[0];
+        public String[] atlasObservedPacks = new String[0];
     }
 
     public static class AdvancedSettings {
@@ -139,6 +163,12 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         public float biomeColorNoiseGrassIntensity = 0.08F;
         public float biomeColorNoiseFoliageIntensity = 0.08F;
         public float biomeColorNoiseWaterIntensity = 0.08F;
+
+        public TextureFilterMode textureFilterMode = TextureFilterMode.RGSS_ANISOTROPIC;
+        public TexelSampling texelSampling = TexelSampling.LINEAR;
+
+        /** log2 of terrain anisotropic filtering, so 1 is 2x and 4 is 16x. */
+        public int anisotropicLevel = 1;
     }
 
     public static class NotificationSettings {
@@ -256,6 +286,22 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
 
         if (config.advanced.streamingUploadStrategy == null) {
             config.advanced.streamingUploadStrategy = StreamingUploadStrategy.MAP_BUFFER_RANGE;
+        }
+
+        if (config.quality.textureFilterMode == null) {
+            config.quality.textureFilterMode = TextureFilterMode.RGSS_ANISOTROPIC;
+        }
+        if (config.quality.texelSampling == null) {
+            config.quality.texelSampling = TexelSampling.LINEAR;
+        }
+        if (config.performance.atlasTrustedPacks == null) {
+            config.performance.atlasTrustedPacks = new String[0];
+        }
+        if (config.performance.atlasDistrustedPacks == null) {
+            config.performance.atlasDistrustedPacks = new String[0];
+        }
+        if (config.performance.atlasObservedPacks == null) {
+            config.performance.atlasObservedPacks = new String[0];
         }
 
         try {

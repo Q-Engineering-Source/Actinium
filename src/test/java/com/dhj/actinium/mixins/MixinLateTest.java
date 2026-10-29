@@ -87,9 +87,31 @@ class MixinLateTest {
                 "mixins.actinium.littletiles.json",
                 "mixins.actinium.architecturecraft.json",
                 "mixins.actinium.obscuretooltips.json",
-                "mixins.actinium.dsurround.json"
+                "mixins.actinium.dsurround.json",
+                "mixins.actinium.distanthorizons.json"
             ),
-            Set.copyOf(MixinLate.configsFor(modId -> true, className -> true))
+            Set.copyOf(MixinLate.configsFor(modId -> true, className -> true, token -> true))
+        );
+    }
+
+    @Test
+    void distantHorizonsDiagnosticsRequireTheDedicatedAbiGate() {
+        assertEquals(
+            Set.of(),
+            Set.copyOf(MixinLate.configsFor(
+                "distanthorizons"::equals,
+                className -> false,
+                token -> false
+            ))
+        );
+
+        assertEquals(
+            Set.of("mixins.actinium.distanthorizons.json"),
+            Set.copyOf(MixinLate.configsFor(
+                "distanthorizons"::equals,
+                className -> false,
+                "dh-buffer-diagnostics"::equals
+            ))
         );
     }
 }

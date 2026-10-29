@@ -1,6 +1,8 @@
 package com.dhj.actinium.texture;
 
-public interface SpriteExtension {
+import dhj.embeddedt.embeddium.impl.texture.SpritePaddingExtension;
+
+public interface SpriteExtension extends SpritePaddingExtension {
     void celeritas$markActive();
     boolean celeritas$shouldUpdate();
 }

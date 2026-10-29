@@ -23,15 +23,7 @@ public class Vector4Uniform extends Uniform {
 	}
 
 	@Override
-	public void update() {
-		updateValue();
-
-		if (notifier != null) {
-			notifier.setListener(this::updateValue);
-		}
-	}
-
-	private void updateValue() {
+	protected void updateValue() {
 		Vector4fc newValue = value.get();
 
 		if (!newValue.equals(cachedValue)) {

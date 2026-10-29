@@ -1,5 +1,6 @@
 package net.coderbot.iris.config;
 
+import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.gui.option.IrisVideoSettings;
 
@@ -44,6 +45,13 @@ public class IrisConfig {
 	 */
 	private boolean enableDebugOptions;
 
+	/**
+	 * Whether linked programs are written to disk so later runs restore them instead of compiling them again.
+	 * Off by default: the first load of a pack pays the extra compile either way, so the option only becomes
+	 * a win once the pack is loaded a second time.
+	 */
+	private boolean saveCompiledShaders;
+
 	private final Path propertiesPath;
 
 	public IrisConfig(Path propertiesPath) {
@@ -51,6 +59,7 @@ public class IrisConfig {
 		enableShaders = true;
 		disableUpdateMessage = false;
 		enableDebugOptions = false;
+		saveCompiledShaders = false;
 		this.propertiesPath = propertiesPath;
 	}
 
@@ -121,6 +130,21 @@ public class IrisConfig {
 		return enableDebugOptions;
 	}
 
+	/** {@return whether linked programs are saved to disk and restored on the next load} */
+	public boolean shouldSaveCompiledShaders() {
+		return saveCompiledShaders;
+	}
+
+	/**
+	 * Turns saving compiled programs on or off and persists the choice. The saved-program cache is told
+	 * immediately so the next link already follows the new setting instead of waiting for a restart.
+	 */
+	public void setSaveCompiledShaders(boolean save) throws IOException {
+		this.saveCompiledShaders = save;
+		ProgramBinaryCache.setEnabled(save);
+		save();
+	}
+
 	/**
 	 * loads the config file and then populates the string, int, and boolean entries with the parsed entries
 	 *
@@ -145,6 +169,10 @@ public class IrisConfig {
 		}
 		enableDebugOptions = "true".equals(properties.getProperty("enableDebugOptions"));
 		disableUpdateMessage = "true".equals(properties.getProperty("disableUpdateMessage"));
+		saveCompiledShaders = "true".equals(properties.getProperty("saveCompiledShaders"));
+		// The cache gates this on its own: no driver support or no selected pack keeps it off until both
+		// are true, so pushing the flag here cannot start a save before the renderer is initialized.
+		ProgramBinaryCache.setEnabled(saveCompiledShaders);
         // TODO: GUI
         try {
             IrisVideoSettings.shadowDistance = Integer.parseInt(properties.getProperty("maxShadowRenderDistance", "32"));
@@ -172,6 +200,7 @@ public class IrisConfig {
 		properties.setProperty("enableShaders", enableShaders ? "true" : "false");
 		properties.setProperty("enableDebugOptions", enableDebugOptions ? "true" : "false");
 		properties.setProperty("disableUpdateMessage", disableUpdateMessage ? "true" : "false");
+		properties.setProperty("saveCompiledShaders", saveCompiledShaders ? "true" : "false");
 		properties.setProperty("maxShadowRenderDistance", String.valueOf(IrisVideoSettings.shadowDistance));
 		// NB: This uses ISO-8859-1 with unicode escapes as the encoding
 		try (OutputStream os = Files.newOutputStream(propertiesPath)) {

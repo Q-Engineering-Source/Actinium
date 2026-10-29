@@ -2,7 +2,9 @@ package dhj.embeddedt.embeddium.impl.render.chunk.terrain;
 
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.experimental.Accessors;
+import dhj.embeddedt.embeddium.impl.gl.attribute.GlVertexFormat;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.sorting.ChunkPrimitiveType;
 import dhj.embeddedt.embeddium.impl.render.chunk.terrain.material.Material;
 import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.ChunkVertexType;
@@ -78,6 +80,17 @@ public class TerrainRenderPass {
 
     private final @NotNull ChunkPrimitiveType primitiveType;
     private final @NotNull ChunkVertexType vertexType;
+
+    /**
+     * Identifies one region tessellation. Passes can only share a region's geometry arena while their vertex
+     * buffers are interpreted identically, so the key covers everything the vertex-array setup reads: the vertex
+     * format, the primitive type and whether the pass draws from its own index buffer rather than the shared one.
+     */
+    public record TessellationKey(GlVertexFormat vertexFormat, ChunkPrimitiveType primitiveType, boolean sorted) {}
+
+    @Getter
+    @EqualsAndHashCode.Exclude
+    private final TessellationKey tessellationKey;
 
     private final Map<String, String> extraDefines;
 
@@ -173,6 +186,7 @@ public class TerrainRenderPass {
         this.hasNoLightmap = hasNoLightmap;
         this.primitiveType = primitiveType;
         this.vertexType = vertexType;
+        this.tessellationKey = new TessellationKey(vertexType.getVertexFormat(), primitiveType, useTranslucencySorting);
         this.extraDefines = extraDefines != null ? Map.copyOf(extraDefines) : Map.of();
     }
 

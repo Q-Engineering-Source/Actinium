@@ -5,6 +5,7 @@ import dhj.embeddedt.embeddium.impl.gl.device.CommandList;
 import dhj.embeddedt.embeddium.impl.gl.device.DirectMultiDrawBatch;
 import dhj.embeddedt.embeddium.impl.gl.device.IndirectMultiDrawBatch;
 import dhj.embeddedt.embeddium.impl.gl.device.MultiDrawBatch;
+import dhj.embeddedt.embeddium.impl.gl.tessellation.GlTessellation;
 import dhj.embeddedt.embeddium.impl.model.quad.properties.ModelQuadFacing;
 import dhj.embeddedt.embeddium.impl.render.chunk.LocalSectionIndex;
 import dhj.embeddedt.embeddium.impl.render.chunk.MultiDrawMode;
@@ -47,6 +48,15 @@ public final class BatchAssembler {
     public interface AnimatedSectionConsumer {
         void accept(SectionRenderDataStorage storage, int sectionIndex, int slices,
                     float offsetX, float offsetY, float offsetZ);
+    }
+
+    /**
+     * Supplies the vertex array a batch is drawn with. The renderer owns vertex-array creation because the shared
+     * index buffer and the diagnostic registration live there, so assembly asks instead of building one itself.
+     */
+    @FunctionalInterface
+    public interface TessellationProvider {
+        GlTessellation getTessellation(CommandList commandList, RenderRegion region, TerrainRenderPass pass);
     }
 
     /**
@@ -166,6 +176,10 @@ public final class BatchAssembler {
     /**
      * Builds a {@link CachedBatch} for the region, recording the section list and the interval of camera positions
      * within which block face culling (and therefore the assembled batch) stays unchanged.
+     *
+     * <p>The batch only becomes drawable once it is bound to a vertex array, and which array that is depends on the
+     * pass's {@link TerrainRenderPass.TessellationKey}. The provider is therefore asked here, while the batch is
+     * assembled, so a cached batch carries the tessellation it was built against.</p>
      */
     public static CachedBatch createCachedBatch(RenderRegion region,
                                                 SectionRenderDataStorage storage,
@@ -174,11 +188,18 @@ public final class BatchAssembler {
                                                 TerrainRenderPass pass,
                                                 boolean useBlockFaceCulling,
                                                 CommandList commandList,
-                                                MultiDrawMode mode) {
+                                                MultiDrawMode mode,
+                                                TessellationProvider tessellationProvider) {
         var batch = fillRegion(region, storage, renderList, camera, pass, useBlockFaceCulling, mode);
+
+        GlTessellation tessellation = null;
 
         if (batch != null) {
             batch.upload(commandList);
+
+            if (!batch.isEmpty()) {
+                tessellation = tessellationProvider.getTessellation(commandList, region, pass);
+            }
         }
 
         long intervalX, intervalY, intervalZ;
@@ -191,7 +212,7 @@ public final class BatchAssembler {
             intervalX = intervalY = intervalZ = (Integer.MIN_VALUE & 0xFFFFFFFFL) | ((long) Integer.MAX_VALUE << 32);
         }
 
-        return new CachedBatch(batch,
+        return new CachedBatch(batch, tessellation,
                 renderList.getSectionsWithGeometry(), renderList.getSectionsWithGeometryCount(),
                 intervalMin(intervalX), intervalMax(intervalX),
                 intervalMin(intervalY), intervalMax(intervalY),

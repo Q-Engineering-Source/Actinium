@@ -18,7 +18,7 @@ public class VanillaVector3Uniform extends Uniform {
 	}
 
 	@Override
-	public void update() {
+	protected void updateValue() {
         Vec3d newValue = value.get();
 
 		if (newValue.x != cachedX || newValue.y != cachedY || newValue.z != cachedZ) {

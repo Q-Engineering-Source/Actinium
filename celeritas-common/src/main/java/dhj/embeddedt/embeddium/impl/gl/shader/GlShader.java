@@ -21,24 +21,33 @@ public class GlShader extends GlObject {
         this.name = name;
 
         int handle = LWJGL.glCreateShader(type.id);
-        LWJGL.glShaderSourceSafe(handle, src);
-        LWJGL.glCompileShader(handle);
+		try {
+			LWJGL.glShaderSourceSafe(handle, src);
+			LWJGL.glCompileShader(handle);
 
-        String log = LWJGL.glGetShaderInfoLog(handle, 4096);
+			String log = LWJGL.glGetShaderInfoLog(handle, 4096);
 
-        if (!log.isEmpty()) {
-            LOGGER.warn("Shader compilation log for " + this.name + ": " + log);
-        }
+			if (!log.isEmpty()) {
+				LOGGER.warn("Shader compilation log for " + this.name + ": " + log);
+			}
 
-        int result = LWJGL.glGetShaderi(handle, GL20.GL_COMPILE_STATUS);
+			int result = LWJGL.glGetShaderi(handle, GL20.GL_COMPILE_STATUS);
 
-        if (result != GL20.GL_TRUE) {
-            throw new RuntimeException("Shader compilation failed, see log for details");
+			if (result != GL20.GL_TRUE) {
+				throw new RuntimeException("Shader compilation failed, see log for details");
+			}
+
+			GLDebug.nameObject(GL43.GL_SHADER, handle, name);
+		} catch (RuntimeException | Error failure) {
+			try {
+				LWJGL.glDeleteShader(handle);
+			} catch (RuntimeException | Error cleanupFailure) {
+				failure.addSuppressed(cleanupFailure);
+			}
+			throw failure;
         }
 
         this.setHandle(handle);
-
-        GLDebug.nameObject(GL43.GL_SHADER, handle, name);
     }
 
     public String getName() {

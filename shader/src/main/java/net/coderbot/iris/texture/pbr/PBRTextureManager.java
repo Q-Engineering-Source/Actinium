@@ -6,25 +6,27 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.gl.state.StateUpdateNotifiers;
+import net.coderbot.iris.gl.state.MultiListenerNotifier;
 import net.coderbot.iris.rendertarget.NativeImageBackedSingleColorTexture;
 import net.coderbot.iris.texture.pbr.loader.PBRTextureLoader;
 import net.coderbot.iris.texture.pbr.loader.PBRTextureLoader.PBRTextureConsumer;
 import net.coderbot.iris.texture.pbr.loader.PBRTextureLoaderRegistry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.AbstractTexture;
+import net.minecraft.client.resources.IResourceManager;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.opengl.GL11;
 
 public class PBRTextureManager {
 	public static final PBRTextureManager INSTANCE = new PBRTextureManager();
 
-	// TODO: Figure out how to merge these two.
-	private static Runnable normalTextureChangeListener;
-	private static Runnable specularTextureChangeListener;
+	// Each texture kind may be consumed by multiple active sampler bindings.
+	private static final MultiListenerNotifier normalTextureChangeListener = new MultiListenerNotifier();
+	private static final MultiListenerNotifier specularTextureChangeListener = new MultiListenerNotifier();
 
 	static {
-		StateUpdateNotifiers.normalTextureChangeNotifier = listener -> normalTextureChangeListener = listener;
-		StateUpdateNotifiers.specularTextureChangeNotifier = listener -> specularTextureChangeListener = listener;
+		StateUpdateNotifiers.normalTextureChangeNotifier = normalTextureChangeListener;
+		StateUpdateNotifiers.specularTextureChangeNotifier = specularTextureChangeListener;
 	}
 
 	private final Int2ObjectMap<PBRTextureHolder> holders = new Int2ObjectOpenHashMap<>();
@@ -108,6 +110,15 @@ public class PBRTextureManager {
 		holders.clear();
 	}
 
+	/**
+	 * Clears texture-id holders and starts a fresh resource index after the resource manager has loaded
+	 * its new pack list. Minecraft invokes this listener synchronously on the reload thread.
+	 */
+	public void onResourceManagerReload(IResourceManager resourceManager) {
+		clear();
+		PBRResourceIndex.start(resourceManager);
+	}
+
 	public void close() {
 		clear();
 	}
@@ -135,13 +146,9 @@ public class PBRTextureManager {
 	}
 
 	public static void notifyPBRTexturesChanged() {
-		if (normalTextureChangeListener != null) {
-			normalTextureChangeListener.run();
-		}
+		normalTextureChangeListener.run();
 
-		if (specularTextureChangeListener != null) {
-			specularTextureChangeListener.run();
-		}
+		specularTextureChangeListener.run();
 	}
 
 	private class PBRTextureConsumerImpl implements PBRTextureConsumer {

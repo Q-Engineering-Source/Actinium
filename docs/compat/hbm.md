@@ -1,7 +1,7 @@
 # HBM's Nuclear Tech - Community Edition 兼容性说明
 
-兼容状态:**已验证**（dev 实测确认；生产整合包回归待做）
-最后更新:2026-10-19
+兼容状态:**部分**（此前渲染场景已实测；2026-10-21 启动回归的修复待 dev 实机复测）
+最后更新:2026-10-21
 
 ## 验证范围
 
@@ -225,3 +225,65 @@ Actinium 批处理路径未置位的 `compiled` 使部件被过滤，最终没�
 - `./gradlew check --no-daemon` 通过，包含 `MixinConfigurationTest`、模块边界与分发 Jar 结构校验。
 - 已核对分发 Jar 的 refmap，`ModelRenderer.compiled` 正确映射到 `field_78812_q`。
 - 生产整合包回归待做。
+
+## 2026-10-21：WaveFront 模型烘焙时 client-array 状态 NPE
+
+### 现象与证据
+
+Cleanroom 0.6.12-alpha 启动、HBM 注册模型时，`WavefrontObjDisplayList` 编译 HBM 的
+WaveFront 模型触发崩溃。日志 [hKRF4fO](https://mclo.gs/hKRF4fO) 的首个异常是：
+
+```text
+java.lang.NullPointerException: Cannot load from object array because "this.currentConventional" is null
+  at VertexAttribState.setConventionalEnabledForContext
+  at VertexAttribState.setConventionalEnabled
+  at GLStateManager.glEnableClientState
+  at NTMImmediate.drawPositionTexNormal
+  at WavefrontObjDisplayList.<init>
+  at NTMClientRegistry.onModelBake
+```
+
+崩溃报告尾部 LoliASM 在生成 `Suspected Mods` 信息时出现的
+`NoSuchMethodException: LaunchClassLoader.untransformName` 是次生异常，不是首个触发点。
+
+同一启动的 `run/client/logs/latest.log` 还记录 CleanMix 找不到 `org.lwjgl.opengl.Display`、
+`DrawableGL` 与 `ContextGL`，并跳过 Actinium 的旧 context lifecycle Mixins。当前 Cleanroom
+通过 `LWJGLTransformer` 合成这些 legacy 类名，但 `FoundationBytecodeProvider` 在原始
+`org.lwjgl.*` 字节码不可见时不会进入 transformer chain；因此这些 Mixin 钩子没有加载。
+
+### 根因
+
+`GLStateManager.ctx()` 按 native context identity 懒创建 `GLContextState`，其中的
+`VertexAttribState` 会跟随新 context 创建。此前 `VertexAttribState` 构造器只保存 buffer share group，
+没有建立 `current`、`currentGeneric`、`currentConventional` 与 `currentBindings` 数组；只有初始
+`GLStateManager.initialize()` 或默认 VAO 重建时才调用 `initForContext()` 建立数组。另一个活动路径
+`GLStateManager.reset()` 通过 `resetState()` 清空数组后仍保留该 context state。后续
+`glEnableClientState()` 进入 `setConventionalEnabledForContext()` 即对 null 数组取值。
+
+这份日志无法区分 NPE 所在对象是新建 context state，还是被活动 reset 清空的状态：主显示 context
+在 20:43:37 初始化后，20:43:45 起已有 client-array 绘制，直到 HBM 模型烘焙前没有记录 identity
+或 reset 事件。已确认的缺陷是不变量本身：任何被使用的 `VertexAttribState` 都必须拥有有效数组；
+具体触发这次 null 的路径仍需新的身份/reset 诊断信息才能断定。
+
+### 修复
+
+- `VertexAttribState` 构造时创建 VAO 0 的纯 Java 模型；活动 reset 清空状态后会为仍绑定的 VAO
+  重建数组；share-group 替换会创建新的有效模型；只有 context identity 退役时才释放模型数组。
+- `initForContext()` 将先前记录的 VAO 模型迁移到生成的默认 VAO；GLSM 绑定新默认 VAO 后用
+  snapshot/`restoreDriver()` 回放状态，保留 legacy CPU pointer 的数据、enable 与 stride。
+- `LwjglContextLifecycleTransformer` 由 `MixinEarly` 注册，在 LWJGL transformer 合成
+  `org.lwjgl.*` 类字节码后插入 context bind/release/destroy 钩子，并复用
+  `DisplayContextBinding`。移除未能由 CleanMix `FoundationBytecodeProvider` 解析的四个 context
+  lifecycle Mixin 与对应配置。
+
+### 自动验证与剩余验证
+
+- `VertexAttribArrayModelTest` 6 项通过，直接覆盖新建模型首次 conventional enable、reset/share-group
+  替换后继续使用，以及默认 VAO 迁移保留 pointer 与 enable。
+- native `GLNativeContextIntegrationTest` 1 项通过：用真实隐藏 GLFW/OpenGL context 调用公开的
+  `GLStateManager.recreateDefaultVertexArray()`，迁移 CPU client pointer，在 FBO 上调用
+  `glDrawArrays` 并验证读回像素；该 fixture 不启动 Cleanroom Mixin 环境。
+- Cleanroom 合成字节 transformer 验证覆盖加载链顺序、注入 descriptor、幂等性与 null-provider
+  原样传递；运行中的实际 Cleanroom classloader 仍需用户启动验证。
+- `./gradlew check --no-daemon` 与 `./gradlew build --no-daemon` 通过。修复后的 HBM 初始模型烘焙、
+  进主菜单和其它模组渲染尚未在用户整合包实机复测，不据此记录为已解决。

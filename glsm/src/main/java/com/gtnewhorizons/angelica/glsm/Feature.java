@@ -2,20 +2,23 @@ package com.gtnewhorizons.angelica.glsm;
 
 import com.google.common.collect.ImmutableSet;
 import com.gtnewhorizon.gtnhlib.client.renderer.stacks.IStateStack;
+import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import com.gtnewhorizons.angelica.glsm.stacks.BooleanStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.CowStateStack;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class Feature {
     private static final int[] supportedAttribs = new int[] { GL11.GL_ACCUM_BUFFER_BIT, GL11.GL_COLOR_BUFFER_BIT, GL11.GL_CURRENT_BIT, GL11.GL_DEPTH_BUFFER_BIT,
@@ -23,26 +26,10 @@ public class Feature {
         GL13.GL_MULTISAMPLE_BIT, GL11.GL_PIXEL_MODE_BIT, GL11.GL_POINT_BIT, GL11.GL_POLYGON_BIT, GL11.GL_POLYGON_STIPPLE_BIT, GL11.GL_SCISSOR_BIT,
         GL11.GL_STENCIL_BUFFER_BIT, GL11.GL_TEXTURE_BIT, GL11.GL_TRANSFORM_BIT, GL11.GL_VIEWPORT_BIT };
 
-    static final Int2ObjectMap<List<IStateStack<?>>> maskToFeaturesMap = new Int2ObjectOpenHashMap<>();
-    static final Int2ObjectMap<IStateStack<?>[]> maskToNonBooleanStacksMap = new Int2ObjectOpenHashMap<>();
+    private static final Map<GLContextIdentity, ContextFeatures> contextFeatures = new ConcurrentHashMap<>();
 
     static List<IStateStack<?>> maskToFeatures(int mask) {
-        if(maskToFeaturesMap.containsKey(mask)) {
-            return maskToFeaturesMap.get(mask);
-        }
-
-        final Set<IStateStack<?>> features = new HashSet<>();
-
-        for(int attrib : Feature.supportedAttribs) {
-            if((mask & attrib) == attrib) {
-                features.addAll(getFeatures(attrib));
-            }
-        }
-
-        final List<IStateStack<?>> asList = new ArrayList<>(features);
-
-        maskToFeaturesMap.put(mask, asList);
-        return asList;
+        return currentContextFeatures().maskToFeatures(mask);
     }
 
     /**
@@ -50,25 +37,25 @@ public class Feature {
      * These use traditional push/pop without global depth tracking.
      */
     static IStateStack<?>[] maskToNonBooleanStacks(int mask) {
-        IStateStack<?>[] cached = maskToNonBooleanStacksMap.get(mask);
-        if (cached != null) {
-            return cached;
-        }
-
-        final List<IStateStack<?>> all = maskToFeatures(mask);
-        final List<IStateStack<?>> nonBooleans = new ArrayList<>();
-        for (int i = 0; i < all.size(); i++) {
-            final IStateStack<?> stack = all.get(i);
-            if (!(stack instanceof BooleanStateStack)) {
-                nonBooleans.add(stack);
-            }
-        }
-        cached = nonBooleans.toArray(new IStateStack<?>[0]);
-        maskToNonBooleanStacksMap.put(mask, cached);
-        return cached;
+        return currentContextFeatures().maskToNonBooleanStacks(mask);
     }
 
-    private static final Map<Integer, Set<IStateStack<?>>> attribToFeatures = new HashMap<>();
+    /** Returns the current context's bitset of COW stack ids selected by an attribute mask. */
+    static long[] maskToMembers(int mask) {
+        return currentContextFeatures().maskToMembers(mask);
+    }
+
+    private static ContextFeatures currentContextFeatures() {
+        final GLContextIdentity identity = GLStateManager.currentContextIdentity();
+        if (identity == null) {
+            throw new IllegalStateException("Attrib state mapping requires a registered current context");
+        }
+        return contextFeatures.computeIfAbsent(identity, ignored -> buildCurrentContextFeatures());
+    }
+
+    static void onContextRetired(GLContextIdentity identity) {
+        contextFeatures.remove(identity);
+    }
 
     /**
      * Helper method to add all texture gen states (S, T, R, Q) for all texture units to a collection.
@@ -83,7 +70,8 @@ public class Feature {
         }
     }
 
-    static {
+    private static ContextFeatures buildCurrentContextFeatures() {
+        final Int2ObjectMap<Set<IStateStack<?>>> attribToFeatures = new Int2ObjectOpenHashMap<>();
         attribToFeatures.put(GL11.GL_COLOR_BUFFER_BIT, ImmutableSet.of(
               GLStateManager.getAlphaTest()  // GL_ALPHA_TEST enable bit
             , GLStateManager.getAlphaState() // Alpha test function and reference value
@@ -294,7 +282,7 @@ public class Feature {
         ));
         attribToFeatures.put(GL11.GL_SCISSOR_BIT, ImmutableSet.of(
               GLStateManager.getScissorTest() // GL_SCISSOR_TEST enable bit
-            // Scissor box
+            , GLStateManager.getScissorState() // Scissor rectangle
         ));
         attribToFeatures.put(GL11.GL_STENCIL_BUFFER_BIT, ImmutableSet.of(
               GLStateManager.getStencilTest() // GL_STENCIL_TEST enable bit
@@ -320,6 +308,7 @@ public class Feature {
         for(int i = 0 ; i < GLStateManager.MAX_TEXTURE_UNITS; i++) {
             textureAttribs.add(GLStateManager.getTextures().getTextureUnitBindings(i));
             textureAttribs.add(GLStateManager.getTextures().getTexEnvState(i));
+            textureAttribs.add(GLStateManager.getTextures().getTexGenState(i));
         }
 
         // Enable bits GL_TEXTURE_GEN_x where x is S, T, R, or Q
@@ -327,22 +316,96 @@ public class Feature {
 
         attribToFeatures.put(GL11.GL_TEXTURE_BIT, textureAttribs);
 
-        attribToFeatures.put(GL11.GL_TRANSFORM_BIT, ImmutableSet.of(
-            // Coefficients of the six clipping planes
-            // Enable bits for the user-definable clipping planes
+        final Set<IStateStack<?>> transformAttribs = new HashSet<>(ImmutableSet.of(
               GLStateManager.getMatrixMode()
-            , GLStateManager.getNormalizeState() // GL_NORMALIZE flag
-            , GLStateManager.getRescaleNormalState() // GL_RESCALE_NORMAL flag
+            , GLStateManager.getNormalizeState()
+            , GLStateManager.getRescaleNormalState()
+            , GLStateManager.getClipPlaneState()
         ));
+        transformAttribs.addAll(Arrays.asList(GLStateManager.getClipPlaneStates()));
+        attribToFeatures.put(GL11.GL_TRANSFORM_BIT, transformAttribs);
         attribToFeatures.put(GL11.GL_VIEWPORT_BIT, ImmutableSet.of(
             // Depth range (near and far)
             GLStateManager.getViewportState()
         ));
+
+        return new ContextFeatures(attribToFeatures);
     }
 
     public static Set<IStateStack<?>> getFeatures(int attrib) {
-        return attribToFeatures.getOrDefault(attrib, Collections.emptySet());
+        return currentContextFeatures().getFeatures(attrib);
     }
 
+    private static final class ContextFeatures {
+        private final Int2ObjectMap<Set<IStateStack<?>>> attribToFeatures;
+        private final Int2ObjectMap<List<IStateStack<?>>> maskToFeatures = new Int2ObjectOpenHashMap<>();
+        private final Int2ObjectMap<IStateStack<?>[]> maskToNonBooleanStacks = new Int2ObjectOpenHashMap<>();
+        private final Int2ObjectMap<long[]> maskToMembers = new Int2ObjectOpenHashMap<>();
 
+        private ContextFeatures(Int2ObjectMap<Set<IStateStack<?>>> attribToFeatures) {
+            this.attribToFeatures = attribToFeatures;
+        }
+
+        private List<IStateStack<?>> maskToFeatures(int mask) {
+            List<IStateStack<?>> cached = maskToFeatures.get(mask);
+            if (cached != null) {
+                return cached;
+            }
+            final Set<IStateStack<?>> features = new HashSet<>();
+            for (int attrib : supportedAttribs) {
+                if ((mask & attrib) == attrib) {
+                    features.addAll(getFeatures(attrib));
+                }
+            }
+            cached = new ArrayList<>(features);
+            maskToFeatures.put(mask, cached);
+            return cached;
+        }
+
+        private IStateStack<?>[] maskToNonBooleanStacks(int mask) {
+            IStateStack<?>[] cached = maskToNonBooleanStacks.get(mask);
+            if (cached != null) {
+                return cached;
+            }
+            final List<IStateStack<?>> all = maskToFeatures(mask);
+            final List<IStateStack<?>> nonBooleans = new ArrayList<>();
+            for (IStateStack<?> stack : all) {
+                if (!(stack instanceof BooleanStateStack)) {
+                    nonBooleans.add(stack);
+                }
+            }
+            cached = nonBooleans.toArray(new IStateStack<?>[0]);
+            maskToNonBooleanStacks.put(mask, cached);
+            return cached;
+        }
+
+        private long[] maskToMembers(int mask) {
+            long[] cached = this.maskToMembers.get(mask);
+            if (cached != null) {
+                return cached;
+            }
+
+            long[] members = new long[0];
+            for (IStateStack<?> stack : maskToFeatures(mask)) {
+                if (!(stack instanceof CowStateStack<?> cow)) {
+                    continue;
+                }
+                final int id = cow.stackId();
+                if (id < 0) {
+                    continue;
+                }
+                final int word = id >>> 6;
+                if (word >= members.length) {
+                    members = Arrays.copyOf(members, word + 1);
+                }
+                members[word] |= 1L << id;
+            }
+            this.maskToMembers.put(mask, members);
+            return members;
+        }
+
+        private Set<IStateStack<?>> getFeatures(int attrib) {
+            return attribToFeatures.getOrDefault(attrib, Collections.emptySet());
+        }
+    }
 }

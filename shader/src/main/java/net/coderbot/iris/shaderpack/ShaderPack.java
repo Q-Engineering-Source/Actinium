@@ -30,7 +30,6 @@ import net.coderbot.iris.shaderpack.texture.CustomTextureData;
 import net.coderbot.iris.shaderpack.texture.TextureFilteringData;
 import net.coderbot.iris.shaderpack.texture.TextureStage;
 import net.coderbot.iris.uniforms.custom.CustomUniforms;
-import net.irisshaders.iris.api.v0.IrisApi;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.BufferedReader;
@@ -53,6 +52,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -76,8 +76,16 @@ public class ShaderPack {
 
 	private final ProgramSet base;
 	private final Set<FeatureFlags> activeFeatures;
+	/**
+	 * The features this pack requires that the current context cannot provide, in the order the pack
+	 * declares them. Recorded instead of acted on: parsing also runs on the read-ahead thread, so what a
+	 * missing feature means for the player is decided by {@code Iris} on the main thread, where the pack
+	 * is actually taken into use.
+	 */
+	private final List<FeatureFlags> missingRequiredFeatures;
 
 	private final Map<String, String> dimensionMap;
+	private final boolean mappedByDimensionProperties;
 	private final Map<String, ProgramSet> dimensionProgramSets;
 	private final Set<String> foldersWithShaderFiles;
 	private final Function<AbsolutePackPath, String> sourceProvider;
@@ -104,6 +112,11 @@ public class ShaderPack {
 	/**
 	 * Reads a shader pack from the disk.
 	 *
+	 * <p>Reading is pure: the constructor resolves files, options and programs, and records what this
+	 * pack requires, but it never enables or disables shaders, reloads the pipeline or touches any global
+	 * renderer state. That is what allows a pack to be read ahead of time on a background thread, and it
+	 * keeps a missing required feature from destroying the very pack that is being read.</p>
+	 *
 	 * @param root The path to the "shaders" directory within the shader pack. The created ShaderPack will not retain
 	 *             this path in any form; once the constructor exits, all disk I/O needed to load this shader pack will
 	 *             have completed, and there is no need to hold on to the path for that reason.
@@ -111,7 +124,6 @@ public class ShaderPack {
 	 */
 	public ShaderPack(Path root, Map<String, String> changedConfigs, Iterable<StringPair> environmentDefines) throws IOException, IllegalStateException {
 		Objects.requireNonNull(root);
-
 
 		final ImmutableList.Builder<AbsolutePackPath> starts = ImmutableList.builder();
 		final ImmutableList<String> potentialFileNames = ShaderPackSourceNames.POTENTIAL_STARTS;
@@ -139,7 +151,9 @@ public class ShaderPack {
 			dimensionFolders.addAll(parseDimensionMap(dimensionProperties.get(), "dimension."));
 		}
 
-		if (!dimensionFolders.isEmpty()) {
+		this.mappedByDimensionProperties = !dimensionFolders.isEmpty();
+
+		if (mappedByDimensionProperties) {
 			for (String folderName : dimensionFolders) {
 				boolean folderExists = checkAndAddDimensionFolder(starts, root, potentialFileNames, folderName);
 				if (folderExists) {
@@ -182,7 +196,7 @@ public class ShaderPack {
 				Iris.logger.warn("Failed to scan for dimension folders", e);
 			}
 
-            // If world0 folder exists with shader files, use it for Overworld. Otherwise use base for all oher dims.
+			// Unmapped legacy dimensions also use world0 when no world{ID} folder is available.
 			if (foundFolders.contains("world0")) {
 				dimensionMap.put(DimensionId.OVERWORLD.getCanonicalId(), "world0");
 			}
@@ -238,13 +252,13 @@ public class ShaderPack {
 			activeFeatures.add(FeatureFlags.getValue(flag));
 		}
 
-		List<FeatureFlags> invalidFlagList = shaderProperties.getRequiredFeatureFlags().stream().filter(FeatureFlags::isInvalid).map(FeatureFlags::getValue).collect(Collectors.toList());
-		List<String> invalidFeatureFlags = invalidFlagList.stream().map(FeatureFlags::getHumanReadableName).collect(Collectors.toList());
-
-		if (!invalidFeatureFlags.isEmpty()) {
-            // TODO: GUI
-			IrisApi.getInstance().getConfig().setShadersEnabledAndApply(false);
-		}
+		// A pack whose required features are missing is still parsed in full: the caller needs the rest of
+		// the pack to decide what to do, and reporting the missing features is what makes that decision
+		// possible. Nothing is enabled, disabled or reloaded here.
+		this.missingRequiredFeatures = shaderProperties.getRequiredFeatureFlags().stream()
+			.filter(FeatureFlags::isInvalid)
+			.map(FeatureFlags::getValue)
+			.collect(Collectors.toUnmodifiableList());
 
 		ProfileSet profiles = ProfileSet.fromTree(shaderProperties.getProfiles(), this.shaderPackOptions.getOptionSet());
 		this.profile = profiles.scan(this.shaderPackOptions.getOptionSet(), this.shaderPackOptions.getOptionValues());
@@ -286,17 +300,10 @@ public class ShaderPack {
 				return null;
 			}
 
-			ImmutableList<String> lines = includeProcessor.getIncludedFile(path);
+			byte[] contentHash = includeProcessor.getIncludedFileHash(path);
 
-			if (lines == null) {
+			if (contentHash == null) {
 				return null;
-			}
-
-			StringBuilder builder = new StringBuilder();
-
-			for (String line : lines) {
-				builder.append(line);
-				builder.append('\n');
 			}
 
 			// Apply GLSL preprocessor to source, while making environment defines available.
@@ -305,14 +312,21 @@ public class ShaderPack {
 			// #define statements in the actual source - instead, we tell the preprocessor about them
 			// directly. This removes one obstacle to accurate reporting of line numbers for errors,
 			// though there exist many more (such as relocating all #extension directives and similar things)
-			String source = builder.toString();
+			return JcppProcessor.glslPreprocessSource(contentHash, () -> {
+				ImmutableList<String> lines = includeProcessor.getIncludedFile(path);
+				int length = 0;
+				for (String line : lines) {
+					length += line.length() + 1;
+				}
 
-			// Apply shader pack workarounds for version compatibility (before preprocessing)
-			source = ShaderPackWorkarounds.apply(source);
+				StringBuilder builder = new StringBuilder(length);
+				for (String line : lines) {
+					builder.append(line).append('\n');
+				}
 
-			source = JcppProcessor.glslPreprocessSource(source, finalEnvironmentDefines1);
-
-			return source;
+				// Apply shader pack workarounds for version compatibility before preprocessing.
+				return ShaderPackWorkarounds.apply(builder.toString());
+			}, finalEnvironmentDefines1);
 		};
 
 		this.base = new ProgramSet(AbsolutePackPath.fromAbsolutePath("/"), sourceProvider, shaderProperties, this);
@@ -393,6 +407,7 @@ public class ShaderPack {
    *
    * For each entry, creates mappings from each dimension name to its folder name in dimensionMap.
    *
+   * @param properties The properties to parse
    * @param keyPrefix The prefix to filter keys by (typically "dimension.")
    * @return List of folder names found in the properties (e.g., ["world0", "world-1", "custom_dim"])
    */
@@ -443,6 +458,10 @@ public class ShaderPack {
 
 	/**
 	 * Reads a texture from a TextureDefinition. Handles both PNG and raw texture types.
+	 *
+	 * <p>Only the constructor may call this: a pack read from a zip is parsed inside a temporary file
+	 * system that is closed as soon as the constructor returns, so the pack's textures have to be read
+	 * into memory before that. The result is a byte array or a resource location, never a path.</p>
 	 */
 	public CustomTextureData readTexture(Path root, TextureDefinition definition) throws IOException {
 		if (definition instanceof TextureDefinition.RawDefinition rawDef) {
@@ -587,7 +606,7 @@ public class ShaderPack {
 	 * The LinkedHashMap maintains access order, so oldest entries are at the front.
 	 */
 	private void evictOldDimensions() {
-		Set<String> pinnedFolders = resolvePinnedDimensionFolders(dimensionMap, foldersWithShaderFiles);
+		Set<String> pinnedFolders = resolvePinnedDimensionFolders(dimensionMap, foldersWithShaderFiles, mappedByDimensionProperties);
 
 		// If cache is disabled, evict everything except pinned folders
 		if (MAX_DIMENSION_CACHE == 0) {
@@ -629,31 +648,50 @@ public class ShaderPack {
     /**
      * Gets or creates the appropriate ProgramSet for the given dimension.
      *
-     * Resolution order:
-     *
-     *   Exact match in dimension.properties (dimension.<folder> = dimensionName)
-     *   Wildcard match (dimension.<folder> = *)
-     *   Legacy world{ID} folder (e.g., world0, world-1)
-     *   Fallback to base ProgramSet
-     *
-     *
-     * ProgramSets are lazily created and cached. When cache exceeds limit,
-     * least recently used non-vanilla dimensions are evicted.
+     * <p>Resolves the dimension from the world the client is in, which is null on the main menu: callers
+     * that already know the dimension - a pack read ahead of time, for instance - must use {@link
+     * #getProgramSet(String, int)} so the answer does not depend on the last world this client was in.</p>
      *
      * @param dimensionName The canonical dimension key returned by Iris
      * @return The ProgramSet for this dimension, or base ProgramSet if no override exists
      */
     public ProgramSet getProgramSet(String dimensionName) {
-		int dimensionId = Iris.getCurrentDimensionId();
+		return getProgramSet(dimensionName, Iris.getCurrentDimensionId());
+	}
+
+    /**
+     * Gets or creates the appropriate ProgramSet for the given dimension, named explicitly.
+     *
+     * <p>Resolution order:
+     *
+     *   Exact match in dimension.properties (dimension.<folder> = dimensionName)
+     *   Wildcard match (dimension.<folder> = *)
+     *   Legacy world{ID} folder (e.g., world0, world-1)
+     *   Legacy world0 default when no valid dimension.properties mappings exist
+     *   Fallback to base ProgramSet
+     *
+     * <p>ProgramSets are lazily created and cached. When cache exceeds limit, least recently used
+     * non-vanilla dimensions are evicted.</p>
+     *
+     * <p>Must be called from the thread that owns the pack: creating a ProgramSet writes the pack's
+     * access-ordered dimension cache, which is not synchronized. The program sources it reads are all in
+     * memory by the time the constructor has returned.</p>
+     *
+     * @param dimensionName The canonical dimension key
+     * @param dimensionId The numeric dimension ID, used for the legacy world{ID} folder lookup and for
+     *                    canonicalizing a name the pack supplies without a namespace
+     * @return The ProgramSet for this dimension, or base ProgramSet if no override exists
+     */
+    public ProgramSet getProgramSet(String dimensionName, int dimensionId) {
 		String canonicalDimension = DimensionId.canonicalize(dimensionName, dimensionId);
 
 		String folderName = resolveDimensionFolder(
 			dimensionMap,
 			foldersWithShaderFiles,
 			canonicalDimension,
-			dimensionId
+			dimensionId,
+			mappedByDimensionProperties
 		);
-		boolean foundExactMatch = dimensionMap.containsKey(canonicalDimension);
 
 		if (folderName != null && foldersWithShaderFiles.contains(folderName)) {
 			ProgramSet programSet = dimensionProgramSets.get(folderName);
@@ -682,7 +720,7 @@ public class ShaderPack {
 		}
 
 		// Warn if dimension.properties exists but this dimension has no mapping and no wildcard
-		if (!dimensionMap.isEmpty() && !foundExactMatch && !dimensionMap.containsKey("*")) {
+		if (mappedByDimensionProperties && !dimensionMap.containsKey(canonicalDimension) && !dimensionMap.containsKey("*")) {
 			Iris.logger.warn("Dimension '{}' has no shader mapping in dimension.properties and no wildcard (*) fallback is defined. " +
 					"Falling back to base shaders. Consider adding 'dimension.<folder>={}' or 'dimension.<folder>=*' to dimension.properties",
 					canonicalDimension, canonicalDimension);
@@ -701,11 +739,76 @@ public class ShaderPack {
 	}
 
 	/**
+	 * {@return the ProgramSet for a dimension folder, creating and caching it on the first use}
+	 *
+	 * <p>Kept apart from {@link #getProgramSet(String, int)} on purpose: that entry point carries the
+	 * dimension resolution contract and this one only builds one folder by name, which is what enumerating
+	 * every folder needs.</p>
+	 */
+	@Nullable
+	private ProgramSet getFolderProgramSet(String folderName) {
+		ProgramSet programSet = dimensionProgramSets.get(folderName);
+
+		if (programSet == null) {
+			// Create ProgramSet on-demand for dimension folder
+			try {
+				programSet = new ProgramSet(
+					AbsolutePackPath.fromAbsolutePath("/" + folderName),
+					sourceProvider,
+					shaderProperties,
+					this
+				);
+				dimensionProgramSets.put(folderName, programSet);
+
+				// Check cache size limit and evict LRU dimensions if needed
+				evictOldDimensions();
+			} catch (Exception e) {
+				// This shouldn't happen but just in case.
+				Iris.logger.error("Failed to create ProgramSet for dimension folder '{}', falling back to base", folderName, e);
+				programSet = null;
+			}
+		}
+
+		return programSet;
+	}
+
+	/**
+	 * {@return every ProgramSet this pack can select, keyed by folder name, with the base shaders under
+	 * null when some dimension can fall back to them}
+	 *
+	 * <p>Used to compile every folder ahead of time, so the keys are returned in sorted order to keep the
+	 * compile order the same from run to run.</p>
+	 */
+	public Map<String, ProgramSet> getEveryProgramSet() {
+		final Map<String, ProgramSet> sets = new LinkedHashMap<>();
+		for (String folderName : new TreeSet<>(foldersWithShaderFiles)) {
+			final ProgramSet programSet = getFolderProgramSet(folderName);
+			if (programSet != null) sets.put(folderName, programSet);
+		}
+		if (canFallBackToBase(dimensionMap, foldersWithShaderFiles, mappedByDimensionProperties)) {
+			sets.put(null, base);
+		}
+		return sets;
+	}
+
+	/** {@return whether some dimension resolves to the base shaders rather than a folder of its own} */
+	static boolean canFallBackToBase(Map<String, String> dimensionMap, Set<String> foldersWithShaderFiles,
+									 boolean mappedByDimensionProperties) {
+		for (String folderName : dimensionMap.values()) {
+			if (!foldersWithShaderFiles.contains(folderName)) return true;
+		}
+		// A dimension that is named nowhere and has no world<id> folder of its own. The name and the id are
+		// ones no pack can map or name, so this asks what an unknown dimension resolves to.
+		return resolveDimensionFolder(dimensionMap, foldersWithShaderFiles, "\0", Integer.MIN_VALUE,
+			mappedByDimensionProperties) == null;
+	}
+
+	/**
 	 * Resolves a dimension folder without loading shader sources or touching OpenGL state.
 	 */
 	@Nullable
 	static String resolveDimensionFolder(Map<String, String> mappings, Set<String> availableFolders,
-									 String dimensionName, int dimensionId) {
+									 String dimensionName, int dimensionId, boolean mappedByDimensionProperties) {
 		String canonicalDimension = DimensionId.canonicalize(dimensionName, dimensionId);
 		String folderName = mappings.get(canonicalDimension);
 
@@ -717,6 +820,8 @@ public class ShaderPack {
 			String legacyFolder = "world" + dimensionId;
 			if (availableFolders.contains(legacyFolder)) {
 				folderName = legacyFolder;
+			} else if (!mappedByDimensionProperties) {
+				folderName = "world0";
 			}
 		}
 
@@ -726,7 +831,8 @@ public class ShaderPack {
 	/**
 	 * Resolves every vanilla dimension through the production folder-selection rules for cache pinning.
 	 */
-	static Set<String> resolvePinnedDimensionFolders(Map<String, String> mappings, Set<String> availableFolders) {
+	static Set<String> resolvePinnedDimensionFolders(Map<String, String> mappings, Set<String> availableFolders,
+												   boolean mappedByDimensionProperties) {
 		Set<String> pinnedFolders = new HashSet<>();
 
 		for (DimensionId dimension : DimensionId.values()) {
@@ -734,7 +840,8 @@ public class ShaderPack {
 				mappings,
 				availableFolders,
 				dimension.getCanonicalId(),
-				dimension.getNumericId()
+				dimension.getNumericId(),
+				mappedByDimensionProperties
 			);
 			if (folderName != null) {
 				pinnedFolders.add(folderName);
@@ -750,6 +857,19 @@ public class ShaderPack {
 
 	public Set<FeatureFlags> getActiveFeatures() {
 		return activeFeatures;
+	}
+
+	/**
+	 * Returns the features this pack requires that this context cannot provide.
+	 *
+	 * <p>Reading a pack never acts on this: whether a pack with a missing required feature is used, and
+	 * what the player is told, is a decision for the code that takes the pack into use, on the thread
+	 * that owns the renderer. An empty list means every required feature is available.</p>
+	 *
+	 * @return the missing required features, in the order the pack declared them
+	 */
+	public List<FeatureFlags> getMissingRequiredFeatures() {
+		return missingRequiredFeatures;
 	}
 
 	public boolean hasFeature(FeatureFlags feature) {

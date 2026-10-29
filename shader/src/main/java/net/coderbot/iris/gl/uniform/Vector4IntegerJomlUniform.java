@@ -23,15 +23,7 @@ public class Vector4IntegerJomlUniform extends Uniform {
 	}
 
 	@Override
-	public void update() {
-		updateValue();
-
-		if (notifier != null) {
-			notifier.setListener(this::updateValue);
-		}
-	}
-
-	private void updateValue() {
+	protected void updateValue() {
 		Vector4ic newValue = value.get();
 
 		if (!newValue.equals(cachedValue)) {

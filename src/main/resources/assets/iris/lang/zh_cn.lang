@@ -52,6 +52,9 @@ options.iris.shadowDistance=最大阴影距离
 options.iris.shadowDistance.sodium_tooltip=最大阴影距离
 options.iris.shadowDistance.enabled=允许更改阴影的最大渲染距离。超出此距离的地形和实体不会投射阴影。降低阴影距离可以显著提高性能。
 options.iris.shadowDistance.disabled=当前光影包已设置阴影渲染距离，无法更改。
+options.iris.saveCompiledShaders=保存已编译的着色器
+options.iris.saveCompiledShaders.tooltip=将已链接的着色器程序写入磁盘，以便重启游戏或切换维度时直接恢复，避免重新编译。首次加载光影包时会编译该包的所有着色器目录，因此会更慢，之后加载会更快。此设置会在下次加载光影包时生效；请重新加载光影。
+options.iris.saveCompiledShaders.tooltipUnsupported=将已链接的着色器程序写入磁盘，以便重启游戏或切换维度时直接恢复，避免重新编译。首次加载光影包时会编译该包的所有着色器目录，因此会更慢，之后加载会更快。当前显卡驱动不支持保存已编译的程序，此选项不会生效。
 options.iris.gui.hide=隐藏 GUI
 options.iris.gui.show=显示 GUI
 

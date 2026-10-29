@@ -1,7 +1,9 @@
 package com.gtnewhorizons.angelica.glsm;
 
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
+import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 
 /**
  * Stores compat uniform state by linked OpenGL program identifier.
@@ -12,23 +14,34 @@ import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
  */
 final class CompatProgramUniformStates {
 
-    /** State entries keyed by their OpenGL program identifier. */
-    private final Int2ObjectOpenHashMap<CompatProgramUniformState> states = new Int2ObjectOpenHashMap<>();
-    private final Int2LongOpenHashMap lifecycleEpochs = new Int2LongOpenHashMap();
+    /** State entries keyed by the share-group program namespace and its OpenGL name. */
+    private final Map<ProgramKey, CompatProgramUniformState> states = new HashMap<>();
+    private final Map<ProgramKey, Long> lifecycleEpochs = new HashMap<>();
     private long nextLifecycleEpoch;
+
+    /** Keeps standalone state-machine tests on an isolated synthetic share group. */
+    synchronized long invalidate(int program) {
+        return invalidate(0L, program);
+    }
 
     /**
      * Removes all cached locations and upload generations for a program before linking or deleting it.
      */
-    synchronized long invalidate(int program) {
-        CompatProgramUniformState state = states.remove(program);
+    synchronized long invalidate(long shareGroupId, int program) {
+        final ProgramKey key = new ProgramKey(shareGroupId, program);
+        CompatProgramUniformState state = states.remove(key);
         if (state != null) {
             state.invalidate();
         }
 
         long lifecycleEpoch = ++nextLifecycleEpoch;
-        lifecycleEpochs.put(program, lifecycleEpoch);
+        lifecycleEpochs.put(key, lifecycleEpoch);
         return lifecycleEpoch;
+    }
+
+    /** Keeps standalone state-machine tests on an isolated synthetic share group. */
+    synchronized boolean storeLinkedProgram(int program, long lifecycleEpoch, int[] locations) {
+        return storeLinkedProgram(0L, program, lifecycleEpoch, locations);
     }
 
     /**
@@ -38,8 +51,9 @@ final class CompatProgramUniformStates {
      * @param lifecycleEpoch returned before the link began
      * @param locations in {@link CompatUniformManager} index order
      */
-    synchronized boolean storeLinkedProgram(int program, long lifecycleEpoch, int[] locations) {
-        if (lifecycleEpochs.getOrDefault(program, 0L) != lifecycleEpoch) {
+    synchronized boolean storeLinkedProgram(long shareGroupId, int program, long lifecycleEpoch, int[] locations) {
+        final ProgramKey key = new ProgramKey(shareGroupId, program);
+        if (lifecycleEpochs.getOrDefault(key, 0L) != lifecycleEpoch) {
             return false;
         }
 
@@ -52,7 +66,7 @@ final class CompatProgramUniformStates {
         }
 
         if (hasAny) {
-            states.put(program, new CompatProgramUniformState(locations));
+            states.put(key, new CompatProgramUniformState(locations));
             return true;
         }
 
@@ -65,13 +79,39 @@ final class CompatProgramUniformStates {
      * @return {@code null} when the program has no compat uniforms
      */
     synchronized CompatProgramUniformState get(int program) {
-        return states.get(program);
+        return get(0L, program);
+    }
+
+    synchronized CompatProgramUniformState get(long shareGroupId, int program) {
+        return states.get(new ProgramKey(shareGroupId, program));
     }
 
     /**
      * Reports whether a linked program currently has cached compat locations.
      */
     synchronized boolean contains(int program) {
-        return states.containsKey(program);
+        return contains(0L, program);
     }
+
+    synchronized boolean contains(long shareGroupId, int program) {
+        return states.containsKey(new ProgramKey(shareGroupId, program));
+    }
+
+    synchronized void retireContext(GLContextIdentity identity) {
+        for (CompatProgramUniformState state : states.values()) {
+            state.retireContext(identity);
+        }
+    }
+
+    synchronized void retireShareGroup(long shareGroupId) {
+        final Iterator<ProgramKey> stateKeys = states.keySet().iterator();
+        while (stateKeys.hasNext()) {
+            if (stateKeys.next().shareGroupId() == shareGroupId) {
+                stateKeys.remove();
+            }
+        }
+        lifecycleEpochs.keySet().removeIf(key -> key.shareGroupId() == shareGroupId);
+    }
+
+    private record ProgramKey(long shareGroupId, int program) {}
 }

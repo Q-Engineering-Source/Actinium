@@ -1,6 +1,7 @@
 package net.coderbot.iris.shaderpack.preprocessor;
 
 import com.google.common.collect.ImmutableList;
+import com.gtnewhorizons.angelica.glsm.shader.ShaderDiskCache;
 import net.coderbot.iris.shaderpack.StringPair;
 import net.coderbot.iris.shaderpack.include.AbsolutePackPath;
 import net.coderbot.iris.shaderpack.include.IncludeGraph;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -16,6 +18,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 /**
  * Verifies that lexer warnings while adding property macros are not fatal.
@@ -73,5 +76,42 @@ class PropertiesPreprocessorTest {
         // The line survives preprocessing (the token stream is not interrupted by the warning).
         assertEquals(true, result.contains("SHADOW_QUALITY=00002178"));
         assertEquals(true, result.contains("nextKey = nextValue"));
+    }
+
+    @Test
+    void diskCacheKeyTracksFinalOptionAndEnvironmentMacros() throws IOException {
+        Path cacheRoot = Files.createDirectory(tempDir.resolve("properties-cache"));
+        Path packRoot = Files.createDirectory(tempDir.resolve("option-pack"));
+        Files.writeString(
+            packRoot.resolve("options.glsl"),
+            "#define FAST // fast path\n#ifdef FAST\n#endif\n#define QUALITY 1 //[0 1]\n",
+            StandardCharsets.UTF_8
+        );
+        IncludeGraph graph = new IncludeGraph(
+            packRoot,
+            ImmutableList.of(AbsolutePackPath.fromAbsolutePath("/options.glsl"))
+        );
+        ShaderPackOptions defaultOptions = new ShaderPackOptions(graph, Map.of());
+        ShaderPackOptions changedOptions = new ShaderPackOptions(graph, Map.of("FAST", "false", "QUALITY", "0"));
+        String source = "#ifdef FAST\nmode=fast\n#else\nmode=slow\n#endif\n#if QUALITY == 1\nquality=high\n#else\nquality=low\n#endif\n#if PLATFORM\nplatform=enabled\n#else\nplatform=disabled\n#endif\n";
+
+        ShaderDiskCache.configure(cacheRoot, "properties-test");
+        try {
+            List<StringPair> platformEnabled = List.of(new StringPair("PLATFORM", "1"));
+            String initial = PropertiesPreprocessor.preprocessSource(source, defaultOptions, platformEnabled);
+            String cached = PropertiesPreprocessor.preprocessSource(source, defaultOptions, platformEnabled);
+            String optionChanged = PropertiesPreprocessor.preprocessSource(source, changedOptions, platformEnabled);
+            String macroChanged = PropertiesPreprocessor.preprocessSource(
+                source,
+                changedOptions,
+                List.of(new StringPair("PLATFORM", "0"))
+            );
+
+            assertEquals(initial, cached);
+            assertNotEquals(initial, optionChanged);
+            assertNotEquals(optionChanged, macroChanged);
+        } finally {
+            ShaderDiskCache.disable();
+        }
     }
 }

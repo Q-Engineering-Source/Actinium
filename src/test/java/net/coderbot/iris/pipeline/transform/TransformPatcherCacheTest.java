@@ -3,6 +3,8 @@ package net.coderbot.iris.pipeline.transform;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import net.coderbot.iris.Iris;
+import net.coderbot.iris.gbuffer_overrides.matching.TransformInputs;
 import net.coderbot.iris.gl.texture.TextureType;
 import net.coderbot.iris.helpers.Tri;
 import net.coderbot.iris.pipeline.transform.parameter.ComputeParameters;
@@ -74,6 +76,30 @@ class TransformPatcherCacheTest {
     @AfterEach
     void clearTransformCacheAfterTest() {
         TransformPatcher.clearCache();
+    }
+
+    @Test
+    void submittedTransformsAreConsumedSynchronouslyWithoutGrowingTheCache() throws Exception {
+        // What the warmup does: submit the transforms the pipeline for the current dimension will need
+        // to the same executor the warmup submits to, and let them run before the pipeline is built.
+        final Map<PatchShaderType, String> warmedComposite = Iris.ShaderTransformExecutor
+            .submitTracked(() -> TransformPatcher.patchComposite(VERTEX, null, FRAGMENT))
+            .get(30, TimeUnit.SECONDS);
+        final Map<PatchShaderType, String> warmedAttributes = Iris.ShaderTransformExecutor
+            .submitTracked(() -> TransformPatcher.patchAttributes(VERTEX, null, null, null, FRAGMENT, TransformInputs.NO_COLOR))
+            .get(30, TimeUnit.SECONDS);
+        final int cacheSizeAfterWarmup = TransformPatcher.cacheSize();
+        assertEquals(2, cacheSizeAfterWarmup, "the warmup must fill one entry per submitted transform");
+
+        // The pipeline reads them back on the thread that builds it: a hit returns the very map the
+        // warmup produced, and a miss would transform again and grow the cache.
+        Map<PatchShaderType, String> consumedComposite = TransformPatcher.patchComposite(VERTEX, null, FRAGMENT);
+        Map<PatchShaderType, String> consumedAttributes =
+            TransformPatcher.patchAttributes(VERTEX, null, null, null, FRAGMENT, TransformInputs.NO_COLOR);
+
+        assertSame(warmedComposite, consumedComposite);
+        assertSame(warmedAttributes, consumedAttributes);
+        assertEquals(cacheSizeAfterWarmup, TransformPatcher.cacheSize());
     }
 
     @Test

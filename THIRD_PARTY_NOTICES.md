@@ -27,6 +27,134 @@ next bulk upstream refresh.
 
 ## Additional incorporated work
 
+- The 2026-10-21 large-feature backport selectively reuses Actinium's already adapted
+  OpenGL path at `research/sdl-gpu-port` (`6720f2d9912b3a43014cde0a67651a4fbca35cef`).
+  This working batch does not advance the full-tree upstream baselines:
+  - Copy-on-write attribute stacks reuse local commit
+    `b4f7a83672711c549ca33c9ea52019aa073e611b`; per-context state separation follows
+    `ff97146b7f61da5026ddb2c82506454f32ea93df`,
+    `8f0f16b81f89a8fa1e639e0296bc9c5a30e32e5f`, and the replay correction in
+    `90507920236f3aadb49829e60cb94575a5306cf3`. Paths include `glsm/.../{context,stacks,states,ffp,streaming}/`,
+    `StateSet`, `Feature`, `GLContextState`, and `GLStateManager`, under the existing
+    Angelica/GLSM LGPL-3.0 notices. Native identity generations, retirement subscriptions,
+    share-group-aware resource deletion, and the Cleanroom lifecycle adapter are local adaptations.
+  - Display-list context ownership and client-array restoration are informed by Angelica
+    `23aa04361d5fcb733e1203bea0eac827f4902469` (#2250) and
+    `3978be161d5743942674db61c52a0997e6dde3f8` (#2247); internal state recording and
+    reset recovery follow `53776684c8dd8cf1c915f24023f94fdc1b88ac56` (#2126) and
+    `1babfd968c6a9a968dae7a035995990e0f076390` (#2133). Paths are the GLSM recording,
+    client-array, and state-stack code. Multi-context VAO maps and deferred owner deletion
+    extend the upstream single-migration approach; existing LGPL-3.0 notices apply.
+  - Atlas loading, gutter, and texture filtering reuse local commits
+    `a52e323e57a377e676f8561cfea373ff38d6cf03`,
+    `7b244cea9183a149161373ed1afb4de6587f6418`, and
+    `4a02b90ecb8808cc63edafb12bf8886c0c3a5750`, with the 1.12 injection corrections in
+    `5298433fc35dea9bf2612cebe0469bd98bb8190d` and dependency-frame ordering fix in
+    `ec05a50c831eccd0a87d7896985e8d643f1b6e14`. These adapt Angelica's atlas/mipmap
+    work (#2167, #2096, #1952, #2112, #2115) under the existing LGPL-3.0 notices.
+    Local paths include root `texture/{atlas,mipmap}/`, `util/PrefetchLane`, texture Mixins,
+    `celeritas-common/.../texture/`, terrain texture sampling, shader resources, and Iris PBR
+    atlas integration. The final A2 frame-loading order is retained; SDL staging is excluded.
+  - Unified chunk dispatcher routing is a local adaptation of Celeritas
+    `26ab2175887b486c52fbdb1f5992ceb2550082dd`, in root terrain compilation, Foliage/
+    Fluidlogged compatibility, and the dispatcher Mixin. Existing Celeritas/Embeddium
+    file-level notices are retained. Actinium preserves its addon binding descriptors and
+    adds nested material-capture ownership. The upstream vertical sliding window is not imported.
+- The shader-loading backport selectively reuses the already adapted OpenGL-path work from
+  Actinium's `research/sdl-gpu-port` commits `b1e91a17`, `de9b99e2`, `b245191a`, and
+  the common cache/layer helpers in `d45f3b13`. The original upstream sources are Angelica
+  `38b1d9a0c37b4e94fe3f63d4879ba1941fa8f25a` (#2190),
+  `37afddab5d6546313a10bc862c3e72d7ea46d034` (#2194), and
+  `38af64f10cc2d9410a38e60984df0440488e82ae` (#2213), under the existing LGPL-3.0 notices.
+  Local paths are `glsm/.../shader/{ShaderCacheIO,ShaderDiskCache}.java`,
+  `glsm/.../threading/AngelicaWorkers.java`, root `.../utils/AngelicaJar.java`,
+  `shader/.../shaderpack/{include,preprocessor}/`, `ShaderPack.java`, and
+  `shader/.../texture/pbr/`. This batch includes PBR resource indexing and include/preprocessor
+  disk caching; it does not represent a full-tree sync or the Iris AST/program-binary cache ports.
+- The `iris-transform` AST disk layer is a local adaptation informed by Angelica
+  `37afddab5d6546313a10bc862c3e72d7ea46d034` (#2194), not a direct port. Upstream serializes the
+  stage maps inside `ShaderTransformer` through `diskOrCompute` and `Parameters.appendDiskKey`;
+  Actinium instead keys the result map already published by `TransformPatcher`, contributes the
+  local `AdaptiveShadowBoundsStats` instrumentation inputs and the OpenGL capability inputs that
+  drive version hoisting, and leaves out the SDL RW-image/`StageArtifact` pipeline that upstream's
+  key also covers. Files: `shader/.../pipeline/transform/{TransformPatcher,TransformDiskCache}.java`
+  and `RenderSystem` test capability hooks.
+- The GL program binary cache follows Angelica `0a4d48964edc7a20c0a93c456123860a4a9e16de` (#2206)
+  as adapted in Actinium's `research/sdl-gpu-port` commit `d45f3b13`, together with the terrain
+  link-hint fix in `f9e6531e` and selected cache metrics/tests from `b665f73b`, under the
+  existing LGPL-3.0 notices. Local files: `glsm/.../shader/{ProgramBinaryCache,ProgramBinaryOps,
+  ProgramBinaryOpsImpl}.java`, the program-binary surface in `backend/RenderBackend`,
+  `src/lwjgl3/.../Lwjgl3GLRenderBackend`, `RenderSystem` and `GLStateManager`,
+  `shader/.../gl/shader/ProgramCreator`, `shader/.../gl/program/ProgramBuilder`, and
+  `shader/.../celeritas/IrisCeleritasChunkProgramOverrides`, plus the `LinkHook` installed by the
+  root project on `celeritas-common/.../gl/shader/GlProgram`. Local deviations: the GL half sits
+  behind a `ProgramBinaryOps` port instead of calling `RenderSystem` directly (upstream tests
+  swap the backend singleton reflectively, which this repository forbids), keys use the local
+  `ShaderDiskCache.Key` encoding, and the full-directory precompile listed next is a separate
+  batch.
+- The full compile of every shader folder and the "compiled in full" marker follow
+  `compileEveryShaderFolder` from the same `d45f3b13` adaptation (its original form, not the
+  `6720f2d9` tip, which awaits a program-set warmup and harvests per-frame uniform blocks this
+  tree does not have), under the existing LGPL-3.0 notices. Local files:
+  `shader/.../{Iris,shaderpack/ShaderPack,pipeline/PipelineManager}.java`,
+  `shader/.../celeritas/{IrisCeleritasChunkProgramOverrides,IrisCeleritasShaderProvider}.java`
+  and the `ProgramBinaryCache::statsSummary` perf provider in the root `Actinium`. Local
+  deviations: the entry point takes the pipeline builder and the pipeline releaser as ports, so
+  the gates, the marker, the per-folder release and the failure handling are covered without a
+  render context; nothing runs when the driver offers no program binary or the pack cannot be
+  fingerprinted; the fingerprint is the existing `describeSettings(..., byContent=true)` over the
+  resolved option values rather than a new scheme; and progress is logged only, because 1.12.2
+  loads the pack inside the first world frame, where drawing the vanilla loading screen would
+  swap buffers mid-frame.
+- The unified program-transform submission follows Angelica work adapted in Actinium's
+  `research/sdl-gpu-port` commits `5ec46f48` (single `ProgramTransforms.submit`), `6d338faf`
+  (CPU transform warmup), and `f1f0abc9` (lightmap-only attribute availability variant), under
+  the existing Angelica/Iris LGPL-3.0 notices. Local files:
+  `shader/.../gbuffer_overrides/matching/{InputAvailability,TransformInputs}.java`,
+  `shader/.../pipeline/DeferredWorldRenderingPipeline.java`, and `shader/.../Iris.java`. This
+  batch takes the CPU-side transform warmup and the availability fix; the SDL uniform-block
+  harvesting/warming pieces are deliberately left out because the OpenGL path never consumes them.
+- The retained program pool, the same-source program sharing and the main-menu read-ahead follow the
+  same downstream adaptation: `d45f3b13` (retain/shared parts), `e955a06d`, `899f6a98` and
+  `005b8fd9` (read-ahead trigger, completion reporting and re-arm) via
+  `research/sdl-gpu-port`, under the existing LGPL-3.0 notices. Local files:
+  `shader/.../gl/program/{RetainedPrograms,ProgramDeleter,ProgramFallback}.java`,
+  `shader/.../pipeline/DeferredWorldRenderingPipeline.java`,
+  `shader/.../{Iris,shaderpack/ShaderPack}.java`, and root
+  `com/gtnewhorizons/angelica/iris/ShaderWarmup.java` with its main-menu mixin. Local deviations:
+  the pool is bounded by an explicit budget and keyed on the pack fingerprint, same-source sharing
+  keeps this project's four-dimensional key instead of the upstream three, the read-ahead thread
+  parses only and leaves feature validation to the main thread, and the reflective class preloading
+  plus the SDL uniform-block harvest are not carried over. Display-context invalidation
+  (`DisplayContextIdentity`, `ProgramCacheContextReset`) is local work with no upstream counterpart.
+- The 2026-10-20 selective upstream adaptations retain the existing source licenses;
+  they do not advance the full-tree synchronization baselines:
+  - Celeritas `48eb54f5c616834567cda4bc23334b301a94daa0` (bitraster near clipping,
+    `celeritas-common/src/main/java/grondag/bitraster/`, Apache-2.0) and
+    `98c1af3357572ec0b1dc0050176723accf2d6296` (terrain shader conditional varying,
+    `src/main/resources/assets/actinium/shaders/blocks/block_layer_opaque.vsh`).
+  - Angelica `b76284048aa754b9f95fae25d3ae8d0584c17ca6`,
+    `cbd16b1a761fe61d84fd1b95014cff40c0c25a42`,
+    `69019b9a6204ea58e27162d309b84a84dad3a271`,
+    `fe67a22d5aa42035f834c07974960e0ae155de8f`, and
+    `85892c0f7fedc58783b04d847cab21f781db7898` (dimension selection, shadow inputs,
+    metadata-aware NBT material rules, custom-quad alpha, dynamic uniform notifications,
+    and DSA texture binding restoration; `shader/`, root terrain/bridge code, and
+    `glsm/.../dsa/`, under the existing Angelica/Iris LGPL-3.0 notices).
+  - Angelica `44c930f4abbd17b96dc172edbcbd4cfc630cd219` and
+    `e98c927a93530ca94547ace22f7045e08eedb8e6` (scissor rectangle tracking and image
+    binding defaults/deletion, `glsm/`, LGPL-3.0); image bind/cache wiring also restores
+    behavior present in the previously referenced Angelica `02f0b0fc` baseline.
+  - Angelica `6dfb0312b13c8ff2b7a2d6cd84fbbf3a22da24b9` and selected query fixes from
+    `3978be161d5743942674db61c52a0997e6dde3f8` (legacy state queries, buffer-position
+    semantics, and mask-aware client pixel-store/PBO restoration, `glsm/`, LGPL-3.0).
+    This adaptation preserves Actinium's existing vertex-array model rather than importing
+    the upstream client-array rewrite.
+  - Angelica `01ff612d1dc639964669ccb61a98e53400076714` (alpha-aware animated sprite
+    interpolation, adapted into `src/main/java/com/dhj/actinium/texture/SpriteInterpolation.java`
+    and the existing sprite Mixin). The upstream `InterpolatedIcon` credits ganymedes01
+    for the original Et Futurum implementation and Roadhog360 for its NotFine port.
+    Those credits are preserved in the adapted helper.
 - Parts of the renderer retain package names and implementation ideas from Embeddium and Sodium.
 - Several GTNHLib byte-buffer files carry explicit LWJGL copyright and license notices.
 - `MergeSort.java` carries Apache-2.0 and CERN notices in its source header.

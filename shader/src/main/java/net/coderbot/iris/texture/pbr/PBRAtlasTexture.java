@@ -1,12 +1,15 @@
 package net.coderbot.iris.texture.pbr;
 
 import net.coderbot.iris.debug.IrisDebugOptions;
+import net.coderbot.iris.debug.ShaderMemoryDiagnostics;
 import com.gtnewhorizons.angelica.compat.mojang.AutoClosableAbstractTexture;
 import net.coderbot.iris.debug.PBRDebug;
 import lombok.Getter;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.texture.util.TextureExporter;
 import net.coderbot.iris.texture.util.TextureManipulationUtil;
+import dhj.embeddedt.embeddium.impl.texture.SpritePadding;
+import dhj.embeddedt.embeddium.impl.texture.SpritePaddingExtension;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.client.renderer.texture.TextureUtil;
@@ -31,6 +34,7 @@ public class PBRAtlasTexture extends AutoClosableAbstractTexture {
 	protected final ResourceLocation id;
 	protected final Map<ResourceLocation, TextureAtlasSprite> sprites = new HashMap<>();
 	protected final Set<TextureAtlasSprite> animatedSprites = new HashSet<>();
+	private long trackedEstimatedBytes;
 
 	public PBRAtlasTexture(TextureMap textureMap, PBRType type) {
 		this.texMap = textureMap;
@@ -63,6 +67,10 @@ public class PBRAtlasTexture extends AutoClosableAbstractTexture {
 	public void upload(int atlasWidth, int atlasHeight, int mipLevel, float anisotropicFiltering) {
 		final int glId = getGlTextureId();
 		TextureUtil.allocateTextureImpl(glId, mipLevel, atlasWidth, atlasHeight);
+		final long estimatedBytes = ShaderMemoryDiagnostics.estimateMipmappedRgba8Bytes(
+			atlasWidth, atlasHeight, mipLevel);
+		ShaderMemoryDiagnostics.pbrAtlasUploaded(type, trackedEstimatedBytes, estimatedBytes);
+		trackedEstimatedBytes = estimatedBytes;
 		TextureManipulationUtil.fillWithColor(glId, mipLevel, type.getDefaultValue());
 
 		for (TextureAtlasSprite sprite : sprites.values()) {
@@ -111,18 +119,21 @@ public class PBRAtlasTexture extends AutoClosableAbstractTexture {
     }
 
     protected void uploadSprite(TextureAtlasSprite sprite) {
+		final int gutter = ((SpritePaddingExtension) sprite).angelica$getGutterWidth();
 		final AnimationMetadataSection metadata = sprite.animationMetadata;
 		if (metadata != null && metadata.getFrameCount() > 0) {
 			final int frameCount = sprite.getFrameCount();
 			for (int frame = Math.min(sprite.frameCounter, metadata.getFrameCount() - 1); frame >= 0; frame--) {
 				final int frameIndex = metadata.getFrameIndex(frame);
 				if (frameIndex >= 0 && frameIndex < frameCount) {
-                    TextureUtil.uploadTextureMipmap(sprite.getFrameTextureData(frameIndex), sprite.getIconWidth(), sprite.getIconHeight(), sprite.getOriginX(), sprite.getOriginY(), false, false);
+					SpritePadding.uploadPadded(sprite.getFrameTextureData(frameIndex), sprite.getIconWidth(),
+						sprite.getIconHeight(), sprite.getOriginX(), sprite.getOriginY(), gutter, false, false);
 					return;
 				}
 			}
 		}
-		TextureUtil.uploadTextureMipmap(sprite.getFrameTextureData(0), sprite.getIconWidth(), sprite.getIconHeight(), sprite.getOriginX(), sprite.getOriginY(), false, false);
+		SpritePadding.uploadPadded(sprite.getFrameTextureData(0), sprite.getIconWidth(), sprite.getIconHeight(),
+			sprite.getOriginX(), sprite.getOriginY(), gutter, false, false);
 	}
 
 	private static boolean isAnimated(TextureAtlasSprite sprite) {
@@ -164,5 +175,7 @@ public class PBRAtlasTexture extends AutoClosableAbstractTexture {
 		}
 		clear();
 		PBRDebug.atlasClosed(this);
+		ShaderMemoryDiagnostics.pbrAtlasClosed(type, trackedEstimatedBytes);
+		trackedEstimatedBytes = 0L;
 	}
 }

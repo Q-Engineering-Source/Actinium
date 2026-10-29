@@ -12,6 +12,8 @@ import dhj.embeddedt.embeddium.impl.render.chunk.terrain.TerrainRenderPass;
 import dhj.embeddedt.embeddium.impl.render.chunk.terrain.material.Material;
 import dhj.embeddedt.embeddium.impl.render.chunk.terrain.material.parameters.AlphaCutoffParameter;
 import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.ChunkVertexType;
+import dhj.embeddedt.embeddium.impl.texture.SpritePadding;
+import dhj.embeddedt.embeddium.impl.texture.TextureFilterMode;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 
 import java.util.HashMap;
@@ -35,7 +37,8 @@ public class VintageRenderPassConfigurationBuilder {
             private void apply(boolean mippedValue) {
                 // Forcefully reset the mipmap state to the expected value for terrain. Mods sometimes manage to corrupt it.
                 Minecraft.getMinecraft().getTextureManager().bindTexture(TextureMap.LOCATION_BLOCKS_TEXTURE);
-                ((AbstractTexture) Minecraft.getMinecraft().getTextureManager().getTexture(TextureMap.LOCATION_BLOCKS_TEXTURE)).setBlurMipmapDirect(false, mippedValue);
+                ((AbstractTexture) Minecraft.getMinecraft().getTextureManager().getTexture(TextureMap.LOCATION_BLOCKS_TEXTURE))
+                        .setBlurMipmapDirect(!ActiniumRuntime.options().quality.texelSampling.isNearest(), mippedValue);
             }
         };
     }
@@ -47,7 +50,29 @@ public class VintageRenderPassConfigurationBuilder {
             extraDefines.put("CHUNK_FADE_IN_DURATION_MS", String.valueOf(ActiniumRuntime.options().quality.chunkFadeInDuration));
         }
 
+        addFilteringDefines(extraDefines);
+
         return TerrainRenderPass.builder().extraDefines(extraDefines).pipelineState(blocksTextureState(mipped)).vertexType(vertexType).primitiveType(QuadPrimitiveType.TRIANGULATED);
+    }
+
+    /** Adds filtering defines sized from the mip chain the block atlas actually loaded. */
+    private static void addFilteringDefines(Map<String, String> extraDefines) {
+        final int mipmapLevels = TerrainTextureFiltering.terrainMipmapLevels();
+        final TextureFilterMode mode = TerrainTextureFiltering.effectiveTextureFilterMode();
+
+        if (mode.usesRgss()) {
+            extraDefines.put("USE_RGSS", "");
+        }
+        if (TerrainTextureFiltering.usesTerrainTexelSnap()) {
+            extraDefines.put("USE_TEXEL_SNAP", "");
+        }
+        if (mode.usesAnisotropy()) {
+            extraDefines.put("USE_ANISOTROPIC", "");
+            extraDefines.put("TERRAIN_GUTTER", SpritePadding.gutterFor(mipmapLevels, true) + ".0");
+        }
+        if (mipmapLevels <= 0) {
+            extraDefines.put("TERRAIN_NO_MIPS", "");
+        }
     }
 
     public static RenderPassConfiguration<BlockRenderLayer> build(ChunkVertexType vertexType) {
@@ -103,7 +128,7 @@ public class VintageRenderPassConfigurationBuilder {
         solidMaterial = new Material(solidPass, AlphaCutoffParameter.ZERO, mipEnabled);
         translucentMaterial = new Material(translucentPass, AlphaCutoffParameter.ZERO, mipEnabled);
         fluidMaterial = new Material(fluidPass, AlphaCutoffParameter.ZERO, mipEnabled);
-        cutoutMippedMaterial = new Material(cutoutMippedPass, AlphaCutoffParameter.ONE_TENTH, mipEnabled);
+        cutoutMippedMaterial = new Material(cutoutMippedPass, AlphaCutoffParameter.HALF, mipEnabled);
 
         vanillaRenderStages.put(BlockRenderLayer.SOLID, solidPass);
         vanillaRenderStages.put(BlockRenderLayer.TRANSLUCENT, fluidPass);
@@ -151,12 +176,23 @@ public class VintageRenderPassConfigurationBuilder {
 
         var vanillaRenderStageMap = vanillaRenderStages.build();
 
+        logFiltering(mipEnabled);
+
         return new RenderPassConfiguration<>(renderTypeToMaterialMap,
                 vanillaRenderStageMap.asMap(),
                 solidMaterial,
                 cutoutMippedMaterial,
                 translucentMaterial,
                 fluidMaterial);
+    }
+
+    private static void logFiltering(boolean mipEnabled) {
+        final TextureFilterMode mode = TerrainTextureFiltering.effectiveTextureFilterMode();
+        final int mipmapLevels = TerrainTextureFiltering.terrainMipmapLevels();
+        ActiniumRuntime.logger().info(
+                "Terrain texture filtering: mode={} anisotropy={}x texelSnap={} rgss={} mipmaps={} atlasMipLevels={} gutter={} mipEnabled={}",
+                mode, TerrainTextureFiltering.resolvedAnisotropicFiltering(), TerrainTextureFiltering.usesTerrainTexelSnap(),
+                mode.usesRgss(), mipmapLevels > 0, mipmapLevels, SpritePadding.gutterFor(mipmapLevels, true), mipEnabled);
     }
 }
 

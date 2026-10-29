@@ -20,6 +20,15 @@ public class ImageUnitArray {
         return local == null ? 0 : local.length;
     }
 
+    /** Clears deleted texture references without allocating image units on older contexts. */
+    public void onDeleteTexture(int texture) {
+        final ImageUnitBinding[] local = bindings;
+        if (local == null || texture == 0) return;
+        for (ImageUnitBinding binding : local) {
+            if (binding.getTexture() == texture) binding.reset();
+        }
+    }
+
     private synchronized ImageUnitBinding[] allocate() {
         ImageUnitBinding[] local = bindings;
         if (local == null) {
