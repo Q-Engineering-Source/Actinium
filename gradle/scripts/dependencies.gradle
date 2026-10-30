@@ -60,6 +60,7 @@ dependencies {
         testImplementation 'com.google.guava:guava:21.0'
         testImplementation 'it.unimi.dsi:fastutil:8.5.18'
         testImplementation "org.ow2.asm:asm-tree:${asmVersion}"
+        testImplementation "org.ow2.asm:asm-commons:${asmVersion}"
         // Gnetum 1.4.3 raw jar: GnetumHudCachingCompatTransformerTest feeds the real
         // GuiIngameForgeMixin class bytes through the transformer (sha1 matches CurseForge 1220460).
         testImplementation "maven.modrinth:gnetum:1.4.3"

@@ -125,10 +125,10 @@ class LwjglContextLifecycleTransformerTest {
             instruction instanceof LdcInsnNode ldc && lifecycleType.equals(ldc.cst)));
         assertTrue(meaningfulInstructions(getAsmTransformers).stream().anyMatch(instruction ->
             instruction instanceof MethodInsnNode call
-                && "registerExplicitLifecycleTransformer".equals(call.name)
+                && "registerExplicitTransformers".equals(call.name)
                 && "()V".equals(call.desc)));
 
-        MethodNode registration = method(early, "registerExplicitLifecycleTransformer", "()V");
+        MethodNode registration = method(early, "registerExplicitTransformers", "()V");
         assertEquals(Opcodes.ACC_SYNCHRONIZED, registration.access & Opcodes.ACC_SYNCHRONIZED);
         long registerCalls = early.methods.stream()
             .flatMap(method -> meaningfulInstructions(method).stream())
