@@ -14,8 +14,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * Motivation: the shader pack selection screen lets users drop pack or settings files
  * onto the window instead of manually copying them into the shaderpacks directory.
  * The window event plumbing is kept out of {@link Lwjgl3GLRenderBackend} so the GL
- * backend classes stay pure call forwarders; a future SDL backend would get its own
- * watcher implementation behind the same {@link RenderBackend} API.
+ * backend classes stay pure call forwarders; SDL has its own watcher behind the
+ * {@link WindowBackend} API.
  *
  * Lifecycle: start/stop around screen visibility (must be idempotent), poll each frame
  * on the main thread. GLFW fires the drop callback from glfwPollEvents (main thread);

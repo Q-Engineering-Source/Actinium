@@ -1,12 +1,12 @@
 package com.gtnewhorizon.gtnhlib.compat;
 
-import com.cleanroommc.discovery.CleanroomModDiscoverer;
+import zone.rong.mixinbooter.service.ModDiscoverer;
 
 /**
  * Mod presence checks used by compatibility layers to keep a foreign mod's classes off the
  * classpath while that mod is absent.
  *
- * <p>{@link #isModPresent} answers from {@link CleanroomModDiscoverer}, whose scan of the library
+ * <p>{@link #isModPresent} answers from MixinBooter's launch-time {@link ModDiscoverer}, whose scan of the library
  * and classpath archives runs during {@code CoreModManager#handleLaunch} - before any mod class is
  * loaded. A caller may therefore query once and cache the result in a static initializer; that is
  * safe from any mod code, including mixins applied to early-loaded vanilla classes.</p>
@@ -47,10 +47,10 @@ public final class Mods {
     private Mods() {}
 
     /**
-     * Returns whether the mod id was found by Cleanroom's launch-time scan. See the class javadoc
+     * Returns whether the mod id was found by MixinBooter's launch-time scan. See the class javadoc
      * for the cases in which this differs from {@code Loader#isModLoaded}.
      */
     public static boolean isModPresent(String modId) {
-        return CleanroomModDiscoverer.instance().isModPresent(modId);
+        return ModDiscoverer.isModPresent(modId);
     }
 }

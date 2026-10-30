@@ -1,21 +1,25 @@
 package com.dhj.actinium.compat.lwjgl;
 
 import com.gtnewhorizons.angelica.glsm.DisplayListManager;
+import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
 import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
 import com.gtnewhorizons.angelica.glsm.context.GLContextRegistryProvider;
-import org.lwjgl.glfw.GLFW;
+import com.gtnewhorizons.angelica.glsm.context.NativeContextHandle;
 import org.lwjgl.opengl.ContextGL;
 import org.lwjgl.opengl.DrawableGL;
 
-/** Binds LWJGLXX Display's direct GLFW context changes to GLSM's context and capture ownership. */
+/** Binds LWJGL Display's native context changes to GLSM's context and capture ownership. */
 public final class DisplayContextBinding {
     private DisplayContextBinding() {
     }
 
-    /** Binds the active LWJGLXX display context after a successful display operation. */
+    /** Binds the active LWJGL display context after a successful display operation. */
     public static void bindDisplayContextIfNativeCurrent(DrawableGL drawable) {
-        final ContextGL displayContext = drawable == null ? null : drawable.getContext();
-        bindIfNativeCurrent(displayContext, displayContext == null ? 0L : displayContext.glfwWindow);
+        final Object displayContextToken = drawable == null ? null : drawable.getContext();
+        final long nativeHandle = displayContextToken == null
+            ? 0L
+            : ((NativeContextHandle) displayContextToken).actinium$nativeHandle();
+        bindIfNativeCurrent(displayContextToken, nativeHandle);
     }
 
     /** Captures and protects the primary context before display destruction invalidates it. */
@@ -25,9 +29,9 @@ public final class DisplayContextBinding {
         return displayContext;
     }
 
-    /** Registers the Display context only after GLFW reports that exact native handle as current. */
+    /** Registers the Display context only after the selected backend reports that exact native handle as current. */
     public static void bindIfNativeCurrent(Object contextToken, long contextHandle) {
-        final long nativeCurrent = GLFW.glfwGetCurrentContext();
+        final long nativeCurrent = WindowBackends.get().currentContextHandle();
         if (nativeCurrent == 0L) {
             releaseRegistryBinding();
             return;
@@ -51,10 +55,11 @@ public final class DisplayContextBinding {
         }
     }
 
-    /** Releases GLSM's thread binding only after LWJGLXX successfully clears the native context. */
+    /** Releases GLSM's thread binding only after LWJGL successfully clears the native context. */
     public static void releaseIfNativeUnbound() {
-        if (GLFW.glfwGetCurrentContext() != 0L) {
-            assertCurrentBindingMatches(GLFW.glfwGetCurrentContext());
+        final long nativeCurrent = WindowBackends.get().currentContextHandle();
+        if (nativeCurrent != 0L) {
+            assertCurrentBindingMatches(nativeCurrent);
             return;
         }
         releaseRegistryBinding();
@@ -73,14 +78,14 @@ public final class DisplayContextBinding {
         }
     }
 
-    /** Retires a shared context only after Cleanroom has invalidated its native handle. */
+    /** Retires a shared context only after the host has invalidated its native handle. */
     public static void retireDestroyedContext(Object contextToken, long nativeHandle) {
         if (nativeHandle <= 0L) {
             GLContextRegistryProvider.get().retire(contextToken);
         }
     }
 
-    /** Aborts primary-display recording before Display destroys its GLFW window. */
+    /** Aborts primary-display recording before Display destroys its native window. */
     public static void abortBeforeDisplayDestroy(Object contextToken, boolean displayCreated) {
         if (displayCreated && contextToken != null) {
             final GLContextIdentity identity = GLContextRegistryProvider.get().identityFor(contextToken);
@@ -105,7 +110,7 @@ public final class DisplayContextBinding {
         final GLContextIdentity registered = GLContextRegistryProvider.get().currentBinding();
         if (registered == null || registered.nativeHandle() != nativeCurrent) {
             throw new IllegalStateException(
-                "LWJGLXX Display returned with native context 0x" + Long.toHexString(nativeCurrent)
+                "LWJGL Display returned with native context 0x" + Long.toHexString(nativeCurrent)
                     + " but no matching GLSM context identity");
         }
     }

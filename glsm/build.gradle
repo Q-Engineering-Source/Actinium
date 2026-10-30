@@ -19,6 +19,7 @@ sourceSets {
 dependencies {
     api project(':GTNHLib')
     // SPIR-V toolchain for the future sdl-gpu backend (compile-time only; natives ship with that backend).
+    compileOnly 'org.lwjgl:lwjgl-sdl:3.4.1'
     compileOnly 'org.lwjgl:lwjgl-shaderc:3.4.1'
     compileOnly 'org.lwjgl:lwjgl-spvc:3.4.1'
 }
