@@ -160,19 +160,12 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                                         && !ArchitectureCraftCompat.shouldForceVanillaRender(block);
                                 ChunkBufferBuilder buffer = buildContext.getChunkBufferForLayer(layer);
                                 buffer.actinium$beginInvocation(allowFastRenderer, false, false, blockState);
-                                boolean captureLiquid = blockState.getRenderType() == EnumBlockRenderType.LIQUID;
-                                boolean captureStarted = false;
+                                buildContext.beginVanillaBlockRender(buffer, blockPos, blockState);
                                 try {
-                                    if (captureLiquid) {
-                                        buildContext.beginVanillaBlockRender(buffer, blockPos, blockState);
-                                        captureStarted = true;
-                                    }
                                     dispatcher.renderBlock(blockState, blockPos, slice, buffer);
                                 } finally {
                                     try {
-                                        if (captureStarted) {
-                                            buildContext.endVanillaRender(buffer);
-                                        }
+                                        buildContext.endVanillaRender(buffer);
                                     } finally {
                                         buffer.actinium$endInvocation();
                                     }
@@ -187,19 +180,12 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                                                 && !ArchitectureCraftCompat.shouldForceVanillaRender(block);
                                         ChunkBufferBuilder buffer = buildContext.getChunkBufferForLayer(layer);
                                         buffer.actinium$beginInvocation(allowFastRenderer, true, false, blockState);
-                                        boolean captureLiquid = blockState.getRenderType() == EnumBlockRenderType.LIQUID;
-                                        boolean captureStarted = false;
+                                        buildContext.beginVanillaBlockRender(buffer, blockPos, blockState);
                                         try {
-                                            if (captureLiquid) {
-                                                buildContext.beginVanillaBlockRender(buffer, blockPos, blockState);
-                                                captureStarted = true;
-                                            }
                                             dispatcher.renderBlock(blockState, blockPos, slice, buffer);
                                         } finally {
                                             try {
-                                                if (captureStarted) {
-                                                    buildContext.endVanillaRender(buffer);
-                                                }
+                                                buildContext.endVanillaRender(buffer);
                                             } finally {
                                                 buffer.actinium$endInvocation();
                                             }
