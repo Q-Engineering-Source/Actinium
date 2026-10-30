@@ -183,7 +183,6 @@ class GLStateManagerRedirectContractTest {
         String[][] sigs = {
             {"glGetQueryObject", "(IILjava/nio/IntBuffer;)V"},
             {"glGetVertexAttrib", "(IILjava/nio/IntBuffer;)V"},
-            {"glVertexBindingDivisor", "(II)V"},
             {"glUniform2ui", "(III)V"},
             {"glUniform3ui", "(IIII)V"},
             {"glUniform4ui", "(IIIII)V"},

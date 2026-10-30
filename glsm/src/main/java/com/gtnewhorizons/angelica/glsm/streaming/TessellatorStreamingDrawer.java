@@ -11,7 +11,6 @@ import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
-import com.gtnewhorizons.angelica.glsm.streaming.StreamingVaos;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11;
@@ -43,6 +42,16 @@ public class TessellatorStreamingDrawer {
 
     private static PersistentStreamingBuffer persistentBuffer;
     private static final OrphanStreamingBuffer[] orphanBuffers = new OrphanStreamingBuffer[FORMAT_COUNT];
+
+    private static final int[] persistentVAOs = new int[FORMAT_COUNT];
+    private static final int[] orphanVAOs = new int[FORMAT_COUNT];
+    // Owning thread per VAO slot. VAOs are context-local objects: during the splash screen the
+    // splash thread owns a separate GL context, and its numeric ids collide with the main
+    // context's namespace. A slot must only be glDeleteVertexArrays'd on the thread that
+    // created it — deleting it under another context destroys an unrelated live VAO there
+    // (issue #150: the splash-finish destroy deleted the BufferBuilder streaming VAO).
+    private static final Thread[] persistentVaoOwners = new Thread[FORMAT_COUNT];
+    private static final Thread[] orphanVaoOwners = new Thread[FORMAT_COUNT];
 
     private static ByteBuffer repackBuffer;
     private static IntBuffer repackIntBuffer;
@@ -255,7 +264,7 @@ public class TessellatorStreamingDrawer {
         final boolean perfDebugEnabled = GLSMPerfDebug.isEnabled();
         final long perfStart = perfDebugEnabled ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.STREAM_UPLOAD_AND_DRAW) : 0L;
         final boolean perfSampled = perfStart != 0L;
-        final StreamingVaos vaos = ensureVAO(flags, format);
+        ensureVAO(flags, format);
 
         int firstVertex = -1;
 
@@ -271,13 +280,13 @@ public class TessellatorStreamingDrawer {
         final int vao;
         final int bufferId;
         if (persistentPath) {
-            vao = vaos.persistentVAOs[flags];
+            vao = persistentVAOs[flags];
             bufferId = persistentBuffer.getBufferId();
-            GLStateManager.glBindVertexArray(vao);
+            GLStateManager.glBindVertexArray(persistentVAOs[flags]);
         } else {
-            vao = vaos.orphanVAOs[flags];
+            vao = orphanVAOs[flags];
             bufferId = orphanBuffers[flags].getBufferId();
-            GLStateManager.glBindVertexArray(vao);
+            GLStateManager.glBindVertexArray(orphanVAOs[flags]);
             final long uploadStart = perfSampled ? GLSMPerfDebug.now() : 0L;
             orphanBuffers[flags].upload(packed);
             if (perfSampled) {
@@ -453,17 +462,15 @@ public class TessellatorStreamingDrawer {
         return repackBuffer;
     }
 
-    private static StreamingVaos ensureVAO(int flags, VertexFormat format) {
+    private static void ensureVAO(int flags, VertexFormat format) {
         init();
-        final StreamingVaos vaos = GLStateManager.getStreamingVaos();
 
-        if (vaos.orphanVAOs[flags] == 0) {
-            if (orphanBuffers[flags] == null) {
-                orphanBuffers[flags] = new OrphanStreamingBuffer();
-            }
+        if (orphanVAOs[flags] == 0) {
+            orphanBuffers[flags] = new OrphanStreamingBuffer();
 
-            vaos.orphanVAOs[flags] = GLStateManager.glGenVertexArrays();
-            GLStateManager.glBindVertexArray(vaos.orphanVAOs[flags]);
+            orphanVAOs[flags] = GLStateManager.glGenVertexArrays();
+            orphanVaoOwners[flags] = Thread.currentThread();
+            GLStateManager.glBindVertexArray(orphanVAOs[flags]);
             GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, orphanBuffers[flags].getBufferId());
             format.setupBufferState(0L);
             QuadConverter.attachSharedEboToCurrentVao();
@@ -471,32 +478,41 @@ public class TessellatorStreamingDrawer {
             GLStateManager.glBindVertexArray(0);
         }
 
-        if (persistentBuffer != null && vaos.persistentVAOs[flags] == 0) {
-            vaos.persistentVAOs[flags] = GLStateManager.glGenVertexArrays();
-            GLStateManager.glBindVertexArray(vaos.persistentVAOs[flags]);
+        if (persistentBuffer != null && persistentVAOs[flags] == 0) {
+            persistentVAOs[flags] = GLStateManager.glGenVertexArrays();
+            persistentVaoOwners[flags] = Thread.currentThread();
+            GLStateManager.glBindVertexArray(persistentVAOs[flags]);
             GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, persistentBuffer.getBufferId());
             format.setupBufferState(0L);
             QuadConverter.attachSharedEboToCurrentVao();
             GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
             GLStateManager.glBindVertexArray(0);
         }
-
-        return vaos;
     }
 
     /**
      * Clean up all VAOs, streaming buffers, and the repack buffer.
      */
     public static void destroy() {
-        final StreamingVaos vaos = GLStateManager.getStreamingVaos();
+        final Thread current = Thread.currentThread();
         for (int i = 0; i < FORMAT_COUNT; i++) {
-            if (vaos.persistentVAOs[i] != 0) {
-                GLStateManager.glDeleteVertexArrays(vaos.persistentVAOs[i]);
-                vaos.persistentVAOs[i] = 0;
+            // Only delete a VAO on the thread that created it. A slot owned by another thread
+            // lives in that thread's GL context (the splash screen's), which is already dead by
+            // the time destroy() runs elsewhere — the driver has reclaimed the object, and the
+            // recycled numeric id may now name a live VAO in the current context (issue #150).
+            if (persistentVAOs[i] != 0) {
+                if (persistentVaoOwners[i] == current) {
+                    GLStateManager.glDeleteVertexArrays(persistentVAOs[i]);
+                }
+                persistentVAOs[i] = 0;
+                persistentVaoOwners[i] = null;
             }
-            if (vaos.orphanVAOs[i] != 0) {
-                GLStateManager.glDeleteVertexArrays(vaos.orphanVAOs[i]);
-                vaos.orphanVAOs[i] = 0;
+            if (orphanVAOs[i] != 0) {
+                if (orphanVaoOwners[i] == current) {
+                    GLStateManager.glDeleteVertexArrays(orphanVAOs[i]);
+                }
+                orphanVAOs[i] = 0;
+                orphanVaoOwners[i] = null;
             }
             // Buffers are shared across contexts, so they survive the splash context's death
             // and must always be deleted explicitly.

@@ -8,7 +8,7 @@ import org.lwjgl.opengl.GL13;
  * BooleanStateStack for per-texture-unit state.
  * Switches to correct unit (raw GL) before enable/disable calls.
  */
-public final class TextureUnitBooleanStateStack extends BooleanStateStack {
+public class TextureUnitBooleanStateStack extends BooleanStateStack {
     private final int unitIndex;
 
     public TextureUnitBooleanStateStack(int glCap, int unitIndex) {
@@ -23,19 +23,21 @@ public final class TextureUnitBooleanStateStack extends BooleanStateStack {
 
     @Override
     public void setEnabled(boolean enabled) {
-        if (!GLStateManager.isCachingEnabled() || enabled != this.enabled) {
-            beforeModify();
-        }
+        beforeModify();
         setEnabledWithUnitSwitch(enabled);
     }
 
     @Override
-    public void restoreSlot(int slot) {
-        setEnabledWithUnitSwitch(stack[slot]);
+    public TextureUnitBooleanStateStack popDepth() {
+        if (savedDepth > 0) {
+            final boolean oldValue = stack[--savedDepth];
+            setEnabledWithUnitSwitch(oldValue);
+        }
+        return this;
     }
 
     private void setEnabledWithUnitSwitch(boolean enabled) {
-        final boolean bypass = !GLStateManager.isCachingEnabled();
+        final boolean bypass = GLStateManager.shouldBypassCache();
         if (bypass || enabled != this.enabled) {
             if (!bypass) this.enabled = enabled;
 

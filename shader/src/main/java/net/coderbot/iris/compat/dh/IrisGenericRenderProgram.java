@@ -11,10 +11,11 @@ import com.seibel.distanthorizons.api.objects.render.DhApiRenderableBox;
 import com.seibel.distanthorizons.api.objects.render.DhApiRenderableBoxGroupShading;
 import net.coderbot.iris.gl.blending.BlendModeOverride;
 import net.coderbot.iris.gl.blending.BufferBlendOverride;
-import net.coderbot.iris.gl.ResourceCleanup;
 import net.coderbot.iris.gl.program.ProgramImages;
 import net.coderbot.iris.gl.program.ProgramSamplers;
 import net.coderbot.iris.gl.program.ProgramUniforms;
+import net.coderbot.iris.gl.shader.GlShader;
+import net.coderbot.iris.gl.shader.ShaderType;
 import net.coderbot.iris.gl.state.FogMode;
 import net.coderbot.iris.pipeline.DeferredWorldRenderingPipeline;
 import net.coderbot.iris.pipeline.PatchedShaderPrinter;
@@ -34,6 +35,7 @@ import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
+import org.lwjgl.opengl.GL20;
 import com.mitchej123.lwjgl.MemoryStack;
 
 import java.nio.FloatBuffer;
@@ -50,7 +52,6 @@ public class IrisGenericRenderProgram implements IDhApiGenericObjectShaderProgra
     public final int normalMatrix3fUniform;
     // Fog/Clip Uniforms
     private final int id;
-    private boolean freed;
     private final ProgramUniforms uniforms;
     private final CustomUniforms customUniforms;
     private final ProgramSamplers samplers;
@@ -67,17 +68,58 @@ public class IrisGenericRenderProgram implements IDhApiGenericObjectShaderProgra
     private final int instancedShaderCameraChunkPosUniform;
     private final int instancedShaderCameraSubChunkPosUniform;
     private final int instancedShaderProjectionModelViewMatrixUniform;
-    private int va;
+    private final int va;
     private final int uBlockLight;
     private final int uSkyLight;
 
     // This will bind  AbstractVertexAttribute
     private IrisGenericRenderProgram(String name, boolean isShadowPass, boolean translucent, BlendModeOverride override, BufferBlendOverride[] bufferBlendOverrides, String vertex, String tessControl, String tessEval, String geometry, String fragment, CustomUniforms customUniforms, DeferredWorldRenderingPipeline pipeline, ProgramSource source) {
-		id = IrisDhProgramCompiler.create(name, vertex, tessControl, tessEval, geometry, fragment,
-			new String[] {"vPosition"}, new int[] {0});
+        id = GLStateManager.glCreateProgram();
 
-		try {
+        GLStateManager.glBindAttribLocation(this.id, 0, "vPosition");
+
         this.bufferBlendOverrides = bufferBlendOverrides;
+
+        GlShader vert = new GlShader(ShaderType.VERTEX, name + ".vsh", vertex);
+        GLStateManager.glAttachShader(id, vert.getHandle());
+
+        GlShader tessCont = null;
+        if (tessControl != null) {
+            tessCont = new GlShader(ShaderType.TESSELATION_CONTROL, name + ".tcs", tessControl);
+            GLStateManager.glAttachShader(id, tessCont.getHandle());
+        }
+
+        GlShader tessE = null;
+        if (tessEval != null) {
+            tessE = new GlShader(ShaderType.TESSELATION_EVAL, name + ".tes", tessEval);
+            GLStateManager.glAttachShader(id, tessE.getHandle());
+        }
+
+        GlShader geom = null;
+        if (geometry != null) {
+            geom = new GlShader(ShaderType.GEOMETRY, name + ".gsh", geometry);
+            GLStateManager.glAttachShader(id, geom.getHandle());
+        }
+
+        GlShader frag = new GlShader(ShaderType.FRAGMENT, name + ".fsh", fragment);
+        GLStateManager.glAttachShader(id, frag.getHandle());
+
+        GLStateManager.glLinkProgram(this.id);
+        int status = GLStateManager.glGetProgrami(this.id, GL20.GL_LINK_STATUS);
+        if (status != 1) {
+            String message = "Shader link error in Iris DH program! Details: " + GLStateManager.glGetProgramInfoLog(this.id, 9999);
+            this.free();
+            throw new RuntimeException(message);
+        } else {
+            GLStateManager.glUseProgram(this.id);
+        }
+
+        vert.destroy();
+        frag.destroy();
+
+        if (tessCont != null) tessCont.destroy();
+        if (tessE != null) tessE.destroy();
+        if (geom != null) geom.destroy();
 
         blend = override;
         ProgramUniforms.Builder uniformBuilder = ProgramUniforms.builder(name, id);
@@ -113,12 +155,6 @@ public class IrisGenericRenderProgram implements IDhApiGenericObjectShaderProgra
         this.instancedShaderProjectionModelViewMatrixUniform = this.tryGetUniformLocation2("uProjectionMvm");
         this.uBlockLight = this.tryGetUniformLocation2("uBlockLight");
         this.uSkyLight = this.tryGetUniformLocation2("uSkyLight");
-		} catch (RuntimeException | Error failure) {
-			ResourceCleanup.runAll(failure,
-				() -> GLStateManager.glDeleteProgram(id),
-				() -> { if (va != 0) GLStateManager.glDeleteVertexArrays(va); });
-			throw failure;
-		}
     }
 
     public static IrisGenericRenderProgram createProgram(String name, boolean isShadowPass, boolean translucent, ProgramSource source, CustomUniforms uniforms, DeferredWorldRenderingPipeline pipeline) {
@@ -246,15 +282,8 @@ public class IrisGenericRenderProgram implements IDhApiGenericObjectShaderProgra
     }
 
     public void free() {
-		if (freed) {
-			return;
-		}
-		freed = true;
-		ResourceCleanup.runAll(null,
-			uniforms::removeListeners,
-			samplers::removeListeners,
-			() -> GLStateManager.glDeleteProgram(id),
-			() -> GLStateManager.glDeleteVertexArrays(va));
+        GLStateManager.glDeleteProgram(id);
+        GLStateManager.glDeleteVertexArrays(va);
     }
 
     public void fillIndirectUniformData(DhApiRenderParam dhApiRenderParam, DhApiRenderableBoxGroupShading dhApiRenderableBoxGroupShading, IDhApiRenderableBoxGroup boxGroup, DhApiVec3d camPos) {

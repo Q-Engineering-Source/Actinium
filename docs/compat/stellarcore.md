@@ -1,7 +1,7 @@
 # StellarCore 兼容性说明
 
 兼容状态：**部分**（HudCaching 与 Actinium 渲染管线已深度兼容，见下文）
-最后更新：2026-10-26
+最后更新：2026-08-14
 
 ## 验证范围
 
@@ -93,56 +93,6 @@ early 还是 late 注册，mixin 都会抛 `MixinTargetAlreadyLoadedException`�
 
 - `HudCaching=true` + `JourneyMap 5.7.1p3`：小地图网格线、玩家准心、方向标
   正常可见（2026-08-14 实测通过）。
-
-## 图集加载被清空帧导致的启动崩溃（2026-10-26）
-
-### 现象
-
-启动时在 `Stitching texture atlas` 阶段崩溃，抛
-`IndexOutOfBoundsException: Index 0 out of bounds for length 0`，栈顶为
-`TextureMap.finishLoading` 读取 sprite 第 0 帧。崩溃报告点名的 sprite 均满足：
-原版 `TextureAtlasSprite` 类、`custom loader=false`、`dependencies=[]`、有宽高、
-`frameCount=0`。实测命中 `enderio:blocks/block_simple_sagmill_front_on`、
-`enderio:blocks/fluid_rocket_fuel_flow`、
-`modularmachinery:blocks/overlay_parallel_controller_normal`，三者的 PNG 都是
-宽度远小于高度的动画条带图（32×224、32×1024、32×704），并带
-`animation.frametime` 而无 `frames` 数组。
-
-### 机制
-
-StellarCore 的 `mixins.stellar_core_minecraft_texture_load.json` 在
-`loadSprites` 的 `registerSprites` 之后注入，对注册表内每个 sprite 并行预取：
-调用 `TextureAtlasSprite.loadSprite(pngSizeInfo, hasAnimation)` 预置尺寸，并把
-图像与 resource 存入 `SpriteBufferedImageCache`，供后续 `loadSpriteFrames` 复用。
-
-原版 `loadSprite` 第一句是 `resetSprite()`，它把 `framesTextureData` 换成空表。
-预取因此先留下"有尺寸、零帧"的中间态，随后由注册循环里的 `generateMipmaps`
-（内部调用 `loadSpriteFrames`）补回帧。Actinium 的并行图集加载把 `generateMipmaps`
-从 `loadTexture` 的内联调用改为会话调度，并新增 `prepare` 在循环之后再构建一部分
-级链；帧就绪与级链构建的配对在这种叠加下被打断，`loadSpriteFrames` 没有再次进入，
-sprite 以空帧进入缝合器，上传循环读第 0 帧抛异常。
-
-帧装载失败不会被静默吞掉：`TextureMap.generateMipmaps` 捕获 `loadSpriteFrames` 的
-异常后返回 `false`，而 `loadTexture` 中只有返回 `true` 才 `stitcher.addSprite`。
-也就是说，只要帧装载正常执行，空帧 sprite 不会进入缝合器。
-
-### 修复（Actinium 侧）
-
-`AtlasLoadSession.prepare` 在发现某 sprite `frameCount <= 0` 时，用同一个
-`IResourceManager` 重新装载帧（`getResource` + `loadSpriteFrames`），随后照常构建
-级链；只有重载也失败时才打印原有的 WARN 并保留 vanilla 的空帧行为。
-
-- 不新增跨模组探测，也不引用 StellarCore 的类，没有 StellarCore 时该分支不会被触发。
-- 重载失败（资源缺失、元数据非法）不静默：记录 WARN 并带上异常，sprite 维持原状，
-  vanilla 会照旧抛出可归因的崩溃报告。
-- 构建报告新增 `framesReloaded` 计数，非零即表示有 mod 在注册循环之后重置过 sprite。
-
-### 验证
-
-- [x] `./gradlew check --no-daemon` 通过。
-- [x] `AtlasLoadSessionTest.reloadsTheFramesAModEmptiedBeforeTheUpload` 覆盖重载路径。
-- [ ] 用户实机确认（NovaEngineering-World-T，EnderIO CEu 5.5.1 + ModularMachinery CE 2.3.3
-  + StellarCore 1.6.2）。
 
 ## 推荐配置
 

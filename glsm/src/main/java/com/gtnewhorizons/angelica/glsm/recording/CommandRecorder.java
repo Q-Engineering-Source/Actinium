@@ -20,7 +20,6 @@ public final class CommandRecorder {
     private final CommandBuffer buffer;
     private int commandCount;
     private final IndexedDrawBatchBuilder indexedDraws = new IndexedDrawBatchBuilder();
-    private boolean freed;
 
     public CommandRecorder() {
         this.buffer = new CommandBuffer();
@@ -40,10 +39,6 @@ public final class CommandRecorder {
     }
 
     public void free() {
-        if (freed) {
-            return;
-        }
-        freed = true;
         for (IndexedDrawCapture c : indexedDraws.getCaptures()) {
             c.freeBuffers();
         }

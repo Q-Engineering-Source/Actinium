@@ -1,7 +1,6 @@
 package net.coderbot.iris.rendertarget;
 
 import net.coderbot.iris.debug.IrisDebugOptions;
-import net.coderbot.iris.debug.ShaderMemoryDiagnostics;
 import com.google.common.collect.ImmutableSet;
 import com.gtnewhorizons.angelica.glsm.GLDebug;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
@@ -53,8 +52,6 @@ public class RenderTargets {
 	private boolean handDepthDirty;
 
 	private int cachedDepthBufferVersion;
-	private long memoryEstimateBytes;
-	private boolean memoryDiagnosticsRegistered;
 
 	public RenderTargets(int width, int height,  int depthTexture, int depthBufferVersion, DepthBufferFormat depthFormat, Map<Integer, PackRenderTargetDirectives.RenderTargetSettings> renderTargets, PackDirectives packDirectives) {
         targets = new RenderTarget[renderTargets.size()];
@@ -100,9 +97,6 @@ public class RenderTargets {
 
 		this.translucentDepthDirty = true;
 		this.handDepthDirty = true;
-		this.memoryEstimateBytes = estimateMemoryBytes();
-		ShaderMemoryDiagnostics.renderTargetsCreated(targets.length, memoryEstimateBytes);
-		memoryDiagnosticsRegistered = true;
 	}
 
 	public void destroy() {
@@ -116,10 +110,6 @@ public class RenderTargets {
 
 		noTranslucents.destroy();
 		noHand.destroy();
-		if (memoryDiagnosticsRegistered) {
-			ShaderMemoryDiagnostics.renderTargetsDestroyed(targets.length, memoryEstimateBytes);
-			memoryDiagnosticsRegistered = false;
-		}
 	}
 
 	public int getRenderTargetCount() {
@@ -143,7 +133,6 @@ public class RenderTargets {
 	}
 
     public boolean resizeIfNeeded(int newDepthBufferVersion, int newDepthTextureId, int newWidth, int newHeight, DepthBufferFormat newDepthFormat, PackDirectives packDirectives) {
-        final long previousMemoryEstimateBytes = memoryEstimateBytes;
         boolean recreateDepth = false;
         if (cachedDepthBufferVersion != newDepthBufferVersion) {
             recreateDepth = true;
@@ -206,26 +195,8 @@ public class RenderTargets {
             fullClearRequired = true;
         }
 
-        if (memoryDiagnosticsRegistered && (sizeChanged || depthFormatChanged)) {
-            memoryEstimateBytes = estimateMemoryBytes();
-            ShaderMemoryDiagnostics.renderTargetsResized(targets.length, previousMemoryEstimateBytes,
-                memoryEstimateBytes);
-        }
-
         return sizeChanged;
     }
-
-	private long estimateMemoryBytes() {
-		long estimatedBytes = 2L * ShaderMemoryDiagnostics.estimateDepthTextureBytes(
-			currentDepthFormat, cachedWidth, cachedHeight);
-		for (RenderTarget target : targets) {
-			if (target != null) {
-				estimatedBytes += 2L * ShaderMemoryDiagnostics.estimateColorTextureBytes(
-					target.getInternalFormat(), target.getWidth(), target.getHeight());
-			}
-		}
-		return estimatedBytes;
-	}
 
 	public void copyPreTranslucentDepth() {
 		if (translucentDepthDirty) {

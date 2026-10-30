@@ -1,6 +1,5 @@
 package com.dhj.actinium.mixins;
 
-import com.dhj.actinium.compat.dh.DhGlBufferDiagnosticsAbi;
 import com.gtnewhorizon.gtnhlib.compat.Mods;
 import zone.rong.mixinbooter.ILateMixinLoader;
 
@@ -34,26 +33,19 @@ public class MixinLate implements ILateMixinLoader {
      * AND group, {@code |} separates alternative groups, and a config loads when any
      * group matches. A requirement is a mod id, or {@code class:<binary name>} to probe
      * for a class instead (for compat layers gated on embedded third-party code rather
-     * than a mod container). The {@code dh-buffer-diagnostics} token is a dedicated
-     * resource-only ABI probe for the optional DH GL-buffer diagnostics mixin.
+     * than a mod container).
      */
     static List<String> configsFor(Predicate<String> loadedMods) {
         return configsFor(loadedMods, MixinLate::classPresent);
     }
 
     static List<String> configsFor(Predicate<String> loadedMods, Predicate<String> classPresent) {
-        return configsFor(loadedMods, classPresent, ignored -> DhGlBufferDiagnosticsAbi.isCompatible());
-    }
-
-    static List<String> configsFor(Predicate<String> loadedMods, Predicate<String> classPresent,
-                                   Predicate<String> dhBufferDiagnosticsAbiPresent) {
         List<String> mixins = new ArrayList<>();
         CONDITIONAL_CONFIGS.forEach((config, modList) -> {
             for (String alternative : ((String) modList).split("\\|")) {
                 boolean allPresent = true;
                 for (String requirement : alternative.split(",")) {
-                    if (!requirementMet(requirement.trim(), loadedMods, classPresent,
-                            dhBufferDiagnosticsAbiPresent)) {
+                    if (!requirementMet(requirement.trim(), loadedMods, classPresent)) {
                         allPresent = false;
                         break;
                     }
@@ -68,14 +60,8 @@ public class MixinLate implements ILateMixinLoader {
     }
 
     private static final String CLASS_PREFIX = "class:";
-    private static final String DH_BUFFER_DIAGNOSTICS_TOKEN = "dh-buffer-diagnostics";
 
-    private static boolean requirementMet(String requirement, Predicate<String> loadedMods,
-                                          Predicate<String> classPresent,
-                                          Predicate<String> dhBufferDiagnosticsAbiPresent) {
-        if (DH_BUFFER_DIAGNOSTICS_TOKEN.equals(requirement)) {
-            return dhBufferDiagnosticsAbiPresent.test(requirement);
-        }
+    private static boolean requirementMet(String requirement, Predicate<String> loadedMods, Predicate<String> classPresent) {
         if (requirement.startsWith(CLASS_PREFIX)) {
             return classPresent.test(requirement.substring(CLASS_PREFIX.length()));
         }

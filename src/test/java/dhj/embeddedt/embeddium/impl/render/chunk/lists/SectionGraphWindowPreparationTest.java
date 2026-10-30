@@ -37,14 +37,14 @@ class SectionGraphWindowPreparationTest {
             assertTrue(searchStarted.await(10, TimeUnit.SECONDS), "the search never started");
 
             assertThrows(IllegalStateException.class,
-                    () -> graph.prepareWindow(SEARCH_DISTANCE, new Vector3i(0, 0, 0), new Vector3i(0, 32, 0)));
+                    () -> graph.prepareWindow(SEARCH_DISTANCE, new Vector3i(0, 0, 0), new Vector3i(40, 0, 40)));
 
             releaseSearch.countDown();
             search.join();
             graph.onSearchJoined();
 
             assertDoesNotThrow(
-                    () -> graph.prepareWindow(SEARCH_DISTANCE, new Vector3i(0, 0, 0), new Vector3i(0, 32, 0)));
+                    () -> graph.prepareWindow(SEARCH_DISTANCE, new Vector3i(0, 0, 0), new Vector3i(40, 0, 40)));
         } finally {
             graph.destroy();
         }

@@ -3,7 +3,6 @@ package net.coderbot.iris.uniforms;
 import lombok.Getter;
 import lombok.Setter;
 import net.coderbot.iris.gl.state.ValueUpdateNotifier;
-import net.coderbot.iris.gl.state.MultiListenerNotifier;
 
 import org.joml.Vector4f;
 
@@ -15,19 +14,19 @@ public class CapturedRenderingState {
     private float tickDelta;
 	@Getter
     private int currentRenderedBlockEntity;
-	private final MultiListenerNotifier blockEntityIdListener = new MultiListenerNotifier();
+	private Runnable blockEntityIdListener = null;
 
 	@Getter
     private int currentRenderedEntity = -1;
-	private final MultiListenerNotifier entityIdListener = new MultiListenerNotifier();
+	private Runnable entityIdListener = null;
 
 	@Getter
 	private int currentRenderedItem = -1;
-	private final MultiListenerNotifier itemIdListener = new MultiListenerNotifier();
+	private Runnable itemIdListener = null;
 
     @Getter
     private final Vector4f currentEntityColor = new Vector4f();
-    private final MultiListenerNotifier entityColorListener = new MultiListenerNotifier();
+    private Runnable entityColorListener = null;
 
 	private CapturedRenderingState() {
 	}
@@ -35,20 +34,26 @@ public class CapturedRenderingState {
     public void setCurrentBlockEntity(int entity) {
 		this.currentRenderedBlockEntity = entity;
 
-		this.blockEntityIdListener.run();
+		if (this.blockEntityIdListener != null) {
+			this.blockEntityIdListener.run();
+		}
 	}
 
     public void setCurrentEntity(int entity) {
 		this.currentRenderedEntity = entity;
 
-		this.entityIdListener.run();
+		if (this.entityIdListener != null) {
+			this.entityIdListener.run();
+		}
         setCurrentRenderedItem(0);
 	}
 
     public void setCurrentEntityColor(float r, float g, float b, float a) {
         this.currentEntityColor.set(r, g, b, a);
 
-        this.entityColorListener.run();
+        if (this.entityColorListener != null) {
+            this.entityColorListener.run();
+        }
     }
 
 	public void setCurrentRenderedItem(int item) {
@@ -58,20 +63,22 @@ public class CapturedRenderingState {
 
 		this.currentRenderedItem = item;
 
-		this.itemIdListener.run();
+		if (this.itemIdListener != null) {
+			this.itemIdListener.run();
+		}
 	}
 
 	public ValueUpdateNotifier getEntityIdNotifier() {
-		return this.entityIdListener;
+		return listener -> this.entityIdListener = listener;
 	}
 
 	public ValueUpdateNotifier getBlockEntityIdNotifier() {
-		return this.blockEntityIdListener;
+		return listener -> this.blockEntityIdListener = listener;
 	}
 
 	public ValueUpdateNotifier getItemIdNotifier() {
-		return this.itemIdListener;
+		return listener -> this.itemIdListener = listener;
 	}
 
-    public ValueUpdateNotifier getEntityColorNotifier() { return this.entityColorListener; }
+    public ValueUpdateNotifier getEntityColorNotifier() { return listener -> this.entityColorListener = listener; }
 }

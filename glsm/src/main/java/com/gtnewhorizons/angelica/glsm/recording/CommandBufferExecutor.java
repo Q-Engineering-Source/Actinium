@@ -4,7 +4,6 @@ import com.gtnewhorizon.gtnhlib.client.opengl.UniversalVAO;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFlags;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
-import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
 import com.gtnewhorizons.angelica.glsm.recording.commands.DisplayListCommand;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
@@ -37,12 +36,7 @@ public final class CommandBufferExecutor {
      * @param complexObjects e.g. {@code TexImage2DCmd}
      * @param ownedVbos indexed by {@code DrawRange} commands
      */
-    public static void execute(
-        ByteBuffer buffer,
-        Object[] complexObjects,
-        DisplayListVBO ownedVbos,
-        GLContextIdentity compilationIdentity
-    ) {
+    public static void execute(ByteBuffer buffer, Object[] complexObjects, DisplayListVBO ownedVbos) {
         long ptr = memAddress(buffer);
         final long end = ptr + buffer.limit();
 
@@ -537,11 +531,7 @@ public final class CommandBufferExecutor {
                     ptr += 4;
                 }
                 case GLCommand.BIND_VAO -> {
-                    final int vao = memGetInt(ptr);
-                    final GLContextIdentity currentIdentity = GLStateManager.currentContextIdentity();
-                    if (vao == 0 || compilationIdentity != null && compilationIdentity.equals(currentIdentity)) {
-                        GLStateManager.glBindVertexArray(vao);
-                    }
+                    GLStateManager.glBindVertexArray(memGetInt(ptr));
                     ptr += 4;
                 }
 

@@ -67,7 +67,6 @@ public class GLSMRedirector {
     private static final String GL_STATE_MANAGER = "com/gtnewhorizons/angelica/glsm/GLStateManager";
     private static final String GL_PREFIX = "org/lwjgl/opengl/GL";
     private static final String ARB_VERTEX_ARRAY_OBJECT = "org/lwjgl/opengl/ARBVertexArrayObject";
-    private static final String ARB_VERTEX_ATTRIB_BINDING = "org/lwjgl/opengl/ARBVertexAttribBinding";
     private static final String APPLE_VERTEX_ARRAY_OBJECT = "org/lwjgl/opengl/APPLEVertexArrayObject";
     private static final String EXT_INSTANCED_ARRAYS = "org/lwjgl/opengl/EXTInstancedArrays";
     private static final String PROJECT = "org/lwjgl/util/glu/Project";
@@ -498,7 +497,6 @@ public class GLSMRedirector {
             .add("glClearBufferSubData")
             .add("glClearBufferData")
             .add("glBindVertexBuffer")
-            .add("glVertexBindingDivisor")
             .add("glVertexAttribFormat")
             .add("glVertexAttribIFormat")
             .add("glVertexAttribBinding")
@@ -912,13 +910,6 @@ public class GLSMRedirector {
             .add("glBindVertexArray")
             .add("glDeleteVertexArrays")
             .add("glGenVertexArrays")
-        );
-        METHOD_REDIRECTS.put(ARB_VERTEX_ATTRIB_BINDING, RedirectMap.newMap()
-            .add("glBindVertexBuffer")
-            .add("glVertexBindingDivisor")
-            .add("glVertexAttribFormat")
-            .add("glVertexAttribIFormat")
-            .add("glVertexAttribBinding")
         );
         METHOD_REDIRECTS.put(ARB_DRAW_ELEMENTS_BASE_VERTEX, RedirectMap.newMap()
             .add("glDrawElementsBaseVertex")

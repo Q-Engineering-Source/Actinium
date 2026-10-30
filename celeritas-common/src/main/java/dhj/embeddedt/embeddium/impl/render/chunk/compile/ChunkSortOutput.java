@@ -21,13 +21,4 @@ public class ChunkSortOutput extends ChunkTaskOutput {
             data.indexData().free();
         }
     }
-
-    @Override
-    public long getNativeMemoryBytes() {
-        long bytes = 0;
-        for (SortedMesh data : this.meshes.values()) {
-            bytes += data.indexData().getLength();
-        }
-        return bytes;
-    }
 }

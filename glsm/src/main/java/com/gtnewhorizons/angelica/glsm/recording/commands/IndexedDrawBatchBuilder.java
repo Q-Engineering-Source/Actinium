@@ -2,7 +2,6 @@ package com.gtnewhorizons.angelica.glsm.recording.commands;
 
 import com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
-import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
@@ -41,7 +40,9 @@ public final class IndexedDrawBatchBuilder {
         final List<IndexedDrawBatch> out = new ArrayList<>();
         if (captures.isEmpty()) return out;
 
+        final int prevVAO = GLStateManager.getBoundVAO();
         final int prevVBO = GLStateManager.getBoundVBO();
+        final int prevEBO = GLStateManager.getBoundEBO();
 
         final List<GroupResult> results = new ArrayList<>();
         boolean success = false;
@@ -62,6 +63,8 @@ public final class IndexedDrawBatchBuilder {
             if (!success) {
                 for (GroupResult r : results) r.batch.delete();
             }
+            GLStateManager.glBindVertexArray(prevVAO);
+            GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, prevEBO);
             GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevVBO);
         }
 
@@ -71,8 +74,9 @@ public final class IndexedDrawBatchBuilder {
     private record GroupResult(IndexedDrawBatch batch, List<IndexedDrawCapture> captures,
                                int[] drawModes, int[] indexCounts, long[] indexOffsets) {
         void commit() {
+            final int sharedVAO = batch.getSharedVAO();
             for (int i = 0; i < captures.size(); i++) {
-                captures.get(i).placeholder.fill(batch, drawModes[i], indexCounts[i], GL11.GL_UNSIGNED_INT, indexOffsets[i]);
+                captures.get(i).placeholder.fill(sharedVAO, drawModes[i], indexCounts[i], GL11.GL_UNSIGNED_INT, indexOffsets[i]);
             }
         }
     }
@@ -88,6 +92,7 @@ public final class IndexedDrawBatchBuilder {
             throw new IllegalStateException("batch exceeds 2GiB — split needed");
         }
 
+        int sharedVAO = 0;
         int sharedVBO = 0;
         int sharedEBO = 0;
         ByteBuffer eboData = null;
@@ -99,10 +104,12 @@ public final class IndexedDrawBatchBuilder {
         final long[] indexOffsets = new long[n];
 
         try {
+            sharedVAO = GLStateManager.glGenVertexArrays();
             sharedVBO = GLStateManager.glGenBuffers();
             sharedEBO = GLStateManager.glGenBuffers();
             eboData = MemoryUtilities.memAlloc((int) totalIndexBytes);
 
+            GLStateManager.glBindVertexArray(sharedVAO);
             GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, sharedVBO);
             GLStateManager.glBufferData(GL15.GL_ARRAY_BUFFER, totalVertexBytes, GL15.GL_STATIC_DRAW);
 
@@ -141,20 +148,26 @@ public final class IndexedDrawBatchBuilder {
 
             eboData.position(0).limit((int) totalIndexBytes);
 
-            // Buffer storage is shareable; upload it through ARRAY_BUFFER so compilation needs no context-local VAO.
-            GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, sharedEBO);
-            GLStateManager.glBufferData(GL15.GL_ARRAY_BUFFER, eboData, GL15.GL_STATIC_DRAW);
+            GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, sharedEBO);
+            GLStateManager.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, eboData, GL15.GL_STATIC_DRAW);
+
             final AttribLayoutKey layout = group.get(0).layoutKey;
-            final GLContextIdentity identity = GLStateManager.currentContextIdentity();
-            if (identity == null) {
-                throw new IllegalStateException("Indexed display-list batches require a registered current context");
+            final int stride = layout.stride();
+            for (int i = 0; i < layout.locations.length; i++) {
+                final int loc = layout.locations[i];
+                final int size = layout.sizes[i];
+                final int type = layout.types[i];
+                GLStateManager.glVertexAttribPointer(loc, size, type, layout.normalized[i], stride, layout.offset(i));
+                GLStateManager.glEnableVertexAttribArray(loc);
             }
+
             success = true;
-            return new GroupResult(new IndexedDrawBatch(identity.shareGroupId(), layout, sharedVBO, sharedEBO),
+            return new GroupResult(new IndexedDrawBatch(sharedVAO, sharedVBO, sharedEBO),
                 group, drawModes, indexCounts, indexOffsets);
         } finally {
             if (eboData != null) MemoryUtilities.memFree(eboData);
             if (!success) {
+                if (sharedVAO != 0) GLStateManager.glDeleteVertexArrays(sharedVAO);
                 if (sharedVBO != 0) GLStateManager.glDeleteBuffers(sharedVBO);
                 if (sharedEBO != 0) GLStateManager.glDeleteBuffers(sharedEBO);
             }

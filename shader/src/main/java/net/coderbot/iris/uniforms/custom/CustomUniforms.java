@@ -206,20 +206,6 @@ public class CustomUniforms implements FunctionContext {
 		locationMap.put(pass, locationMap.remove(holder));
 	}
 
-	/**
-	 * Points a newly created pass at the uniform locations of an existing one. Used when two passes
-	 * share a program, and therefore its locations.
-	 *
-	 * @param existingPass the pass the locations were recorded for
-	 * @param pass the pass that reuses them
-	 */
-	public void mapPassLike(Object existingPass, Object pass) {
-		final Object2IntMap<CachedUniform> uniforms = locationMap.get(existingPass);
-		if (uniforms != null) {
-			locationMap.put(pass, uniforms);
-		}
-	}
-
 
 	public void update() {
 		for (CachedUniform value : this.uniformOrder) {

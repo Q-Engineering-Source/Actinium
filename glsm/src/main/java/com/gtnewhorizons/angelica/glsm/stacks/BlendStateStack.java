@@ -1,83 +1,60 @@
 package com.gtnewhorizons.angelica.glsm.stacks;
 
+import com.gtnewhorizon.gtnhlib.client.renderer.stacks.IStateStack;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
-import com.gtnewhorizons.angelica.glsm.StateSet;
 import com.gtnewhorizons.angelica.glsm.hooks.VanillaStateLayer;
 import com.gtnewhorizons.angelica.glsm.states.BlendState;
 import lombok.Setter;
 
-public final class BlendStateStack extends BlendState implements CowStateStack<BlendStateStack> {
+public class BlendStateStack extends BlendState implements IStateStack<BlendStateStack> {
 
     protected final BlendState[] stack;
-    private final CowDepths cow = new CowDepths(StateSet.R_BLEND);
 
-    private boolean funcUnknown;
-
+    protected int pointer;
     @Setter private VanillaStateLayer<BlendState> vanillaLayer;
 
-    public BlendStateStack(int id) {
-        cow.id = id;
-        stack = new BlendState[GLStateManager.STATE_SLOTS];
-        for (int i = 0; i < GLStateManager.STATE_SLOTS; i++) {
+    public BlendStateStack() {
+        stack = new BlendState[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
+        for (int i = 0; i < GLStateManager.MAX_ATTRIB_STACK_DEPTH; i++) {
             stack[i] = new BlendState();
         }
     }
 
-    @Override
-    public CowDepths cowDepths() {
-        return cow;
+    public BlendStateStack push() {
+        if(pointer == stack.length) {
+            throw new IllegalStateException("Stack overflow size " + (pointer + 1) + " reached");
+        }
+
+        VanillaStateLayer.capture(vanillaLayer, stack[pointer++].set(this));
+        return this;
     }
 
-    @Override
-    public boolean slotChanged(int slot) {
-        return funcUnknown || VanillaStateLayer.isHeld(vanillaLayer) || !sameAs(stack[slot]);
-    }
+    public BlendStateStack pop() {
+        if(pointer == 0) {
+            throw new IllegalStateException("Stack underflow");
+        }
 
-    @Override
-    public void captureSlot(int s) {
-        VanillaStateLayer.capture(vanillaLayer, stack[s].set(this));
-    }
-
-    @Override
-    public void restoreSlot(int s) {
-        final BlendState saved = stack[s];
+        final BlendState saved = stack[--pointer];
         if (VanillaStateLayer.restore(vanillaLayer, saved)) {
             setExceptFunc(saved);
         } else {
             set(saved);
         }
+        return this;
     }
 
-    @Override
-    public boolean topSlotChanged() {
-        return !cow.isEmpty() && !sameAs(stack[cow.top()]);
-    }
-
-    public void setFuncUnknownState() {
-        funcUnknown = true;
-    }
-
-    public boolean isFuncUnknown() {
-        return funcUnknown;
-    }
-
-    public void clearFuncUnknownState() {
-        funcUnknown = false;
-    }
-
-    /** Actinium extension: the debug logger reports the effective GL_BLEND enable state. */
-    public boolean isEnabled() {
-        return GLStateManager.getBlendMode().isEnabled();
-    }
-
+    /** Copies the effective blend state, including the deferred vanilla function when held. */
     public BlendState readEffective(BlendState out) {
         out.set(this);
         VanillaStateLayer.capture(vanillaLayer, out);
         return out;
     }
 
-    @Override
-    public int stackId() {
-        return cow.id;
+    public boolean isEmpty() {
+        return pointer == 0;
+    }
+
+    public boolean isEnabled() {
+        return GLStateManager.getBlendMode().isEnabled();
     }
 }

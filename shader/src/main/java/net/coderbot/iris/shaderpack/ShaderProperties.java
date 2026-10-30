@@ -1,6 +1,5 @@
 package net.coderbot.iris.shaderpack;
 
-import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.states.BlendState;
 import it.unimi.dsi.fastutil.booleans.BooleanConsumer;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
@@ -133,7 +132,7 @@ public class ShaderProperties {
 							BufferBlendingSupport bufferBlendingSupport) {
         final String preprocessedContents = PropertiesPreprocessor.preprocessSource(contents, shaderPackOptions, environmentDefines);
 
-		if (PatchedShaderPrinter.prettyPrintShaders && GLStateManager.isMainThread()) {
+		if (PatchedShaderPrinter.prettyPrintShaders) {
 			try {
 				Files.write(Minecraft.getMinecraft().gameDir.toPath().resolve("preprocessed.properties"), preprocessedContents.getBytes(StandardCharsets.UTF_8));
 				Files.write(Minecraft.getMinecraft().gameDir.toPath().resolve("original.properties"), contents.getBytes(StandardCharsets.UTF_8));

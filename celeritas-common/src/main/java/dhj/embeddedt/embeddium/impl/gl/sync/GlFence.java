@@ -16,11 +16,6 @@ public class GlFence {
         this.id = id;
     }
 
-    /** Returns whether the native sync object was created successfully. */
-    public boolean isValid() {
-        return this.id != 0L;
-    }
-
     public boolean isCompleted() {
         this.checkDisposed();
 

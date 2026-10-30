@@ -1,6 +1,5 @@
 package com.gtnewhorizons.angelica.glsm;
 
-import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
 import com.gtnewhorizons.angelica.glsm.states.GenerationTrackedState;
 
 /**
@@ -39,66 +38,66 @@ final class CompatProgramUniformState extends GenerationTrackedState {
         valid = false;
     }
 
-    boolean needsModelViewUpload(GLContextIdentity identity, int generation) {
-        return needsUpload(identity, MODEL_VIEW, generation);
+    boolean needsModelViewUpload(int generation) {
+        return needsUpload(MODEL_VIEW, generation);
     }
 
-    void markModelViewUploaded(GLContextIdentity identity, int generation) {
+    void markModelViewUploaded(int generation) {
         if (!valid) return;
-        markUploaded(identity, MODEL_VIEW, generation);
+        markUploaded(MODEL_VIEW, generation);
     }
 
-    boolean needsProjectionUpload(GLContextIdentity identity, int generation) {
-        return needsUpload(identity, PROJECTION, generation);
+    boolean needsProjectionUpload(int generation) {
+        return needsUpload(PROJECTION, generation);
     }
 
-    void markProjectionUploaded(GLContextIdentity identity, int generation) {
+    void markProjectionUploaded(int generation) {
         if (!valid) return;
-        markUploaded(identity, PROJECTION, generation);
+        markUploaded(PROJECTION, generation);
     }
 
-    boolean needsTextureMatrixUpload(GLContextIdentity identity, int generation) {
-        return needsUpload(identity, TEXTURE_MATRIX, generation);
+    boolean needsTextureMatrixUpload(int generation) {
+        return needsUpload(TEXTURE_MATRIX, generation);
     }
 
-    void markTextureMatrixUploaded(GLContextIdentity identity, int generation) {
+    void markTextureMatrixUploaded(int generation) {
         if (!valid) return;
-        markUploaded(identity, TEXTURE_MATRIX, generation);
+        markUploaded(TEXTURE_MATRIX, generation);
     }
 
-    boolean needsFragmentUpload(GLContextIdentity identity, int generation) {
-        return needsUpload(identity, FRAGMENT, generation);
+    boolean needsFragmentUpload(int generation) {
+        return needsUpload(FRAGMENT, generation);
     }
 
-    void markFragmentUploaded(GLContextIdentity identity, int generation) {
+    void markFragmentUploaded(int generation) {
         if (!valid) return;
-        markUploaded(identity, FRAGMENT, generation);
+        markUploaded(FRAGMENT, generation);
     }
 
-    boolean needsColorUpload(GLContextIdentity identity, int generation) {
-        return needsUpload(identity, COLOR, generation);
+    boolean needsColorUpload(int generation) {
+        return needsUpload(COLOR, generation);
     }
 
-    void markColorUploaded(GLContextIdentity identity, int generation) {
+    void markColorUploaded(int generation) {
         if (!valid) return;
-        markUploaded(identity, COLOR, generation);
+        markUploaded(COLOR, generation);
     }
 
-    boolean needsLightingUpload(GLContextIdentity identity, int generation) {
-        return needsUpload(identity, LIGHTING, generation);
+    boolean needsLightingUpload(int generation) {
+        return needsUpload(LIGHTING, generation);
     }
 
-    void markLightingUploaded(GLContextIdentity identity, int generation) {
+    void markLightingUploaded(int generation) {
         if (!valid) return;
-        markUploaded(identity, LIGHTING, generation);
+        markUploaded(LIGHTING, generation);
     }
 
-    boolean needsClipPlaneUpload(GLContextIdentity identity, int generation) {
-        return needsUpload(identity, CLIP_PLANE, generation);
+    boolean needsClipPlaneUpload(int generation) {
+        return needsUpload(CLIP_PLANE, generation);
     }
 
-    void markClipPlaneUploaded(GLContextIdentity identity, int generation) {
+    void markClipPlaneUploaded(int generation) {
         if (!valid) return;
-        markUploaded(identity, CLIP_PLANE, generation);
+        markUploaded(CLIP_PLANE, generation);
     }
 }

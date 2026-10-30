@@ -9,10 +9,6 @@ import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.vertex.VertexFormatElement;
 
-import java.util.Map;
-import java.util.Objects;
-import java.util.WeakHashMap;
-
 public final class TessellatorManager {
     public static final int DEFAULT_BUFFER_SIZE = 0x8000;
     private static final int DIRECT_TESSELLATOR_STACK_DEPTH = 16;
@@ -31,12 +27,6 @@ public final class TessellatorManager {
     private static final ThreadLocal<Integer> directTessellatorIndex = ThreadLocal.withInitial(() -> -1);
     private static final ThreadLocal<Boolean> mainInstanceInStack = ThreadLocal.withInitial(() -> false);
 
-    /** Serializes owned capture state transitions without reaching into another thread's capture stack. */
-    private static final Object OWNED_CAPTURE_LOCK = new Object();
-
-    /** Weak identity entries prevent a stopped CallbackTessellator token from being reactivated by the legacy API. */
-    private static final Map<DirectTessellator, OwnedCaptureState> ownedCaptures = new WeakHashMap<>();
-
     private TessellatorManager() {
     }
 
@@ -53,181 +43,13 @@ public final class TessellatorManager {
     }
 
     private static void setDirectTessellator(DirectTessellator tessellator) {
-        synchronized (OWNED_CAPTURE_LOCK) {
-            if (ownedCaptures.containsKey(tessellator)) {
-                throw new IllegalArgumentException("Owned tessellator tokens must be resumed with TessellatorManager.resume");
-            }
-            pushDirectTessellator(tessellator);
-        }
-    }
-
-    private static void pushDirectTessellator(DirectTessellator tessellator) {
-        pushDirectTessellator(tessellator, isMainTessellator(tessellator));
-    }
-
-    private static void pushOwnedTessellator(DirectTessellator tessellator) {
-        pushDirectTessellator(tessellator, false);
-    }
-
-    private static void pushDirectTessellator(DirectTessellator tessellator, boolean mainTessellator) {
         final int index = directTessellatorIndex.get() + 1;
         if (index >= DIRECT_TESSELLATOR_STACK_DEPTH) {
             throw new IllegalStateException("DirectTessellator stack overflow");
         }
-        mainInstanceInStack.set(mainInstanceInStack.get() || mainTessellator);
+        mainInstanceInStack.set(mainInstanceInStack.get() || isMainTessellator(tessellator));
         directTessellators.get()[index] = tessellator;
         directTessellatorIndex.set(index);
-    }
-
-    /**
-     * Starts a uniquely-owned draw capture whose token can be suspended, moved to another thread, or canceled
-     * without disturbing the legacy LIFO captures on the calling thread.
-     *
-     * @param callback receives draw batches emitted into the owned tessellator
-     * @return the exact owned tessellator token that must be supplied to {@link #suspend(DirectTessellator)},
-     *         {@link #resume(DirectTessellator)}, {@link #stop(DirectTessellator)}, or
-     *         {@link #cancel(DirectTessellator)}
-     */
-    @Beta
-    public static DirectTessellator startOwned(DirectDrawCallback callback) {
-        Objects.requireNonNull(callback, "callback");
-        final CallbackTessellator tessellator = new CallbackTessellator(DEFAULT_BUFFER_SIZE);
-        tessellator.setDrawCallback(callback);
-        synchronized (OWNED_CAPTURE_LOCK) {
-            try {
-                pushOwnedTessellator(tessellator);
-                ownedCaptures.put(tessellator, new OwnedCaptureState(Thread.currentThread()));
-            } catch (RuntimeException | Error exception) {
-                final int index = findCapture(tessellator);
-                if (index >= 0) {
-                    removeCaptureAt(index);
-                }
-                ownedCaptures.remove(tessellator);
-                tessellator.delete();
-                throw exception;
-            }
-        }
-        return tessellator;
-    }
-
-    /** Suspends the exact owned capture, removing it from any stack position on its owner thread without reset. */
-    @Beta
-    public static void suspend(DirectTessellator token) {
-        Objects.requireNonNull(token, "token");
-        synchronized (OWNED_CAPTURE_LOCK) {
-            final OwnedCaptureState state = requireOwnedCapture(token);
-            if (state.stopped) {
-                throw new IllegalStateException("Owned tessellator capture is already stopped");
-            }
-            requireCurrentOwner(state);
-            final int index = findCapture(token);
-            if (index < 0) {
-                throw new IllegalStateException("Owned tessellator capture is missing from its owner thread stack");
-            }
-            removeCaptureAt(index);
-            state.ownerThread = null;
-        }
-    }
-
-    /** Resumes a suspended token by attaching it to the calling thread's capture stack. */
-    @Beta
-    public static void resume(DirectTessellator token) {
-        Objects.requireNonNull(token, "token");
-        synchronized (OWNED_CAPTURE_LOCK) {
-            final OwnedCaptureState state = requireOwnedCapture(token);
-            if (state.stopped) {
-                throw new IllegalStateException("Owned tessellator capture is already stopped");
-            }
-            if (state.ownerThread != null) {
-                throw new IllegalStateException("Owned tessellator capture must be suspended before it can move");
-            }
-            pushOwnedTessellator(token);
-            state.ownerThread = Thread.currentThread();
-        }
-    }
-
-    /** Stops the exact owned capture and releases its native buffer, including when it is not at stack top. */
-    @Beta
-    public static void stop(DirectTessellator token) {
-        finishOwnedCapture(token);
-    }
-
-    /** Cancels the exact owned capture and releases its native buffer, including when it is suspended. */
-    @Beta
-    public static void cancel(DirectTessellator token) {
-        finishOwnedCapture(token);
-    }
-
-    private static void finishOwnedCapture(DirectTessellator token) {
-        Objects.requireNonNull(token, "token");
-        synchronized (OWNED_CAPTURE_LOCK) {
-            final OwnedCaptureState state = requireOwnedCapture(token);
-            if (state.stopped) {
-                return;
-            }
-            if (state.ownerThread != null) {
-                requireCurrentOwner(state);
-                final int index = findCapture(token);
-                if (index < 0) {
-                    throw new IllegalStateException("Owned tessellator capture is missing from its owner thread stack");
-                }
-                removeCaptureAt(index);
-            }
-            state.ownerThread = null;
-            state.stopped = true;
-        }
-        releaseOwnedCapture(token);
-    }
-
-    private static OwnedCaptureState requireOwnedCapture(DirectTessellator token) {
-        final OwnedCaptureState state = ownedCaptures.get(token);
-        if (state == null) {
-            throw new IllegalArgumentException("Tessellator is not an active owned capture token");
-        }
-        return state;
-    }
-
-    private static void requireCurrentOwner(OwnedCaptureState state) {
-        if (state.ownerThread != Thread.currentThread()) {
-            throw new IllegalStateException("Only the owned capture's current thread may change its active stack entry");
-        }
-    }
-
-    private static int findCapture(DirectTessellator token) {
-        final DirectTessellator[] stack = directTessellators.get();
-        for (int index = directTessellatorIndex.get(); index >= 0; index--) {
-            if (stack[index] == token) {
-                return index;
-            }
-        }
-        return -1;
-    }
-
-    private static void removeCaptureAt(int index) {
-        final DirectTessellator[] stack = directTessellators.get();
-        final int top = directTessellatorIndex.get();
-        for (int cursor = index; cursor < top; cursor++) {
-            stack[cursor] = stack[cursor + 1];
-        }
-        stack[top] = null;
-        directTessellatorIndex.set(top - 1);
-    }
-
-    private static void releaseOwnedCapture(DirectTessellator token) {
-        if (token instanceof CallbackTessellator callbackTessellator) {
-            callbackTessellator.setDrawCallback(null);
-        }
-        token.onRemovedFromStack();
-    }
-
-    /** Mutable state for an owned token; terminal entries use weak keys so stale handles cannot be reactivated. */
-    private static final class OwnedCaptureState {
-        private Thread ownerThread;
-        private boolean stopped;
-
-        private OwnedCaptureState(Thread ownerThread) {
-            this.ownerThread = ownerThread;
-        }
     }
 
     public static DirectTessellator startCapturingDirect() {
@@ -275,34 +97,16 @@ public final class TessellatorManager {
     }
 
     public static void stopCapturingDirect() {
-        final DirectTessellator tessellator;
-        final boolean owned;
-        synchronized (OWNED_CAPTURE_LOCK) {
-            if (!hasDirectTessellator()) {
-                throw new IllegalStateException("Tried to stop capturing when not capturing!");
-            }
-            tessellator = getDirectTessellator();
-            final OwnedCaptureState ownedState = ownedCaptures.get(tessellator);
-            owned = ownedState != null;
-            if (ownedState != null) {
-                if (ownedState.stopped) {
-                    throw new IllegalStateException("Stopped owned tessellator capture remained on the capture stack");
-                }
-                requireCurrentOwner(ownedState);
-                ownedState.ownerThread = null;
-                ownedState.stopped = true;
-            }
-            final int top = directTessellatorIndex.get();
-            removeCaptureAt(top);
-            if (isMainTessellator(tessellator)) {
-                mainInstanceInStack.set(false);
-            }
+        if (!hasDirectTessellator()) {
+            throw new IllegalStateException("Tried to stop capturing when not capturing!");
         }
-        if (owned) {
-            releaseOwnedCapture(tessellator);
-        } else {
-            tessellator.onRemovedFromStack();
+        final DirectTessellator tessellator = getDirectTessellator();
+        directTessellators.get()[directTessellatorIndex.get()] = null;
+        directTessellatorIndex.set(directTessellatorIndex.get() - 1);
+        if (isMainTessellator(tessellator)) {
+            mainInstanceInStack.set(false);
         }
+        tessellator.onRemovedFromStack();
     }
 
     public static IVertexArrayObject stopCapturingDirectToVBO(VertexBufferType bufferType) {

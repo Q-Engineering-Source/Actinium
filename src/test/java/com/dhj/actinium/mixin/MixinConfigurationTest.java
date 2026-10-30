@@ -63,8 +63,7 @@ class MixinConfigurationTest {
         "mixins.actinium.architecturecraft.json",
         "mixins.actinium.gvclib.json",
         "mixins.actinium.obscuretooltips.json",
-        "mixins.actinium.dsurround.json",
-        "mixins.actinium.distanthorizons.json"
+        "mixins.actinium.dsurround.json"
     );
     private static final List<String> CONFIGS = MAIN_CONFIGS;
 

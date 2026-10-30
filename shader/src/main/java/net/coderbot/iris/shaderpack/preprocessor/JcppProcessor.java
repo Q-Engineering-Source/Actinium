@@ -1,6 +1,5 @@
 package net.coderbot.iris.shaderpack.preprocessor;
 
-import com.gtnewhorizons.angelica.glsm.shader.ShaderDiskCache;
 import net.coderbot.iris.shaderpack.StringPair;
 import org.anarres.cpp.Feature;
 import org.anarres.cpp.LexerException;
@@ -8,30 +7,7 @@ import org.anarres.cpp.Preprocessor;
 import org.anarres.cpp.StringLexerSource;
 import org.anarres.cpp.Token;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.function.Supplier;
-
 public class JcppProcessor {
-	/**
-	 * Preprocesses source lazily so a disk hit avoids include expansion and workaround application.
-	 */
-	public static String glslPreprocessSource(byte[] contentHash, Supplier<String> source,
-											 Iterable<StringPair> environmentDefines) {
-		List<StringPair> defines = new ArrayList<>();
-		environmentDefines.forEach(defines::add);
-
-		ShaderDiskCache.Key cacheKey = PreprocessedSourceCache.key("glsl", contentHash, defines);
-		String cached = PreprocessedSourceCache.get(cacheKey);
-		if (cached != null) {
-			return cached;
-		}
-
-		String preprocessed = glslPreprocessSource(source.get(), defines);
-		PreprocessedSourceCache.put(cacheKey, preprocessed);
-		return preprocessed;
-	}
-
 	// Derived from GlShader from Canvas, licenced under LGPL
 	public static String glslPreprocessSource(String source, Iterable<StringPair> environmentDefines) {
 		if (source.contains(GlslCollectingListener.VERSION_MARKER)

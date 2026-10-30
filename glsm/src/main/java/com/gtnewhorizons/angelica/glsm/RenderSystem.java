@@ -23,7 +23,6 @@ import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL32;
 import org.lwjgl.opengl.GL42;
 import org.lwjgl.opengl.GL43;
-import org.lwjgl.opengl.NVXGPUMemoryInfo;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
@@ -40,15 +39,12 @@ import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACK
 public class RenderSystem {
     private static DSAAccess dsaState;
     private static boolean supportsCompute;
-    private static boolean supportsBufferBlending;
     private static boolean supportsImageLoadStore;
     private static boolean supportsSSBO;
     private static boolean supportsBufferStorage;
     private static boolean supportsClearTexture;
     private static boolean supportsTesselation;
     private static boolean supportsSamplerObjects;
-    /** Whether the driver can read linked programs back with {@code glGetProgramBinary}. */
-    private static boolean supportsProgramBinary;
     private static int maxImageUnits;
     private static int maxSSBOBindings;
     private static int maxGlslVersion;
@@ -107,8 +103,7 @@ public class RenderSystem {
 
         BackendManager.init();
 
-        supportsCompute = probeComputeSupport();
-        supportsBufferBlending = GLStateManager.capabilities.GL_ARB_draw_buffers_blend || GLStateManager.capabilities.OpenGL40;
+        supportsCompute = supportsCompute();
         supportsTesselation = GLStateManager.capabilities.GL_ARB_tessellation_shader || GLStateManager.capabilities.OpenGL40;
 
         supportsImageLoadStore = GLStateManager.capabilities.OpenGL42
@@ -157,13 +152,11 @@ public class RenderSystem {
 
         maxGlslVersion = Integer.parseInt(parseGlVersionString(RENDER_BACKEND.getString(GL20.GL_SHADING_LANGUAGE_VERSION)));
         supportsGpuShader4 = GLStateManager.capabilities.GL_EXT_gpu_shader4;
-        supportsProgramBinary = RENDER_BACKEND.supportsProgramBinary();
 
         GLStateManager.LOGGER.info("Max GLSL version: {}, GPU Shader4: {}", maxGlslVersion, supportsGpuShader4);
         GLStateManager.LOGGER.info("Image Load/Store: {}, Max Image Units: {}", supportsImageLoadStore, maxImageUnits);
         GLStateManager.LOGGER.info("SSBO: {}, Max SSBO Bindings: {}", supportsSSBO, maxSSBOBindings);
-        GLStateManager.LOGGER.info("Buffer Storage: {}, Clear Texture: {}, Sampler Objects: {}, Program Binary: {}",
-            supportsBufferStorage, supportsClearTexture, supportsSamplerObjects, supportsProgramBinary);
+        GLStateManager.LOGGER.info("Buffer Storage: {}, Clear Texture: {}, Sampler Objects: {}", supportsBufferStorage, supportsClearTexture, supportsSamplerObjects);
 
         if (isGLES) {
             GLStateManager.LOGGER.info("GL ES context detected, enabling shader transformer.");
@@ -354,7 +347,7 @@ public class RenderSystem {
     }
 
     public static void bindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) {
-        GLStateManager.glBindImageTexture(unit, texture, level, layered, layer, access, format);
+        RENDER_BACKEND.bindImageTexture(unit, texture, level, layered, layer, access, format);
     }
 
     public static int getMaxImageUnits() {
@@ -473,14 +466,8 @@ public class RenderSystem {
         }
     }
 
-    /**
-     * Reports whether per-buffer blending is available. Selected once during renderer initialization
-     * from the context capabilities: the flag is read by shader pack parsing, which also runs on the
-     * read-ahead thread, where the mutable {@link GLStateManager#capabilities} object must not be
-     * touched.
-     */
     public static boolean supportsBufferBlending() {
-        return supportsBufferBlending;
+        return GLStateManager.capabilities.GL_ARB_draw_buffers_blend || GLStateManager.capabilities.OpenGL40;
     }
 
     public static void disableBufferBlend(int buffer) {
@@ -537,18 +524,13 @@ public class RenderSystem {
         return dsaState.createTexture(target);
     }
 
-    /**
-     * Reports whether compute shaders are available. Selected once during renderer initialization, like the
-     * other capabilities: shader pack parsing reads it through {@code FeatureFlags.COMPUTE_SHADERS}, and the
-     * mutable {@link GLStateManager#capabilities} object must not be read from a parsing thread - nor before
-     * renderer initialization has run at all, where touching {@code GLStateManager} would issue GL calls.
-     */
+    // TODO: Proper notification of compute support
     public static boolean supportsCompute() {
-        return supportsCompute;
-    }
-
-    private static boolean probeComputeSupport() {
-        return GLStateManager.capabilities.GL_ARB_compute_shader;
+        try {
+            return GLStateManager.capabilities.GL_ARB_compute_shader;
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     public static int createBuffers() {
@@ -574,12 +556,7 @@ public class RenderSystem {
     }
 
     public static long getVRAM() {
-        if (GLStateManager.capabilities.GL_NVX_gpu_memory_info) {
-            return RENDER_BACKEND.getInteger(NVXGPUMemoryInfo.GL_GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX) * 1024L;
-        } else {
-            // Default to 4GB if we can't query VRAM
-            return 4294967296L;
-        }
+        return 4294967296L;
     }
 
     public static void clearTexImage(int texture, int target, int level, int format, int type) {
@@ -631,36 +608,8 @@ public class RenderSystem {
         hasClipCullDistance = supported;
     }
 
-    /**
-     * Supplies deterministic shader storage and image load/store capabilities for headless shader transformation
-     * tests. Both flags change GLSL version hoisting and therefore belong to the transform cache key, so tests need
-     * to move them without an OpenGL context.
-     */
-    public static void initializeShaderFeatureSupportForTesting(boolean shaderStorageBuffers, boolean imageLoadStore) {
-        supportsSSBO = shaderStorageBuffers;
-        supportsImageLoadStore = imageLoadStore;
-    }
-
-    /**
-     * Supplies a deterministic per-buffer blending capability for headless shader pack tests. Parsing a
-     * pack consults this flag through {@code FeatureFlags.PER_BUFFER_BLENDING}, which used to read the
-     * context capabilities object and therefore could not run without a context.
-     */
-    public static void initializeBufferBlendingSupportForTesting(boolean supported) {
-        supportsBufferBlending = supported;
-    }
-
     public static boolean supportsGpuShader4() {
         return supportsGpuShader4;
-    }
-
-    /**
-     * Reports whether linked programs can be saved and restored as driver binaries. Selected once during
-     * renderer initialization from the active backend, so the saved-program cache can stay off on drivers
-     * that cannot produce a binary.
-     */
-    public static boolean supportsProgramBinary() {
-        return supportsProgramBinary;
     }
 
     public static boolean supportsSnormFormats() {
@@ -693,12 +642,6 @@ public class RenderSystem {
     public static void samplerParameteri(int sampler, int pname, int param) {
         if (!supportsSamplerObjects || sampler == 0) return;
         RENDER_BACKEND.samplerParameteri(sampler, pname, param);
-    }
-
-    /** Sets a floating-point sampler parameter such as EXT texture anisotropy. */
-    public static void samplerParameterf(int sampler, int pname, float param) {
-        if (!supportsSamplerObjects || sampler == 0) return;
-        RENDER_BACKEND.samplerParameterf(sampler, pname, param);
     }
 
     public static void bindSamplerToUnit(int unit, int sampler) {

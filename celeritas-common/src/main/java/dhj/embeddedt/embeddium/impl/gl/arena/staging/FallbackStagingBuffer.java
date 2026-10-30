@@ -10,8 +10,6 @@ import java.nio.ByteBuffer;
 public class FallbackStagingBuffer implements StagingBuffer {
     private final GlMutableBuffer fallbackBufferObject;
     private boolean uploaded;
-    private long uploadCountTotal;
-    private long uploadBytesTotal;
 
     public FallbackStagingBuffer(CommandList commandList) {
         this.fallbackBufferObject = commandList.createMutableBuffer();
@@ -19,12 +17,9 @@ public class FallbackStagingBuffer implements StagingBuffer {
 
     @Override
     public void enqueueCopy(CommandList commandList, ByteBuffer data, GlBuffer dst, long writeOffset) {
-        int uploadBytes = data.remaining();
         commandList.uploadData(this.fallbackBufferObject, data, GlBufferUsage.STREAM_COPY);
         commandList.copyBufferSubData(this.fallbackBufferObject, dst, 0, writeOffset, data.remaining());
         this.uploaded = true;
-        this.uploadCountTotal++;
-        this.uploadBytesTotal += uploadBytes;
     }
 
     @Override
@@ -43,22 +38,6 @@ public class FallbackStagingBuffer implements StagingBuffer {
     @Override
     public void flip() {
 
-    }
-
-    public long getLiveBytes() {
-        return this.fallbackBufferObject.getSize();
-    }
-
-    public long getUploadCountTotal() {
-        return this.uploadCountTotal;
-    }
-
-    public long getUploadBytesTotal() {
-        return this.uploadBytesTotal;
-    }
-
-    public boolean isResetPending() {
-        return this.uploaded;
     }
 
     @Override

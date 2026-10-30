@@ -10,7 +10,6 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.client.ForgeHooksClient;
 import com.dhj.actinium.world.cloned.ActiniumBlockAccess;
 import com.dhj.actinium.render.terrain.compile.VintageChunkBuildContext;
-import com.dhj.actinium.render.terrain.compile.ChunkBufferBuilder;
 
 public class FluidloggedCompat {
     /**
@@ -32,21 +31,12 @@ public class FluidloggedCompat {
             for (BlockRenderLayer layer : VintageChunkBuildContext.LAYERS) {
                 if (block.canRenderInLayer(renderState, layer)) {
                     ForgeHooksClient.setRenderLayer(layer);
-                    ChunkBufferBuilder buffer = context.getChunkBufferForLayer(layer);
-                    buffer.actinium$beginInvocation(false, false, true, renderState);
-                    boolean captureStarted = false;
+                    var buffer = context.getBufferForLayer(layer);
+                    context.beginVanillaFluidRender(buffer, pos, renderState);
                     try {
-                        context.beginVanillaFluidRender(buffer, pos, renderState);
-                        captureStarted = true;
                         dispatcher.renderBlock(renderState, pos, blockAccess, buffer);
                     } finally {
-                        try {
-                            if (captureStarted) {
-                                context.endVanillaRender(buffer);
-                            }
-                        } finally {
-                            buffer.actinium$endInvocation();
-                        }
+                        context.endVanillaRender(buffer);
                     }
                 }
             }

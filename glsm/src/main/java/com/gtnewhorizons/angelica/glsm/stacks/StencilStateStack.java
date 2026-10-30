@@ -1,49 +1,42 @@
 package com.gtnewhorizons.angelica.glsm.stacks;
 
+import com.gtnewhorizon.gtnhlib.client.renderer.stacks.IStateStack;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
-import com.gtnewhorizons.angelica.glsm.StateSet;
 import com.gtnewhorizons.angelica.glsm.states.StencilState;
 
-public final class StencilStateStack extends StencilState implements CowStateStack<StencilStateStack> {
+/**
+ * Stack for GL stencil buffer state.
+ * Used by GL_STENCIL_BUFFER_BIT push/pop attrib.
+ */
+public class StencilStateStack extends StencilState implements IStateStack<StencilStateStack> {
 
     protected final StencilState[] stack;
-    private final CowDepths cow = new CowDepths(StateSet.R_STENCIL);
+    protected int pointer;
 
-    public StencilStateStack(int id) {
-        cow.id = id;
-        stack = new StencilState[GLStateManager.STATE_SLOTS];
-        for (int i = 0; i < GLStateManager.STATE_SLOTS; i++) {
+    public StencilStateStack() {
+        stack = new StencilState[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
+        for (int i = 0; i < GLStateManager.MAX_ATTRIB_STACK_DEPTH; i++) {
             stack[i] = new StencilState();
         }
     }
 
-    @Override
-    public CowDepths cowDepths() {
-        return cow;
+    public StencilStateStack push() {
+        if (pointer == stack.length) {
+            throw new IllegalStateException("Stack overflow size " + (pointer + 1) + " reached");
+        }
+        stack[pointer++].set(this);
+        return this;
     }
 
-    @Override
-    public boolean slotChanged(int slot) {
-        return !sameAs(stack[slot]);
+    public StencilStateStack pop() {
+        if (pointer == 0) {
+            throw new IllegalStateException("Stack underflow");
+        }
+        set(stack[--pointer]);
+        return this;
     }
 
-    @Override
-    public void captureSlot(int s) {
-        stack[s].set(this);
-    }
-
-    @Override
-    public void restoreSlot(int s) {
-        set(stack[s]);
-    }
-
-    @Override
-    public boolean topSlotChanged() {
-        return !cow.isEmpty() && !sameAs(stack[cow.top()]);
-    }
-
-    @Override
-    public int stackId() {
-        return cow.id;
+    public boolean isEmpty() {
+        return pointer == 0;
     }
 }

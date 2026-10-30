@@ -1,6 +1,6 @@
 # Actinium 架构说明
 
-最后更新：2026-10-21。本轮大项回迁的客户端回归仍待用户确认。
+最后更新：2026-10-08。
 
 ## 概述
 
@@ -58,11 +58,6 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
    `PostProcessingBridge`、`WorldRendererCompatBridge`、`IrisDebugOptions.Bridge`、
    `GLSMPerfDebugHooks`）；初始化 DH / NeoFontRender 兼容。
 4. **`onInit`**：NeoFontRender 初始化、dev 命令注册、Iris fmlInitEvent。
-   Iris 启用时先由根项目 `AngelicaJar` 从 FML mod container 的 `getSource()` 与游戏目录
-   配置磁盘缓存（`<gameDir>/angelica/shadercache`）及当前 Jar 的 build salt；classes
-   directory 开发环境保持禁用，避免用 `jar:` URI 解码加载位置，
-   再注册 `PBRTextureManager` 的资源重载监听。listener 注册会立即观察已加载的资源包；
-   后续每次资源重载同步释放旧 PBR holder，并启动新一代资源名字索引。
 
 `ActiniumRuntime`（`runtime/` 包）在类加载时静态装载 `SodiumGameOptions` 配置与版本信息，
 失败时降级为只读默认值，是全局状态的静态持有者。
@@ -171,11 +166,6 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
 - **`render/terrain/compile/`**：`VintageChunkBuildContext`；`compile/light/`：`LightDataCache`、
   `VintageDiffuseProvider`；`compile/pipeline/`：`VintageBlockRenderer`；`compile/task/`：
   `ChunkBuilderMeshingTask`（区块网格构建任务）。
-  mesher 的普通与 shader-layer override 路径统一调用 `BlockRendererDispatcher`。
-  每层的 `ChunkBufferBuilder` 携带调用策略，`ChunkModelRouting` 仅将最外层的合格 MODEL
-  调用交给 fast renderer；递归调用保留原版路径，并通过 `VanillaQuadContextStack` 保存、恢复
-  对应方块或流体的材质身份。fast 路径复用 dispatcher 选定的模型和 actual state，再扩展状态一次，
-  保留原五参 `renderBlock` 方法中的 addon 绑定点；返回值依据实际几何写入。
 - **`render/terrain/fog/`**：`GLStateManagerFogService` —— FogService SPI 实现。
 - **`render/terrain/sprite/`**：`SpriteUtil`。
 
@@ -203,13 +193,6 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
   `ShadowMatrixAccess`（依赖 glsm 的 `InternalShadowRenderingState`）。
 - **`texture/`**：`SpriteExtension`、`TextureMapExtension` —— 精灵/纹理地图扩展
   （动画帧、mipmap、上传数据访问）。
-  `texture/atlas/` 的 `AtlasLoadPlan`、`AtlasLoadSession`、`AtlasAssembler` 配合有界
-  `PrefetchLane` 执行预取、mipmap 和 staging 装配。A2 时序始终由主线程按 Forge 顺序装载
-  依赖帧并调用 custom loader；只有不被其他 loader 读取的普通精灵可交 worker 生成 mip。
-  未知资源包默认串行，所有任务退出后才释放会话；失败会等待兄弟任务并保留首因。
-  `texture/mipmap/` 提供材质 mipmap 策略与 metadata；gutter、terrain sampler、RGSS、
-  mip-bias 和 PBR atlas 使用一致的布局。普通颜色动画采用 alpha-aware 插值，PBR 数据纹理
-  按独立通道插值，避免将材质 alpha 当作透明度。
 
 ## shader/ 子项目（Iris 风格光影管线）
 
@@ -224,59 +207,14 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
   材质 ID 映射、include 处理、C 预处理器（jcpp）、选项系统与选项菜单、纹理定义、
   字符串变换（`ShaderPack`、`ProgramSource`、`PackDirectives`、`ShaderProperties`、
   `OptionSet`、`IncludeGraph`、`JcppProcessor`、`FlatteningMap`）。
-  `IncludeGraph` 并行读取源码，`IncludeProcessor` 对应用选项后的 include 图计算递归内容 hash；
-  `ShaderPack` 实际调用 hash + Supplier 的 Jcpp 入口，命中 `iris-preprocess` 磁盘层时跳过
-  include 展开和预处理。键包含全部环境宏，properties 路径包含最终选项宏。
 - **`parsing/`**：Iris 自定义函数/向量类型解析（`IrisFunctions`、`VectorConstructor`、
   `SmoothFloat`）。
 - **`pipeline/`**（15 类）：渲染管线主体 —— 世界渲染、天空、手持物品、阴影、clear pass
   调度（`DeferredWorldRenderingPipeline`、`FixedFunctionWorldRenderingPipeline`、
   `PipelineManager`、`ShadowRenderer`、`HandRenderer`）。
-  `DeferredWorldRenderingPipeline.ProgramTransforms.submit` 把 begin/prepare/deferred/
-  composite/final/shadowcomp、attributes（按 `TransformInputs.availabilities()` 的 5 个输入
-  组合）、terrain 与全部 compute 变换统一提交到 `ShaderTransformExecutor`，构造期同步消费时
-  直接命中缓存；`Iris.warmupShaderTransforms()` 在包加载后复用同一套 key 预热，并由
-  `awaitProgramSetWarmup()` 等到真实变换完成。availability 集合是 `InputAvailability.unpackAll()`
-  加 `NO_COLOR`，取代了原先会漏掉 lightmap-only 组合的手写清单。
-  `createPass` 在动手构建前查 `SharedProgramKey`（源码名、实际变换输入、pass 声明的输入、
-  是否 shadow 四元组）：命中即用已有 program 只建 `Pass`，不再 `begin`/注册 uniform/sampler；
-  `createPassInner` 因此拆成「负责 build 与 program 侧装配的 `wireGbufferProgram`」与
-  「负责 framebuffer/alpha/blend 的 `createPassInner`」。构造失败会 `destroy()` 后重抛，
-  `destroy()` 对每个字段做空值守卫。
-- **`gl/program/RetainedPrograms`**：pipeline 销毁时把已链接 program 交给保留池而不是删除，
-  开关光影、重载未改动的包、跨维度时可复用。两批 `recent`/`older` 轮换，配置标识（现在是
-  包指纹）变化即整体退役；单键 4 个、两批合计 512 个上限，淘汰与退役都是真删除。
-  `ProgramBuilder` 的回退顺序是「保留池 → 程序二进制磁盘 → 编译链接」，命中即短路。
-  池按 native share group 分隔，wrapper 同时持有 owner group 和配置 epoch；其他组不能取用
-  GLuint，跨组释放排队到所属组，最后一个 owner context 退役后丢弃失效记录。普通 Display
-  迁移仅协调仍存活的组，不能清空其他组的所有权。`ProgramBuilder` 在 `commit()` 前持有
-  程序，调用方用 try-with-resources 覆盖编译、uniform/sampler 装配与 pass 建构失败路径。
-- **主菜单预读**：`Iris.prepareSelectedShaderPack` 在主线程捕获环境宏，后台线程完成包解析与
-  `Overworld` ProgramSet，经 `preparedPack` 的软引用 + 代次发布；`invalidatePreparedPack`
-  在显式 reload 与「选择变了但未应用」时递增代次，晚到的读取既不能发布也不能被取用。
-  解析阶段不激活任何东西；required feature 不满足的包由主线程按原行为禁用。
-  root 侧 `ShaderWarmup` 由 `MixinGuiMainMenu.initGui` 触发，单条低优先级 daemon 线程，
-  失败只记日志；进入世界不等待预读预热（两边提交同一套 key，变换是输入的纯函数）。
-- **全目录预编译与「已编译」marker**：`saveCompiledShaders` 打开时，包加载完成后
-  `Iris.compileEveryShaderFolder` 按 `ShaderPack.getEveryProgramSet()`（每个含 shader 文件的
-  维度目录，加上某些维度会回退到的 base）逐个编译：每个目录建一次一次性 pipeline，
-  地形程序经 `IrisCeleritasShaderProvider.compileTerrainPrograms` 单独覆盖，随后立即
-  `PipelineManager.discardPipeline`，所以峰值只是「当前目录的 program + 上一批保留池」，
-  不随目录数线性增长。
-  批次开始调 `ProgramBinaryCache.beginFullCompile`，只有每个目录都成功才在磁盘写设置指纹
-  marker；任一目录失败只 WARN（带目录名）并跳过，包照常加载、marker 不写、下次进世界重试。
-  marker 键含驱动指纹、FFP 开关与内容指纹（`describeSettings(..., byContent=true)`，取自包
-  最终生效的选项值），因此改光影设置会重新全量编译；写盘前先比对批次代次，
-  `deleteAll()` 或更晚的批次会让晚到的旧写失效。日志只有开始/结束两条 INFO（包名、目录数、
-  耗时）：包在首个世界帧加载，1.12.2 在那里换帧会破坏当前帧，所以不做进度条。
 - **`pipeline/transform/`**（22+ 类）：GLSL 着色器源变换（属性、顶点格式、计算、DH、
   Celeritas 通道）—— `ShaderTransformer`、`AttributeTransformer`、`CeleritasTransformer`、
   `CommonTransformer`、`EntityPatcher`。
-  `TransformPatcher` 先查 400 项内存 LRU，未命中再查 `iris-transform` 磁盘层；键覆盖五个
-  stage 源码、patch 与参数族（`InputAvailability`、纹理 stage 映射）、adaptive shadow
-  instrumentation 绑定，以及决定版本提升与 clip distance 注入的 GL 能力
-  （max GLSL、SSBO、image load/store、clip cull distance）。磁盘命中会回填内存缓存并返回
-  同一实例；参数族按类型穷举，新增子类未接入键会立刻失败而不是产出错误命中。
 - **`postprocess/`**：后处理合成（composite/final pass）—— `CompositeRenderer`、
   `FinalPassRenderer`、`FullScreenQuadRenderer`、`CenterDepthSampler`。
 - **`rendertarget/`**（10 类）：render target 管理与帧缓冲（`RenderTargets`、`ColorTexture`、
@@ -300,9 +238,6 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
   `BufferBuilderPolygonView`、`ImmediateState`）。
 - **`texture.*/`**：PBR 纹理系统（LabPBR）、mipmap、纹理导出（`PBRAtlasTexture`、
   `LabPBRTextureFormat`、`AbstractMipmapGenerator`）。
-  `PBRResourceIndex` 在 worker 上枚举已知资源包的 ZIP/文件夹名字，供两个 PBR loader
-  提前跳过确定不存在的资源；未知资源包继续使用原来的资源查询协议。
-  同一 resource manager 重载也创建新 generation，旧扫描不能发布到新索引；ZIP 由资源包持有。
 - **`fantastic/`**：粒子渲染封装（`IrisParticleRenderTypes`、`PhasedParticleEngine`）。
 - **`layer/`**：gbuffer 层枚举（`GbufferPrograms`、`RenderLayer`）。
 - **`config/`**：本地配置持久化（`IrisConfig`）。
@@ -402,25 +337,6 @@ bounded ByteBuffer 视图由 drawRaw 统一创建。此改动已通过自动化�
   `Feature`/`GLFeatureSet`、`FeedbackManager`、`GpuCommandDiagnostics`、`Vendor`、`GLDebug`、
   `ITessellatorData`。
 - **`backend/`**：渲染后端抽象 —— `RenderBackend`、`BackendManager`、`DebugMessageHandler`。
-- **`context/`**：`GLContextIdentity` 与 `GLContextRegistry` 区分 native handle、生命周期
-  generation 和 share group。Cleanroom 的 `LWJGLTransformer` 在请求 `org.lwjgl.*` 类时读取
-  `org.lwjglx.*` 字节码并把内部类型 remap 回 `org.lwjgl.*`；legacy 名称是最终定义的类名。
-  CleanMix 的 `FoundationBytecodeProvider` 在找不到 raw `org.lwjgl.*` class bytes 时不会调用
-  transformer chain，因此指向这些目标的 Mixin 会在加载阶段报 `ClassNotFound`，即使普通类加载
-  随后可以合成它们。上下文生命周期钩子通过 `MixinEarly` 注册的
-  `LwjglContextLifecycleTransformer` 插入到已经合成的 legacy 字节码中；不要把 target 改为
-  `org.lwjglx.*`。它复用 `compat/lwjgl/DisplayContextBinding`：LWJGLXX 的 `Display.create`、
-  `Display.makeCurrent` 与 `Display.releaseContext` 直接调用 GLFW，成功切换后绑定/解绑 primary
-  context；其它 drawable 由 `DrawableGL` / `ContextGL` 生命周期钩子绑定，只有真实 native context
-  destroy 才退役身份，`DrawableGL.destroy` 清空 primary drawable 引用本身不代表窗口 context 已
-  销毁。同宿主对象换 handle 也退役旧 generation。
-  目标字节应按运行环境的 manifest class-path 解析；本次 Cleanroom 0.6.12-alpha 日志使用
-  `lwjglxx` 1.1.22 与 LWJGL 3.4.1，不能由历史缓存中的 1.1.17 推定。
-  Display-list compilation session 按 context identity 独立保存；release 时暂存 exact capture token，
-  rebind 时在新线程恢复，destroy 前只中止该 identity 的未完成录制。其它仍存活的共享 context
-  不继承录制器或捕获栈。
-  `GLContextState` 持有 VAO/EBO、数组、streaming、FFP 和属性栈状态；`Feature` 与 `StateSet`
-  缓存按 identity 分隔。容器资源只在所属 context 删除，共享 buffer 的删除按所属组调度。
 - **`compat/`**：`FogHelper`（雾色状态捕获）；`compat/lwjgl/`：`AngelicaCylinder/Disk/
   PartialDisk/Sphere`（替代 LWJGL2 GLU quadric 形状）。
 - **`debug/`**：`GLSMDebug`（详细 draw 日志）、`GLSMPerfDebug` + `GLSMPerfDebugHooks`
@@ -431,20 +347,6 @@ bounded ByteBuffer 视图由 drawRaw 统一创建。此改动已通过自动化�
 - **`ffp/`**（固定管线模拟）：`ShaderManager`、`Program`/`ProgramUniformState`、
   `VertexKey`/`FragmentKey`、`Vertex/Fragment/GeometryShaderGenerator`、`ShaderCache`、
   `Uniforms` —— 由固定管线状态生成 shader。
-  FFP program 与可变 uniform 上传状态按 context 独立，避免不同 context 改写同一个共享
-  program 的 uniform。纯 `GenerationTrackedState` 显式接收 identity，不初始化 GL；实际
-  uniform 入口负责校验当前 native context。
-- **`shader/`**（上限为 GLSL 与程序缓存）：`ShaderDiskCache`（磁盘缓存底座：CRC32 envelope、
-  临时文件 + 原子替换、build salt 代次、容量上限、layer 保留/删除 API）、`ShaderCacheIO`
-  （typed payload 编解码）、`ProgramBinaryCache`（`gl-program/<净化包名>` 层；键 = 驱动指纹
-  + FFP 位 + 实际预链接的 attribute 绑定 + 各 stage 完整源码；命中经 `glProgramBinary` 还原，
-  驱动拒绝时删除条目并回退编译）、`ProgramBinaryOps`/`ProgramBinaryOpsImpl`（需要 GL 上下文的
-  操作端口，生产实现转发 `RenderSystem`/`GLStateManager`，使拒绝状态机可无上下文测试）、
-  `GlslVulkanPreprocess`/`SpirvCompiler`/`SpirvShaderTranslator`（SPIR-V 侧工具）。
-  celeritas-common 的 `GlProgram` 只暴露 `LinkHook`，由根项目安装为
-  `ProgramBinaryCache::markRetrievable`，子项目不反向引用。
-- **`threading/`**：`AngelicaWorkers`（后台 worker 池，`submit`/`run`/`invokeAll`；资源扫描、
-  程序二进制写入磁盘与预读都由该类负责，worker 线程上不访问 GL）。
 - **`hooks/`**：`GLSMHooks`（静态事件总线集合：纹理绑定/删除、program 切换、blend、fog、
   lightmap 等）、`DeferredAlpha/Blend/DepthColorHandler`（延迟状态应用）、`GLSMConfig`/
   `GLSMInitConfig`、`GpuCommandRecorder/Phase/Type`、`GpuCheckpointType`；`hooks/events/`
@@ -456,24 +358,11 @@ bounded ByteBuffer 视图由 drawRaw 统一创建。此改动已通过自动化�
   `DisplayListVBO`/`DisplayListVBOBuilder`、`GLCommand`、`AccumulatedDraw`；
   `recording/commands/` —— `DisplayListCommand` 接口及 `MultMatrixCmd`/`TexImage2DCmd`/
   `TexSubImage2DCmd` 等具体命令。
-  indexed batch 与 `SubVBO/DRAW_RANGE` 保存共享 buffer 和布局，VAO 按 context 延迟创建并
-  复用；裸 VAO 命令受编译 identity 约束。每个 context session 保存 recorder、录制模式、
-  nested parent frames、相对变换、draw buffers、state generation、internal StateSet 深度与 capture
-  token；nested compilation 只在同一 identity 内保存、恢复父层。context release 暂停捕获但保留
-  compilation，随后重新绑定可继续 `glEndList`；destroy 在 native context 销毁前取消所属 session，
-  并清理暂停窗口中的 recorder，resume 不会重新激活已取消的 recorder。`TessellatorManager` 的
-  owned capture token 可按 exact identity 从线程本地栈任意位置暂停、恢复或移除，普通调用仍使用
-  原有 LIFO capture API。
-  Display-list ID allocator 与编译缓存按 GL share group 隔离；同组 context 共享列表，不同组
-  可使用相同整数 ID。最后一个 context 退役时释放该组的列表缓存和 CPU 录制资源。
 - **`redirect/`**：`GLSMRedirector`（GL 调用重定向）、`RedirectorDebugOptions`。
 - **`shadow/`**：`InternalShadowRenderingState` —— shadow pass 矩阵与渲染开关状态。
 - **`stacks/`**：全部状态栈（Alpha/Blend/Boolean/Color4/ColorMask/Depth/Fog/Integer/Light/
   LightModel/Line/Material/MatrixMode/Point/Polygon/Stencil/TextureBinding/
   TextureUnitBoolean/ViewPort/Vec3f/Vec4f），接口 `IStateStack`。
-  `CowStateStack`、`CowDepths` 和 `CowDispatch` 实现首次修改才保存的属性栈；pop 只恢复
-  实际改变的组，嵌套 scope 将尚需父层保留的快照向外提升。`GL_TEXTURE_BIT` 同时覆盖
-  TexGen 数值，`GL_TRANSFORM_BIT` 同时覆盖已变换的裁剪平面方程，不仅恢复 enable 位。
 - **`states/`**：与 stacks 一一对应的状态值对象（`ISettableState`），另有
   `TextureUnitArray`、`GenerationTrackedState`、`TexEnvState`、`TexGenState`、
   `VertexAttribState`、`ClipPlaneState`。

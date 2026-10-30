@@ -1,7 +1,5 @@
 package net.coderbot.iris.config;
 
-import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -14,12 +12,6 @@ class IrisConfigTest {
 
     @TempDir
     Path tempDir;
-
-    @AfterEach
-    void releaseProgramCache() {
-        // The switch also drives the program cache, which is process-wide state
-        ProgramBinaryCache.setEnabled(false);
-    }
 
     @Test
     void initializeKeepsExplicitlyEnabledShaderPackAfterReload() throws Exception {
@@ -66,22 +58,5 @@ class IrisConfigTest {
         loaded.initialize();
 
         assertFalse(loaded.areShadersEnabled(), "no shader pack means shaders cannot be active");
-    }
-
-    @Test
-    void theSavedProgramSwitchIsStoredAsSoonAsItIsToggled() throws Exception {
-        final Path properties = tempDir.resolve("shaders.properties");
-        final IrisConfig config = new IrisConfig(properties);
-        config.initialize();
-        assertFalse(config.shouldSaveCompiledShaders(), "saving linked programs is off by default");
-
-        // The screen must not need a second save after the switch is pressed
-        config.setSaveCompiledShaders(true);
-        assertTrue(config.shouldSaveCompiledShaders());
-
-        final IrisConfig reloaded = new IrisConfig(properties);
-        reloaded.initialize();
-
-        assertTrue(reloaded.shouldSaveCompiledShaders(), "the switch has to survive a restart without another save");
     }
 }

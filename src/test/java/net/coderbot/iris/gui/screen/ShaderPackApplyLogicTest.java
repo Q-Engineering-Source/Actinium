@@ -62,18 +62,4 @@ class ShaderPackApplyLogicTest {
             "BSL", "BSL", false, false, true, false, false, false),
             "disabled shaders with no pack loaded and no fallback must not reload");
     }
-
-    @Test
-    void selectingAnotherPackDropsThePackReadAhead() {
-        assertTrue(ShaderPackApplyLogic.shouldInvalidateReadAhead("BSL", "SEUS"),
-            "the pack read ahead describes the selection it was read for");
-        assertTrue(ShaderPackApplyLogic.shouldInvalidateReadAhead("BSL", null),
-            "a selection made while no pack was configured was never read ahead");
-    }
-
-    @Test
-    void applyingTheSamePackKeepsThePackReadAhead() {
-        assertFalse(ShaderPackApplyLogic.shouldInvalidateReadAhead("BSL", "BSL"),
-            "options, the enable switch and a reset reach the read-ahead through the reload they trigger");
-    }
 }

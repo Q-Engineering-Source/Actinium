@@ -119,19 +119,6 @@ public class PipelineManager {
 		return pipelinesPerDimension.containsValue(candidate);
 	}
 
-	/**
-	 * Destroys a pipeline that was built only to warm the caches - a full compile of every shader folder -
-	 * and was never made current, so it is not in the per-dimension cache and nothing will destroy it
-	 * later.
-	 *
-	 * <p>The texture state is reset for the same reason {@link #destroyPipeline()} resets it: the programs
-	 * were sampled with render targets that are about to be deleted.</p>
-	 */
-	public void discardPipeline(WorldRenderingPipeline unused) {
-		resetTextureState();
-		unused.destroy();
-	}
-
 	@Nullable
 	public WorldRenderingPipeline getPipelineNullable() {
 		return pipeline;

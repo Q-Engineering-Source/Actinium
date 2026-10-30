@@ -5,7 +5,6 @@ import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormat;
 import com.gtnewhorizons.angelica.glsm.CompatUniformManager;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.QuadConverter;
-import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredBlendHandler;
@@ -15,13 +14,13 @@ import com.gtnewhorizons.angelica.glsm.stacks.Vec4fStack;
 import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
 import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMInitConfig;
 import lombok.Getter;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
 import java.nio.file.Paths;
 import java.util.Arrays;
-import java.util.Objects;
 
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
 
@@ -30,9 +29,14 @@ import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACK
  */
 public class ShaderManager {
 
+    private static final class Holder {
+
+        static final ShaderManager INSTANCE = new ShaderManager();
+    }
+
     private static final boolean DEBUG_DRAW_LOGS = Boolean.getBoolean("actinium.glsm.verboseDrawLogs");
 
-    private ShaderCache cache;
+    private final ShaderCache cache = new ShaderCache();
     private final Uniforms uniforms = new Uniforms();
     private final Int2IntOpenHashMap vaoVertexFlags = new Int2IntOpenHashMap();
 
@@ -44,22 +48,21 @@ public class ShaderManager {
     private final long[] currentFKPacked = new long[FragmentKey.MAX_UNITS];
     private int currentFKLen = 0;
 
-    private final Vector3f currentNormal = new Vector3f(0.0f, 0.0f, 1.0f);
-    private final Vector4f[] currentTexCoords = {
+    @Getter private static final Vector3f currentNormal = new Vector3f(0.0f, 0.0f, 1.0f);
+    private static final Vector4f[] currentTexCoords = {
         new Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
         new Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
         new Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
         new Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
     };
-    private final Vec3fStack normalStack = new Vec3fStack(currentNormal);
-    private final Vec4fStack texCoordStack = new Vec4fStack(currentTexCoords[0]);
-    private int normalGeneration;
-    private int texCoordGeneration;
-    private static volatile boolean enabled;
+    @Getter private static final Vec3fStack normalStack = new Vec3fStack(currentNormal);
+    @Getter private static final Vec4fStack texCoordStack = new Vec4fStack(currentTexCoords[0]);
+    @Getter private static int normalGeneration;
+    @Getter private static int texCoordGeneration;
+    @Getter private boolean enabled = false;
     private int currentVertexFlags = VertexFlags.TEXTURE_BIT | VertexFlags.COLOR_BIT | VertexFlags.NORMAL_BIT;
 
-    public ShaderManager(ShaderCache cache) {
-        this.cache = cache;
+    private ShaderManager() {
         vaoVertexFlags.defaultReturnValue(-1);
         if (Boolean.parseBoolean(System.getProperty("angelica.dumpShaders", "false"))) {
             cache.setDumpDir(Paths.get("ffp_shaders"));
@@ -67,36 +70,7 @@ public class ShaderManager {
     }
 
     public static ShaderManager getInstance() {
-        return GLStateManager.getShaderManager();
-    }
-
-    public static Vector3f getCurrentNormal() {
-        return getInstance().currentNormal;
-    }
-
-    public static Vec3fStack getNormalStack() {
-        return getInstance().normalStack;
-    }
-
-    public static Vec4fStack getTexCoordStack() {
-        return getInstance().texCoordStack;
-    }
-
-    public static int getNormalGeneration() {
-        return getInstance().normalGeneration;
-    }
-
-    public static int getTexCoordGeneration() {
-        return getInstance().texCoordGeneration;
-    }
-
-    public boolean isEnabled() {
-        return enabled;
-    }
-
-    /** Returns the renderer-wide FFP enable switch without resolving context-local manager state. */
-    public static boolean isGloballyEnabled() {
-        return enabled;
+        return Holder.INSTANCE;
     }
 
     public void enable() {
@@ -289,27 +263,26 @@ public class ShaderManager {
         }
     }
 
-    public static Vector4f getCurrentTexCoord() { return getInstance().currentTexCoords[0]; }
-    public static Vector4f getCurrentTexCoord(int unit) { return getInstance().currentTexCoords[unit]; }
+    public static Vector4f getCurrentTexCoord() { return currentTexCoords[0]; }
+    public static Vector4f getCurrentTexCoord(int unit) { return currentTexCoords[unit]; }
 
     public static void setCurrentNormal(float x, float y, float z) {
-        final ShaderManager manager = getInstance();
-        manager.currentNormal.set(x, y, z);
-        manager.normalGeneration++;
+        currentNormal.set(x, y, z);
+        normalGeneration++;
     }
 
     public static void setCurrentTexCoord(float s, float t, float r, float q) {
-        setCurrentTexCoord(0, s, t, r, q);
+        currentTexCoords[0].set(s, t, r, q);
+        texCoordGeneration++;
     }
 
     public static void setCurrentTexCoord(int unit, float s, float t, float r, float q) {
-        final ShaderManager manager = getInstance();
-        manager.currentTexCoords[unit].set(s, t, r, q);
-        manager.texCoordGeneration++;
+        currentTexCoords[unit].set(s, t, r, q);
+        texCoordGeneration++;
     }
 
-    public static void bumpNormalGeneration() { getInstance().normalGeneration++; }
-    public static void bumpTexCoordGeneration() { getInstance().texCoordGeneration++; }
+    public static void bumpNormalGeneration() { normalGeneration++; }
+    public static void bumpTexCoordGeneration() { texCoordGeneration++; }
 
     public void enableClientVertexFlag(int flag) {currentVertexFlags |= flag;}
     public void disableClientVertexFlag(int flag) {currentVertexFlags &= ~flag;}
@@ -335,30 +308,13 @@ public class ShaderManager {
     }
 
     public void destroy() {
-        retireContext();
-    }
-
-    /** Releases context-owned upload scratch and variant bookkeeping without deleting share-group programs. */
-    public void retireContext() {
+        cache.destroy();
         uniforms.destroy();
+        final GLSMInitConfig config = GLStateManager.getInitConfig();
+        if (config != null && config.getStreamingDrawerDestroy() != null) config.getStreamingDrawerDestroy().run();
+        QuadConverter.destroy();
         active = false;
         currentProgram = null;
-        currentVertexKeyPacked = Long.MIN_VALUE;
-        currentFKLen = 0;
-        vaoVertexFlags.clear();
-    }
-
-    /** Rebinds this context's FFP manager to the program cache owned by its new share group. */
-    public void adoptContextIdentity(GLContextIdentity identity, ShaderCache replacementCache) {
-        Objects.requireNonNull(identity, "identity");
-        if (cache != replacementCache) {
-            cache = replacementCache;
-            currentProgram = null;
-            currentVertexKeyPacked = Long.MIN_VALUE;
-            currentFKLen = 0;
-        }
-        active = false;
-        vaoVertexFlags.clear();
     }
 
     public String getDebugInfo() {

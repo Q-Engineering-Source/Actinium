@@ -1,6 +1,5 @@
 package net.irisshaders.iris.compat.sodium;
 
-import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import net.coderbot.iris.gui.option.IrisVideoSettings;
 import dhj.embeddedt.embeddium.api.options.structure.ExternalPage;
 import dhj.embeddedt.embeddium.api.options.structure.Option;
@@ -20,10 +19,9 @@ class IrisConfigEntryPointTest {
     @Test
     void buildsShadowOptionPageAndExternalPageAndAppliesInjectedBinding() {
         AtomicInteger persisted = new AtomicInteger(32);
-        AtomicBoolean saveCompiledShaders = new AtomicBoolean();
         AtomicBoolean openedCalled = new AtomicBoolean();
         IrisConfigEntryPoint entryPoint = new IrisConfigEntryPoint(persisted::set, persisted::get,
-                ignored -> openedCalled.set(true), saveCompiledShaders::set, saveCompiledShaders::get);
+                ignored -> openedCalled.set(true));
 
         List<OptionPage> pages = entryPoint.createPages();
         assertEquals(2, pages.size());
@@ -59,27 +57,11 @@ class IrisConfigEntryPointTest {
         shadow.setValue(64);
         shadow.applyChanges();
         assertEquals(64, persisted.get());
-
-        @SuppressWarnings("unchecked")
-        Option<Boolean> saveCompiled = (Option<Boolean>) videoSettings.getOptions().stream()
-                .filter(option -> "save_compiled_shaders".equals(option.getId().getPath()))
-                .findFirst().orElseThrow();
-        assertEquals("options.iris.saveCompiledShaders",
-                ((TextComponent.Translatable) saveCompiled.getName()).keys().get(0));
-        assertEquals(RenderSystem.supportsProgramBinary()
-                        ? "options.iris.saveCompiledShaders.tooltip"
-                        : "options.iris.saveCompiledShaders.tooltipUnsupported",
-                ((TextComponent.Translatable) saveCompiled.getTooltip()).keys().get(0));
-
-        saveCompiled.setValue(true);
-        saveCompiled.applyChanges();
-        assertTrue(saveCompiledShaders.get());
     }
 
     @Test
     void externalPageActivationSkipsVideoSettingsWhenOpeningShaderPacks() {
-        IrisConfigEntryPoint entryPoint = new IrisConfigEntryPoint(value -> { }, () -> 32, ignored -> { },
-                value -> { }, () -> false);
+        IrisConfigEntryPoint entryPoint = new IrisConfigEntryPoint(value -> { }, () -> 32, ignored -> { });
         List<OptionPage> pages = entryPoint.createPages();
         assertInstanceOf(ExternalPage.class, pages.get(1));
         assertEquals("shader_pack_selection", pages.get(1).getId().getPath());

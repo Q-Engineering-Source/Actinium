@@ -34,41 +34,28 @@ import com.dhj.actinium.compat.architecturecraft.ArchitectureCraftCompat;
 import com.dhj.actinium.compat.componentmodelhider.ComponentModelHiderCompat;
 import com.dhj.actinium.compat.fluidlogged.FluidloggedCompat;
 import com.dhj.actinium.compat.snowrealmagic.SnowRealMagicCompat;
-import com.dhj.actinium.debug.ChunkMeshInputDiagnostics;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.world.WorldSlice;
 import com.dhj.actinium.world.cloned.ActiniumBlockAccess;
 import com.dhj.actinium.world.cloned.ChunkRenderContext;
 import com.dhj.actinium.render.terrain.compile.VintageChunkBuildContext;
-import com.dhj.actinium.render.terrain.compile.ChunkBufferBuilder;
-import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 
 import java.util.*;
 
 public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> {
     private static final ProxyClassGenerator<WorldSlice, ActiniumBlockAccess> WORLD_SLICE_LOCAL_GENERATOR = new ProxyClassGenerator<>(WorldSlice.class, "WorldSliceLocal", ActiniumBlockAccess.class);
-    /** Bounded fallback for callers of the compatibility constructor that do not supply a manager-owned budget. */
-    private static final ChunkMeshInputDiagnostics.TraceBudget SESSION_TRACE_BUDGET =
-        new ChunkMeshInputDiagnostics.TraceBudget();
     private final RenderSection render;
     private final int buildTime;
     private final Vector3d camera;
     private final ChunkRenderContext renderContext;
     private final boolean rasterOcclusion;
-    private final ChunkMeshInputDiagnostics.TraceBudget meshInputTraceBudget;
 
     public ChunkBuilderMeshingTask(RenderSection render, ChunkRenderContext context, int time, Vector3d camera, boolean rasterOcclusion) {
-        this(render, context, time, camera, rasterOcclusion, SESSION_TRACE_BUDGET);
-    }
-
-    public ChunkBuilderMeshingTask(RenderSection render, ChunkRenderContext context, int time, Vector3d camera,
-                                   boolean rasterOcclusion, ChunkMeshInputDiagnostics.TraceBudget meshInputTraceBudget) {
         this.render = render;
         this.buildTime = time;
         this.camera = camera;
         this.renderContext = context;
         this.rasterOcclusion = rasterOcclusion;
-        this.meshInputTraceBudget = Objects.requireNonNull(meshInputTraceBudget, "meshInputTraceBudget");
     }
 
     @Override
@@ -154,40 +141,34 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                                 net.minecraft.util.BlockRenderLayer layer = shaderLayerOverride.toVanillaLayer();
                                 ForgeHooksClient.setRenderLayer(layer);
                                 block.canRenderInLayer(blockState, layer);
-                                boolean allowFastRenderer = blockState.getRenderType() == EnumBlockRenderType.MODEL
-                                        && ActiniumRuntime.options().performance.useFastBlockRenderer
+                                if (blockState.getRenderType() == EnumBlockRenderType.MODEL && ActiniumRuntime.options().performance.useFastBlockRenderer
                                         && !SnowRealMagicCompat.shouldForceVanillaRender(block)
-                                        && !ArchitectureCraftCompat.shouldForceVanillaRender(block);
-                                ChunkBufferBuilder buffer = buildContext.getChunkBufferForLayer(layer);
-                                buffer.actinium$beginInvocation(allowFastRenderer, false, false, blockState);
-                                buildContext.beginVanillaBlockRender(buffer, blockPos, blockState);
-                                try {
-                                    dispatcher.renderBlock(blockState, blockPos, slice, buffer);
-                                } finally {
+                                        && !ArchitectureCraftCompat.shouldForceVanillaRender(block)) {
+                                    buildContext.getBlockRenderer().renderBlock(blockState, blockPos, slice, layer, false);
+                                } else {
+                                    var buffer = buildContext.getBufferForLayer(layer);
+                                    buildContext.beginVanillaBlockRender(buffer, blockPos, blockState);
                                     try {
-                                        buildContext.endVanillaRender(buffer);
+                                        dispatcher.renderBlock(blockState, blockPos, slice, buffer);
                                     } finally {
-                                        buffer.actinium$endInvocation();
+                                        buildContext.endVanillaRender(buffer);
                                     }
                                 }
                             } else {
                                 for (net.minecraft.util.BlockRenderLayer layer : VintageChunkBuildContext.LAYERS) {
                                     if (block.canRenderInLayer(blockState, layer)) {
                                         ForgeHooksClient.setRenderLayer(layer);
-                                        boolean allowFastRenderer = blockState.getRenderType() == EnumBlockRenderType.MODEL
-                                                && ActiniumRuntime.options().performance.useFastBlockRenderer
+                                        if (blockState.getRenderType() == EnumBlockRenderType.MODEL && ActiniumRuntime.options().performance.useFastBlockRenderer
                                                 && !SnowRealMagicCompat.shouldForceVanillaRender(block)
-                                                && !ArchitectureCraftCompat.shouldForceVanillaRender(block);
-                                        ChunkBufferBuilder buffer = buildContext.getChunkBufferForLayer(layer);
-                                        buffer.actinium$beginInvocation(allowFastRenderer, true, false, blockState);
-                                        buildContext.beginVanillaBlockRender(buffer, blockPos, blockState);
-                                        try {
-                                            dispatcher.renderBlock(blockState, blockPos, slice, buffer);
-                                        } finally {
+                                                && !ArchitectureCraftCompat.shouldForceVanillaRender(block)) {
+                                            buildContext.getBlockRenderer().renderBlock(blockState, blockPos, slice, layer);
+                                        } else {
+                                            var buffer = buildContext.getBufferForLayer(layer);
+                                            buildContext.beginVanillaBlockRender(buffer, blockPos, blockState);
                                             try {
-                                                buildContext.endVanillaRender(buffer);
+                                                dispatcher.renderBlock(blockState, blockPos, slice, buffer);
                                             } finally {
-                                                buffer.actinium$endInvocation();
+                                                buildContext.endVanillaRender(buffer);
                                             }
                                         }
                                     }
@@ -228,21 +209,7 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
         }
         renderData.visibilityData = occluder.computeVisibilityEncoding();
 
-        long meshInputTraceId = 0L;
-        try {
-            if (GLSMPerfDebug.isEnabled()) {
-                long outputNativeBytes = ChunkBuildOutput.calculateNativeMemoryBytes(meshes);
-                meshInputTraceId = ChunkMeshInputDiagnostics.reserveTraceId(outputNativeBytes, this.meshInputTraceBudget);
-                if (meshInputTraceId != 0L) {
-                    ChunkMeshInputDiagnostics.reportBuildOutput(meshInputTraceId, this.render,
-                        buildContext.getWorldSlice(), meshes, outputNativeBytes, this.buildTime);
-                }
-            }
-        } catch (RuntimeException | Error diagnosticFailure) {
-            ChunkMeshInputDiagnostics.reportOutputMeasurementFailure(this.render, diagnosticFailure);
-        }
-
-        return new ChunkBuildOutput(this.render, renderData, meshes, this.buildTime, meshInputTraceId);
+        return new ChunkBuildOutput(this.render, renderData, meshes, this.buildTime);
     }
 
     private ReportedException fillCrashInfo(CrashReport report, IBlockAccess slice, BlockPos pos) {

@@ -1,6 +1,5 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.jetbrains.gradle.ext.Gradle
-import java.util.Locale
 
 plugins {
     id 'java'
@@ -94,7 +93,6 @@ configurations {
     // the upstream Celeritas distribution layout. Kept separate from implementation so the plain
     // namespace jars stay on the compile/dev classpath for third-party mods that need them.
     shadowBundle
-    glIntegrationLwjglxBundle
     modCompileOnly
     compileOnly.extendsFrom(modCompileOnly)
     modRuntimeOnly
@@ -176,20 +174,6 @@ repositories {
     maven { url = 'https://api.modrinth.com/maven' }
     maven { url = 'https://nexus.gtnewhorizons.com/repository/public/' }
     mavenLocal()
-}
-
-sourceSets {
-    glIntegrationTest {
-        java.srcDir 'src/glIntegrationTest/java'
-        compileClasspath += sourceSets.main.output
-        runtimeClasspath += sourceSets.main.output
-    }
-}
-
-configurations {
-    glIntegrationTestImplementation.extendsFrom(testImplementation)
-    glIntegrationTestCompileOnly.extendsFrom(testCompileOnly)
-    glIntegrationTestRuntimeOnly.extendsFrom(testRuntimeOnly)
 }
 
 dependencies {
@@ -574,97 +558,6 @@ test {
             showStandardStreams = true
         }
     }
-}
-
-def glIntegrationOsName = System.getProperty('os.name').toLowerCase(Locale.ROOT)
-def glIntegrationOsArch = System.getProperty('os.arch').toLowerCase(Locale.ROOT)
-def glIntegrationOsKey = glIntegrationOsName.startsWith('windows') ? 'windows'
-    : glIntegrationOsName.startsWith('linux') ? 'linux'
-    : glIntegrationOsName.startsWith('mac') ? 'macos'
-    : null
-def glIntegrationNativeClassifiers = [
-    windows: [
-        amd64: 'natives-windows', x86_64: 'natives-windows', x64: 'natives-windows',
-        aarch64: 'natives-windows-arm64', arm64: 'natives-windows-arm64'
-    ],
-    linux: [
-        amd64: 'natives-linux', x86_64: 'natives-linux', x64: 'natives-linux',
-        aarch64: 'natives-linux-arm64', arm64: 'natives-linux-arm64'
-    ],
-    macos: [
-        amd64: 'natives-macos', x86_64: 'natives-macos', x64: 'natives-macos',
-        aarch64: 'natives-macos-arm64', arm64: 'natives-macos-arm64'
-    ]
-]
-def glIntegrationLwjglNatives = glIntegrationOsKey == null
-    ? null : glIntegrationNativeClassifiers[glIntegrationOsKey][glIntegrationOsArch]
-
-dependencies {
-    glIntegrationTestImplementation 'org.lwjgl:lwjgl:3.4.1'
-    glIntegrationTestImplementation 'org.lwjgl:lwjgl-glfw:3.4.1'
-    glIntegrationTestImplementation 'org.lwjgl:lwjgl-opengl:3.4.1'
-    glIntegrationTestImplementation 'org.lwjgl:lwjgl-sdl:3.4.1'
-    if (glIntegrationLwjglNatives != null) {
-        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl:3.4.1:${glIntegrationLwjglNatives}"
-        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl-glfw:3.4.1:${glIntegrationLwjglNatives}"
-        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl-opengl:3.4.1:${glIntegrationLwjglNatives}"
-        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl-sdl:3.4.1:${glIntegrationLwjglNatives}"
-    }
-    glIntegrationLwjglxBundle('com.cleanroommc:lwjglx:1.0.0') {
-        transitive = false
-    }
-}
-
-// The Cleanroom LWJGLX shim normally reads capabilities from a separately relocated LWJGL
-// namespace. The integration fixture runs all real GL calls through raw LWJGL, so adapt only the
-// shim's two capability classes to that same namespace for this test source set.
-def glIntegrationLwjglxRawCompatJar = tasks.register('glIntegrationLwjglxRawCompatJar', ShadowJar) {
-    group = 'verification'
-    description = 'Builds test-only Cleanroom capability shims backed by the raw LWJGL OpenGL namespace.'
-    configurations.set([project.configurations.glIntegrationLwjglxBundle])
-    include 'org/lwjgl/opengl/ContextCapabilities.class'
-    include 'org/lwjgl/opengl/GLContext.class'
-    archiveBaseName.set('lwjglx-raw-opengl-test-adapter')
-    archiveVersion.set('1.0.0')
-    archiveClassifier.set('')
-    destinationDirectory.set(layout.buildDirectory.dir('gl-integration-libs'))
-    relocate('org.lwjgl3.opengl', 'org.lwjgl.opengl')
-}
-
-final glIntegrationLwjglxRawCompatArtifact = files(glIntegrationLwjglxRawCompatJar.flatMap { it.archiveFile })
-
-def validateGlIntegrationPlatform = tasks.register('validateGlIntegrationPlatform') {
-    group = 'verification'
-    description = 'Checks that this platform has LWJGL native classifiers for the opt-in GL integration test.'
-    doLast {
-        if (glIntegrationLwjglNatives == null) {
-            throw new GradleException(
-                "Unsupported GL integration test platform: ${glIntegrationOsName}/${glIntegrationOsArch}"
-            )
-        }
-    }
-}
-
-// Native GLFW/GL coverage stays opt-in and runs in a test worker separate from the pure-Java check suite.
-tasks.register('glIntegrationTest', Test) {
-    group = 'verification'
-    description = 'Runs the opt-in hidden-context OpenGL integration tests; requires a native display driver.'
-    testClassesDirs = sourceSets.glIntegrationTest.output.classesDirs
-    classpath = files(glIntegrationLwjglxRawCompatArtifact, sourceSets.glIntegrationTest.runtimeClasspath)
-    dependsOn validateGlIntegrationPlatform
-    dependsOn glIntegrationLwjglxRawCompatJar
-    dependsOn tasks.named('compileGlIntegrationTestJava')
-    useJUnitPlatform()
-    maxParallelForks = 1
-    forkEvery = 1
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(25)
-    }
-    // Keep LWJGL OpenGL initialization explicit so this fixture can bind capabilities only after
-    // GLFW has made the corresponding real native context current.
-    systemProperty 'org.lwjgl.opengl.explicitInit', 'true'
-    jvmArgs '--enable-native-access=ALL-UNNAMED'
-    workingDir = rootProject.projectDir
 }
 
 tasks.named('processResources').configure {

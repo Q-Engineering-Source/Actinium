@@ -34,46 +34,15 @@ public final class BetterFoliageCompatImpl implements BetterFoliageCompat {
     }
 
     @Override
-    public boolean shouldRenderBaseBlockInLayer(IBlockState state, BlockRenderLayer layer) {
-        return shouldRenderBaseBlockInLayer(
-                state,
-                layer,
-                Hooks.getTargetCutoutLayer(),
-                Hooks.getOtherCutoutLayer()
-        );
-    }
-
-    static boolean shouldRenderBaseBlockInLayer(
-            IBlockState state,
-            BlockRenderLayer layer,
-            BlockRenderLayer targetCutoutLayer,
-            BlockRenderLayer otherCutoutLayer
-    ) {
-        return Utils.canRenderInLayer(state, layer)
-                || layer == targetCutoutLayer
-                && Utils.canRenderInLayer(state, otherCutoutLayer);
-    }
-
-    @Override
     public boolean renderVanillaBlock(
             BlockRendererDispatcher dispatcher,
             IBlockState state,
             BlockPos pos,
             IBlockAccess blockAccess,
             BufferBuilder buffer,
-            BlockRenderLayer layer,
-            VintageChunkBuildContext buildContext
+            BlockRenderLayer layer
     ) {
-        if (buildContext.getBufferForLayer(layer) != buffer) {
-            throw new IllegalStateException("Better Foliage received a buffer from a different chunk layer");
-        }
-
-        buildContext.beginVanillaBlockRender(buffer, pos, state);
-        try {
-            return Hooks.renderWorldBlock(dispatcher, state, pos, blockAccess, buffer, layer);
-        } finally {
-            buildContext.endVanillaRender(buffer);
-        }
+        return Hooks.renderWorldBlock(dispatcher, state, pos, blockAccess, buffer, layer);
     }
 
     @Override
@@ -118,12 +87,9 @@ public final class BetterFoliageCompatImpl implements BetterFoliageCompat {
         context.set(blockAccess, pos);
 
         BlockRenderLayer targetCutoutLayer = Hooks.getTargetCutoutLayer();
-        boolean baseRenderApplies = shouldRenderBaseBlockInLayer(
-                state,
-                layer,
-                targetCutoutLayer,
-                Hooks.getOtherCutoutLayer()
-        );
+        boolean baseRenderApplies = Utils.canRenderInLayer(state, layer)
+                || layer == targetCutoutLayer
+                && Utils.canRenderInLayer(state, Hooks.getOtherCutoutLayer());
         List<AbstractBlockRenderingHandler> renderers = Client.INSTANCE.getRenderers();
         for (AbstractBlockRenderingHandler renderer : renderers) {
             if (renderer.isEligible(context)

@@ -1,7 +1,6 @@
 package com.gtnewhorizons.angelica.glsm.ffp;
 
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
-import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
 import com.gtnewhorizons.angelica.glsm.states.ClipPlaneState;
 import com.gtnewhorizons.angelica.glsm.states.Color4;
 import com.gtnewhorizons.angelica.glsm.states.FogState;
@@ -53,44 +52,43 @@ public class Uniforms {
      * Uses generation counters to skip categories that haven't changed since last upload.
      */
     public void upload(Program program) {
-        final GLContextIdentity identity = GLStateManager.currentContextIdentity();
-        final ProgramUniformState uploaded = program.getUniformState(identity);
+        final ProgramUniformState uploaded = program.getUniformState();
 
         final int mvGen = GLStateManager.getMvGeneration();
         final int projGen = GLStateManager.getProjGeneration();
         final int texMatGen = GLStateManager.getTexMatrixGeneration();
-        final boolean mvChanged = uploaded.needsModelViewUpload(identity, mvGen);
-        final boolean projChanged = uploaded.needsProjectionUpload(identity, projGen);
-        final boolean texMatChanged = uploaded.needsTextureMatrixUpload(identity, texMatGen);
+        final boolean mvChanged = uploaded.needsModelViewUpload(mvGen);
+        final boolean projChanged = uploaded.needsProjectionUpload(projGen);
+        final boolean texMatChanged = uploaded.needsTextureMatrixUpload(texMatGen);
         if (mvChanged || projChanged || texMatChanged) {
             uploadMatrices(program, mvChanged, projChanged, texMatChanged);
-            if (mvChanged) uploaded.markModelViewUploaded(identity, mvGen);
-            if (projChanged) uploaded.markProjectionUploaded(identity, projGen);
-            if (texMatChanged) uploaded.markTextureMatrixUploaded(identity, texMatGen);
+            if (mvChanged) uploaded.markModelViewUploaded(mvGen);
+            if (projChanged) uploaded.markProjectionUploaded(projGen);
+            if (texMatChanged) uploaded.markTextureMatrixUploaded(texMatGen);
         }
 
         if (program.getVertexKey().lightingEnabled()) {
             final int litGen = GLStateManager.getLightingGeneration();
-            if (uploaded.needsLightingUpload(identity, litGen)) {
+            if (uploaded.needsLightingUpload(litGen)) {
                 uploadLighting(program);
-                uploaded.markLightingUploaded(identity, litGen);
+                uploaded.markLightingUploaded(litGen);
             }
         }
 
         // Current color/normal/texcoord — skip if generation unchanged
         if (!program.getVertexKey().hasVertexColor()) {
             final int colorGen = GLStateManager.getColorGeneration();
-            if (uploaded.needsColorUpload(identity, colorGen)) {
+            if (uploaded.needsColorUpload(colorGen)) {
                 uploadCurrentColor(program);
-                uploaded.markColorUploaded(identity, colorGen);
+                uploaded.markColorUploaded(colorGen);
             }
         }
 
         if (!program.getVertexKey().hasVertexNormal() && program.getVertexKey().lightingEnabled()) {
             final int normalGen = ShaderManager.getNormalGeneration();
-            if (uploaded.needsNormalUpload(identity, normalGen)) {
+            if (uploaded.needsNormalUpload(normalGen)) {
                 uploadCurrentNormal(program);
-                uploaded.markNormalUploaded(identity, normalGen);
+                uploaded.markNormalUploaded(normalGen);
             }
         }
 
@@ -102,46 +100,46 @@ public class Uniforms {
         final boolean needsCurrentTexCoord3 = vk0.unitTexCoordEnabled(3) && !vk0.unit23UvFromUnit0() && !vk0.hasUnitVertexTexCoord(3);
         if (needsCurrentTexCoord0 || needsCurrentTexCoord2 || needsCurrentTexCoord3) {
             final int texGen = ShaderManager.getTexCoordGeneration();
-            if (uploaded.needsTexCoordUpload(identity, texGen)) {
+            if (uploaded.needsTexCoordUpload(texGen)) {
                 uploadCurrentTexCoords(program, needsCurrentTexCoord0, needsCurrentTexCoord2, needsCurrentTexCoord3);
-                uploaded.markTexCoordUploaded(identity, texGen);
+                uploaded.markTexCoordUploaded(texGen);
             }
         }
 
         if (program.getVertexKey().lightmapEnabled() && !program.getVertexKey().hasVertexLightmap()) {
             final float lightmapX = GLSMConfig.lastBrightnessX;
             final float lightmapY = GLSMConfig.lastBrightnessY;
-            if (uploaded.needsLightmapUpload(identity, lightmapX, lightmapY)) {
+            if (uploaded.needsLightmapUpload(lightmapX, lightmapY)) {
                 uploadCurrentLightmapCoord(program);
-                uploaded.markLightmapUploaded(identity, lightmapX, lightmapY);
+                uploaded.markLightmapUploaded(lightmapX, lightmapY);
             }
         }
 
         if (program.getVertexKey().texGenEnabled()) {
             final int tgGen = GLStateManager.getTexGenGeneration();
-            if (uploaded.needsTexGenUpload(identity, tgGen)) {
+            if (uploaded.needsTexGenUpload(tgGen)) {
                 uploadTexGen(program);
-                uploaded.markTexGenUploaded(identity, tgGen);
+                uploaded.markTexGenUploaded(tgGen);
             }
         }
 
         if (program.getVertexKey().clipPlanesEnabled()) {
             final int cpGen = GLStateManager.getClipPlaneGeneration();
-            if (uploaded.needsClipPlaneUpload(identity, cpGen)) {
+            if (uploaded.needsClipPlaneUpload(cpGen)) {
                 uploadClipPlanes(program);
-                uploaded.markClipPlaneUploaded(identity, cpGen);
+                uploaded.markClipPlaneUploaded(cpGen);
             }
         }
 
         final int fragGen = GLStateManager.getFragmentGeneration();
-        if (uploaded.needsFragmentUpload(identity, fragGen)) {
+        if (uploaded.needsFragmentUpload(fragGen)) {
             uploadFragmentUniforms(program);
-            uploaded.markFragmentUploaded(identity, fragGen);
+            uploaded.markFragmentUploaded(fragGen);
         }
 
         // Line emulation uniforms (wide lines and/or stipple)
         if (program.getVertexKey().wideLineEmulation() || program.getVertexKey().lineStipple()) {
-            uploadLineUniforms(program, uploaded, identity);
+            uploadLineUniforms(program, uploaded);
         }
     }
 
@@ -503,32 +501,32 @@ public class Uniforms {
      * Wide lines use u_LineWidth + u_ViewportSize (vec2); stipple emulation uses
      * u_Viewport (vec4, full rect) to compute gl_FragCoord-free screen position.
      */
-    private void uploadLineUniforms(Program program, ProgramUniformState uploaded, GLContextIdentity identity) {
+    private void uploadLineUniforms(Program program, ProgramUniformState uploaded) {
         if (program.locLineWidth != -1) {
             final float lineWidth = GLStateManager.getLineState().getWidth();
-            if (uploaded.needsLineWidthUpload(identity, lineWidth)) {
+            if (uploaded.needsLineWidthUpload(lineWidth)) {
                 RENDER_BACKEND.uniform1f(program.locLineWidth, lineWidth);
-                uploaded.markLineWidthUploaded(identity, lineWidth);
+                uploaded.markLineWidthUploaded(lineWidth);
             }
         }
 
         final var viewport = GLStateManager.getViewportState();
-        if (uploaded.needsViewportUpload(identity, viewport.x, viewport.y, viewport.width, viewport.height)) {
+        if (uploaded.needsViewportUpload(viewport.x, viewport.y, viewport.width, viewport.height)) {
             if (program.locViewportSize != -1) {
                 RENDER_BACKEND.uniform2f(program.locViewportSize, viewport.width, viewport.height);
             }
             if (program.locViewport != -1) {
                 RENDER_BACKEND.uniform4f(program.locViewport, viewport.x, viewport.y, viewport.width, viewport.height);
             }
-            uploaded.markViewportUploaded(identity, viewport.x, viewport.y, viewport.width, viewport.height);
+            uploaded.markViewportUploaded(viewport.x, viewport.y, viewport.width, viewport.height);
         }
 
         if (program.locLineStipple != -1) {
             final LineState line = GLStateManager.getLineState();
             final int stipplePacked = (line.getStipplePattern() & 0xFFFF) | (Math.max(line.getStippleFactor(), 1) << 16);
-            if (uploaded.needsLineStippleUpload(identity, stipplePacked)) {
+            if (uploaded.needsLineStippleUpload(stipplePacked)) {
                 RENDER_BACKEND.uniform1i(program.locLineStipple, stipplePacked);
-                uploaded.markLineStippleUploaded(identity, stipplePacked);
+                uploaded.markLineStippleUploaded(stipplePacked);
             }
         }
     }

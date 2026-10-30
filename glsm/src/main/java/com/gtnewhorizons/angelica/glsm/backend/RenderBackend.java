@@ -1,13 +1,7 @@
 package com.gtnewhorizons.angelica.glsm.backend;
 
 import com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities;
-import com.gtnewhorizons.angelica.glsm.GLESFormatRemap;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
-import com.gtnewhorizons.angelica.glsm.RenderSystem;
-import com.gtnewhorizons.angelica.glsm.states.PixelStoreAccess;
-import com.gtnewhorizons.angelica.glsm.texture.TextureStaging;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL20;
 
 import java.nio.ByteBuffer;
@@ -22,9 +16,7 @@ import java.util.List;
 /**
  * Abstract rendering backend.
  */
-public abstract class RenderBackend implements PixelStoreAccess {
-
-    private final ByteBuffer[] clientStagingCache = new ByteBuffer[16];
+public abstract class RenderBackend {
 
     public abstract void init();
     public abstract void shutdown();
@@ -165,91 +157,6 @@ public abstract class RenderBackend implements PixelStoreAccess {
     public abstract void texImage2D(int target, int level, int internalFormat, int width, int height, int border, int format, int type, long pixelBufferOffset);
     public abstract void texSubImage2D(int target, int level, int xoffset, int yoffset, int width, int height, int format, int type, ByteBuffer pixels);
     public abstract void texSubImage2D(int target, int level, int xoffset, int yoffset, int width, int height, int format, int type, IntBuffer pixels);
-    /** Allocates reusable CPU-side pixel storage for a main-thread texture upload. */
-    public TextureStaging beginTextureStaging(int level, int x, int y, int width, int height) {
-        final int size = Math.multiplyExact(Math.multiplyExact(width, height), 4);
-        final ByteBuffer buffer = takeClientStagingBuffer(size);
-        buffer.clear();
-        return new ClientTextureStaging(buffer, level, x, y, width, height);
-    }
-
-    /** Uploads a completed CPU staging buffer into the currently bound 2D texture. */
-    public boolean commitTextureStaging(TextureStaging staging) {
-        final ClientTextureStaging clientStaging = (ClientTextureStaging) staging;
-        final int type = RenderSystem.isGLES()
-            ? GLESFormatRemap.remapPixelType(GL12.GL_BGRA, GL12.GL_UNSIGNED_INT_8_8_8_8_REV)
-            : GL12.GL_UNSIGNED_INT_8_8_8_8_REV;
-        try {
-            texSubImage2D(GL11.GL_TEXTURE_2D, clientStaging.level(), clientStaging.x(), clientStaging.y(),
-                clientStaging.width(), clientStaging.height(), GL12.GL_BGRA, type, clientStaging.buffer());
-        } finally {
-            recycleClientStaging(clientStaging.buffer());
-        }
-        return true;
-    }
-
-    /** Returns a staging buffer to the backend's reusable CPU buffer cache. */
-    public void abandonTextureStaging(TextureStaging staging) {
-        recycleClientStaging(staging.buffer());
-    }
-
-    /** Releases cached native staging buffers so their memory can be reclaimed. */
-    public void trimTextureStaging() {
-        synchronized (clientStagingCache) {
-            for (int i = 0; i < clientStagingCache.length; i++) {
-                final ByteBuffer cached = clientStagingCache[i];
-                if (cached != null) {
-                    MemoryUtilities.memFree(cached);
-                    clientStagingCache[i] = null;
-                }
-            }
-        }
-    }
-
-    private ByteBuffer takeClientStagingBuffer(int size) {
-        synchronized (clientStagingCache) {
-            for (int i = 0; i < clientStagingCache.length; i++) {
-                final ByteBuffer cached = clientStagingCache[i];
-                if (cached != null && cached.capacity() == size) {
-                    clientStagingCache[i] = null;
-                    return cached;
-                }
-            }
-        }
-        return MemoryUtilities.memAlloc(size);
-    }
-
-    private void recycleClientStaging(ByteBuffer buffer) {
-        synchronized (clientStagingCache) {
-            int victim = -1;
-            for (int i = 0; i < clientStagingCache.length; i++) {
-                final ByteBuffer cached = clientStagingCache[i];
-                if (cached == null) {
-                    clientStagingCache[i] = buffer;
-                    return;
-                }
-                if (cached.capacity() < buffer.capacity()
-                    && (victim < 0 || cached.capacity() < clientStagingCache[victim].capacity())) {
-                    victim = i;
-                }
-            }
-            if (victim < 0) {
-                MemoryUtilities.memFree(buffer);
-                return;
-            }
-            MemoryUtilities.memFree(clientStagingCache[victim]);
-            clientStagingCache[victim] = buffer;
-        }
-    }
-
-    private record ClientTextureStaging(ByteBuffer buffer, int level, int x, int y, int width, int height)
-        implements TextureStaging {
-        @Override
-        public boolean bgra() {
-            return true;
-        }
-    }
-
     public abstract void copyTexSubImage2D(int target, int level, int xoffset, int yoffset, int x, int y, int width, int height);
     public void texImage1D(int target, int level, int internalFormat, int width, int border, int format, int type, ByteBuffer pixels) {}
     public void texImage3D(int target, int level, int internalFormat, int width, int height, int depth, int border, int format, int type, ByteBuffer pixels) {}
@@ -362,23 +269,6 @@ public abstract class RenderBackend implements PixelStoreAccess {
     public abstract int getUniformLocation(int program, ByteBuffer name);
     public boolean isShader(int obj) { return false; }
     public boolean isProgram(int obj) { return false; }
-
-    /**
-     * Whether linked programs may be read back with {@code glGetProgramBinary} and restored with
-     * {@code glProgramBinary}. A backend that cannot hand out a usable binary (for example one that
-     * translates the shader sources itself) keeps the default and the saved-program cache stays off.
-     */
-    public boolean supportsProgramBinary() { return false; }
-
-    /** Sets a link-time program parameter such as {@code GL_PROGRAM_BINARY_RETRIEVABLE_HINT}. */
-    public void programParameteri(int program, int pname, int value) {}
-
-    /** Reads back the linked binary of {@code program}; only meaningful when {@link #supportsProgramBinary()}. */
-    public void getProgramBinary(int program, IntBuffer length, IntBuffer binaryFormat, ByteBuffer binary) {}
-
-    /** Restores a program from a binary produced by {@link #getProgramBinary}. */
-    public void programBinary(int program, int binaryFormat, ByteBuffer binary) {}
-
     public void validateProgram(int program) {}
     public void getAttachedShaders(int program, IntBuffer count, IntBuffer shaders) {
         if (count != null) count.put(0, 0);
@@ -520,7 +410,6 @@ public abstract class RenderBackend implements PixelStoreAccess {
     public abstract void getVertexAttribi(int index, int pname, IntBuffer params);
     public abstract void vertexAttribDivisor(int index, int divisor);
     public abstract void bindVertexBuffer(int bindingindex, int buffer, long offset, int stride);
-    public abstract void vertexBindingDivisor(int bindingindex, int divisor);
     public abstract void vertexAttribFormat(int attribindex, int size, int type, boolean normalized, int relativeoffset);
     public abstract void vertexAttribIFormat(int attribindex, int size, int type, int relativeoffset);
     public abstract void vertexAttribBinding(int attribindex, int bindingindex);
