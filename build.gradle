@@ -603,10 +603,12 @@ dependencies {
     glIntegrationTestImplementation 'org.lwjgl:lwjgl:3.4.1'
     glIntegrationTestImplementation 'org.lwjgl:lwjgl-glfw:3.4.1'
     glIntegrationTestImplementation 'org.lwjgl:lwjgl-opengl:3.4.1'
+    glIntegrationTestImplementation 'org.lwjgl:lwjgl-sdl:3.4.1'
     if (glIntegrationLwjglNatives != null) {
         glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl:3.4.1:${glIntegrationLwjglNatives}"
         glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl-glfw:3.4.1:${glIntegrationLwjglNatives}"
         glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl-opengl:3.4.1:${glIntegrationLwjglNatives}"
+        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl-sdl:3.4.1:${glIntegrationLwjglNatives}"
     }
     glIntegrationLwjglxBundle('com.cleanroommc:lwjglx:1.0.0') {
         transitive = false

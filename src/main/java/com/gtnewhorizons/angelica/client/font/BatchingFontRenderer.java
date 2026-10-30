@@ -21,7 +21,7 @@ import dhj.embeddedt.embeddium.impl.render.shader.ShaderLoader;
 import org.joml.Matrix4f;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.lwjgl.glfw.GLFW;
+import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
@@ -172,7 +172,7 @@ public class BatchingFontRenderer {
 
 
     private static boolean hasCurrentGlContext() {
-        final boolean current = GLFW.glfwGetCurrentContext() != 0L;
+        final boolean current = WindowBackends.get().currentContextHandle() != 0L;
         if (!current) {
             LOGGER.error("Font rendering attempted without a current OpenGL context on thread {}", Thread.currentThread().getName());
         }

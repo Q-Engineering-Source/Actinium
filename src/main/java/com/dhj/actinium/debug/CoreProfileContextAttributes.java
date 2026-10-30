@@ -6,7 +6,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.ContextAttribs;
 
-import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Creates the core-profile context attributes required during early Minecraft startup.
@@ -19,8 +19,8 @@ public final class CoreProfileContextAttributes {
     }
 
     /**
-     * The lwjglx compatibility implementation returns {@code null} from these mutator methods, so their
-     * return values must not be chained or retained.
+     * Mutable implementations return {@code null} after changing the current attributes, while immutable
+     * implementations return a new instance. Both forms produce the requested core-profile attributes.
      */
     public static ContextAttribs create(int major, int minor, boolean lwjglDebug) {
         ContextAttribs attributes = new ContextAttribs(major, minor);
@@ -81,17 +81,23 @@ public final class CoreProfileContextAttributes {
     }
 
     /**
-     * Applies context mutations in place without retaining compatibility-layer return values.
+     * Applies context mutations in order. A {@code null} result keeps the current mutable attributes;
+     * a non-null result supplies the attributes for the next mutation.
      */
     static <T> T configure(
         T attributes,
-        Consumer<T> coreProfile,
-        Consumer<T> forwardCompatible,
-        Consumer<T> debug
+        Function<T, T> coreProfile,
+        Function<T, T> forwardCompatible,
+        Function<T, T> debug
     ) {
-        coreProfile.accept(attributes);
-        forwardCompatible.accept(attributes);
-        debug.accept(attributes);
+        attributes = applyMutation(attributes, coreProfile);
+        attributes = applyMutation(attributes, forwardCompatible);
+        attributes = applyMutation(attributes, debug);
         return attributes;
+    }
+
+    private static <T> T applyMutation(T attributes, Function<T, T> mutation) {
+        T mutated = mutation.apply(attributes);
+        return mutated == null ? attributes : mutated;
     }
 }

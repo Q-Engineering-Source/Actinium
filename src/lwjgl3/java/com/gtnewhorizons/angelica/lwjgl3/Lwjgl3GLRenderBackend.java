@@ -4,11 +4,10 @@ import com.gtnewhorizons.angelica.glsm.GLESCaps;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.backend.DebugMessageHandler;
 import com.gtnewhorizons.angelica.glsm.backend.GLDebugMessageListener;
-import com.gtnewhorizons.angelica.glsm.backend.GlfwFileDropWatcher;
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
+import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
 import com.gtnewhorizons.angelica.glsm.debug.TerrainBufferDiagnostics;
 import com.gtnewhorizons.angelica.glsm.debug.TerrainVertexArrayDiagnostics;
-import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.ARBClearTexture;
 import org.lwjgl.opengl.ARBPolygonOffsetClamp;
 import org.lwjgl.opengl.ARBVertexAttribBinding;
@@ -67,22 +66,22 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public boolean supportsFileDrop() {
-        return true;
+        return WindowBackends.get().supportsFileDrop();
     }
 
     @Override
     public void startFileDrop() {
-        GlfwFileDropWatcher.start();
+        WindowBackends.get().startFileDrop();
     }
 
     @Override
     public void stopFileDrop() {
-        GlfwFileDropWatcher.stop();
+        WindowBackends.get().stopFileDrop();
     }
 
     @Override
     public List<String> pollDroppedFiles() {
-        return GlfwFileDropWatcher.pollDroppedFiles();
+        return WindowBackends.get().pollDroppedFiles();
     }
 
     @Override
@@ -1447,7 +1446,7 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public long getContextHandle() {
-        return GLFW.glfwGetCurrentContext();
+        return WindowBackends.get().currentContextHandle();
     }
 
     @Override

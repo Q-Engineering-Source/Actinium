@@ -5,6 +5,7 @@ import com.dhj.actinium.runtime.ActiniumRuntime;
 import net.minecraft.client.Minecraft;
 import org.apache.logging.log4j.Logger;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
+import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
 import org.lwjgl.opengl.Display;
 
 public final class ActiniumWindowModeController {
@@ -176,7 +177,7 @@ public final class ActiniumWindowModeController {
             borderlessActive = false;
         }
         if (Display.isFullscreen() && (!androidRuntime || windowedGeometryCaptured)) {
-            Display.setFullscreen(false);
+            WindowBackends.get().setExclusiveFullscreen(false);
         }
         setFullscreenState(client, false);
         updateClientDisplaySize(client);
@@ -189,7 +190,7 @@ public final class ActiniumWindowModeController {
             }
             borderlessActive = false;
         }
-        Display.setFullscreen(true);
+        WindowBackends.get().setExclusiveFullscreen(true);
         windowedGeometryCaptured = true;
         setFullscreenState(client, true);
         updateClientDisplaySize(client);

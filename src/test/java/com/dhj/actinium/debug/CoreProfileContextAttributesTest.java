@@ -18,9 +18,58 @@ class CoreProfileContextAttributesTest {
 
         RecordingContext configured = CoreProfileContextAttributes.configure(
             attributes,
-            value -> value.record("core"),
-            value -> value.record("forward"),
-            value -> value.record("debug")
+            value -> {
+                value.record("core");
+                return null;
+            },
+            value -> {
+                value.record("forward");
+                return null;
+            },
+            value -> {
+                value.record("debug");
+                return null;
+            }
+        );
+
+        assertSame(attributes, configured);
+        assertEquals(List.of("core", "forward", "debug"), attributes.operations());
+    }
+
+    @Test
+    void configuresImmutableContextsInRequiredOrder() {
+        ImmutableRecordingContext attributes = new ImmutableRecordingContext();
+        List<ImmutableRecordingContext> mutations = new ArrayList<>();
+
+        ImmutableRecordingContext configured = CoreProfileContextAttributes.configure(
+            attributes,
+            value -> recordMutation(mutations, value, "core"),
+            value -> recordMutation(mutations, value, "forward"),
+            value -> recordMutation(mutations, value, "debug")
+        );
+
+        assertSame(mutations.get(2), configured);
+        assertEquals(List.of("core", "forward", "debug"), configured.operations());
+    }
+
+    @Test
+    void retainsMutableContextWhenMutationsReturnNull() {
+        RecordingContext attributes = new RecordingContext();
+
+        RecordingContext configured = CoreProfileContextAttributes.configure(
+            attributes,
+            value -> {
+                value.record("core");
+                return null;
+            },
+            value -> {
+                value.record("forward");
+                return null;
+            },
+            value -> {
+                value.record("debug");
+                return null;
+            }
         );
 
         assertSame(attributes, configured);
@@ -72,6 +121,38 @@ class CoreProfileContextAttributesTest {
             ForgeEarlyConfig.OPENGL_VERSION_MINOR = originalMinor;
             ForgeEarlyConfig.OPENGL_COMPAT_PROFILE = originalCompatProfile;
             ForgeEarlyConfig.OPENGL_DEBUG_CONTEXT = originalDebugContext;
+        }
+    }
+
+    private static ImmutableRecordingContext recordMutation(
+        List<ImmutableRecordingContext> mutations,
+        ImmutableRecordingContext attributes,
+        String operation
+    ) {
+        ImmutableRecordingContext mutated = attributes.record(operation);
+        mutations.add(mutated);
+        return mutated;
+    }
+
+    private static final class ImmutableRecordingContext {
+        private final List<String> operations;
+
+        private ImmutableRecordingContext() {
+            this(List.of());
+        }
+
+        private ImmutableRecordingContext(List<String> operations) {
+            this.operations = operations;
+        }
+
+        private ImmutableRecordingContext record(String operation) {
+            List<String> mutated = new ArrayList<>(operations);
+            mutated.add(operation);
+            return new ImmutableRecordingContext(mutated);
+        }
+
+        private List<String> operations() {
+            return List.copyOf(operations);
         }
     }
 

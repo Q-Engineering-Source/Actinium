@@ -1,5 +1,6 @@
 package com.dhj.actinium.loading.fml.transformers;
 
+import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
 import net.minecraft.launchwrapper.IClassTransformer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -15,17 +16,23 @@ import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
+import top.outlands.foundation.IExplicitTransformer;
 
 import java.util.List;
 
-/** Injects native context lifetime callbacks after Cleanroom synthesizes the legacy LWJGL class names. */
-public final class LwjglContextLifecycleTransformer implements IClassTransformer {
+/** Injects native context lifetime callbacks for supported LWJGL display implementations. */
+public final class LwjglContextLifecycleTransformer implements IClassTransformer, IExplicitTransformer {
     private static final Logger LOGGER = LogManager.getLogger("Actinium");
 
     private static final String DISPLAY = "org.lwjgl.opengl.Display";
     private static final String DRAWABLE_GL = "org.lwjgl.opengl.DrawableGL";
     private static final String CONTEXT_GL = "org.lwjgl.opengl.ContextGL";
     private static final String DISPLAY_BINDING = "com/dhj/actinium/compat/lwjgl/DisplayContextBinding";
+    private static final String NATIVE_CONTEXT_HANDLE = "com/gtnewhorizons/angelica/glsm/context/NativeContextHandle";
+    private static final String NATIVE_HANDLE_METHOD = "actinium$nativeHandle";
+    private static final String NATIVE_HANDLE_DESCRIPTOR = "()J";
+    private static final String GLFW_WINDOW_FIELD = "glfwWindow";
+    private static final String SDL_CONTEXT_FIELD = "sdlContext";
 
     private static final String DRAWABLE_DESCRIPTOR = "Lorg/lwjgl/opengl/DrawableGL;";
     private static final String CONTEXT_DESCRIPTOR = "Lorg/lwjgl/opengl/ContextGL;";
@@ -38,6 +45,17 @@ public final class LwjglContextLifecycleTransformer implements IClassTransformer
     private static final String ABORT_CONTEXT_DESTROY_DESCRIPTOR = "(Ljava/lang/Object;ZJ)V";
     private static final String RETIRE_CONTEXT_DESCRIPTOR = "(Ljava/lang/Object;J)V";
     private static final String REGISTER_SHARED_CONTEXT_DESCRIPTOR = "(Ljava/lang/Object;JLjava/lang/Object;)V";
+
+    @Override
+    public int getPriority() {
+        return IClassTransformer.super.getPriority();
+    }
+
+    @Override
+    public byte[] transform(byte[] basicClass) {
+        final String className = new ClassReader(basicClass).getClassName().replace('/', '.');
+        return transform(className, className, basicClass);
+    }
 
     /** The legacy name is produced by LWJGLTransformer, so a missing class here means the loader contract failed. */
     @Override
@@ -78,7 +96,7 @@ public final class LwjglContextLifecycleTransformer implements IClassTransformer
             classNode.accept(writer);
             return writer.toByteArray();
         } catch (RuntimeException failure) {
-            LOGGER.error("Failed to inject Cleanroom context lifecycle callbacks into {}", targetName, failure);
+            LOGGER.error("Failed to inject LWJGL context lifecycle callbacks into {}", targetName, failure);
             throw failure;
         }
     }
@@ -157,8 +175,11 @@ public final class LwjglContextLifecycleTransformer implements IClassTransformer
             "registerSharedContext",
             REGISTER_SHARED_CONTEXT_DESCRIPTOR
         );
-        if (registerCalls != 0) {
-            if (registerCalls == sharedContextReturns) {
+        final int handleCalls = nativeHandleCallCount(createSharedContext);
+        if (registerCalls != 0 || handleCalls != 0) {
+            if (registerCalls == sharedContextReturns
+                && handleCalls == sharedContextReturns
+                && hasCompleteSharedContextInjections(createSharedContext)) {
                 return false;
             }
             throw transformationFailure(DRAWABLE_GL, "found a partial or duplicate shared-context injection");
@@ -174,11 +195,12 @@ public final class LwjglContextLifecycleTransformer implements IClassTransformer
     }
 
     private static boolean transformContext(ClassNode classNode) {
-        requireField(classNode, "glfwWindow", "J", false);
+        final FieldNode nativeHandle = nativeHandleField(classNode);
         requireField(classNode, "shared", "Z", false);
         final MethodNode makeCurrent = requireMethod(classNode, "makeCurrent", "()V", false);
         final MethodNode releaseCurrent = requireMethod(classNode, "releaseCurrent", "()V", false);
         final MethodNode destroy = requireMethod(classNode, "destroy", "()V", false);
+        final boolean nativeHandleInjected = nativeHandleInjectionPresent(classNode, nativeHandle);
 
         final int makeCurrentReturns = returnCount(classNode.name, makeCurrent, Opcodes.RETURN);
         final int releaseReturns = returnCount(classNode.name, releaseCurrent, Opcodes.RETURN);
@@ -189,23 +211,260 @@ public final class LwjglContextLifecycleTransformer implements IClassTransformer
             + callCount(releaseCurrent, "releaseIfNativeUnbound", "()V")
             + abortCalls + retireCalls;
         if (totalCalls != 0) {
-            if (callCount(makeCurrent, "bindIfNativeCurrent", BIND_CONTEXT_DESCRIPTOR) == makeCurrentReturns
+            if (nativeHandleInjected
+                && callCount(makeCurrent, "bindIfNativeCurrent", BIND_CONTEXT_DESCRIPTOR) == makeCurrentReturns
                 && callCount(releaseCurrent, "releaseIfNativeUnbound", "()V") == releaseReturns
                 && abortCalls == 1
-                && retireCalls == destroyReturns) {
+                && retireCalls == destroyReturns
+                && hasNativeHandleCallbacksBeforeReturns(
+                    makeCurrent,
+                    "bindIfNativeCurrent",
+                    BIND_CONTEXT_DESCRIPTOR,
+                    nativeHandle.name
+                )
+                && hasNativeHandleArgument(
+                    findBindingCall(destroy, "abortBeforeContextDestroy", ABORT_CONTEXT_DESTROY_DESCRIPTOR),
+                    nativeHandle.name
+                )
+                && hasNativeHandleCallbacksBeforeReturns(
+                    destroy,
+                    "retireDestroyedContext",
+                    RETIRE_CONTEXT_DESCRIPTOR,
+                    nativeHandle.name
+                )) {
+                selectWindowBackend(nativeHandle);
                 return false;
             }
             throw transformationFailure(CONTEXT_GL, "found a partial or duplicate lifecycle injection");
         }
+        if (nativeHandleInjected) {
+            throw transformationFailure(CONTEXT_GL, "found a partial native handle injection");
+        }
 
-        injectBeforeReturns(CONTEXT_GL, makeCurrent, Opcodes.RETURN, LwjglContextLifecycleTransformer::bindContext);
+        injectNativeHandle(classNode, nativeHandle);
+        injectBeforeReturns(CONTEXT_GL, makeCurrent, Opcodes.RETURN, () -> bindContext(nativeHandle.name));
         injectBeforeReturns(CONTEXT_GL, releaseCurrent, Opcodes.RETURN, LwjglContextLifecycleTransformer::releaseContext);
-        destroy.instructions.insert(contextDestroyAbort());
-        injectBeforeReturns(CONTEXT_GL, destroy, Opcodes.RETURN, LwjglContextLifecycleTransformer::retireContext);
+        destroy.instructions.insert(contextDestroyAbort(nativeHandle.name));
+        injectBeforeReturns(CONTEXT_GL, destroy, Opcodes.RETURN, () -> retireContext(nativeHandle.name));
+        selectWindowBackend(nativeHandle);
         return true;
     }
 
-    private static void requireField(ClassNode classNode, String name, String descriptor, boolean isStatic) {
+    private static FieldNode nativeHandleField(ClassNode classNode) {
+        final boolean hasGlfw = classNode.fields.stream().anyMatch(field -> GLFW_WINDOW_FIELD.equals(field.name));
+        final boolean hasSdl = classNode.fields.stream().anyMatch(field -> SDL_CONTEXT_FIELD.equals(field.name));
+        if (hasGlfw == hasSdl) {
+            throw transformationFailure(
+                classNode.name,
+                "expected exactly one field glfwWindowJ or sdlContextJ"
+            );
+        }
+        return requireField(classNode, hasSdl ? SDL_CONTEXT_FIELD : GLFW_WINDOW_FIELD, "J", false);
+    }
+
+    private static boolean nativeHandleInjectionPresent(ClassNode classNode, FieldNode nativeHandle) {
+        final long interfaceCount = classNode.interfaces.stream().filter(NATIVE_CONTEXT_HANDLE::equals).count();
+        final List<MethodNode> handleMethods = classNode.methods.stream()
+            .filter(method -> NATIVE_HANDLE_METHOD.equals(method.name))
+            .toList();
+        if (interfaceCount == 0 && handleMethods.isEmpty()) {
+            return false;
+        }
+        if (interfaceCount != 1 || handleMethods.size() != 1) {
+            throw transformationFailure(CONTEXT_GL, "found a partial or conflicting native handle injection");
+        }
+
+        final MethodNode handleMethod = handleMethods.getFirst();
+        final int invalidAccess = Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED | Opcodes.ACC_STATIC
+            | Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE;
+        if (!NATIVE_HANDLE_DESCRIPTOR.equals(handleMethod.desc)
+            || (handleMethod.access & Opcodes.ACC_PUBLIC) == 0
+            || (handleMethod.access & invalidAccess) != 0
+            || !hasExpectedNativeHandleBody(handleMethod, classNode.name, nativeHandle)) {
+            throw transformationFailure(CONTEXT_GL, "found a conflicting native handle method");
+        }
+        return true;
+    }
+
+    private static boolean hasCompleteSharedContextInjections(MethodNode method) {
+        for (AbstractInsnNode instruction = method.instructions.getFirst(); instruction != null;
+             instruction = instruction.getNext()) {
+            if (instruction.getOpcode() != Opcodes.ARETURN) {
+                continue;
+            }
+
+            final AbstractInsnNode registerCall = previousInstruction(instruction);
+            final AbstractInsnNode parentRead = previousInstruction(registerCall);
+            final AbstractInsnNode parentLoad = previousInstruction(parentRead);
+            final AbstractInsnNode handleCall = previousInstruction(parentLoad);
+            if (!isBindingCall(registerCall, "registerSharedContext", REGISTER_SHARED_CONTEXT_DESCRIPTOR)
+                || !isField(
+                    parentRead,
+                    Opcodes.GETFIELD,
+                    "org/lwjgl/opengl/DrawableGL",
+                    "context",
+                    CONTEXT_DESCRIPTOR
+                )
+                || !isVar(parentLoad, Opcodes.ALOAD, 0)
+                || !isNativeHandleCall(handleCall)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean hasNativeHandleCallbacksBeforeReturns(
+        MethodNode method,
+        String callbackName,
+        String callbackDescriptor,
+        String nativeHandleField
+    ) {
+        for (AbstractInsnNode instruction = method.instructions.getFirst(); instruction != null;
+             instruction = instruction.getNext()) {
+            if (instruction.getOpcode() == Opcodes.RETURN) {
+                final AbstractInsnNode callback = previousInstruction(instruction);
+                if (!isBindingCall(callback, callbackName, callbackDescriptor)
+                    || !hasNativeHandleArgument((MethodInsnNode) callback, nativeHandleField)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private static boolean hasNativeHandleArgument(MethodInsnNode callback, String nativeHandleField) {
+        final AbstractInsnNode handleRead = previousInstruction(callback);
+        final AbstractInsnNode handleLoad = previousInstruction(handleRead);
+        return isField(handleRead, Opcodes.GETFIELD, "org/lwjgl/opengl/ContextGL", nativeHandleField, "J")
+            && isVar(handleLoad, Opcodes.ALOAD, 0);
+    }
+
+    private static MethodInsnNode findBindingCall(MethodNode method, String name, String descriptor) {
+        for (AbstractInsnNode instruction = method.instructions.getFirst(); instruction != null;
+             instruction = instruction.getNext()) {
+            if (isBindingCall(instruction, name, descriptor)) {
+                return (MethodInsnNode) instruction;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isBindingCall(AbstractInsnNode instruction, String name, String descriptor) {
+        return instruction instanceof MethodInsnNode call
+            && call.getOpcode() == Opcodes.INVOKESTATIC
+            && DISPLAY_BINDING.equals(call.owner)
+            && name.equals(call.name)
+            && descriptor.equals(call.desc);
+    }
+
+    private static int nativeHandleCallCount(MethodNode method) {
+        int count = 0;
+        for (AbstractInsnNode instruction = method.instructions.getFirst(); instruction != null;
+             instruction = instruction.getNext()) {
+            if (isNativeHandleCall(instruction)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static boolean isNativeHandleCall(AbstractInsnNode instruction) {
+        return instruction instanceof MethodInsnNode call
+            && call.getOpcode() == Opcodes.INVOKEVIRTUAL
+            && "org/lwjgl/opengl/ContextGL".equals(call.owner)
+            && NATIVE_HANDLE_METHOD.equals(call.name)
+            && NATIVE_HANDLE_DESCRIPTOR.equals(call.desc);
+    }
+
+    private static boolean hasExpectedNativeHandleBody(
+        MethodNode method,
+        String owner,
+        FieldNode nativeHandle
+    ) {
+        final AbstractInsnNode load = firstInstruction(method);
+        final AbstractInsnNode read = nextInstruction(load);
+        final AbstractInsnNode returnInstruction = nextInstruction(read);
+        return isVar(load, Opcodes.ALOAD, 0)
+            && isField(read, Opcodes.GETFIELD, owner, nativeHandle.name, nativeHandle.desc)
+            && returnInstruction != null
+            && returnInstruction.getOpcode() == Opcodes.LRETURN
+            && nextInstruction(returnInstruction) == null;
+    }
+
+    private static boolean isField(
+        AbstractInsnNode instruction,
+        int opcode,
+        String owner,
+        String name,
+        String descriptor
+    ) {
+        return instruction instanceof FieldInsnNode field
+            && field.getOpcode() == opcode
+            && owner.equals(field.owner)
+            && name.equals(field.name)
+            && descriptor.equals(field.desc);
+    }
+
+    private static boolean isVar(AbstractInsnNode instruction, int opcode, int index) {
+        return instruction instanceof VarInsnNode variable
+            && variable.getOpcode() == opcode
+            && variable.var == index;
+    }
+
+    private static AbstractInsnNode firstInstruction(MethodNode method) {
+        final AbstractInsnNode first = method.instructions.getFirst();
+        return first == null || first.getOpcode() >= 0 ? first : nextInstruction(first);
+    }
+
+    private static AbstractInsnNode nextInstruction(AbstractInsnNode instruction) {
+        if (instruction == null) {
+            return null;
+        }
+        do {
+            instruction = instruction.getNext();
+        } while (instruction != null && instruction.getOpcode() < 0);
+        return instruction;
+    }
+
+    private static AbstractInsnNode previousInstruction(AbstractInsnNode instruction) {
+        if (instruction == null) {
+            return null;
+        }
+        do {
+            instruction = instruction.getPrevious();
+        } while (instruction != null && instruction.getOpcode() < 0);
+        return instruction;
+    }
+
+    private static void injectNativeHandle(ClassNode classNode, FieldNode nativeHandle) {
+        classNode.interfaces.add(NATIVE_CONTEXT_HANDLE);
+        final MethodNode handleMethod = new MethodNode(
+            Opcodes.ACC_PUBLIC,
+            NATIVE_HANDLE_METHOD,
+            NATIVE_HANDLE_DESCRIPTOR,
+            null,
+            null
+        );
+        handleMethod.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        handleMethod.instructions.add(new FieldInsnNode(
+            Opcodes.GETFIELD,
+            classNode.name,
+            nativeHandle.name,
+            nativeHandle.desc
+        ));
+        handleMethod.instructions.add(new InsnNode(Opcodes.LRETURN));
+        classNode.methods.add(handleMethod);
+    }
+
+    private static void selectWindowBackend(FieldNode nativeHandle) {
+        if (SDL_CONTEXT_FIELD.equals(nativeHandle.name)) {
+            WindowBackends.useSdl();
+        } else {
+            WindowBackends.useGlfw();
+        }
+    }
+
+    private static FieldNode requireField(ClassNode classNode, String name, String descriptor, boolean isStatic) {
         final List<FieldNode> fields = classNode.fields.stream()
             .filter(field -> name.equals(field.name) && descriptor.equals(field.desc))
             .toList();
@@ -217,6 +476,7 @@ public final class LwjglContextLifecycleTransformer implements IClassTransformer
         if (fieldIsStatic != isStatic) {
             throw transformationFailure(classNode.name, "field " + name + descriptor + " has an unexpected static modifier");
         }
+        return field;
     }
 
     private static MethodNode requireMethod(ClassNode classNode, String name, String descriptor, boolean isStatic) {
@@ -348,11 +608,12 @@ public final class LwjglContextLifecycleTransformer implements IClassTransformer
         final InsnList instructions = new InsnList();
         instructions.add(new InsnNode(Opcodes.DUP));
         instructions.add(new InsnNode(Opcodes.DUP));
-        instructions.add(new FieldInsnNode(
-            Opcodes.GETFIELD,
+        instructions.add(new MethodInsnNode(
+            Opcodes.INVOKEVIRTUAL,
             "org/lwjgl/opengl/ContextGL",
-            "glfwWindow",
-            "J"
+            NATIVE_HANDLE_METHOD,
+            NATIVE_HANDLE_DESCRIPTOR,
+            false
         ));
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         instructions.add(new FieldInsnNode(
@@ -371,14 +632,14 @@ public final class LwjglContextLifecycleTransformer implements IClassTransformer
         return instructions;
     }
 
-    private static InsnList bindContext() {
+    private static InsnList bindContext(String nativeHandleField) {
         final InsnList instructions = new InsnList();
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         instructions.add(new FieldInsnNode(
             Opcodes.GETFIELD,
             "org/lwjgl/opengl/ContextGL",
-            "glfwWindow",
+            nativeHandleField,
             "J"
         ));
         instructions.add(new MethodInsnNode(
@@ -391,7 +652,7 @@ public final class LwjglContextLifecycleTransformer implements IClassTransformer
         return instructions;
     }
 
-    private static InsnList contextDestroyAbort() {
+    private static InsnList contextDestroyAbort(String nativeHandleField) {
         final InsnList instructions = new InsnList();
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -405,7 +666,7 @@ public final class LwjglContextLifecycleTransformer implements IClassTransformer
         instructions.add(new FieldInsnNode(
             Opcodes.GETFIELD,
             "org/lwjgl/opengl/ContextGL",
-            "glfwWindow",
+            nativeHandleField,
             "J"
         ));
         instructions.add(new MethodInsnNode(
@@ -418,14 +679,14 @@ public final class LwjglContextLifecycleTransformer implements IClassTransformer
         return instructions;
     }
 
-    private static InsnList retireContext() {
+    private static InsnList retireContext(String nativeHandleField) {
         final InsnList instructions = new InsnList();
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         instructions.add(new FieldInsnNode(
             Opcodes.GETFIELD,
             "org/lwjgl/opengl/ContextGL",
-            "glfwWindow",
+            nativeHandleField,
             "J"
         ));
         instructions.add(new MethodInsnNode(
@@ -439,7 +700,7 @@ public final class LwjglContextLifecycleTransformer implements IClassTransformer
     }
 
     private static IllegalStateException transformationFailure(String targetName, String reason) {
-        return new IllegalStateException("Cannot transform Cleanroom context target " + targetName + ": " + reason);
+        return new IllegalStateException("Cannot transform LWJGL context target " + targetName + ": " + reason);
     }
 
     @FunctionalInterface

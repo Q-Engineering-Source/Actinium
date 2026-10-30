@@ -9,6 +9,7 @@ import net.minecraft.launchwrapper.Launch;
 import net.minecraftforge.fml.relauncher.IFMLLoadingPlugin;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.MixinEnvironment;
+import top.outlands.foundation.TransformerDelegate;
 import zone.rong.mixinbooter.IEarlyMixinLoader;
 
 import java.util.ArrayList;
@@ -26,6 +27,13 @@ public class MixinEarly implements IFMLLoadingPlugin, IEarlyMixinLoader {
         "mixins.actinium.hbm.early.json",
         "mixins.actinium.kirino.json"
     );
+    private static final List<String> EXPLICIT_LIFECYCLE_TARGETS = List.of(
+        "org.lwjgl.opengl.Display",
+        "org.lwjgl.opengl.DrawableGL",
+        "org.lwjgl.opengl.ContextGL"
+    );
+    private static final LwjglContextLifecycleTransformer EXPLICIT_LIFECYCLE_TRANSFORMER =
+        new LwjglContextLifecycleTransformer();
 
     static {
         // CeleritasExtra uses Java 11 nesting features in its mixins.
@@ -34,6 +42,7 @@ public class MixinEarly implements IFMLLoadingPlugin, IEarlyMixinLoader {
 
     @Override
     public @Nullable String[] getASMTransformerClass() {
+        registerExplicitLifecycleTransformer();
         return new String[] {
             MacDisplayForwardCompatTransformer.class.getName(),
             LwjglContextLifecycleTransformer.class.getName(),
@@ -42,6 +51,17 @@ public class MixinEarly implements IFMLLoadingPlugin, IEarlyMixinLoader {
             "com.gtnewhorizons.angelica.loading.fml.transformers.EarlyRedirectorTransformer",
             BetterFoliageHbmCompatTransformer.class.getName()
         };
+    }
+
+    private static synchronized void registerExplicitLifecycleTransformer() {
+        final var registry = TransformerDelegate.getExplicitTransformers();
+        for (String target : EXPLICIT_LIFECYCLE_TARGETS) {
+            final var transformers = registry.get(target);
+            if (transformers == null
+                || transformers.stream().noneMatch(transformer -> transformer == EXPLICIT_LIFECYCLE_TRANSFORMER)) {
+                TransformerDelegate.registerExplicitTransformer(EXPLICIT_LIFECYCLE_TRANSFORMER, target);
+            }
+        }
     }
 
     @Override
