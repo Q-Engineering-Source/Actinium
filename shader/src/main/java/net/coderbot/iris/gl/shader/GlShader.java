@@ -30,7 +30,6 @@ public class GlShader extends GlResource {
 
     private static int createShader(ShaderType type, String name, String src) {
 		int handle = GLStateManager.glCreateShader(type.id);
-		try {
         // TODO: Iris
         // TODO: ShaderWorkaround
         GLStateManager.glShaderSource(handle, src + '\0');
@@ -51,14 +50,6 @@ public class GlShader extends GlResource {
 		}
 
 		return handle;
-		} catch (RuntimeException | Error failure) {
-			try {
-				GLStateManager.glDeleteShader(handle);
-			} catch (RuntimeException | Error cleanupFailure) {
-				failure.addSuppressed(cleanupFailure);
-			}
-			throw failure;
-		}
 	}
 
     public String getName() {

@@ -8,21 +8,21 @@ import com.gtnewhorizons.angelica.glsm.GLStateManager;
  * for its layout group has been built at the end of list compilation.
  */
 public final class BatchedIndexedDrawCmd implements DisplayListCommand {
-    private IndexedDrawBatch batch;
+    private int sharedVAO;
     private int drawMode;
     private int indexCount;
     private int indexType;
     private long indexByteOffset;
 
-    public void fill(IndexedDrawBatch batch, int drawMode, int indexCount, int indexType, long indexByteOffset) {
-        this.batch = batch;
+    public void fill(int sharedVAO, int drawMode, int indexCount, int indexType, long indexByteOffset) {
+        this.sharedVAO = sharedVAO;
         this.drawMode = drawMode;
         this.indexCount = indexCount;
         this.indexType = indexType;
         this.indexByteOffset = indexByteOffset;
     }
 
-    public IndexedDrawBatch getBatch() { return batch; }
+    public int getSharedVAO() { return sharedVAO; }
     public int getDrawMode() { return drawMode; }
     public int getIndexCount() { return indexCount; }
     public int getIndexType() { return indexType; }
@@ -30,17 +30,13 @@ public final class BatchedIndexedDrawCmd implements DisplayListCommand {
 
     @Override
     public void execute() {
-        if (batch == null) {
-            throw new IllegalStateException("Indexed display-list command was not assigned a batch");
-        }
-        final int array = batch.getVertexArray(GLStateManager.currentContextIdentity());
-        GLStateManager.glBindVertexArray(array);
+        if (sharedVAO == 0) return;
+        GLStateManager.glBindVertexArray(sharedVAO);
         GLStateManager.glDrawElements(drawMode, indexCount, indexType, indexByteOffset);
     }
 
     @Override
     public String toString() {
-        return "BatchedIndexedDrawCmd(batch=" + batch + ", mode=" + drawMode + ", count=" + indexCount
-            + ", type=" + indexType + ", offset=" + indexByteOffset + ")";
+        return "BatchedIndexedDrawCmd(vao=" + sharedVAO + ", mode=" + drawMode + ", count=" + indexCount + ", type=" + indexType + ", offset=" + indexByteOffset + ")";
     }
 }

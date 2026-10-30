@@ -23,16 +23,6 @@ public class NativeBuffer {
             Reference2ReferenceMaps.synchronize(new Reference2ReferenceOpenHashMap<>());
 
     private static final AtomicLong ALLOCATED = new AtomicLong();
-    private static final AtomicLong PEAK_ALLOCATED = new AtomicLong();
-    private static final AtomicLong LIVE_BLOCKS = new AtomicLong();
-    private static final AtomicLong PEAK_LIVE_BLOCKS = new AtomicLong();
-    private static final AtomicLong ALLOCATION_COUNT = new AtomicLong();
-    private static final AtomicLong EXPLICIT_FREE_BYTES = new AtomicLong();
-    private static final AtomicLong EXPLICIT_FREE_COUNT = new AtomicLong();
-    private static final AtomicLong RESIZED_FREE_BYTES = new AtomicLong();
-    private static final AtomicLong RESIZED_FREE_COUNT = new AtomicLong();
-    private static final AtomicLong PHANTOM_RECLAIM_BYTES = new AtomicLong();
-    private static final AtomicLong PHANTOM_RECLAIM_COUNT = new AtomicLong();
 
     // Re-assigned by ensureCapacity when the native block is swapped for a larger one.
     private BufferReference ref;
@@ -63,7 +53,7 @@ public class NativeBuffer {
 
     public void free() {
         try {
-            deallocate(this.ref, ReleaseReason.EXPLICIT);
+            deallocate(this.ref);
             // Explicitly freed mesh uploads need no later GC notification or retained trace.
             ACTIVE_BUFFERS.remove(this.reclaimHandle);
             this.reclaimHandle.clear();
@@ -89,7 +79,7 @@ public class NativeBuffer {
             BufferReference replacement = allocate(capacity);
             BufferReference previous = this.ref;
             MemoryUtilities.memCopy(previous.address, replacement.address, previous.length);
-            deallocate(previous, ReleaseReason.RESIZED);
+            deallocate(previous);
             this.ref = replacement;
 
             // The reclaim queue entry must follow the live block throughout replacement.
@@ -119,7 +109,7 @@ public class NativeBuffer {
                 continue;
             }
 
-            deallocate(buf, ReleaseReason.PHANTOM_RECLAIM);
+            deallocate(buf);
 
             if (buf.allocationSite != null) {
                 LOGGER.warn("Reclaimed {} bytes at address {} that were leaked from allocation site:\n{}",
@@ -138,32 +128,9 @@ public class NativeBuffer {
         return ALLOCATED.get();
     }
 
-    /** Number of NativeBuffer instances still registered for leak recovery. */
-    public static int getTrackedBufferCount() {
+    /** Number of allocations still registered for leak recovery, including live scratch buffers. */
+    static int getTrackedBufferCount() {
         return ACTIVE_BUFFERS.size();
-    }
-
-    /**
-     * Returns process-wide NativeBuffer allocation counters for the periodic memory diagnostic.
-     * The values are independent atomic snapshots and can differ briefly during concurrent allocate/free calls.
-     */
-    public static MemoryStats getMemoryStats() {
-        return new MemoryStats(
-                ALLOCATED.get(), PEAK_ALLOCATED.get(), LIVE_BLOCKS.get(), PEAK_LIVE_BLOCKS.get(), ALLOCATION_COUNT.get(),
-                getTrackedBufferCount(), EXPLICIT_FREE_BYTES.get(), EXPLICIT_FREE_COUNT.get(),
-                RESIZED_FREE_BYTES.get(), RESIZED_FREE_COUNT.get(), PHANTOM_RECLAIM_BYTES.get(), PHANTOM_RECLAIM_COUNT.get()
-        );
-    }
-
-    /**
-     * {@code liveBlocks} counts allocator blocks and includes the short old-plus-new overlap during growth;
-     * {@code trackedBuffers} counts logical NativeBuffer instances in the phantom-reclaim map.
-     */
-    public record MemoryStats(long liveBytes, long peakLiveBytes, long liveBlocks, long peakLiveBlocks,
-                              long allocationCount,
-                              int trackedBuffers, long explicitFreeBytes, long explicitFreeCount,
-                              long resizedFreeBytes, long resizedFreeCount,
-                              long phantomReclaimBytes, long phantomReclaimCount) {
     }
 
     private static StackTraceElement[] getStackTrace() {
@@ -183,13 +150,11 @@ public class NativeBuffer {
                 break;
             }
 
-            logAllocationFailure(bytes, attempts, "before-reclaim");
             LOGGER.error("EMERGENCY: Tried to allocate {} bytes but the allocator reports failure", bytes);
             LOGGER.error("EMERGENCY: ... Attempting to force a garbage collection cycle (attempt {}/{})", attempts, MAX_ALLOCATION_ATTEMPTS);
 
             // If memory allocation fails, force a garbage collection
             reclaim(true);
-            logAllocationFailure(bytes, attempts, "after-reclaim");
         }
 
         if (address == MemoryUtilities.NULL) {
@@ -199,59 +164,18 @@ public class NativeBuffer {
         StackTraceElement[] stackTrace = getStackTrace();
 
         BufferReference ref = new BufferReference(address, bytes, stackTrace);
-        long liveBytes = ALLOCATED.addAndGet(ref.length);
-        long liveBlocks = LIVE_BLOCKS.incrementAndGet();
-        ALLOCATION_COUNT.incrementAndGet();
-        updatePeak(PEAK_ALLOCATED, liveBytes);
-        updatePeak(PEAK_LIVE_BLOCKS, liveBlocks);
+        ALLOCATED.addAndGet(ref.length);
 
         return ref;
     }
 
-    private static void deallocate(BufferReference ref, ReleaseReason reason) {
+    private static void deallocate(BufferReference ref) {
         ref.checkFreed();
         ref.freed = true;
 
         MemoryUtilities.nmemFree(ref.address);
 
         ALLOCATED.addAndGet(-ref.length);
-        LIVE_BLOCKS.decrementAndGet();
-
-        switch (reason) {
-            case EXPLICIT -> {
-                EXPLICIT_FREE_BYTES.addAndGet(ref.length);
-                EXPLICIT_FREE_COUNT.incrementAndGet();
-            }
-            case RESIZED -> {
-                RESIZED_FREE_BYTES.addAndGet(ref.length);
-                RESIZED_FREE_COUNT.incrementAndGet();
-            }
-            case PHANTOM_RECLAIM -> {
-                PHANTOM_RECLAIM_BYTES.addAndGet(ref.length);
-                PHANTOM_RECLAIM_COUNT.incrementAndGet();
-            }
-        }
-    }
-
-    private static void logAllocationFailure(int requestedBytes, int attempt, String phase) {
-        MemoryStats stats = getMemoryStats();
-        LOGGER.error("[ActiniumMemory] allocator=NativeBuffer event=allocation-failure phase={} attempt={} requestedBytes={} nativeBufferBytes={} nativeBufferPeakBytes={} nativeBufferBlocks={} nativeBufferPeakBlocks={} nativeBufferAllocationCount={} nativeBufferTrackedBuffers={} nativeBufferExplicitFreeBytes={} nativeBufferExplicitFreeCount={} nativeBufferResizeFreeBytes={} nativeBufferResizeFreeCount={} nativeBufferPhantomReclaimBytes={} nativeBufferPhantomReclaimCount={}",
-                phase, attempt, requestedBytes, stats.liveBytes(), stats.peakLiveBytes(), stats.liveBlocks(), stats.peakLiveBlocks(), stats.allocationCount(), stats.trackedBuffers(),
-                stats.explicitFreeBytes(), stats.explicitFreeCount(), stats.resizedFreeBytes(), stats.resizedFreeCount(),
-                stats.phantomReclaimBytes(), stats.phantomReclaimCount());
-    }
-
-    private static void updatePeak(AtomicLong peak, long candidate) {
-        long current = peak.get();
-        while (candidate > current && !peak.compareAndSet(current, candidate)) {
-            current = peak.get();
-        }
-    }
-
-    private enum ReleaseReason {
-        EXPLICIT,
-        RESIZED,
-        PHANTOM_RECLAIM
     }
 
     private static class BufferReference {

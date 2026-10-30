@@ -47,29 +47,6 @@ public final class GLSMHooks {
         }
     }
 
-    /**
-     * Optional host callback notified once the state manager runs on a different display context than the one
-     * its GL names were created on. Everything keyed on the previous context - the memoized driver
-     * fingerprint of the program-binary cache and the pool of retained program names - is stale from that
-     * moment on, and dropping it needs the shader module, which GLSM cannot reach. The root module registers
-     * the callback because it is the only one that sees both sides.
-     */
-    public static volatile DisplayContextChangeListener displayContextChangeListener;
-
-    /** Receives the fact that the display context the managed GL objects belong to has changed. */
-    public interface DisplayContextChangeListener {
-        /** Called once per detected change, after the state manager adopted the new identity. */
-        void onDisplayContextChange();
-    }
-
-    /** Dispatches a display-context change to the host callback when one has been registered. */
-    public static void notifyDisplayContextChange() {
-        final DisplayContextChangeListener listener = displayContextChangeListener;
-        if (listener != null) {
-            listener.onDisplayContextChange();
-        }
-    }
-
     /** Escape hatch: -Dactinium.glsmHooksAlwaysActive=true forces the consumer gate on. */
     private static final boolean ALWAYS_ACTIVE = Boolean.getBoolean("actinium.glsmHooksAlwaysActive");
 

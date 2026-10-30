@@ -16,10 +16,7 @@ in float v_ChunkAgeMs;
 #ifdef USE_FRAGMENT_DISCARD
 in float v_MaterialAlphaCutoff;
 #endif
-
-// Negative for layers that do not use mipmaps, zero otherwise. Every sampling path below folds it into the
-// level it selects, so the per-layer mip behaviour survives the shared terrain program.
-in float v_MaterialMipBias;
+in float v_MaterialUseMip;
 
 #if defined(USE_FOG_POSTMODERN)
 in float v_SphericalFragDistance;
@@ -55,164 +52,19 @@ out vec4 fragColor; // The output fragment for the color framebuffer
 #define fragColor gl_FragColor
 #endif
 
-#ifndef LEGACY
-
-/**
- * Snaps the sample point to a texel centre, with the transition spread over the width of one screen pixel in
- * texels so a texel boundary does not flicker while a texel is still roughly one pixel wide.
- */
-vec2 snapToTexelCentre(vec2 uv, vec2 texelSize, vec2 texelsPerPixel) {
-    vec2 centreCoords = uv / texelSize - 0.5;
-    vec2 lowerCentre = floor(centreCoords);
-    vec2 alongSeam = centreCoords - lowerCentre;
-
-    vec2 rampWidth = clamp(texelsPerPixel, vec2(1e-8), vec2(1.0));
-    alongSeam = clamp((alongSeam - 0.5) / rampWidth + 0.5, 0.0, 1.0);
-
-    return (lowerCentre + alongSeam + 0.5) * texelSize;
-}
-
-vec2 texelsPerPixelOf(vec2 du, vec2 dv, vec2 texelSize) {
-    return sqrt(du * du + dv * dv) / texelSize;
-}
-
-#ifdef USE_ANISOTROPIC
-/**
- * Shrinks the sampling footprint to what the atlas gutter can absorb. Anisotropic taps reach past the
- * sprite's own texels, and the replicated border is only TERRAIN_GUTTER texels wide, so an unbounded
- * footprint would pull in the neighbouring sprite.
- */
-float footprintScale(vec2 du, vec2 dv, vec2 texelSize, float limitTexels) {
-    float footprint = max(length(du / texelSize), length(dv / texelSize));
-    return min(1.0, limitTexels / max(footprint, 1e-8));
-}
-#endif
-
-vec4 sampleTexelSnapped(sampler2D tex, vec2 uv, vec2 texelSize, vec2 du, vec2 dv, vec2 texelsPerPixel) {
-    vec2 snapped = snapToTexelCentre(uv, texelSize, texelsPerPixel);
-
-#if defined(TERRAIN_NO_MIPS) && !defined(USE_ANISOTROPIC)
-    // A single-level atlas has nothing to select, and deriving a level from the derivatives would read an
-    // incomplete texture.
-    return textureLod(tex, snapped, 0.0);
-#else
-    float gradientScale = exp2(v_MaterialMipBias);
-#ifdef USE_ANISOTROPIC
-    gradientScale *= footprintScale(du * gradientScale, dv * gradientScale, texelSize, TERRAIN_GUTTER);
-#endif
-
-    return textureGrad(tex, snapped, du * gradientScale, dv * gradientScale);
-#endif
-}
-
-vec4 sampleTexelSnapped(sampler2D tex, vec2 uv, vec2 texelSize) {
-    vec2 du = dFdx(uv);
-    vec2 dv = dFdy(uv);
-
-    return sampleTexelSnapped(tex, uv, texelSize, du, dv, texelsPerPixelOf(du, dv, texelSize));
-}
-
-#ifdef USE_RGSS
-
-// How many levels sharper the four taps are sampled, which is what taking four of them buys.
-#ifndef RGSS_MIP_BIAS
-#define RGSS_MIP_BIAS -1.0
-#endif
-
-// Standard rotated-grid supersampling offsets, in texels.
-const vec2 RGSS_OFFSETS[4] = vec2[4](
-    vec2( 0.125,  0.375),
-    vec2(-0.125, -0.375),
-    vec2( 0.375, -0.125),
-    vec2(-0.375,  0.125)
-);
-
-#ifdef USE_ANISOTROPIC
-const float RGSS_FOOTPRINT_LIMIT = 0.75 * TERRAIN_GUTTER;
-#endif
-
-/**
- * Rotated-grid supersampling, faded in as a texel grows past one screen pixel and back out once the
- * anisotropic footprint would leave the gutter. Outside that window the texel-snapped path is used, so the
- * sprite stays sharp up close and never reads a neighbour at grazing angles.
- */
-vec4 sampleRGSS(sampler2D tex, vec2 uv, vec2 texelSize) {
-    vec2 du = dFdx(uv);
-    vec2 dv = dFdy(uv);
-
-    vec2 texelsPerPixel = texelsPerPixelOf(du, dv, texelSize);
-    float rgssFactor = smoothstep(1.0, 2.0, max(texelsPerPixel.x, texelsPerPixel.y));
-
-#ifdef USE_ANISOTROPIC
-    float footprint = max(length(du / texelSize), length(dv / texelSize));
-    rgssFactor *= 1.0 - smoothstep(RGSS_FOOTPRINT_LIMIT, TERRAIN_GUTTER, footprint);
-#endif
-
-    if (rgssFactor <= 0.0) {
-        return sampleTexelSnapped(tex, uv, texelSize, du, dv, texelsPerPixel);
-    }
-
-    vec4 rgss = vec4(0.0);
-#ifdef USE_ANISOTROPIC
-    float fit = footprintScale(du, dv, texelSize, RGSS_FOOTPRINT_LIMIT);
-    vec2 spreadU = du * fit;
-    vec2 spreadV = dv * fit;
-
-    // The taps span the footprint; the gradients are one level sharper, which is what four of them buy.
-    float gradientScale = exp2(v_MaterialMipBias + RGSS_MIP_BIAS);
-    vec2 gradU = spreadU * gradientScale;
-    vec2 gradV = spreadV * gradientScale;
-
-    for (int i = 0; i < 4; i++) {
-        rgss += textureGrad(tex, uv + RGSS_OFFSETS[i].x * spreadU + RGSS_OFFSETS[i].y * spreadV, gradU, gradV);
-    }
-#elif defined(TERRAIN_NO_MIPS)
-    const float lod = 0.0;
-
-    for (int i = 0; i < 4; i++) {
-        rgss += textureLod(tex, uv + RGSS_OFFSETS[i] * texelSize, lod);
-    }
-#else
-    float duLength = length(du / texelSize);
-    float dvLength = length(dv / texelSize);
-    float lod = max(0.0, 0.5 * log2(duLength * dvLength) + v_MaterialMipBias + RGSS_MIP_BIAS);
-
-    for (int i = 0; i < 4; i++) {
-        rgss += textureLod(tex, uv + RGSS_OFFSETS[i] * texelSize, lod);
-    }
-#endif
-    rgss *= 0.25;
-
-    if (rgssFactor >= 1.0) {
-        return rgss;
-    }
-
-    return mix(sampleTexelSnapped(tex, uv, texelSize, du, dv, texelsPerPixel), rgss, rgssFactor);
-}
-#endif
-
-#endif
-
 void main() {
-#if defined(LEGACY)
-    // The GLSL 120 downlevel has no textureLod, so sampling stays two-argument and the GL filter state
-    // picks the level.
+    // Two-argument sampling: the GL filter state picks the mip level instead of per-fragment
+    // derivatives, so alpha-test fragments are not discarded at mip level boundaries where the
+    // derivative-based bias would sample an undefined level and return an alpha of ~0.
+    //
+    // Vanilla samples BlockRenderLayer.CUTOUT at mip level 0, and every cutout layer shares one
+    // render pass here, so the material bit selects the level (#191).
+#ifdef LEGACY
     vec4 diffuseColor = texture(u_BlockTex, v_TexCoord);
-#elif defined(USE_TEXEL_SNAP)
-    vec2 texelSize = 1.0 / vec2(textureSize(u_BlockTex, 0));
-#ifdef USE_RGSS
-    vec4 diffuseColor = sampleRGSS(u_BlockTex, v_TexCoord, texelSize);
 #else
-    vec4 diffuseColor = sampleTexelSnapped(u_BlockTex, v_TexCoord, texelSize);
-#endif
-#else
-    // The texture's own filter state picks the level, which is what a player who turned filtering off and
-    // asked for nearest texels gets, and what keeps alpha-test fragments alive at level boundaries. A
-    // negative bias means the layer is not mipped: vanilla samples BlockRenderLayer.CUTOUT at level 0, and
-    // every cutout layer shares one render pass here, so the material bit selects that level (#191).
-    vec4 diffuseColor = v_MaterialMipBias < 0.0
-            ? textureLod(u_BlockTex, v_TexCoord, 0.0)
-            : texture(u_BlockTex, v_TexCoord);
+    vec4 diffuseColor = v_MaterialUseMip > 0.5
+            ? texture(u_BlockTex, v_TexCoord)
+            : textureLod(u_BlockTex, v_TexCoord, 0.0);
 #endif
 
 #ifdef USE_FRAGMENT_DISCARD

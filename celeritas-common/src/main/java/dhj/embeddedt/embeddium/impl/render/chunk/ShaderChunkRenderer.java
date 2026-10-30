@@ -7,7 +7,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import dhj.embeddedt.embeddium.impl.gl.device.CommandList;
 import dhj.embeddedt.embeddium.impl.gl.device.RenderDevice;
-import dhj.embeddedt.embeddium.impl.gl.ResourceCleanup;
 import dhj.embeddedt.embeddium.impl.gl.shader.*;
 import dhj.embeddedt.embeddium.impl.render.chunk.shader.*;
 import dhj.embeddedt.embeddium.impl.render.chunk.terrain.TerrainRenderPass;
@@ -95,42 +94,26 @@ public abstract class ShaderChunkRenderer implements ChunkRenderer {
         ShaderConstants constants = options.constants(!this.enableLegacyGLPatches);
 
         List<GlShader> loadedShaders = new ArrayList<>();
-        GlProgram<ChunkShaderInterface> program = null;
-        Throwable buildFailure = null;
+
+        loadedShaders.add(loadShader(ShaderType.VERTEX,
+                "actinium:" + path + ".vsh", constants));
+
+        loadedShaders.add(loadShader(ShaderType.FRAGMENT,
+                "actinium:" + path + ".fsh", constants));
 
         try {
-			loadedShaders.add(loadShader(ShaderType.VERTEX,
-					"actinium:" + path + ".vsh", constants));
-
-			loadedShaders.add(loadShader(ShaderType.FRAGMENT,
-					"actinium:" + path + ".fsh", constants));
-
-			try (var builder = GlProgram.builder("sodium:chunk_shader")) {
-				loadedShaders.forEach(builder::attachShader);
-				int i = 0;
-				for (var attr : options.pass().vertexType().getVertexFormat().getAttributes()) {
-					builder.bindAttribute(attr.getName(), i++);
-				}
-				if (!this.enableLegacyGLPatches) {
-					builder.bindFragmentData("fragColor", ChunkShaderBindingPoints.FRAG_COLOR);
-				}
-				program = builder.link((shader) -> new DefaultChunkShaderInterface(shader, options));
-				return program;
+            var builder = GlProgram.builder("sodium:chunk_shader");
+            loadedShaders.forEach(builder::attachShader);
+            int i = 0;
+            for (var attr : options.pass().vertexType().getVertexFormat().getAttributes()) {
+                builder.bindAttribute(attr.getName(), i++);
             }
-        } catch (RuntimeException | Error failure) {
-            buildFailure = failure;
-            throw failure;
+            if (!this.enableLegacyGLPatches) {
+                builder.bindFragmentData("fragColor", ChunkShaderBindingPoints.FRAG_COLOR);
+            }
+            return builder.link((shader) -> new DefaultChunkShaderInterface(shader, options));
         } finally {
-            try {
-                ResourceCleanup.runAll(buildFailure,
-                        loadedShaders.stream().<Runnable>map(shader -> shader::delete).toList());
-            } catch (RuntimeException | Error cleanupFailure) {
-                if (program != null) {
-                    final GlProgram<ChunkShaderInterface> linkedProgram = program;
-                    ResourceCleanup.runAll(cleanupFailure, linkedProgram::delete);
-                }
-                throw cleanupFailure;
-            }
+            loadedShaders.forEach(GlShader::delete);
         }
     }
 

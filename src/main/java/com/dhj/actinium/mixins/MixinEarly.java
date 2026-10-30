@@ -2,7 +2,6 @@ package com.dhj.actinium.mixins;
 
 import com.dhj.actinium.loading.fml.transformers.BetterFoliageHbmCompatTransformer;
 import com.dhj.actinium.loading.fml.transformers.GnetumHudCachingCompatTransformer;
-import com.dhj.actinium.loading.fml.transformers.LwjglContextLifecycleTransformer;
 import com.dhj.actinium.loading.fml.transformers.LwjglContextVersionTransformer;
 import com.dhj.actinium.loading.fml.transformers.MacDisplayForwardCompatTransformer;
 import com.dhj.actinium.loading.fml.transformers.StellarCoreHudCachingCompatTransformer;
@@ -31,13 +30,6 @@ public class MixinEarly implements IFMLLoadingPlugin, IEarlyMixinLoader {
         "mixins.actinium.hbm.early.json",
         "mixins.actinium.kirino.json"
     );
-    private static final List<String> EXPLICIT_LIFECYCLE_TARGETS = List.of(
-        "org.lwjgl.opengl.Display",
-        "org.lwjgl.opengl.DrawableGL",
-        "org.lwjgl.opengl.ContextGL"
-    );
-    private static final LwjglContextLifecycleTransformer EXPLICIT_LIFECYCLE_TRANSFORMER =
-        new LwjglContextLifecycleTransformer();
     private static final LwjglContextVersionTransformer EXPLICIT_VERSION_TRANSFORMER =
         new LwjglContextVersionTransformer();
 
@@ -52,7 +44,6 @@ public class MixinEarly implements IFMLLoadingPlugin, IEarlyMixinLoader {
         return new String[] {
             MacDisplayForwardCompatTransformer.class.getName(),
             LwjglContextVersionTransformer.class.getName(),
-            LwjglContextLifecycleTransformer.class.getName(),
             StellarCoreHudCachingCompatTransformer.class.getName(),
             GnetumHudCachingCompatTransformer.class.getName(),
             "com.gtnewhorizons.angelica.loading.fml.transformers.EarlyRedirectorTransformer",
@@ -62,9 +53,6 @@ public class MixinEarly implements IFMLLoadingPlugin, IEarlyMixinLoader {
 
     private static synchronized void registerExplicitTransformers() {
         final var registry = TransformerDelegate.getExplicitTransformers();
-        for (String target : EXPLICIT_LIFECYCLE_TARGETS) {
-            registerExplicitTransformer(registry, EXPLICIT_LIFECYCLE_TRANSFORMER, target);
-        }
         registerExplicitTransformer(registry, EXPLICIT_VERSION_TRANSFORMER, CONTEXT_ATTRIBS);
     }
 

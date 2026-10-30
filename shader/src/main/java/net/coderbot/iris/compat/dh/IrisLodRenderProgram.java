@@ -7,10 +7,11 @@ import com.seibel.distanthorizons.api.objects.math.DhApiVec3f;
 import net.coderbot.iris.gl.blending.AlphaTestOverride;
 import net.coderbot.iris.gl.blending.BlendModeOverride;
 import net.coderbot.iris.gl.blending.BufferBlendOverride;
-import net.coderbot.iris.gl.ResourceCleanup;
 import net.coderbot.iris.gl.program.ProgramImages;
 import net.coderbot.iris.gl.program.ProgramSamplers;
 import net.coderbot.iris.gl.program.ProgramUniforms;
+import net.coderbot.iris.gl.shader.GlShader;
+import net.coderbot.iris.gl.shader.ShaderType;
 import net.coderbot.iris.gl.state.FogMode;
 import net.coderbot.iris.pipeline.DeferredWorldRenderingPipeline;
 import net.coderbot.iris.pipeline.PatchedShaderPrinter;
@@ -29,6 +30,7 @@ import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL20;
 import com.mitchej123.lwjgl.MemoryStack;
 
 import java.nio.FloatBuffer;
@@ -49,7 +51,6 @@ public class IrisLodRenderProgram {
     // Fog/Clip Uniforms
     public final int clipDistanceUniform;
     private final int id;
-    private boolean freed;
     private final ProgramUniforms uniforms;
     private final CustomUniforms customUniforms;
     private final ProgramSamplers samplers;
@@ -63,12 +64,55 @@ public class IrisLodRenderProgram {
 
     // This will bind  AbstractVertexAttribute
     private IrisLodRenderProgram(String name, boolean isShadowPass, boolean translucent, AlphaTestOverride alphaTestOverride, BlendModeOverride override, BufferBlendOverride[] bufferBlendOverrides, String vertex, String tessControl, String tessEval, String geometry, String fragment, CustomUniforms customUniforms, DeferredWorldRenderingPipeline pipeline, ProgramSource source) {
-		id = IrisDhProgramCompiler.create(name, vertex, tessControl, tessEval, geometry, fragment,
-			new String[] {"vPosition", "iris_color", "irisExtra"}, new int[] {0, 1, 2});
+        id = GLStateManager.glCreateProgram();
 
-		try {
+        GLStateManager.glBindAttribLocation(this.id, 0, "vPosition");
+        GLStateManager.glBindAttribLocation(this.id, 1, "iris_color");
+        GLStateManager.glBindAttribLocation(this.id, 2, "irisExtra");
+
         this.bufferBlendOverrides = bufferBlendOverrides;
         this.alphaTestOverride = alphaTestOverride;
+
+        GlShader vert = new GlShader(ShaderType.VERTEX, name + ".vsh", vertex);
+        GLStateManager.glAttachShader(id, vert.getHandle());
+
+        GlShader tessCont = null;
+        if (tessControl != null) {
+            tessCont = new GlShader(ShaderType.TESSELATION_CONTROL, name + ".tcs", tessControl);
+            GLStateManager.glAttachShader(id, tessCont.getHandle());
+        }
+
+        GlShader tessE = null;
+        if (tessEval != null) {
+            tessE = new GlShader(ShaderType.TESSELATION_EVAL, name + ".tes", tessEval);
+            GLStateManager.glAttachShader(id, tessE.getHandle());
+        }
+
+        GlShader geom = null;
+        if (geometry != null) {
+            geom = new GlShader(ShaderType.GEOMETRY, name + ".gsh", geometry);
+            GLStateManager.glAttachShader(id, geom.getHandle());
+        }
+
+        GlShader frag = new GlShader(ShaderType.FRAGMENT, name + ".fsh", fragment);
+        GLStateManager.glAttachShader(id, frag.getHandle());
+
+        GLStateManager.glLinkProgram(this.id);
+        int status = GLStateManager.glGetProgrami(this.id, GL20.GL_LINK_STATUS);
+        if (status != 1) {
+            String message = "Shader link error in Iris DH program! Details: " + GLStateManager.glGetProgramInfoLog(this.id, 9999);
+            this.free();
+            throw new RuntimeException(message);
+        } else {
+            GLStateManager.glUseProgram(this.id);
+        }
+
+        vert.destroy();
+        frag.destroy();
+
+        if (tessCont != null) tessCont.destroy();
+        if (tessE != null) tessE.destroy();
+        if (geom != null) geom.destroy();
 
         blend = override;
         ProgramUniforms.Builder uniformBuilder = ProgramUniforms.builder(name, id);
@@ -98,10 +142,6 @@ public class IrisLodRenderProgram {
 
         // Fog/Clip Uniforms
         clipDistanceUniform = tryGetUniformLocation2("clipDistance");
-		} catch (RuntimeException | Error failure) {
-			ResourceCleanup.runAll(failure, () -> GLStateManager.glDeleteProgram(id));
-			throw failure;
-		}
     }
 
     public static IrisLodRenderProgram createProgram(String name, boolean isShadowPass, boolean translucent, ProgramSource source, CustomUniforms uniforms, DeferredWorldRenderingPipeline pipeline) {
@@ -188,14 +228,7 @@ public class IrisLodRenderProgram {
     }
 
     public void free() {
-		if (freed) {
-			return;
-		}
-		freed = true;
-		ResourceCleanup.runAll(null,
-			uniforms::removeListeners,
-			samplers::removeListeners,
-			() -> GLStateManager.glDeleteProgram(id));
+        GLStateManager.glDeleteProgram(id);
     }
 
     public void fillUniformData(Matrix4fc projection, Matrix4fc modelView, int worldYOffset, float partialTicks) {

@@ -6,11 +6,8 @@ import com.gtnewhorizons.angelica.glsm.backend.DebugMessageHandler;
 import com.gtnewhorizons.angelica.glsm.backend.GLDebugMessageListener;
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
 import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
-import com.gtnewhorizons.angelica.glsm.debug.TerrainBufferDiagnostics;
-import com.gtnewhorizons.angelica.glsm.debug.TerrainVertexArrayDiagnostics;
 import org.lwjgl.opengl.ARBClearTexture;
 import org.lwjgl.opengl.ARBPolygonOffsetClamp;
-import org.lwjgl.opengl.ARBVertexAttribBinding;
 import org.lwjgl.opengl.EXTDirectStateAccess;
 import org.lwjgl.opengl.EXTPolygonOffsetClamp;
 import org.lwjgl.opengl.GL;
@@ -25,7 +22,6 @@ import org.lwjgl.opengl.GL31C;
 import org.lwjgl.opengl.GL32C;
 import org.lwjgl.opengl.GL33C;
 import org.lwjgl.opengl.GL40C;
-import org.lwjgl.opengl.GL41C;
 import org.lwjgl.opengl.GL42C;
 import org.lwjgl.opengl.GL43C;
 import org.lwjgl.opengl.GL44C;
@@ -933,29 +929,6 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     }
 
     @Override
-    public boolean supportsProgramBinary() {
-        // A driver may advertise the entry points and still offer no binary format, in which case
-        // glGetProgramBinary answers with a zero length and every save is wasted work.
-        return caps != null && !RenderSystem.isGLES() && (caps.OpenGL41 || caps.GL_ARB_get_program_binary)
-            && GL11C.glGetInteger(GL41C.GL_NUM_PROGRAM_BINARY_FORMATS) > 0;
-    }
-
-    @Override
-    public void programParameteri(int program, int pname, int value) {
-        GL41C.glProgramParameteri(program, pname, value);
-    }
-
-    @Override
-    public void getProgramBinary(int program, IntBuffer length, IntBuffer binaryFormat, ByteBuffer binary) {
-        GL41C.glGetProgramBinary(program, length, binaryFormat, binary);
-    }
-
-    @Override
-    public void programBinary(int program, int binaryFormat, ByteBuffer binary) {
-        GL41C.glProgramBinary(program, binaryFormat, binary);
-    }
-
-    @Override
     public void validateProgram(int program) {
         GL20C.glValidateProgram(program);
     }
@@ -1162,44 +1135,27 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public void deleteBuffers(int buffer) {
-        final TerrainBufferDiagnostics.NativeDeleteCall call = TerrainBufferDiagnostics.beginNativeDelete(buffer);
-        try {
-            GL15C.glDeleteBuffers(buffer);
-        } catch (RuntimeException | Error failure) {
-            TerrainBufferDiagnostics.finishNativeDelete(call, failure);
-            throw failure;
-        }
-        TerrainBufferDiagnostics.finishNativeDelete(call, null);
+        GL15C.glDeleteBuffers(buffer);
     }
 
     @Override
     public void deleteBuffers(IntBuffer buffers) {
-        final TerrainBufferDiagnostics.NativeDeleteCall call = TerrainBufferDiagnostics.beginNativeDelete(buffers);
-        try {
-            GL15C.glDeleteBuffers(buffers);
-        } catch (RuntimeException | Error failure) {
-            TerrainBufferDiagnostics.finishNativeDelete(call, failure);
-            throw failure;
-        }
-        TerrainBufferDiagnostics.finishNativeDelete(call, null);
+        GL15C.glDeleteBuffers(buffers);
     }
 
     @Override
     public void bindBuffer(int target, int buffer) {
         GL15C.glBindBuffer(target, buffer);
-        TerrainBufferDiagnostics.observeBufferBinding(target, buffer);
     }
 
     @Override
     public void bindBufferBase(int target, int index, int buffer) {
         GL30C.glBindBufferBase(target, index, buffer);
-        TerrainBufferDiagnostics.observeBufferBinding(target, buffer);
     }
 
     @Override
     public void bindBufferRange(int target, int index, int buffer, long offset, long size) {
         GL30C.glBindBufferRange(target, index, buffer, offset, size);
-        TerrainBufferDiagnostics.observeBufferBinding(target, buffer);
     }
 
     @Override
@@ -1225,98 +1181,42 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public void bufferData(int target, long size, int usage) {
-        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, size);
-        try {
-            GL15C.glBufferData(target, size, usage);
-        } catch (RuntimeException | Error failure) {
-            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
-            throw failure;
-        }
-        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
+        GL15C.glBufferData(target, size, usage);
     }
 
     @Override
     public void bufferData(int target, ByteBuffer data, int usage) {
-        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, data, Byte.BYTES);
-        try {
-            GL15C.glBufferData(target, data, usage);
-        } catch (RuntimeException | Error failure) {
-            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
-            throw failure;
-        }
-        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
+        GL15C.glBufferData(target, data, usage);
     }
 
     @Override
     public void bufferData(int target, FloatBuffer data, int usage) {
-        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, data, Float.BYTES);
-        try {
-            GL15C.glBufferData(target, data, usage);
-        } catch (RuntimeException | Error failure) {
-            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
-            throw failure;
-        }
-        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
+        GL15C.glBufferData(target, data, usage);
     }
 
     @Override
     public void bufferData(int target, ShortBuffer data, int usage) {
-        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, data, Short.BYTES);
-        try {
-            GL15C.glBufferData(target, data, usage);
-        } catch (RuntimeException | Error failure) {
-            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
-            throw failure;
-        }
-        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
+        GL15C.glBufferData(target, data, usage);
     }
 
     @Override
     public void bufferData(int target, IntBuffer data, int usage) {
-        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, data, Integer.BYTES);
-        try {
-            GL15C.glBufferData(target, data, usage);
-        } catch (RuntimeException | Error failure) {
-            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
-            throw failure;
-        }
-        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
+        GL15C.glBufferData(target, data, usage);
     }
 
     @Override
     public void bufferData(int target, DoubleBuffer data, int usage) {
-        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, data, Double.BYTES);
-        try {
-            GL15C.glBufferData(target, data, usage);
-        } catch (RuntimeException | Error failure) {
-            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
-            throw failure;
-        }
-        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
+        GL15C.glBufferData(target, data, usage);
     }
 
     @Override
     public void bufferData(int target, int[] data, int usage) {
-        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, data);
-        try {
-            GL15C.glBufferData(target, data, usage);
-        } catch (RuntimeException | Error failure) {
-            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
-            throw failure;
-        }
-        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
+        GL15C.glBufferData(target, data, usage);
     }
 
     @Override
     public void bufferData(int target, float[] data, int usage) {
-        final TerrainBufferDiagnostics.NativeBufferDataCall call = TerrainBufferDiagnostics.beginNativeBufferData(target, data);
-        try {
-            GL15C.glBufferData(target, data, usage);
-        } catch (RuntimeException | Error failure) {
-            TerrainBufferDiagnostics.finishNativeBufferData(call, failure);
-            throw failure;
-        }
-        TerrainBufferDiagnostics.finishNativeBufferData(call, null);
+        GL15C.glBufferData(target, data, usage);
     }
 
     @Override
@@ -1451,15 +1351,7 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public void deleteVertexArrays(int array) {
-        TerrainVertexArrayDiagnostics.NativeDeleteCall call =
-                TerrainVertexArrayDiagnostics.beginNativeDelete(array);
-        try {
-            GL30C.glDeleteVertexArrays(array);
-        } catch (RuntimeException | Error failure) {
-            TerrainVertexArrayDiagnostics.finishNativeDelete(call, failure);
-            throw failure;
-        }
-        TerrainVertexArrayDiagnostics.finishNativeDelete(call, null);
+        GL30C.glDeleteVertexArrays(array);
     }
 
     @Override
@@ -1509,57 +1401,22 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public void bindVertexBuffer(int bindingindex, int buffer, long offset, int stride) {
-        if (caps.OpenGL43) {
-            GL43C.glBindVertexBuffer(bindingindex, buffer, offset, stride);
-        } else if (caps.GL_ARB_vertex_attrib_binding) {
-            ARBVertexAttribBinding.glBindVertexBuffer(bindingindex, buffer, offset, stride);
-        } else {
-            throw new UnsupportedOperationException("Vertex buffer binding API is unavailable on " + getName());
-        }
-    }
-
-    @Override
-    public void vertexBindingDivisor(int bindingindex, int divisor) {
-        if (caps.OpenGL43) {
-            GL43C.glVertexBindingDivisor(bindingindex, divisor);
-        } else if (caps.GL_ARB_vertex_attrib_binding) {
-            ARBVertexAttribBinding.glVertexBindingDivisor(bindingindex, divisor);
-        } else {
-            throw new UnsupportedOperationException("Vertex buffer binding divisors are unavailable on " + getName());
-        }
+        GL43C.glBindVertexBuffer(bindingindex, buffer, offset, stride);
     }
 
     @Override
     public void vertexAttribFormat(int attribindex, int size, int type, boolean normalized, int relativeoffset) {
-        if (caps.OpenGL43) {
-            GL43C.glVertexAttribFormat(attribindex, size, type, normalized, relativeoffset);
-        } else if (caps.GL_ARB_vertex_attrib_binding) {
-            ARBVertexAttribBinding.glVertexAttribFormat(attribindex, size, type, normalized, relativeoffset);
-        } else {
-            throw new UnsupportedOperationException("Vertex attribute format API is unavailable on " + getName());
-        }
+        GL43C.glVertexAttribFormat(attribindex, size, type, normalized, relativeoffset);
     }
 
     @Override
     public void vertexAttribIFormat(int attribindex, int size, int type, int relativeoffset) {
-        if (caps.OpenGL43) {
-            GL43C.glVertexAttribIFormat(attribindex, size, type, relativeoffset);
-        } else if (caps.GL_ARB_vertex_attrib_binding) {
-            ARBVertexAttribBinding.glVertexAttribIFormat(attribindex, size, type, relativeoffset);
-        } else {
-            throw new UnsupportedOperationException("Integer vertex attribute format API is unavailable on " + getName());
-        }
+        GL43C.glVertexAttribIFormat(attribindex, size, type, relativeoffset);
     }
 
     @Override
     public void vertexAttribBinding(int attribindex, int bindingindex) {
-        if (caps.OpenGL43) {
-            GL43C.glVertexAttribBinding(attribindex, bindingindex);
-        } else if (caps.GL_ARB_vertex_attrib_binding) {
-            ARBVertexAttribBinding.glVertexAttribBinding(attribindex, bindingindex);
-        } else {
-            throw new UnsupportedOperationException("Vertex attribute binding API is unavailable on " + getName());
-        }
+        GL43C.glVertexAttribBinding(attribindex, bindingindex);
     }
 
     @Override

@@ -23,7 +23,15 @@ public class Vector2IntegerJomlUniform extends Uniform {
 	}
 
 	@Override
-	protected void updateValue() {
+	public void update() {
+		updateValue();
+
+		if (notifier != null) {
+			notifier.setListener(this::updateValue);
+		}
+	}
+
+	private void updateValue() {
 		Vector2ic newValue = value.get();
 
 		if (!newValue.equals(cachedValue)) {

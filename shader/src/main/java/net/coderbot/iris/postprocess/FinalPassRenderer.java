@@ -14,7 +14,6 @@ import net.coderbot.iris.gl.blending.BlendModeOverride;
 import net.coderbot.iris.gl.blending.BufferBlendOverride;
 import net.coderbot.iris.gl.framebuffer.GlFramebuffer;
 import net.coderbot.iris.gl.framebuffer.MinecraftFramebufferHelper;
-import net.coderbot.iris.gl.ResourceCleanup;
 import net.coderbot.iris.gl.image.GlImage;
 import net.coderbot.iris.gl.program.ComputeProgram;
 import net.coderbot.iris.gl.program.Program;
@@ -102,7 +101,6 @@ public class FinalPassRenderer {
 		this.pipeline = context.pipeline();
 		this.finalPass = pack.getCompositeFinal().filter(ProgramSource::isValid).map(source -> {
 			final Pass pass = new Pass();
-			try {
 			final ProgramDirectives directives = source.getDirectives();
 
 			final Map<PatchShaderType, String> transformed = getTransformed(source, precomputedTransformFuture, stageName);
@@ -116,13 +114,8 @@ public class FinalPassRenderer {
             IrisGlDebug.logFullscreenProgram("FINAL", pass.sourceName, pass.program.getProgramId(), directives.getDrawBuffers());
 
 			return pass;
-			} catch (RuntimeException | Error failure) {
-				ResourceCleanup.runAll(failure, pass::destroy);
-				throw failure;
-			}
 		}).orElse(null);
 
-		try {
 		final IntList buffersToBeCleared = pack.getPackDirectives().getRenderTargetDirectives().getBuffersToBeCleared();
 
 		// The name of this method might seem a bit odd here, but we want a framebuffer with color attachments that line
@@ -165,16 +158,6 @@ public class FinalPassRenderer {
 		this.swapPasses = swapPasses.build();
 
 		GLStateManager.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
-		} catch (RuntimeException | Error failure) {
-			if (this.finalPass != null) {
-				try {
-					this.finalPass.destroy();
-				} catch (RuntimeException | Error cleanupFailure) {
-					failure.addSuppressed(cleanupFailure);
-				}
-			}
-			throw failure;
-		}
 	}
 
 	private Map<PatchShaderType, String> getTransformed(ProgramSource source, CompletableFuture<Map<PatchShaderType, String>> precomputedTransformFuture, String stageName) {
@@ -209,18 +192,7 @@ public class FinalPassRenderer {
 		List<BufferBlendOverride> bufferBlendOverrides = List.of();
 
 		private void destroy() {
-			final List<Runnable> cleanupActions = new ArrayList<>();
-			if (this.program != null) {
-				cleanupActions.add(this.program::destroy);
-			}
-			if (this.computes != null) {
-				for (ComputeProgram compute : this.computes) {
-					if (compute != null) {
-						cleanupActions.add(compute::destroy);
-					}
-				}
-			}
-			ResourceCleanup.runAll(null, cleanupActions);
+			this.program.destroy();
 		}
 	}
 
@@ -493,8 +465,7 @@ public class FinalPassRenderer {
 			throw new RuntimeException("Shader compilation failed!", e);
 		}
 
-		try (builder) {
-		this.customUniforms.assignTo(builder);
+        this.customUniforms.assignTo(builder);
 
 		final ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor = ProgramSamplers.customTextureSamplerInterceptor(builder, customTextureIds, flippedAtLeastOnceSnapshot);
 
@@ -523,80 +494,69 @@ public class FinalPassRenderer {
         Program build = builder.build();
 
         this.customUniforms.mapholderToPass(builder, build);
-		builder.commit();
 
 		return build;
-		}
 	}
 
 	private ComputeProgram[] createComputes(ComputeSource[] compute, ImmutableSet<Integer> flipped, ImmutableSet<Integer> flippedAtLeastOnceSnapshot, Supplier<ShadowRenderTargets> shadowTargetsSupplier) {
 		final ComputeProgram[] programs = new ComputeProgram[compute.length];
-		try {
-			for (int i = 0; i < programs.length; i++) {
-				final ComputeSource source = compute[i];
-				if (source == null || !source.getSource().isPresent()) {
-					continue;
-				}
+		for (int i = 0; i < programs.length; i++) {
+			final ComputeSource source = compute[i];
+			if (source == null || !source.getSource().isPresent()) {
+				continue;
+			} else {
+				// TODO: Properly handle empty shaders
+				Objects.requireNonNull(flipped);
+				final ProgramBuilder builder;
 
 				try {
-					// TODO: Properly handle empty shaders
-					Objects.requireNonNull(flipped);
 					String transformed = TransformPatcher.patchCompute(source.getName(), source.getSource().orElse(null), TextureStage.COMPOSITE_AND_FINAL, pipeline != null ? pipeline.getTextureMap() : null);
 					PatchedShaderPrinter.debugPatchedShaders(source.getName() + "_compute", null, null, null, transformed);
-					try (ProgramBuilder builder = ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS)) {
-						ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor = ProgramSamplers.customTextureSamplerInterceptor(builder, customTextureIds, flippedAtLeastOnceSnapshot);
-						customUniforms.assignTo(builder);
-						CommonUniforms.addDynamicUniforms(builder, FogMode.OFF);
-						IrisSamplers.addRenderTargetSamplers(customTextureSamplerInterceptor, () -> flipped, renderTargets, true, pipeline);
-						IrisSamplers.addCustomImages(customTextureSamplerInterceptor, customImages);
-						IrisSamplers.addCustomTextures(customTextureSamplerInterceptor, irisCustomTextures);
-						IrisImages.addRenderTargetImages(builder, () -> flipped, renderTargets);
-						IrisImages.addCustomImages(builder, customImages);
-						IrisSamplers.addNoiseSampler(customTextureSamplerInterceptor, noiseTexture);
-						IrisSamplers.addCompositeSamplers(customTextureSamplerInterceptor, renderTargets);
-
-						if (IrisSamplers.hasShadowSamplers(customTextureSamplerInterceptor)) {
-							IrisSamplers.addShadowSamplers(customTextureSamplerInterceptor, shadowTargetsSupplier.get(), null, pipeline != null && pipeline.hasFeature(FeatureFlags.SEPARATE_HARDWARE_SAMPLERS));
-							IrisImages.addShadowColorImages(builder, shadowTargetsSupplier.get(), null);
-						}
-
-						centerDepthSampler.setUsage(builder.addDynamicSampler(centerDepthSampler::getCenterDepthTexture, "iris_centerDepthSmooth"));
-						final ComputeProgram program = builder.buildCompute();
-						this.customUniforms.mapholderToPass(builder, program);
-						program.setWorkGroupInfo(source.getWorkGroupRelative(), source.getWorkGroups(), null);
-						programs[i] = program;
-						builder.commit();
-					}
+					builder = ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
 				} catch (RuntimeException e) {
 					// TODO: Better error handling
 					throw new RuntimeException("Shader compilation failed!", e);
 				}
-			}
-			return programs;
-		} catch (RuntimeException | Error failure) {
-			destroyPrograms(programs, failure);
-			throw failure;
-		}
-	}
 
-	private static void destroyPrograms(ComputeProgram[] programs, Throwable failure) {
-		for (ComputeProgram program : programs) {
-			if (program == null) {
-				continue;
-			}
-			try {
-				program.destroy();
-			} catch (RuntimeException | Error cleanupFailure) {
-				failure.addSuppressed(cleanupFailure);
+                ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor = ProgramSamplers.customTextureSamplerInterceptor(builder, customTextureIds, flippedAtLeastOnceSnapshot);
+
+                customUniforms.assignTo(builder);
+
+				CommonUniforms.addDynamicUniforms(builder, FogMode.OFF);
+				IrisSamplers.addRenderTargetSamplers(customTextureSamplerInterceptor, () -> flipped, renderTargets, true, pipeline);
+				IrisSamplers.addCustomImages(customTextureSamplerInterceptor, customImages);
+				IrisSamplers.addCustomTextures(customTextureSamplerInterceptor, irisCustomTextures);
+
+				IrisImages.addRenderTargetImages(builder, () -> flipped, renderTargets);
+				IrisImages.addCustomImages(builder, customImages);
+
+				IrisSamplers.addNoiseSampler(customTextureSamplerInterceptor, noiseTexture);
+				IrisSamplers.addCompositeSamplers(customTextureSamplerInterceptor, renderTargets);
+
+				if (IrisSamplers.hasShadowSamplers(customTextureSamplerInterceptor)) {
+					IrisSamplers.addShadowSamplers(customTextureSamplerInterceptor, shadowTargetsSupplier.get(), null, pipeline != null && pipeline.hasFeature(FeatureFlags.SEPARATE_HARDWARE_SAMPLERS));
+					IrisImages.addShadowColorImages(builder, shadowTargetsSupplier.get(), null);
+				}
+
+				// TODO: Don't duplicate this with FinalPassRenderer
+				centerDepthSampler.setUsage(builder.addDynamicSampler(centerDepthSampler::getCenterDepthTexture, "iris_centerDepthSmooth"));
+
+				programs[i] = builder.buildCompute();
+
+                this.customUniforms.mapholderToPass(builder, programs[i]);
+
+				programs[i].setWorkGroupInfo(source.getWorkGroupRelative(), source.getWorkGroups(), null);
 			}
 		}
+
+
+		return programs;
 	}
 
 	public void destroy() {
 		if (finalPass != null) {
-			ResourceCleanup.runAll(null, finalPass::destroy, colorHolder::destroy);
-		} else {
-			colorHolder.destroy();
+			finalPass.destroy();
 		}
+		colorHolder.destroy();
 	}
 }

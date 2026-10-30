@@ -1373,9 +1373,14 @@ public abstract class AbstractRasterizer {
 		final float w = Float.intBitsToFloat(data[baseIndex + PV_W]);
 		final float z = Float.intBitsToFloat(data[baseIndex + PV_Z]);
 
-		// This buffer stores coverage, not depth. Far-plane vertices still project correctly;
-		// near-clipping them would extrapolate their edges back toward the camera.
-		return (w > 0 && z > 0) ? 0 : 1;
+		if (w == 0) {
+			return 1;
+		} else if (w > 0) {
+			return (z > 0 && z <= w) ? 0 : 1;
+		} else {
+			// w < 0
+			return (z < 0 && z >= w) ? 0 : 1;
+		}
 	}
 
 	/**

@@ -21,7 +21,15 @@ public class IntUniform extends Uniform {
 	}
 
 	@Override
-	protected void updateValue() {
+	public void update() {
+		updateValue();
+
+		if (notifier != null) {
+			notifier.setListener(this::updateValue);
+		}
+	}
+
+	private void updateValue() {
 		int newValue = value.getAsInt();
 
 		if (cachedValue != newValue) {

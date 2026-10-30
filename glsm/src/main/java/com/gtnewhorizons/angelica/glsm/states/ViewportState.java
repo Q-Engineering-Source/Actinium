@@ -23,11 +23,10 @@ public class ViewportState implements ISettableState<ViewportState> {
     }
 
     public void get(IntBuffer params) {
-        final int pos = params.position();
-        params.put(pos + 0, x);
-        params.put(pos + 1, y);
-        params.put(pos + 2, width);
-        params.put(pos + 3, height);
+        params.put(0, x);
+        params.put(1, y);
+        params.put(2, width);
+        params.put(3, height);
     }
 
     public void get(int[] params) {

@@ -2,10 +2,8 @@ package com.dhj.actinium.runtime;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import com.dhj.actinium.config.ActiniumRuntimeOptions;
 import dhj.embeddedt.embeddium.impl.common.util.ScratchRetentionWindow;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
-import com.gtnewhorizons.angelica.glsm.hooks.GLSMConfig;
 
 public final class ActiniumRuntime {
     public static final String MODID = "actinium";
@@ -47,7 +45,6 @@ public final class ActiniumRuntime {
             config.setReadOnly();
         }
         ScratchRetentionWindow.setEnabled(config.performance.trimChunkBuildScratch);
-        GLSMConfig.workerThreadCount = ActiniumRuntimeOptions.resolveWorkerThreadCount(config.performance.workerThreadCount);
         return config;
     }
 }

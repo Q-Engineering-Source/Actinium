@@ -4,7 +4,6 @@ import com.gtnewhorizons.angelica.compat.mojang.NativeImage;
 import com.gtnewhorizons.angelica.glsm.texture.TextureInfo;
 import com.gtnewhorizons.angelica.glsm.texture.TextureInfoCache;
 import net.coderbot.iris.debug.PBRDebug;
-import net.coderbot.iris.debug.ShaderMemoryDiagnostics;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.texture.format.TextureFormat;
 import net.coderbot.iris.texture.format.TextureFormatLoader;
@@ -12,13 +11,10 @@ import net.coderbot.iris.texture.mipmap.ChannelMipmapGenerator;
 import net.coderbot.iris.texture.mipmap.CustomMipmapGenerator;
 import net.coderbot.iris.texture.mipmap.LinearBlendFunction;
 import net.coderbot.iris.texture.pbr.PBRAtlasTexture;
-import net.coderbot.iris.texture.pbr.PBRResourceIndex;
 import net.coderbot.iris.texture.pbr.PBRSpriteHolder;
 import net.coderbot.iris.texture.pbr.PBRType;
 import net.coderbot.iris.texture.pbr.TextureAtlasSpriteExtension;
 import net.coderbot.iris.texture.util.ImageManipulationUtil;
-import dhj.embeddedt.embeddium.api.texture.AlphaIndependentSprite;
-import dhj.embeddedt.embeddium.impl.texture.SpritePaddingExtension;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.client.resources.IResource;
@@ -101,74 +97,70 @@ public class AtlasPBRLoader implements PBRTextureLoader<TextureMap> {
         final ResourceLocation imageLocation = completeResourceLocation(texMap, spriteName);
         final ResourceLocation pbrImageLocation = pbrType.appendToFileLocation(imageLocation);
 
-        if (!PBRResourceIndex.mayExist(resourceManager, pbrImageLocation)) {
-            return null;
-        }
-
         TextureAtlasSprite pbrSprite = null;
 
-        try (IResource resource = resourceManager.getResource(pbrImageLocation)) {
+        try  {
+            // This is no longer closable. Not sure about this.
+            final IResource resource = resourceManager.getResource(pbrImageLocation);
             if (PBRType.hasDirectionalSiblings(pbrImageLocation, resourceManager)) {
                 // Looks like a cardinal-direction texture set (e.g. "_n"/"_s"/"_e"/"_w" for block faces),
                 // not an actual PBR map. Don't treat it as one.
                 return null;
             }
-            try (NativeImage nativeImage = NativeImage.read(resource.getInputStream())) {
-                ShaderMemoryDiagnostics.pbrImageDecoded(nativeImage.getWidth(), nativeImage.getHeight());
-                AnimationMetadataSection animationMetadata = (AnimationMetadataSection) resource.getMetadata("animation");
-                if (animationMetadata == null) {
-                    try (IResource originalResource = resourceManager.getResource(imageLocation)) {
-                        animationMetadata = (AnimationMetadataSection) originalResource.getMetadata("animation");
-                    }
-                }
-
-                final Pair<Integer, Integer> frameSize = this.getFrameSize(
-                    nativeImage.getWidth(), nativeImage.getHeight(), animationMetadata);
-                int frameWidth = frameSize.getLeft();
-                int frameHeight = frameSize.getRight();
-                final int targetFrameWidth = sprite.getIconWidth();
-                final int targetFrameHeight = sprite.getIconHeight();
-                if (frameWidth != targetFrameWidth || frameHeight != targetFrameHeight) {
-                    final int imageWidth = nativeImage.getWidth();
-                    final int imageHeight = nativeImage.getHeight();
-
-                    // getFrameSize guarantees that both dimensions divide evenly by their frame dimensions.
-                    final int targetImageWidth = imageWidth / frameWidth * targetFrameWidth;
-                    final int targetImageHeight = imageHeight / frameHeight * targetFrameHeight;
-
-                    final NativeImage scaledImage;
-                    if (targetImageWidth % imageWidth == 0 && targetImageHeight % imageHeight == 0) {
-                        scaledImage = ImageManipulationUtil.scaleNearestNeighbor(
-                            nativeImage, targetImageWidth, targetImageHeight);
-                    } else {
-                        scaledImage = ImageManipulationUtil.scaleBilinear(
-                            nativeImage, targetImageWidth, targetImageHeight);
-                    }
-
-                    try (scaledImage) {
-                        frameWidth = targetFrameWidth;
-                        frameHeight = targetFrameHeight;
-
-                        if (animationMetadata != null) {
-                            if (animationMetadata.getFrameWidth() != -1) {
-                                animationMetadata.frameWidth = frameWidth;
-                            }
-                            if (animationMetadata.getFrameHeight() != -1) {
-                                animationMetadata.frameHeight = frameHeight;
-                            }
-                        }
-
-                        pbrSprite = createPBRSprite(sprite, spriteName, atlasWidth, atlasHeight, mipLevel,
-                            pbrType, scaledImage, frameWidth, frameHeight, animationMetadata);
-                    }
-                } else {
-                    pbrSprite = createPBRSprite(sprite, spriteName, atlasWidth, atlasHeight, mipLevel,
-                        pbrType, nativeImage, frameWidth, frameHeight, animationMetadata);
-                }
-
-                syncAnimation(sprite, pbrSprite);
-                PBRDebug.spriteLoaded(pbrType, pbrImageLocation, pbrSprite);
+            NativeImage nativeImage = NativeImage.read(resource.getInputStream());
+            AnimationMetadataSection animationMetadata = (AnimationMetadataSection) resource.getMetadata("animation");
+            if (animationMetadata == null) {
+                final IResource resourceOriginal = resourceManager.getResource(imageLocation);
+                animationMetadata = (AnimationMetadataSection) resourceOriginal.getMetadata("animation");
             }
+
+            final Pair<Integer, Integer> frameSize = this.getFrameSize(nativeImage.getWidth(), nativeImage.getHeight(), animationMetadata);
+            int frameWidth = frameSize.getLeft();
+            int frameHeight = frameSize.getRight();
+            final int targetFrameWidth = sprite.getIconWidth();
+            final int targetFrameHeight = sprite.getIconHeight();
+            if (frameWidth != targetFrameWidth || frameHeight != targetFrameHeight) {
+                final int imageWidth = nativeImage.getWidth();
+                final int imageHeight = nativeImage.getHeight();
+
+                // We can assume the following is always true as a result of getFrameSize's check:
+                // imageWidth % frameWidth == 0 && imageHeight % frameHeight == 0
+                final int targetImageWidth = imageWidth / frameWidth * targetFrameWidth;
+                final int targetImageHeight = imageHeight / frameHeight * targetFrameHeight;
+
+                final NativeImage scaledImage;
+                if (targetImageWidth % imageWidth == 0 && targetImageHeight % imageHeight == 0) {
+                    scaledImage = ImageManipulationUtil.scaleNearestNeighbor(nativeImage, targetImageWidth, targetImageHeight);
+                } else {
+                    scaledImage = ImageManipulationUtil.scaleBilinear(nativeImage, targetImageWidth, targetImageHeight);
+                }
+
+                // This is no longer closeable either
+                nativeImage = scaledImage;
+
+                frameWidth = targetFrameWidth;
+                frameHeight = targetFrameHeight;
+
+                if (animationMetadata != null) {
+                    if (animationMetadata.getFrameWidth() != -1) {
+                        animationMetadata.frameWidth = frameWidth;
+                    }
+                    if (animationMetadata.getFrameHeight() != -1) {
+                        animationMetadata.frameHeight = frameHeight;
+                    }
+                }
+            }
+
+            final ResourceLocation pbrSpriteName = new ResourceLocation(spriteName.getNamespace(), spriteName.getPath() + pbrType.getSuffix());
+            final TextureAtlasSpriteInfo pbrSpriteInfo = new PBRTextureAtlasSpriteInfo(pbrSpriteName, frameWidth, frameHeight, pbrType);
+
+            animationMetadata = normalizeAnimationMetadata(animationMetadata, nativeImage.getHeight(), frameWidth, frameHeight);
+
+            final int x = sprite.getOriginX();
+            final int y = sprite.getOriginY();
+            pbrSprite = new PBRTextureAtlasSprite(pbrSpriteInfo, animationMetadata, atlasWidth, atlasHeight, x, y, nativeImage, mipLevel);
+            syncAnimation(sprite, pbrSprite);
+            PBRDebug.spriteLoaded(pbrType, pbrImageLocation, pbrSprite);
         } catch (FileNotFoundException e) {
             PBRDebug.spriteMissing(pbrType, pbrImageLocation, e);
             return null;
@@ -181,23 +173,6 @@ public class AtlasPBRLoader implements PBRTextureLoader<TextureMap> {
         }
 
         return pbrSprite;
-    }
-
-    private TextureAtlasSprite createPBRSprite(TextureAtlasSprite sprite, ResourceLocation spriteName,
-                                               int atlasWidth, int atlasHeight, int mipLevel, PBRType pbrType,
-                                               NativeImage nativeImage, int frameWidth, int frameHeight,
-                                               @Nullable AnimationMetadataSection animationMetadata) {
-        final ResourceLocation pbrSpriteName = new ResourceLocation(
-            spriteName.getNamespace(), spriteName.getPath() + pbrType.getSuffix());
-        final TextureAtlasSpriteInfo pbrSpriteInfo = new PBRTextureAtlasSpriteInfo(
-            pbrSpriteName, frameWidth, frameHeight, pbrType);
-        animationMetadata = normalizeAnimationMetadata(animationMetadata, nativeImage.getHeight(), frameWidth, frameHeight);
-
-        final int x = sprite.getOriginX();
-        final int y = sprite.getOriginY();
-        final int gutter = ((SpritePaddingExtension) sprite).angelica$getGutterWidth();
-        return new PBRTextureAtlasSprite(pbrSpriteInfo, animationMetadata, atlasWidth, atlasHeight,
-            x, y, gutter, nativeImage, mipLevel);
     }
 
 
@@ -273,15 +248,13 @@ public class AtlasPBRLoader implements PBRTextureLoader<TextureMap> {
 		}
 	}
 
-    public static class PBRTextureAtlasSprite extends TextureAtlasSprite implements CustomMipmapGenerator.Provider,
-        AlphaIndependentSprite {
+    public static class PBRTextureAtlasSprite extends TextureAtlasSprite implements CustomMipmapGenerator.Provider {
         // This feels super janky
-        protected PBRTextureAtlasSprite(TextureAtlasSpriteInfo info, AnimationMetadataSection animationMetaDataSection, int atlasWidth, int atlasHeight, int x, int y, int gutter, NativeImage nativeImage, int miplevel) {
+        protected PBRTextureAtlasSprite(TextureAtlasSpriteInfo info, AnimationMetadataSection animationMetaDataSection, int atlasWidth, int atlasHeight, int x, int y, NativeImage nativeImage, int miplevel) {
             super(info.name().toString());
-            ((SpritePaddingExtension) this).angelica$setGutterWidth(gutter);
             super.setIconWidth(info.width());
             super.setIconHeight(info.height());
-            super.initSprite(atlasWidth, atlasHeight, x - gutter, y - gutter, false);
+            super.initSprite(atlasWidth, atlasHeight, x, y, false);
             this.animationMetadata = animationMetaDataSection;
 
             final CustomMipmapGenerator mipmapGenerator = getMipmapGenerator(info, atlasWidth, atlasHeight);
@@ -304,14 +277,8 @@ public class AtlasPBRLoader implements PBRTextureLoader<TextureMap> {
                 if (frameIndex < 0 || frameY + info.height() > nativeImage.getHeight()) {
                     throw new IllegalArgumentException("PBR animation frame " + frameIndex + " is outside image bounds");
                 }
-                try (NativeImage frameImage = copyFrame(nativeImage, frameY, info.width(), info.height())) {
-                    final NativeImage[] mipmaps = mipmapGenerator.generateMipLevels(frameImage, miplevel);
-                    try {
-                        this.framesTextureData.set(frameIndex, toMipmapData(mipmaps));
-                    } finally {
-                        closeMipmapImages(mipmaps, frameImage);
-                    }
-                }
+                NativeImage frameImage = copyFrame(nativeImage, frameY, info.width(), info.height());
+                this.framesTextureData.set(frameIndex, toMipmapData(mipmapGenerator.generateMipLevels(frameImage, miplevel)));
             }
         }
 
@@ -343,14 +310,6 @@ public class AtlasPBRLoader implements PBRTextureLoader<TextureMap> {
             image.getRGB(0, 0, image.getWidth(), image.getHeight(), data[i], 0, image.getWidth());
         }
         return data;
-    }
-
-    private static void closeMipmapImages(NativeImage[] mipmaps, NativeImage retainedImage) {
-        for (NativeImage mipmap : mipmaps) {
-            if (mipmap != retainedImage) {
-                mipmap.close();
-            }
-        }
     }
 
     private static NativeImage copyFrame(NativeImage source, int sourceY, int width, int height) {

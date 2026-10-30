@@ -1,6 +1,5 @@
 package com.gtnewhorizons.angelica.glsm;
 
-import com.gtnewhorizons.angelica.glsm.context.GLContextIdentity;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -10,8 +9,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CompatProgramUniformStatesTest {
-
-    private static final GLContextIdentity CONTEXT = new GLContextIdentity(1L, 0xCA11L, 7L);
 
     @Test
     void relinkReplacesLocationsAndFailedRelinkLeavesNoState() {
@@ -24,7 +21,7 @@ class CompatProgramUniformStatesTest {
         CompatProgramUniformState firstState = states.get(17);
         assertTrue(states.contains(17));
         assertArrayEquals(firstLocations, firstState.getLocations());
-        firstState.markModelViewUploaded(CONTEXT, 12);
+        firstState.markModelViewUploaded(12);
 
         long relink = states.invalidate(17);
         assertFalse(states.contains(17));
@@ -36,7 +33,7 @@ class CompatProgramUniformStatesTest {
         assertTrue(states.contains(17));
         assertNotSame(firstState, relinkedState);
         assertArrayEquals(relinkedLocations, relinkedState.getLocations());
-        assertTrue(relinkedState.needsModelViewUpload(CONTEXT, 12));
+        assertTrue(relinkedState.needsModelViewUpload(12));
     }
 
     @Test
@@ -44,7 +41,7 @@ class CompatProgramUniformStatesTest {
         CompatProgramUniformStates states = new CompatProgramUniformStates();
         long firstLink = states.invalidate(31);
         assertTrue(states.storeLinkedProgram(31, firstLink, new int[] {2}));
-        states.get(31).markColorUploaded(CONTEXT, 7);
+        states.get(31).markColorUploaded(7);
 
         long reusedLink = states.invalidate(31);
         assertFalse(states.contains(31));
@@ -53,7 +50,7 @@ class CompatProgramUniformStatesTest {
         assertTrue(states.storeLinkedProgram(31, reusedLink, reusedLocations));
         assertTrue(states.contains(31));
         assertArrayEquals(reusedLocations, states.get(31).getLocations());
-        assertTrue(states.get(31).needsColorUpload(CONTEXT, 7));
+        assertTrue(states.get(31).needsColorUpload(7));
     }
 
     @Test

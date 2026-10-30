@@ -18,15 +18,6 @@ public interface BetterFoliageCompat {
     boolean canRenderBlockInLayer(Block block, IBlockState state, BlockRenderLayer layer);
 
     /**
-     * Checks whether Better Foliage's normal hook would render the block model in this layer.
-     *
-     * @param state state being rendered
-     * @param layer current terrain layer
-     * @return whether the vanilla block model belongs in this layer, including Better Foliage's cutout pairing
-     */
-    boolean shouldRenderBaseBlockInLayer(IBlockState state, BlockRenderLayer layer);
-
-    /**
      * Routes vanilla-dispatcher rendering through Better Foliage's replacement for RenderChunk calls.
      *
      * @return whether Better Foliage rendered the block
@@ -37,8 +28,7 @@ public interface BetterFoliageCompat {
             BlockPos pos,
             IBlockAccess blockAccess,
             BufferBuilder buffer,
-            BlockRenderLayer layer,
-            VintageChunkBuildContext buildContext
+            BlockRenderLayer layer
     );
 
     /**

@@ -19,11 +19,6 @@ public class SectionRenderDataStorage {
     private final ChunkPrimitiveType primitiveType;
     private final SectionRenderDataUnsafe.Strategy storageStrategy;
 
-    /**
-     * How many vertices of this pass fit into one element of the region's shared arena.
-     */
-    private final int verticesPerArenaElement;
-
     private int numAllocations;
 
     public record BatchCacheParams(boolean useBlockFaceCulling) {}
@@ -36,25 +31,22 @@ public class SectionRenderDataStorage {
     private CachedBatch secondCachedBatch;
 
     /**
-     * Creates FULL metadata for sorted passes and COMPACT metadata for unsorted passes.
-     *
-     * @param primitiveType the type used to derive element counts and to rebase metadata
-     * @param sorted whether this pass keeps its own per-facing index offsets
-     * @param verticesPerArenaElement how many of this pass's vertices share one arena element, which is the
-     *                                region's common vertex stride divided by this pass's vertex stride
+     * Creates FULL metadata for compatibility with the existing Actinium render-region construction path.
      */
-    public SectionRenderDataStorage(ChunkPrimitiveType primitiveType, boolean sorted, int verticesPerArenaElement) {
-        if (verticesPerArenaElement <= 0) {
-            throw new IllegalArgumentException("A pass must store at least one vertex per arena element");
-        }
+    public SectionRenderDataStorage(ChunkPrimitiveType primitiveType) {
+        this(primitiveType, true);
+    }
 
+    /**
+     * Creates FULL metadata for sorted passes and COMPACT metadata for unsorted passes.
+     */
+    public SectionRenderDataStorage(ChunkPrimitiveType primitiveType, boolean sorted) {
         this.storageStrategy = sorted ? SectionRenderDataUnsafe.Strategy.FULL : SectionRenderDataUnsafe.Strategy.COMPACT;
         this.pMeshDataArray = this.storageStrategy.allocateHeap();
         if (this.pMeshDataArray == 0) {
             throw new OutOfMemoryError("Failed to allocate mesh data array");
         }
         this.primitiveType = primitiveType;
-        this.verticesPerArenaElement = verticesPerArenaElement;
     }
 
     public boolean isEmpty() {
@@ -90,7 +82,7 @@ public class SectionRenderDataStorage {
         this.indexAllocations[localSectionIndex] = indexAllocation;
         this.numAllocations++;
 
-        int vertexOffset = allocation.getOffset() * this.verticesPerArenaElement;
+        int vertexOffset = allocation.getOffset();
         int indexOffset = indexAllocation != null ? indexAllocation.getOffset() * 4 : 0;
 
         this.storageStrategy.writeMeshesAndSliceMask(this.pMeshDataArray, localSectionIndex,
@@ -157,7 +149,7 @@ public class SectionRenderDataStorage {
         }
 
         var indexAllocation = this.indexAllocations[sectionIndex];
-        int vertexOffset = allocation.getOffset() * this.verticesPerArenaElement;
+        int vertexOffset = allocation.getOffset();
         int indexOffset = indexAllocation != null ? indexAllocation.getOffset() * 4 : 0;
 
         this.storageStrategy.rebase(this.getDataPointer(sectionIndex), vertexOffset, indexOffset, this.primitiveType);
@@ -210,11 +202,7 @@ public class SectionRenderDataStorage {
         }
     }
 
-    /**
-     * Drops both cached region batches so the next frame reassembles them. Called whenever the arena, the index
-     * arena or a storage row changed underneath a cached batch.
-     */
-    public void invalidateCachedBatches() {
+    private void invalidateCachedBatches() {
         if (firstCachedBatch != null) {
             firstCachedBatch.delete();
             firstCachedBatch = null;

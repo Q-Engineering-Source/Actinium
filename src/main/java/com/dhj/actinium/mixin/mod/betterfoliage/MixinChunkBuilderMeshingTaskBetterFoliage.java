@@ -2,8 +2,8 @@ package com.dhj.actinium.mixin.mod.betterfoliage;
 
 import com.dhj.actinium.compat.betterfoliage.BetterFoliageCompat;
 import com.dhj.actinium.compat.betterfoliage.BetterFoliageCompatImpl;
-import com.dhj.actinium.render.terrain.compile.ChunkRenderInvocation;
 import com.dhj.actinium.render.terrain.compile.VintageChunkBuildContext;
+import com.dhj.actinium.render.terrain.compile.pipeline.VintageBlockRenderer;
 import com.dhj.actinium.render.terrain.compile.task.ChunkBuilderMeshingTask;
 import com.dhj.actinium.world.cloned.ActiniumBlockAccess;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
@@ -57,6 +57,61 @@ public abstract class MixinChunkBuilderMeshingTaskBetterFoliage {
             method = EXECUTE_METHOD,
             at = @At(
                     value = "INVOKE",
+                    target = "Lcom/dhj/actinium/render/terrain/compile/pipeline/VintageBlockRenderer;renderBlock("
+                            + "Lnet/minecraft/block/state/IBlockState;Lnet/minecraft/util/math/BlockPos;"
+                            + "Lcom/dhj/actinium/world/cloned/ActiniumBlockAccess;"
+                            + "Lnet/minecraft/util/BlockRenderLayer;)V",
+                    remap = false
+            )
+    )
+    private void actinium$betterFoliageRenderFastBlock(
+            VintageBlockRenderer renderer,
+            IBlockState state,
+            BlockPos pos,
+            ActiniumBlockAccess blockAccess,
+            BlockRenderLayer layer,
+            Operation<Void> original,
+            @Local(name = "buildContext") VintageChunkBuildContext buildContext
+    ) {
+        if (!ACTINIUM$BETTER_FOLIAGE_COMPAT.tryRenderFastBlock(
+                state, pos, blockAccess, buildContext, layer
+        )) {
+            original.call(renderer, state, pos, blockAccess, layer);
+        }
+    }
+
+    @WrapOperation(
+            method = EXECUTE_METHOD,
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lcom/dhj/actinium/render/terrain/compile/pipeline/VintageBlockRenderer;renderBlock("
+                            + "Lnet/minecraft/block/state/IBlockState;Lnet/minecraft/util/math/BlockPos;"
+                            + "Lcom/dhj/actinium/world/cloned/ActiniumBlockAccess;"
+                            + "Lnet/minecraft/util/BlockRenderLayer;Z)V",
+                    remap = false
+            )
+    )
+    private void actinium$betterFoliageRenderFastBlockWithOptimization(
+            VintageBlockRenderer renderer,
+            IBlockState state,
+            BlockPos pos,
+            ActiniumBlockAccess blockAccess,
+            BlockRenderLayer layer,
+            boolean allowRenderPassOptimization,
+            Operation<Void> original,
+            @Local(name = "buildContext") VintageChunkBuildContext buildContext
+    ) {
+        if (!ACTINIUM$BETTER_FOLIAGE_COMPAT.tryRenderFastBlock(
+                state, pos, blockAccess, buildContext, layer
+        )) {
+            original.call(renderer, state, pos, blockAccess, layer, allowRenderPassOptimization);
+        }
+    }
+
+    @WrapOperation(
+            method = EXECUTE_METHOD,
+            at = @At(
+                    value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/BlockRendererDispatcher;renderBlock("
                             + "Lnet/minecraft/block/state/IBlockState;Lnet/minecraft/util/math/BlockPos;"
                             + "Lnet/minecraft/world/IBlockAccess;"
@@ -71,24 +126,10 @@ public abstract class MixinChunkBuilderMeshingTaskBetterFoliage {
             IBlockAccess blockAccess,
             BufferBuilder buffer,
             Operation<Boolean> original,
-            @Local(name = "layer") BlockRenderLayer layer,
-            @Local(name = "buildContext") VintageChunkBuildContext buildContext
+            @Local(name = "layer") BlockRenderLayer layer
     ) {
-        if (buffer instanceof ChunkRenderInvocation invocation
-                && blockAccess instanceof ActiniumBlockAccess actiniumBlockAccess
-                && invocation.actinium$canRenderFastModel(blockAccess, true)) {
-            if (ACTINIUM$BETTER_FOLIAGE_COMPAT.tryRenderFastBlock(
-                    state, pos, actiniumBlockAccess, buildContext, layer)) {
-                return true;
-            }
-            if (!ACTINIUM$BETTER_FOLIAGE_COMPAT.shouldRenderBaseBlockInLayer(state, layer)) {
-                return false;
-            }
-            return original.call(dispatcher, state, pos, blockAccess, buffer);
-        }
-
         return ACTINIUM$BETTER_FOLIAGE_COMPAT.renderVanillaBlock(
-                dispatcher, state, pos, blockAccess, buffer, layer, buildContext
+                dispatcher, state, pos, blockAccess, buffer, layer
         );
     }
 }

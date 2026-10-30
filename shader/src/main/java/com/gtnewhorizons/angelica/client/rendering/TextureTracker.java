@@ -3,17 +3,16 @@ package com.gtnewhorizons.angelica.client.rendering;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import net.coderbot.iris.gl.state.StateUpdateNotifiers;
-import net.coderbot.iris.gl.state.MultiListenerNotifier;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import org.jetbrains.annotations.Nullable;
 
 public class TextureTracker {
     public static final TextureTracker INSTANCE = new TextureTracker();
 
-    private static final MultiListenerNotifier bindTextureListener = new MultiListenerNotifier();
+    private static Runnable bindTextureListener;
 
     static {
-        StateUpdateNotifiers.bindTextureNotifier = bindTextureListener;
+        StateUpdateNotifiers.bindTextureNotifier = listener -> bindTextureListener = listener;
     }
 
     private final Int2ObjectMap<AbstractTexture> textures = new Int2ObjectOpenHashMap<>();
@@ -31,7 +30,9 @@ public class TextureTracker {
     }
 
     public void onBindTexture() {
-        bindTextureListener.run();
+        if (bindTextureListener != null) {
+            bindTextureListener.run();
+        }
     }
 
     public void onDeleteTexture(int id) {

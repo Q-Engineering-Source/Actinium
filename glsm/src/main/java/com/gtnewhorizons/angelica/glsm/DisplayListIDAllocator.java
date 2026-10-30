@@ -31,8 +31,6 @@ package com.gtnewhorizons.angelica.glsm;
  * Original author: Samuel Pitoiset <samuel.pitoiset@gmail.com>
  */
 
-import java.util.function.IntPredicate;
-
 /**
  * Bitmap ID allocator for display list IDs.
  *
@@ -65,35 +63,6 @@ public class DisplayListIDAllocator {
         if (count <= 0) throw new IllegalArgumentException("count must be > 0");
         if (count == 1) return allocSingle();
         return allocMultiple(count);
-    }
-
-    /** Allocates a contiguous range, also excluding list names compiled without glGenLists. */
-    public int allocRange(int count, IntPredicate unavailable) {
-        if (count <= 0) throw new IllegalArgumentException("count must be > 0");
-        if (unavailable == null) throw new NullPointerException("unavailable");
-
-        while (true) {
-            final int base = allocRange(count);
-            final long end = Math.min((long) Integer.MAX_VALUE + 1L, (long) base + count);
-            boolean conflict = false;
-            for (long value = base; value < end; value++) {
-                if (unavailable.test((int) value)) {
-                    conflict = true;
-                    break;
-                }
-            }
-            if (!conflict) {
-                return base;
-            }
-
-            freeRange(base, (int) (end - base));
-            for (long value = base; value < end; value++) {
-                final int id = (int) value;
-                if (unavailable.test(id)) {
-                    reserve(id);
-                }
-            }
-        }
     }
 
     private int allocSingle() {
@@ -184,9 +153,8 @@ public class DisplayListIDAllocator {
         int startIdx = base / 32;
         if (startIdx >= numElements) return;
 
-        long end = Math.min((long) Integer.MAX_VALUE + 1L, (long) base + count);
-        for (long value = base; value < end; value++) {
-            int id = (int) value;
+        int end = base + count;
+        for (int id = base; id < end; id++) {
             int idx = id / 32;
             if (idx >= numElements) break;
             data[idx] &= ~(1 << (id % 32));
@@ -203,20 +171,6 @@ public class DisplayListIDAllocator {
         int idx = id / 32;
         if (idx >= numSetElements) return false;
         return (data[idx] & (1 << (id % 32))) != 0;
-    }
-
-    private void reserve(int id) {
-        if (id <= 0) {
-            throw new IllegalArgumentException("Display-list ID must be positive: " + id);
-        }
-
-        final int word = id / 32;
-        if (word >= numElements) {
-            resize(word + 1);
-        }
-        data[word] |= 1 << (id % 32);
-        numSetElements = Math.max(numSetElements, word + 1);
-        lowestFreeIdx = Math.min(lowestFreeIdx, word);
     }
 
     private void resize(int newNumElements) {

@@ -6,7 +6,6 @@ import net.coderbot.iris.gl.GlResource;
 import net.coderbot.iris.gl.blending.DepthColorStorage;
 import net.coderbot.iris.pipeline.WorldRenderingPipeline;
 import net.coderbot.iris.shaderpack.FilledIndirectPointer;
-import org.jetbrains.annotations.Nullable;
 import org.joml.Vector2f;
 import org.joml.Vector3i;
 import org.lwjgl.BufferUtils;
@@ -27,20 +26,10 @@ public final class ComputeProgram extends GlResource {
 	private float cachedWidth;
 	private float cachedHeight;
 	private Vector3i cachedWorkGroups;
-	/** The compute stage this program was linked from, or null when it must be deleted with its wrapper. */
-	@Nullable
-	private final RetainedPrograms.Sources sources;
-	private final long ownerShareGroupId;
-	private final long ownerConfigurationEpoch;
 
-	ComputeProgram(int program, @Nullable RetainedPrograms.Sources sources, long ownerShareGroupId,
-				   long ownerConfigurationEpoch, ProgramUniforms uniforms, ProgramSamplers samplers,
-				   ProgramImages images) {
+	ComputeProgram(int program, ProgramUniforms uniforms, ProgramSamplers samplers, ProgramImages images) {
 		super(program);
 
-		this.sources = sources;
-		this.ownerShareGroupId = ownerShareGroupId;
-		this.ownerConfigurationEpoch = ownerConfigurationEpoch;
         localSizeBuffer = BufferUtils.createIntBuffer(3);
 		RenderSystem.getProgramiv(program, GL43.GL_COMPUTE_WORK_GROUP_SIZE, localSizeBuffer);
 		this.uniforms = uniforms;
@@ -76,7 +65,6 @@ public final class ComputeProgram extends GlResource {
 	}
 
     public void use() {
-		RetainedPrograms.requireCurrentShareGroup(ownerShareGroupId);
         GLStateManager.glUseProgram(getGlId());
 
         uniforms.update();
@@ -85,7 +73,6 @@ public final class ComputeProgram extends GlResource {
     }
 
 	public void dispatch(float width, float height) {
-		RetainedPrograms.requireCurrentShareGroup(ownerShareGroupId);
 		if (!Iris.getPipelineManager().getPipeline().map(WorldRenderingPipeline::allowConcurrentCompute).orElse(false)) {
 			RenderSystem.memoryBarrier(GL42.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL42.GL_TEXTURE_FETCH_BARRIER_BIT | GL43.GL_SHADER_STORAGE_BARRIER_BIT);
 		}
@@ -100,22 +87,13 @@ public final class ComputeProgram extends GlResource {
 
 	public static void unbind() {
 		ProgramUniforms.clearActiveUniforms();
-		ProgramSamplers.clearActiveSamplers();
 		GLStateManager.glUseProgram(0);
 	}
 
 	@Override
     public void destroyInternal() {
-		uniforms.removeListeners();
-		samplers.removeListeners();
 		DepthColorStorage.unregisterOwnedProgram(getGlId());
-
-		if (sources != null) {
-			// The program name outlives this wrapper: a later pipeline with the same stages takes it over.
-			RetainedPrograms.retain(ownerShareGroupId, sources, getGlId(), ownerConfigurationEpoch);
-		} else {
-			RetainedPrograms.deleteProgram(ownerShareGroupId, getGlId());
-		}
+		GLStateManager.glDeleteProgram(getGlId());
 	}
 
 	/**

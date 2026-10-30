@@ -43,21 +43,4 @@ public final class ShaderPackApplyLogic {
 
         return (enabled && !currentPackLoaded) || fallbackActive;
     }
-
-    /**
-     * Decides whether applying the changes must drop the pack that was read ahead of time.
-     *
-     * <p>A pack read ahead describes the selection that was in place when it was read, so selecting another
-     * one has to drop it: the load that follows would otherwise compare itself against a pack nothing
-     * selected, and the title screen the player comes back to would never read the pack that is now in the
-     * config. Options, the enable switch and a pending reset do not need this - a reload drops the
-     * read-ahead itself.</p>
-     *
-     * @param packName         the pack selected in the list
-     * @param previousPackName the pack stored in the config, or null if none
-     * @return true if the read-ahead describes a selection that no longer applies
-     */
-    public static boolean shouldInvalidateReadAhead(String packName, @Nullable String previousPackName) {
-        return !packName.equals(previousPackName);
-    }
 }

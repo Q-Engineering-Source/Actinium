@@ -2,10 +2,6 @@ package com.gtnewhorizons.angelica.glsm.hooks;
 
 public final class GLSMConfig {
 
-    // Background shader/resource work uses an automatic bounded pool unless the host supplies a count.
-    // Kept separate from chunk-building threads because their lifetimes and workloads differ.
-    public static volatile int workerThreadCount;
-
     // Lightmap (replaces OpenGlHelper.lastBrightnessX/Y)
     public static float lastBrightnessX;
     public static float lastBrightnessY;

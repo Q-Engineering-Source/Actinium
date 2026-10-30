@@ -96,7 +96,6 @@ public final class GLSMPerfDebug {
         enabled = false;
         resetStats();
         enabled = resolvedEnabled;
-        TerrainBufferDiagnostics.onDebugEnabledChanged(resolvedEnabled);
         return true;
     }
 

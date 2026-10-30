@@ -60,7 +60,7 @@ public class TileEntityRendererDispatcherIrisMixin {
             return 0;
         }
 
-        int nbtBlockId = BlockRenderingSettings.INSTANCE.resolveBlockNbtId(block, tileEntity.getBlockMetadata(), tileEntity);
+        int nbtBlockId = BlockRenderingSettings.INSTANCE.resolveBlockNbtId(block, tileEntity);
         if (nbtBlockId != -1) {
             return Math.max(0, nbtBlockId);
         }

@@ -33,8 +33,6 @@ public class MappedStagingBuffer implements StagingBuffer {
     private int start = 0;
     private int pos = 0;
     private int pendingBytes;
-    private long unfencedTransferredBytes;
-    private long fencedBytes;
 
     private final int capacity;
     private int remaining;
@@ -142,7 +140,6 @@ public class MappedStagingBuffer implements StagingBuffer {
         this.pendingCopies.clear();
         this.pendingBytes = 0;
         this.fenceBatch.addTransferredBytes(bytes);
-        this.unfencedTransferredBytes += bytes;
         this.fenceTransferredBytes(commandList);
         this.start = this.pos;
     }
@@ -152,8 +149,6 @@ public class MappedStagingBuffer implements StagingBuffer {
         if (bytes > 0) {
             // remaining is restored only by flip(), once this fence actually signals.
             this.fencedRegions.enqueue(new FencedMemoryRegion(commandList.createFence(), bytes));
-            this.unfencedTransferredBytes -= bytes;
-            this.fencedBytes += bytes;
         }
     }
 
@@ -162,15 +157,12 @@ public class MappedStagingBuffer implements StagingBuffer {
         this.mappedBuffer.delete(commandList);
         this.fallbackStagingBuffer.delete(commandList);
         this.pendingCopies.clear();
-        this.pendingBytes = 0;
-        this.unfencedTransferredBytes = 0L;
 
         // flip() only reclaims fences that have already signaled, so anything still in flight has to be deleted here
         // or every renderer teardown leaks a GL sync object.
         while (!this.fencedRegions.isEmpty()) {
             this.fencedRegions.dequeue().fence().delete();
         }
-        this.fencedBytes = 0L;
     }
 
     @Override
@@ -187,52 +179,7 @@ public class MappedStagingBuffer implements StagingBuffer {
 
             this.fencedRegions.dequeue();
             this.remaining += region.length();
-            this.fencedBytes -= region.length();
         }
-    }
-
-    public long getRingCapacityBytes() {
-        return this.capacity;
-    }
-
-    public long getRingAvailableBytes() {
-        return this.remaining;
-    }
-
-    public long getRingPendingUploadBytes() {
-        return this.pendingBytes;
-    }
-
-    public int getRingPendingCopyCount() {
-        return this.pendingCopies.size();
-    }
-
-    public long getRingUnfencedTransferredBytes() {
-        return this.unfencedTransferredBytes;
-    }
-
-    public int getRingFenceCount() {
-        return this.fencedRegions.size();
-    }
-
-    public long getRingFencedBytes() {
-        return this.fencedBytes;
-    }
-
-    public long getFallbackLiveBytes() {
-        return this.fallbackStagingBuffer.getLiveBytes();
-    }
-
-    public long getFallbackUploadCountTotal() {
-        return this.fallbackStagingBuffer.getUploadCountTotal();
-    }
-
-    public long getFallbackUploadBytesTotal() {
-        return this.fallbackStagingBuffer.getUploadBytesTotal();
-    }
-
-    public boolean isFallbackResetPending() {
-        return this.fallbackStagingBuffer.isResetPending();
     }
 
     private static final class CopyCommand {

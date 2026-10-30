@@ -3,7 +3,6 @@ package com.dhj.actinium.gui;
 import com.google.common.collect.ImmutableList;
 import com.dhj.actinium.config.ActiniumRuntimeOptions;
 import com.dhj.actinium.compat.scalingguis.ScalingGuiCompat;
-import com.dhj.actinium.render.terrain.TerrainTextureFiltering;
 import com.gtnewhorizon.gtnhlib.compat.Mods;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
 import net.minecraft.client.Minecraft;
@@ -17,9 +16,6 @@ import dhj.embeddedt.embeddium.api.options.control.SliderControl;
 import dhj.embeddedt.embeddium.api.options.control.TickBoxControl;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
 import dhj.embeddedt.embeddium.impl.gui.framework.TextComponent;
-import dhj.embeddedt.embeddium.impl.texture.TexelSampling;
-import dhj.embeddedt.embeddium.impl.texture.TextureFilterMode;
-import net.minecraft.util.math.MathHelper;
 import org.lwjgl.opengl.Display;
 import dhj.embeddedt.embeddium.impl.render.chunk.MultiDrawMode;
 import com.dhj.actinium.runtime.ActiniumRuntime;
@@ -37,7 +33,6 @@ import com.mitchej123.lwjgl.GLExtension;
 import static com.mitchej123.lwjgl.LWJGLServiceProvider.LWJGL;
 
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.List;
 
 public class ActiniumGameOptionPages {
@@ -233,9 +228,6 @@ public class ActiniumGameOptionPages {
 
     public static OptionPage quality() {
         List<OptionGroup> groups = new ArrayList<>();
-        final int anisotropyMin = TerrainTextureFiltering.minAnisotropyLevel();
-        final int anisotropyMax = Math.max(TerrainTextureFiltering.maxAnisotropyLevel(), anisotropyMin + 1);
-        final OptionImpl<SodiumGameOptions, TextureFilterMode> textureFilterMode = createTextureFilterModeOption();
 
         groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.GRAPHICS)
@@ -428,33 +420,6 @@ public class ActiniumGameOptionPages {
                         .setFlags(OptionFlag.REQUIRES_ASSET_RELOAD)
                         .setDefaultValue(4)
                         .build())
-                .add(textureFilterMode)
-                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
-                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "anisotropic_filtering", int.class))
-                        .setName(TextComponent.translatable("sodium.options.anisotropic_filtering.name"))
-                        .setTooltip(TextComponent.translatable("sodium.options.anisotropic_filtering.tooltip"))
-                        .setControl(option -> new SliderControl(option, anisotropyMin, anisotropyMax, 1,
-                                value -> TextComponent.literal((1 << value) + "x")))
-                        .setBinding((opts, value) -> opts.quality.anisotropicLevel = value,
-                                opts -> MathHelper.clamp(opts.quality.anisotropicLevel, anisotropyMin, anisotropyMax))
-                        .setImpact(OptionImpact.MEDIUM)
-                        .setDefaultValue(1)
-                        .setEnabledPredicate(() -> textureFilterMode.getValue().usesAnisotropy()
-                                && TerrainTextureFiltering.hasAnisotropyRange())
-                        .build())
-                .add(OptionImpl.createBuilder(TexelSampling.class, sodiumOpts)
-                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "texel_sampling", TexelSampling.class))
-                        .setName(TextComponent.translatable("sodium.options.texel_sampling.name"))
-                        .setTooltip(TextComponent.translatable("sodium.options.texel_sampling.tooltip"))
-                        .setControl(option -> new CyclingControl<>(option, TexelSampling.class))
-                        .setBinding((opts, value) -> opts.quality.texelSampling = value,
-                                opts -> opts.quality.texelSampling)
-                        .setImpact(OptionImpact.LOW)
-                        .setDefaultValue(TexelSampling.LINEAR)
-                        .setFlags(() -> textureFilterMode.getValue() == TextureFilterMode.NONE
-                                ? EnumSet.of(OptionFlag.REQUIRES_RENDERER_RELOAD)
-                                : EnumSet.noneOf(OptionFlag.class))
-                        .build())
                 .build());
 
         groups.add(OptionGroup.createBuilder()
@@ -482,21 +447,6 @@ public class ActiniumGameOptionPages {
                 .build());
 
         return new OptionPage(StandardOptions.Pages.QUALITY, TextComponent.translatable("sodium.options.pages.quality"), ImmutableList.copyOf(groups));
-    }
-
-    private static OptionImpl<SodiumGameOptions, TextureFilterMode> createTextureFilterModeOption() {
-        return OptionImpl.createBuilder(TextureFilterMode.class, sodiumOpts)
-                .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "texture_filtering", TextureFilterMode.class))
-                .setName(TextComponent.translatable("sodium.options.texture_filtering.name"))
-                .setTooltip(TextComponent.translatable("sodium.options.texture_filtering.tooltip"))
-                .setControl(option -> new CyclingControl<>(option, TextureFilterMode.class,
-                        TextureFilterMode.selectableValues(TerrainTextureFiltering.anisotropySupported())))
-                .setBinding((opts, value) -> opts.quality.textureFilterMode = value,
-                        opts -> TerrainTextureFiltering.resolveFilterMode(opts.quality.textureFilterMode))
-                .setImpact(OptionImpact.LOW)
-                .setFlags(OptionFlag.REQUIRES_ASSET_RELOAD, OptionFlag.REQUIRES_RENDERER_RELOAD)
-                .setDefaultValue(TerrainTextureFiltering.resolveFilterMode(TextureFilterMode.RGSS_ANISOTROPIC))
-                .build();
     }
 
     public static OptionPage advanced() {
@@ -553,63 +503,6 @@ public class ActiniumGameOptionPages {
                 .add(createModelRendererDisplayListsOption(TextComponent.translatable("sodium.options.model_renderer_display_lists.tooltip")))
                 .add(createFastLitItemRenderingOption(TextComponent.translatable("sodium.options.fast_lit_item_rendering.tooltip")))
                 .add(createFastLitItemDisplayListsOption(TextComponent.translatable("sodium.options.fast_lit_item_display_lists.tooltip")))
-                .build());
-
-        groups.add(OptionGroup.createBuilder()
-                .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "texture_loading"))
-                .setName(TextComponent.translatable("sodium.options.texture_loading.group"))
-                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
-                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "parallel_atlas_decode", boolean.class))
-                        .setName(TextComponent.translatable("sodium.options.texture_loading.decode.name"))
-                        .setTooltip(TextComponent.translatable("sodium.options.texture_loading.decode.tooltip"))
-                        .setControl(TickBoxControl::new)
-                        .setBinding((opts, value) -> opts.performance.enableParallelAtlasDecode = value,
-                                opts -> opts.performance.enableParallelAtlasDecode)
-                        .setFlags(OptionFlag.REQUIRES_ASSET_RELOAD)
-                        .setDefaultValue(true)
-                        .build())
-                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
-                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "parallel_atlas_mipmaps", boolean.class))
-                        .setName(TextComponent.translatable("sodium.options.texture_loading.mipmaps.name"))
-                        .setTooltip(TextComponent.translatable("sodium.options.texture_loading.mipmaps.tooltip"))
-                        .setControl(TickBoxControl::new)
-                        .setBinding((opts, value) -> opts.performance.enableParallelAtlasMipmaps = value,
-                                opts -> opts.performance.enableParallelAtlasMipmaps)
-                        .setFlags(OptionFlag.REQUIRES_ASSET_RELOAD)
-                        .setDefaultValue(true)
-                        .build())
-                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
-                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "batched_atlas_upload", boolean.class))
-                        .setName(TextComponent.translatable("sodium.options.texture_loading.upload.name"))
-                        .setTooltip(TextComponent.translatable("sodium.options.texture_loading.upload.tooltip"))
-                        .setControl(TickBoxControl::new)
-                        .setBinding((opts, value) -> opts.performance.enableBatchedAtlasUpload = value,
-                                opts -> opts.performance.enableBatchedAtlasUpload)
-                        .setFlags(OptionFlag.REQUIRES_ASSET_RELOAD)
-                        .setDefaultValue(true)
-                        .build())
-                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
-                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "worker_threads", int.class))
-                        .setName(TextComponent.translatable("sodium.options.texture_loading.worker_threads.name"))
-                        .setTooltip(TextComponent.translatable("sodium.options.texture_loading.worker_threads.tooltip"))
-                        .setControl(option -> new SliderControl(option, 0, 32, 1,
-                                value -> value == 0
-                                        ? TextComponent.translatable("sodium.options.texture_loading.worker_threads.auto")
-                                        : TextComponent.literal(Integer.toString(value))))
-                        .setBinding((opts, value) -> opts.performance.workerThreadCount = value,
-                                opts -> opts.performance.workerThreadCount)
-                        .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
-                        .setDefaultValue(0)
-                        .build())
-                .add(OptionImpl.createBuilder(Void.class, sodiumOpts)
-                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "atlas_packs"))
-                        .setName(TextComponent.translatable("sodium.options.atlas_packs.name"))
-                        .setTooltip(TextComponent.translatable("sodium.options.atlas_packs.tooltip"))
-                        .setControl(option -> new ExternalButtonControl(option,
-                                screen -> Minecraft.getMinecraft().displayGuiScreen(new AtlasPackScreen(screen)),
-                                TextComponent.translatable("sodium.options.atlas_packs.open")))
-                        .setBinding((opts, value) -> { }, opts -> null)
-                        .build())
                 .build());
 
         groups.add(OptionGroup.createBuilder()

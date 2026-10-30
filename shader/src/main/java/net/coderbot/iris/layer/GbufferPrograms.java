@@ -5,7 +5,6 @@ import net.coderbot.iris.gbuffer_overrides.matching.SpecialCondition;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import net.coderbot.iris.gl.shader.ProgramCreator;
 import net.coderbot.iris.gl.state.StateUpdateNotifiers;
-import net.coderbot.iris.gl.state.MultiListenerNotifier;
 import net.coderbot.iris.pipeline.WorldRenderingPhase;
 import net.coderbot.iris.pipeline.WorldRenderingPipeline;
 
@@ -13,7 +12,7 @@ public class GbufferPrograms {
 	private static boolean entities;
 	private static boolean blockEntities;
 	private static boolean outline;
-	private static final MultiListenerNotifier phaseChangeListener = new MultiListenerNotifier();
+	private static Runnable phaseChangeListener;
 	private static final PhaseOperations PHASE_OPERATIONS = new PhaseOperations() {
 		@Override
 		public OwnedPhase getOwnedPhase() {
@@ -47,7 +46,7 @@ public class GbufferPrograms {
 	};
 	
 	static {
-		StateUpdateNotifiers.phaseChangeNotifier = phaseChangeListener;
+		StateUpdateNotifiers.phaseChangeNotifier = listener -> phaseChangeListener = listener;
 	}
 	
 	private static void checkReentrancy() {
@@ -207,7 +206,9 @@ public class GbufferPrograms {
 	}
 	
 	public static void runPhaseChangeNotifier() {
-		phaseChangeListener.run();
+		if (phaseChangeListener != null) {
+			phaseChangeListener.run();
+		}
 	}
 	
 	public static void init() {

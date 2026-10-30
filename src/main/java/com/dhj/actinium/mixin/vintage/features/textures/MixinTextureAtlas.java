@@ -1,30 +1,22 @@
 package com.dhj.actinium.mixin.vintage.features.textures;
 
-import com.dhj.actinium.texture.SpriteExtension;
-import com.dhj.actinium.texture.atlas.AtlasLoadSession;
-import com.dhj.actinium.texture.atlas.AtlasSessionHolder;
 import com.dhj.actinium.render.terrain.sprite.VisibleTextureIterator;
-import com.dhj.actinium.runtime.ActiniumRuntime;
-import com.dhj.actinium.texture.TextureMapExtension;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.sugar.Local;
-import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
-import dhj.embeddedt.embeddium.impl.texture.SpritePadding;
-import dhj.embeddedt.embeddium.impl.util.collections.quadtree.QuadTree;
-import dhj.embeddedt.embeddium.impl.util.collections.quadtree.Rect2i;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.Stitcher;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureMap;
-import net.minecraft.client.renderer.texture.TextureUtil;
+import dhj.embeddedt.embeddium.impl.util.collections.quadtree.QuadTree;
+import dhj.embeddedt.embeddium.impl.util.collections.quadtree.Rect2i;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import com.dhj.actinium.runtime.ActiniumRuntime;
+import com.dhj.actinium.texture.TextureMapExtension;
 
 import java.util.Iterator;
 import java.util.Map;
@@ -38,60 +30,12 @@ public class MixinTextureAtlas implements TextureMapExtension {
     @Final
     private Map<String, TextureAtlasSprite> mapUploadedSprites;
 
-    @Shadow
-    @Final
-    private Map<String, TextureAtlasSprite> mapRegisteredSprites;
-
-    @Shadow
-    private int mipmapLevels;
-
-    @Shadow
-    @Final
-    private TextureAtlasSprite missingImage;
-
-    /** Gutter used by every sprite in the atlas currently being stitched. */
-    @Unique
-    private int celeritas$atlasGutter;
-
     private QuadTree<TextureAtlasSprite> celeritas$quadTree;
 
     private int celeritas$width, celeritas$height;
 
-    /** Increases sprite slots before the stitcher assigns atlas coordinates. */
-    @Inject(
-        method = "finishLoading",
-        at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/texture/Stitcher;doStitch()V"))
-    private void angelica$assignGutters(CallbackInfo ci) {
-        final boolean blocksAtlas = (Object) this == Minecraft.getMinecraft().getTextureMapBlocks();
-        final int gutter = SpritePadding.gutterFor(this.mipmapLevels, blocksAtlas);
-        this.celeritas$atlasGutter = gutter;
-
-        for (TextureAtlasSprite sprite : this.mapRegisteredSprites.values()) {
-            ((SpriteExtension) sprite).angelica$setGutterWidth(gutter);
-        }
-        ((SpriteExtension) this.missingImage).angelica$setGutterWidth(gutter);
-    }
-
-    /** Uses the padded path unless the batched assembler already uploaded this sprite's pixels. */
-    @Redirect(
-        method = "finishLoading",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/texture/TextureUtil;uploadTextureMipmap([[IIIIIZZ)V"))
-    private void angelica$uploadPaddedSprite(int[][] frameData, int width, int height, int originX, int originY,
-        boolean blur, boolean clamp) {
-        final AtlasLoadSession session = ((AtlasSessionHolder) this).angelica$atlasSession();
-        if (session != null && session.takeUploaded(frameData)) {
-            return;
-        }
-        SpritePadding.uploadPadded(frameData, width, height, originX, originY, this.celeritas$atlasGutter, blur, clamp);
-    }
-
     @Inject(method = "loadTextureAtlas", at = @At("RETURN"))
     private void generateQuadTree(CallbackInfo ci, @Local(ordinal = 0) Stitcher stitcher) {
-        if ((Object) this == Minecraft.getMinecraft().getTextureMapBlocks()) {
-            SodiumGameOptions.recordAtlasMipmapLevels(this.mipmapLevels);
-        }
         this.celeritas$width = stitcher.getCurrentWidth();
         this.celeritas$height = stitcher.getCurrentHeight();
         Rect2i treeRect = new Rect2i(0, 0, celeritas$width, celeritas$height);
@@ -119,11 +63,6 @@ public class MixinTextureAtlas implements TextureMapExtension {
     @Override
     public int celeritas$getAtlasHeight() {
         return this.celeritas$height;
-    }
-
-    @Override
-    public int celeritas$getAtlasGutter() {
-        return this.celeritas$atlasGutter;
     }
 
     @ModifyExpressionValue(method = "updateAnimations", at = @At(value = "INVOKE", target = "Ljava/util/List;iterator()Ljava/util/Iterator;"))

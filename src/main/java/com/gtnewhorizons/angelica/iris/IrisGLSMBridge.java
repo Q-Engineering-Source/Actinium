@@ -17,7 +17,6 @@ import net.coderbot.iris.gl.blending.BlendModeStorage;
 import net.coderbot.iris.gl.blending.DepthColorStorage;
 import net.coderbot.iris.gl.program.ProgramUniforms;
 import net.coderbot.iris.gl.state.StateUpdateNotifiers;
-import net.coderbot.iris.gl.state.MultiListenerNotifier;
 import net.coderbot.iris.pipeline.DeferredWorldRenderingPipeline;
 import net.coderbot.iris.pipeline.WorldRenderingPipeline;
 import net.coderbot.iris.samplers.IrisSamplers;
@@ -25,27 +24,27 @@ import net.coderbot.iris.texture.pbr.PBRTextureManager;
 import net.coderbot.iris.vertices.ImmediateState;
 
 public final class IrisGLSMBridge {
-    private static final MultiListenerNotifier alphaFuncListener = new MultiListenerNotifier();
-    private static final MultiListenerNotifier alphaTestListener = new MultiListenerNotifier();
-    private static final MultiListenerNotifier blendFuncListener = new MultiListenerNotifier();
-    private static final MultiListenerNotifier fogModeListener = new MultiListenerNotifier();
-    private static final MultiListenerNotifier fogStartListener = new MultiListenerNotifier();
-    private static final MultiListenerNotifier fogEndListener = new MultiListenerNotifier();
-    private static final MultiListenerNotifier fogDensityListener = new MultiListenerNotifier();
-    private static final MultiListenerNotifier colorModulatorListener = new MultiListenerNotifier();
+    private static Runnable alphaFuncListener;
+    private static Runnable alphaTestListener;
+    private static Runnable blendFuncListener;
+    private static Runnable fogModeListener;
+    private static Runnable fogStartListener;
+    private static Runnable fogEndListener;
+    private static Runnable fogDensityListener;
+    private static Runnable colorModulatorListener;
     private static boolean registered;
     private static boolean inputsDeferred;
     private static boolean blendDeferred;
 
     static {
-        StateUpdateNotifiers.alphaFuncNotifier = alphaFuncListener;
-        StateUpdateNotifiers.alphaTestNotifier = alphaTestListener;
-        StateUpdateNotifiers.blendFuncNotifier = blendFuncListener;
-        StateUpdateNotifiers.fogModeNotifier = fogModeListener;
-        StateUpdateNotifiers.fogStartNotifier = fogStartListener;
-        StateUpdateNotifiers.fogEndNotifier = fogEndListener;
-        StateUpdateNotifiers.fogDensityNotifier = fogDensityListener;
-        StateUpdateNotifiers.colorModulatorNotifier = colorModulatorListener;
+        StateUpdateNotifiers.alphaFuncNotifier = listener -> alphaFuncListener = listener;
+        StateUpdateNotifiers.alphaTestNotifier = listener -> alphaTestListener = listener;
+        StateUpdateNotifiers.blendFuncNotifier = listener -> blendFuncListener = listener;
+        StateUpdateNotifiers.fogModeNotifier = listener -> fogModeListener = listener;
+        StateUpdateNotifiers.fogStartNotifier = listener -> fogStartListener = listener;
+        StateUpdateNotifiers.fogEndNotifier = listener -> fogEndListener = listener;
+        StateUpdateNotifiers.fogDensityNotifier = listener -> fogDensityListener = listener;
+        StateUpdateNotifiers.colorModulatorNotifier = listener -> colorModulatorListener = listener;
     }
 
     private IrisGLSMBridge() {
@@ -183,18 +182,22 @@ public final class IrisGLSMBridge {
             if (!Iris.enabled) {
                 return;
             }
-            alphaFuncListener.run();
-            alphaTestListener.run();
+            if (alphaFuncListener != null) {
+                alphaFuncListener.run();
+            }
+            if (alphaTestListener != null) {
+                alphaTestListener.run();
+            }
         });
 
         GLSMHooks.SHADER_COLOR_CHANGE.addListener(event -> {
-            if (Iris.enabled) {
+            if (Iris.enabled && colorModulatorListener != null) {
                 colorModulatorListener.run();
             }
         });
 
         GLSMHooks.BLEND_FUNC_CHANGE.addListener(event -> {
-            if (Iris.enabled) {
+            if (Iris.enabled && blendFuncListener != null) {
                 blendFuncListener.run();
             }
         });
@@ -203,10 +206,18 @@ public final class IrisGLSMBridge {
             if (!Iris.enabled) {
                 return;
             }
-            fogModeListener.run();
-            fogStartListener.run();
-            fogEndListener.run();
-            fogDensityListener.run();
+            if (fogModeListener != null) {
+                fogModeListener.run();
+            }
+            if (fogStartListener != null) {
+                fogStartListener.run();
+            }
+            if (fogEndListener != null) {
+                fogEndListener.run();
+            }
+            if (fogDensityListener != null) {
+                fogDensityListener.run();
+            }
         });
 
         GLSMHooks.TEXTURE_BIND.addListener(event -> {
