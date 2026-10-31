@@ -122,4 +122,43 @@ class DimensionIdTest {
             42
         ));
     }
+
+    @Test
+    void legacyPackUsesWorld0ForModdedDimensionsWithoutDedicatedFolders() {
+        Map<String, String> mappings = Map.of(
+            "minecraft:overworld", "world0",
+            "minecraft:the_nether", "world-1",
+            "minecraft:the_end", "world1"
+        );
+        Set<String> folders = Set.of("world0", "world-1", "world1");
+
+        assertEquals("world0", ShaderPack.resolveDimensionFolder(
+            mappings, folders, "world0", "Personal World", 180
+        ));
+        assertEquals("world-1", ShaderPack.resolveDimensionFolder(
+            mappings, folders, "world0", "Nether", -1
+        ));
+    }
+
+    @Test
+    void legacyNumericFolderWinsOverWorld0Default() {
+        assertEquals("world7", ShaderPack.resolveDimensionFolder(
+            Map.of("minecraft:overworld", "world0"),
+            Set.of("world0", "world7"),
+            "world0",
+            "Twilight Forest",
+            7
+        ));
+    }
+
+    @Test
+    void dimensionPropertiesWithoutWildcardDoNotUseLegacyWorld0Default() {
+        assertNull(ShaderPack.resolveDimensionFolder(
+            Map.of("minecraft:overworld", "world0"),
+            Set.of("world0"),
+            null,
+            "Moon",
+            -28
+        ));
+    }
 }

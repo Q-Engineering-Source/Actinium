@@ -5,6 +5,7 @@ import dhj.embeddedt.embeddium.impl.render.terrain.SimpleWorldRenderer;
 import dhj.embeddedt.embeddium.impl.render.viewport.Viewport;
 
 import java.util.Collection;
+import java.util.function.Consumer;
 
 /**
  * World-terrain rendering surface needed by the shadow pass.
@@ -30,7 +31,14 @@ public interface WorldRendererCompat {
 
     void drawChunkLayer(BlockRenderLayer renderLayer, double x, double y, double z);
 
-    void drawChunkLayersDeduplicated(Collection<BlockRenderLayer> renderLayers, double x, double y, double z);
+    default void drawChunkLayersDeduplicated(Collection<BlockRenderLayer> renderLayers, double x, double y, double z) {
+        drawChunkLayersDeduplicated(renderLayers, x, y, z, ignored -> {
+        });
+    }
+
+    /** Draws each distinct terrain pass once and runs {@code beforePass} immediately before its draw. */
+    void drawChunkLayersDeduplicated(Collection<BlockRenderLayer> renderLayers, double x, double y, double z,
+                                     Consumer<BlockRenderLayer> beforePass);
 
     /** Marks the terrain section graph dirty for re-culling (used by the shadow pass). */
     void markSectionGraphDirty();

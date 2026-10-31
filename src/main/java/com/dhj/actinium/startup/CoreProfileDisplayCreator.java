@@ -11,6 +11,7 @@ import org.lwjgl.LWJGLUtil;
 import org.lwjgl.opengl.ContextAttribs;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL32;
 import org.lwjgl.opengl.PixelFormat;
 
 /**
@@ -47,6 +48,7 @@ public final class CoreProfileDisplayCreator {
         boolean macos = LWJGLUtil.getPlatform() == LWJGLUtil.PLATFORM_MACOSX;
         int maxMinor = macos ? 1 : 6;
         Exception lastException = null;
+        String lastRejection = null;
 
         for (int major = maxMajor; major >= 3; --major) {
             int startMinor = major == 4 ? maxMinor : 3;
@@ -82,6 +84,11 @@ public final class CoreProfileDisplayCreator {
                         );
                     }
                 } catch (RuntimeException e) {
+                    boolean coreProfile = (GL11.glGetInteger(GL32.GL_CONTEXT_PROFILE_MASK)
+                        & GL32.GL_CONTEXT_CORE_PROFILE_BIT) != 0;
+                    String renderer = GL11.glGetString(GL11.GL_RENDERER);
+                    lastRejection = "requested OpenGL " + major + "." + minor + " core profile, driver returned \""
+                        + actualVersionString + "\" (core profile: " + coreProfile + ", GPU: " + renderer + ")";
                     lastException = createContextValidationFailure(e);
                     LOGGER.warn(
                         "Created requested OpenGL {}.{} core profile context, but actual GL_VERSION is unusable: {}",
@@ -107,7 +114,18 @@ public final class CoreProfileDisplayCreator {
             }
         }
 
-        throw new LWJGLException("Failed to create an OpenGL 3.3+ core profile context", lastException);
+        StringBuilder failureMessage = new StringBuilder(
+            "Actinium requires an OpenGL 3.3+ core profile context and could not create one."
+        );
+        if (lastRejection != null) {
+            failureMessage.append(" Last driver answer: ").append(lastRejection).append('.');
+        }
+        if (lastException != null) {
+            failureMessage.append(" Last error: ").append(lastException.getMessage()).append('.');
+        }
+        failureMessage.append(" Update or install the GPU driver.");
+        LOGGER.error("FATAL: {}", failureMessage);
+        throw new LWJGLException(failureMessage.toString(), lastException);
     }
 
     private static Exception createContextValidationFailure(RuntimeException e) {

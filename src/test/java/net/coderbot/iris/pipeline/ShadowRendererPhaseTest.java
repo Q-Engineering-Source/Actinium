@@ -48,6 +48,28 @@ class ShadowRendererPhaseTest {
     }
 
     @Test
+    void runsCutoutMippedDrawWithItsOwnPhaseAndRestoresPreviousPhase() {
+        FakeWorldRenderingPipeline pipeline = new FakeWorldRenderingPipeline(WorldRenderingPhase.SKY);
+
+        ShadowRenderer.TerrainPhaseScope.runCutoutMipped(pipeline,
+            () -> assertEquals(WorldRenderingPhase.TERRAIN_CUTOUT_MIPPED, pipeline.getPhase()));
+
+        assertEquals(WorldRenderingPhase.SKY, pipeline.getPhase());
+        assertEquals(List.of(WorldRenderingPhase.TERRAIN_CUTOUT_MIPPED, WorldRenderingPhase.SKY), pipeline.phaseChanges);
+    }
+
+    @Test
+    void runsCutoutDrawWithItsOwnPhaseAndRestoresPreviousPhase() {
+        FakeWorldRenderingPipeline pipeline = new FakeWorldRenderingPipeline(WorldRenderingPhase.SKY);
+
+        ShadowRenderer.TerrainPhaseScope.runCutout(pipeline,
+            () -> assertEquals(WorldRenderingPhase.TERRAIN_CUTOUT, pipeline.getPhase()));
+
+        assertEquals(WorldRenderingPhase.SKY, pipeline.getPhase());
+        assertEquals(List.of(WorldRenderingPhase.TERRAIN_CUTOUT, WorldRenderingPhase.SKY), pipeline.phaseChanges);
+    }
+
+    @Test
     void restoresPreviousPhaseWhenOpaqueDrawFails() {
         FakeWorldRenderingPipeline pipeline = new FakeWorldRenderingPipeline(WorldRenderingPhase.CLOUDS);
         IllegalStateException failure = new IllegalStateException("terrain draw failed");
@@ -79,11 +101,11 @@ class ShadowRendererPhaseTest {
         assertEquals(List.of(WorldRenderingPhase.TERRAIN_TRANSLUCENT, WorldRenderingPhase.CLOUDS), pipeline.phaseChanges);
     }
 
-    private static final class FakeWorldRenderingPipeline implements WorldRenderingPipeline {
+    static final class FakeWorldRenderingPipeline implements WorldRenderingPipeline {
         private final List<WorldRenderingPhase> phaseChanges = new ArrayList<>();
         private WorldRenderingPhase phase;
 
-        private FakeWorldRenderingPipeline(WorldRenderingPhase phase) {
+        FakeWorldRenderingPipeline(WorldRenderingPhase phase) {
             this.phase = phase;
         }
 

@@ -510,8 +510,8 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			if (programs.getPackDirectives().getShadowDirectives().isShadowEnabled().orElse(true)) {
 				this.shadowRenderer = new ShadowRenderer(programs.getShadow().orElse(null),
 					programs.getPackDirectives(), shadowRenderTargets, shadowCompositeRenderer);
-				Program shadowProgram = table.match(RenderCondition.SHADOW, new InputAvailability(true, true)).getProgram();
-				Program shadowWaterProgram = table.match(RenderCondition.SHADOW_TRANSLUCENT, new InputAvailability(true, true)).getProgram();
+				Program shadowProgram = table.match(RenderCondition.SHADOW, SHADOW_INPUTS).getProgram();
+				Program shadowWaterProgram = table.match(RenderCondition.SHADOW_TRANSLUCENT, SHADOW_INPUTS).getProgram();
 				shadowRenderer.setUsesImages((shadowProgram != null && shadowProgram.getActiveImages() > 0)
 					|| (shadowWaterProgram != null && shadowWaterProgram.getActiveImages() > 0));
 			} else {
@@ -910,7 +910,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		}
 		
 		final RenderCondition condition = getCondition(getPhase());
-		final Pass matched = table.match(condition, inputs);
+		final Pass matched = table.match(condition, inputsFor(condition, inputs));
 		beginPass(matched);
         IrisGlDebug.logPipelineMatch(
                 "match-pass",
@@ -923,6 +923,16 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
                 isPostChain,
                 matched != null && matched.getProgram() != null ? matched.getProgram().getProgramId() : -1);
 	}
+
+	static InputAvailability inputsFor(RenderCondition condition, InputAvailability liveInputs) {
+		if (condition == RenderCondition.SHADOW || condition == RenderCondition.SHADOW_TRANSLUCENT) {
+			return SHADOW_INPUTS;
+		}
+
+		return liveInputs;
+	}
+
+	private static final InputAvailability SHADOW_INPUTS = new InputAvailability(true, true);
 
 	public void beginPass(Pass pass) {
         WorldRenderingPhase activePhase = getPhase();
