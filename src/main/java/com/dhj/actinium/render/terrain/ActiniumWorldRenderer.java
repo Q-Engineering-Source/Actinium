@@ -35,6 +35,7 @@ import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 
 import java.util.*;
+import java.util.function.Consumer;
 
 /**
  * Provides an extension to vanilla's {@link net.minecraft.client.renderer.RenderGlobal}.
@@ -118,22 +119,26 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
         RenderDebugHooksHolder.check("actinium:draw-chunk-layer:" + renderLayer + ":after-reset-color");
     }
 
-    public void drawChunkLayersDeduplicated(Collection<BlockRenderLayer> renderLayers, double x, double y, double z) {
+    public void drawChunkLayersDeduplicated(Collection<BlockRenderLayer> renderLayers, double x, double y, double z,
+                                            Consumer<BlockRenderLayer> beforePass) {
         ChunkRenderMatrices matrices = createChunkRenderMatrices();
-        Set<TerrainRenderPass> passes = new LinkedHashSet<>();
+        Map<TerrainRenderPass, BlockRenderLayer> passes = new LinkedHashMap<>();
 
         for (BlockRenderLayer renderLayer : renderLayers) {
             Collection<TerrainRenderPass> layerPasses = this.renderSectionManager.getRenderPassConfiguration().vanillaRenderStages().get(renderLayer);
             if (layerPasses != null) {
-                passes.addAll(layerPasses);
+                for (TerrainRenderPass pass : layerPasses) {
+                    passes.putIfAbsent(pass, renderLayer);
+                }
             }
         }
 
         if (!passes.isEmpty()) {
             CameraTransform occlusionCamera = this.getLastViewport().getTransform();
             CameraTransform realCamera = new CameraTransform(x, y, z);
-            for (TerrainRenderPass pass : passes) {
-                this.renderSectionManager.renderLayer(matrices, pass, occlusionCamera, realCamera);
+            for (Map.Entry<TerrainRenderPass, BlockRenderLayer> entry : passes.entrySet()) {
+                beforePass.accept(entry.getValue());
+                this.renderSectionManager.renderLayer(matrices, entry.getKey(), occlusionCamera, realCamera);
             }
         }
 

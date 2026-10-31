@@ -80,6 +80,8 @@ public class ShaderPack {
 	private final Map<String, String> dimensionMap;
 	private final Map<String, ProgramSet> dimensionProgramSets;
 	private final Set<String> foldersWithShaderFiles;
+	private final boolean mappedByDimensionProperties;
+	private final String legacyDefaultFolder;
 	private final Function<AbsolutePackPath, String> sourceProvider;
 	private final ShaderProperties shaderProperties;
 	private boolean hasLoggedCacheLimitReached = false;
@@ -133,13 +135,16 @@ public class ShaderPack {
 		boolean hasDimensionProperties = dimensionProperties.isPresent();
 
 		List<String> dimensionFolders = new ArrayList<>();
+		String legacyDefault = null;
 
 		if (hasDimensionProperties) {
 			// Extract folder names from dimension.properties (e.g., "world0", "world-1", "custom_dim")
 			dimensionFolders.addAll(parseDimensionMap(dimensionProperties.get(), "dimension."));
 		}
 
-		if (!dimensionFolders.isEmpty()) {
+		this.mappedByDimensionProperties = !dimensionFolders.isEmpty();
+
+		if (mappedByDimensionProperties) {
 			for (String folderName : dimensionFolders) {
 				boolean folderExists = checkAndAddDimensionFolder(starts, root, potentialFileNames, folderName);
 				if (folderExists) {
@@ -182,9 +187,9 @@ public class ShaderPack {
 				Iris.logger.warn("Failed to scan for dimension folders", e);
 			}
 
-            // If world0 folder exists with shader files, use it for Overworld. Otherwise use base for all oher dims.
 			if (foundFolders.contains("world0")) {
 				dimensionMap.put(DimensionId.OVERWORLD.getCanonicalId(), "world0");
+				legacyDefault = "world0";
 			}
 			if (foundFolders.contains("world-1")) {
 				dimensionMap.put(DimensionId.NETHER.getCanonicalId(), "world-1");
@@ -193,6 +198,7 @@ public class ShaderPack {
 				dimensionMap.put(DimensionId.END.getCanonicalId(), "world1");
 			}
 		}
+		this.legacyDefaultFolder = legacyDefault;
 
 		// Read all files and included files recursively
 		IncludeGraph graph = new IncludeGraph(root, starts.build());
@@ -634,6 +640,7 @@ public class ShaderPack {
      *   Exact match in dimension.properties (dimension.<folder> = dimensionName)
      *   Wildcard match (dimension.<folder> = *)
      *   Legacy world{ID} folder (e.g., world0, world-1)
+     *   world0 for legacy packs without dimension.properties
      *   Fallback to base ProgramSet
      *
      *
@@ -650,10 +657,10 @@ public class ShaderPack {
 		String folderName = resolveDimensionFolder(
 			dimensionMap,
 			foldersWithShaderFiles,
+			legacyDefaultFolder,
 			canonicalDimension,
 			dimensionId
 		);
-		boolean foundExactMatch = dimensionMap.containsKey(canonicalDimension);
 
 		if (folderName != null && foldersWithShaderFiles.contains(folderName)) {
 			ProgramSet programSet = dimensionProgramSets.get(folderName);
@@ -682,7 +689,7 @@ public class ShaderPack {
 		}
 
 		// Warn if dimension.properties exists but this dimension has no mapping and no wildcard
-		if (!dimensionMap.isEmpty() && !foundExactMatch && !dimensionMap.containsKey("*")) {
+		if (mappedByDimensionProperties && !dimensionMap.containsKey(canonicalDimension) && !dimensionMap.containsKey("*")) {
 			Iris.logger.warn("Dimension '{}' has no shader mapping in dimension.properties and no wildcard (*) fallback is defined. " +
 					"Falling back to base shaders. Consider adding 'dimension.<folder>={}' or 'dimension.<folder>=*' to dimension.properties",
 					canonicalDimension, canonicalDimension);
@@ -706,6 +713,12 @@ public class ShaderPack {
 	@Nullable
 	static String resolveDimensionFolder(Map<String, String> mappings, Set<String> availableFolders,
 									 String dimensionName, int dimensionId) {
+		return resolveDimensionFolder(mappings, availableFolders, null, dimensionName, dimensionId);
+	}
+
+	@Nullable
+	static String resolveDimensionFolder(Map<String, String> mappings, Set<String> availableFolders,
+									 String legacyDefaultFolder, String dimensionName, int dimensionId) {
 		String canonicalDimension = DimensionId.canonicalize(dimensionName, dimensionId);
 		String folderName = mappings.get(canonicalDimension);
 
@@ -715,9 +728,7 @@ public class ShaderPack {
 
 		if (folderName == null) {
 			String legacyFolder = "world" + dimensionId;
-			if (availableFolders.contains(legacyFolder)) {
-				folderName = legacyFolder;
-			}
+			folderName = availableFolders.contains(legacyFolder) ? legacyFolder : legacyDefaultFolder;
 		}
 
 		return folderName != null && availableFolders.contains(folderName) ? folderName : null;

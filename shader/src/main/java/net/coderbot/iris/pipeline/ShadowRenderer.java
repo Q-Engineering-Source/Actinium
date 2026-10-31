@@ -645,6 +645,21 @@ public class ShadowRenderer {
 		profiler.endSection();
 	}
 
+	private static void cacheActiveRenderInfo(Minecraft mc, float tickDelta) {
+		Entity viewer = Objects.requireNonNull(mc.getRenderViewEntity(), "Shadow rendering requires a view entity");
+		TileEntityRendererDispatcher.instance.prepare(
+			mc.world, mc.getTextureManager(), mc.fontRenderer, viewer, mc.objectMouseOver, tickDelta);
+		mc.getRenderManager().cacheActiveRenderInfo(
+			mc.world, mc.fontRenderer, viewer, mc.pointedEntity, mc.gameSettings, tickDelta);
+		cacheStaticPlayerPosition(viewer, tickDelta);
+	}
+
+	static void cacheStaticPlayerPosition(Entity viewer, float tickDelta) {
+		TileEntityRendererDispatcher.staticPlayerX = viewer.lastTickPosX + (viewer.posX - viewer.lastTickPosX) * tickDelta;
+		TileEntityRendererDispatcher.staticPlayerY = viewer.lastTickPosY + (viewer.posY - viewer.lastTickPosY) * tickDelta;
+		TileEntityRendererDispatcher.staticPlayerZ = viewer.lastTickPosZ + (viewer.posZ - viewer.lastTickPosZ) * tickDelta;
+	}
+
     private void renderTileEntity(TileEntity tile, double cameraX, double cameraY, double cameraZ, float partialTicks) {
         BlockPos pos = tile.getPos();
         if (tile.getDistanceSq(cameraX, cameraY, cameraZ) >= tile.getMaxRenderDistanceSquared()) {
@@ -862,9 +877,8 @@ public class ShadowRenderer {
 			final long opaqueTerrainStart = perfDebugEnabled
 				? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.SHADOW_OPAQUE_TERRAIN) : 0L;
 			try {
-				TerrainPhaseScope.runOpaque(renderingPipeline,
-					() -> WorldRendererCompatBridge.instance().drawChunkLayersDeduplicated(
-						OPAQUE_SHADOW_TERRAIN_LAYERS, terrainX, terrainY, terrainZ));
+				TerrainPhaseScope.runOpaque(renderingPipeline, WorldRendererCompatBridge.instance(),
+					terrainX, terrainY, terrainZ);
 			} finally {
 				if (perfDebugEnabled) {
 					GLSMPerfDebug.end(GLSMPerfDebug.Stage.SHADOW_OPAQUE_TERRAIN, opaqueTerrainStart);
@@ -897,6 +911,8 @@ public class ShadowRenderer {
 		if (IrisDebugOptions.enableCeleritas()) {
 			WorldRendererCompatBridge.instance().setCurrentViewport(((ViewportProvider)entityShadowFrustum).sodium$createViewport());
 		}
+
+		cacheActiveRenderInfo(mc, tickDelta);
 
 		final long entitiesStart = perfDebugEnabled ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.SHADOW_ENTITIES) : 0L;
 		try {
@@ -1006,6 +1022,34 @@ public class ShadowRenderer {
 
 		static void runOpaque(WorldRenderingPipeline pipeline, Runnable action) {
 			run(pipeline, WorldRenderingPhase.TERRAIN_SOLID, action);
+		}
+
+		static void runOpaque(WorldRenderingPipeline pipeline, WorldRendererCompat renderer,
+							  double x, double y, double z) {
+			WorldRenderingPhase previousPhase = pipeline.getPhase();
+			try {
+				renderer.drawChunkLayersDeduplicated(OPAQUE_SHADOW_TERRAIN_LAYERS, x, y, z,
+					layer -> pipeline.setPhase(phaseForLayer(layer)));
+			} finally {
+				pipeline.setPhase(previousPhase);
+			}
+		}
+
+		private static WorldRenderingPhase phaseForLayer(BlockRenderLayer layer) {
+			return switch (layer) {
+				case SOLID -> WorldRenderingPhase.TERRAIN_SOLID;
+				case CUTOUT_MIPPED -> WorldRenderingPhase.TERRAIN_CUTOUT_MIPPED;
+				case CUTOUT -> WorldRenderingPhase.TERRAIN_CUTOUT;
+				default -> throw new IllegalArgumentException("Not an opaque terrain layer: " + layer);
+			};
+		}
+
+		static void runCutoutMipped(WorldRenderingPipeline pipeline, Runnable action) {
+			run(pipeline, WorldRenderingPhase.TERRAIN_CUTOUT_MIPPED, action);
+		}
+
+		static void runCutout(WorldRenderingPipeline pipeline, Runnable action) {
+			run(pipeline, WorldRenderingPhase.TERRAIN_CUTOUT, action);
 		}
 
 		static void runTranslucent(WorldRenderingPipeline pipeline, Runnable action) {
