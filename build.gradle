@@ -1,5 +1,6 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.jetbrains.gradle.ext.Gradle
+import java.util.Locale
 
 plugins {
     id 'java'
@@ -174,6 +175,19 @@ repositories {
     maven { url = 'https://api.modrinth.com/maven' }
     maven { url = 'https://nexus.gtnewhorizons.com/repository/public/' }
     mavenLocal()
+}
+
+sourceSets {
+    glIntegrationTest {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+
+configurations {
+    glIntegrationTestImplementation.extendsFrom(testImplementation)
+    glIntegrationTestCompileOnly.extendsFrom(testCompileOnly)
+    glIntegrationTestRuntimeOnly.extendsFrom(testRuntimeOnly)
 }
 
 dependencies {
@@ -560,6 +574,67 @@ test {
     }
 }
 
+def glIntegrationOsName = System.getProperty('os.name').toLowerCase(Locale.ROOT)
+def glIntegrationOsArch = System.getProperty('os.arch').toLowerCase(Locale.ROOT)
+def glIntegrationOsKey = glIntegrationOsName.startsWith('windows') ? 'windows'
+    : glIntegrationOsName.startsWith('linux') ? 'linux'
+    : glIntegrationOsName.startsWith('mac') ? 'macos'
+    : null
+def glIntegrationNativeClassifiers = [
+    windows: [
+        amd64: 'natives-windows', x86_64: 'natives-windows', x64: 'natives-windows',
+        aarch64: 'natives-windows-arm64', arm64: 'natives-windows-arm64'
+    ],
+    linux: [
+        amd64: 'natives-linux', x86_64: 'natives-linux', x64: 'natives-linux',
+        aarch64: 'natives-linux-arm64', arm64: 'natives-linux-arm64'
+    ],
+    macos: [
+        amd64: 'natives-macos', x86_64: 'natives-macos', x64: 'natives-macos',
+        aarch64: 'natives-macos-arm64', arm64: 'natives-macos-arm64'
+    ]
+]
+def glIntegrationLwjglNatives = glIntegrationOsKey == null
+    ? null : glIntegrationNativeClassifiers[glIntegrationOsKey][glIntegrationOsArch]
+
+dependencies {
+    glIntegrationTestImplementation 'org.lwjgl:lwjgl:3.4.1'
+    glIntegrationTestImplementation 'org.lwjgl:lwjgl-sdl:3.4.1'
+    if (glIntegrationLwjglNatives != null) {
+        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl:3.4.1:${glIntegrationLwjglNatives}"
+        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl-sdl:3.4.1:${glIntegrationLwjglNatives}"
+    }
+}
+
+def validateGlIntegrationPlatform = tasks.register('validateGlIntegrationPlatform') {
+    group = 'verification'
+    description = 'Checks that this platform has LWJGL native classifiers for the opt-in SDL integration test.'
+    doLast {
+        if (glIntegrationLwjglNatives == null) {
+            throw new GradleException(
+                "Unsupported GL integration test platform: ${glIntegrationOsName}/${glIntegrationOsArch}"
+            )
+        }
+    }
+}
+
+tasks.register('glIntegrationTest', Test) {
+    group = 'verification'
+    description = 'Runs the opt-in SDL window integration tests; requires a native display driver.'
+    testClassesDirs = sourceSets.glIntegrationTest.output.classesDirs
+    classpath = sourceSets.glIntegrationTest.runtimeClasspath
+    dependsOn validateGlIntegrationPlatform
+    dependsOn tasks.named('compileGlIntegrationTestJava')
+    useJUnitPlatform()
+    maxParallelForks = 1
+    forkEvery = 1
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+    workingDir = rootProject.projectDir
+}
+
 tasks.named('processResources').configure {
     duplicatesStrategy = DuplicatesStrategy.FAIL
     from('THIRD_PARTY_NOTICES.md', 'LICENSE-REESES-SODIUM-OPTIONS.md')
@@ -666,6 +741,7 @@ def verifyModuleBoundaries = tasks.register('verifyModuleBoundaries') {
 }
 
 tasks.named('check').configure {
+    dependsOn tasks.named('compileGlIntegrationTestJava')
     dependsOn verifyDistributedJar
     dependsOn verifyModuleBoundaries
 }

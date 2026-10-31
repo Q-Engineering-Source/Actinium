@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.lwjgl.opengl.GL11;
 
 import java.nio.ByteBuffer;
+import java.util.List;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,6 +18,26 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GLSMPerfDebugTest {
+    /**
+     * Larger than any default sampling cadence used by the perf debug stages: within one batch
+     * the default cadence must skip events while an always-sample stage must time all of them.
+     */
+    private static final int EVENTS_PER_BATCH = 1024;
+    private static final List<GLSMPerfDebug.Stage> SHADOW_STAGES = List.of(
+        GLSMPerfDebug.Stage.SHADOW_RENDER,
+        GLSMPerfDebug.Stage.SHADOW_SETUP_TERRAIN,
+        GLSMPerfDebug.Stage.SHADOW_OPAQUE_TERRAIN,
+        GLSMPerfDebug.Stage.SHADOW_ENTITIES,
+        GLSMPerfDebug.Stage.SHADOW_TRANSLUCENT_TERRAIN,
+        GLSMPerfDebug.Stage.SHADOW_COMPOSITE
+    );
+    private static final List<GLSMPerfDebug.Stage> BUFFERBUILDER_DRAW_PHASES = List.of(
+        GLSMPerfDebug.Stage.BUFFERBUILDER_INITIAL_VAO_BIND,
+        GLSMPerfDebug.Stage.BUFFERBUILDER_PREPARE_DRAW,
+        GLSMPerfDebug.Stage.BUFFERBUILDER_CHECK_DRAW_ERRORS,
+        GLSMPerfDebug.Stage.BUFFERBUILDER_RESTORE_BINDINGS
+    );
+
     @AfterEach
     void disableConfiguredDebug() {
         GLSMPerfDebugHooks.setConfiguredEnabled(false);
@@ -176,6 +197,43 @@ class GLSMPerfDebugTest {
         GLSMPerfDebug.end(GLSMPerfDebug.Stage.CHUNK_OCCLUSION_SEARCH, second);
 
         assertEquals(2, GLSMPerfDebug.getSampledCount(GLSMPerfDebug.Stage.CHUNK_OCCLUSION_SEARCH));
+    }
+
+    @Test
+    void samplesEveryShadowStageEventWithoutCadenceSkipping() {
+        GLSMPerfDebugHooks.setConfiguredEnabled(false);
+        GLSMPerfDebugHooks.setConfiguredEnabled(true);
+
+        for (GLSMPerfDebug.Stage stage : SHADOW_STAGES) {
+            for (int i = 0; i < EVENTS_PER_BATCH; i++) {
+                final long start = GLSMPerfDebug.begin(stage);
+                assertTrue(start != 0L, stage.name() + " must be timed on every event");
+                GLSMPerfDebug.end(stage, start);
+            }
+
+            assertEquals(EVENTS_PER_BATCH, GLSMPerfDebug.getSampledCount(stage), stage.name() + " sample count");
+        }
+    }
+
+    @Test
+    void keepsBufferBuilderDrawPhasesAtDefaultCadence() {
+        GLSMPerfDebugHooks.setConfiguredEnabled(false);
+        GLSMPerfDebugHooks.setConfiguredEnabled(true);
+
+        for (GLSMPerfDebug.Stage stage : BUFFERBUILDER_DRAW_PHASES) {
+            int timed = 0;
+            for (int i = 0; i < EVENTS_PER_BATCH; i++) {
+                final long start = GLSMPerfDebug.begin(stage);
+                if (start != 0L) {
+                    timed++;
+                    GLSMPerfDebug.end(stage, start);
+                }
+            }
+
+            assertTrue(timed > 0, stage.name() + " must be timed at least once per batch");
+            assertTrue(timed < EVENTS_PER_BATCH, stage.name() + " must keep skipping events at the default cadence");
+            assertEquals(timed, GLSMPerfDebug.getSampledCount(stage), stage.name() + " sample count");
+        }
     }
 
     @Test

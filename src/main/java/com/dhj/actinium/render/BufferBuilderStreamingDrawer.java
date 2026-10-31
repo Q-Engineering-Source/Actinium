@@ -103,7 +103,15 @@ public final class BufferBuilderStreamingDrawer {
             final int vbo = drawPath == DrawPath.PERSISTENT ? persistentVbo : state.orphanBuffer.getBufferId();
             // Force the real VAO binding even when the GLStateManager cache already matches.
             // Native code outside this drawer can change the actual binding without updating the cache.
-            GLStateManager.glBindVertexArray(vao);
+            final long initialVaoBindStart = perfDebugEnabled
+                ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.BUFFERBUILDER_INITIAL_VAO_BIND) : 0L;
+            try {
+                GLStateManager.glBindVertexArray(vao);
+            } finally {
+                if (perfDebugEnabled) {
+                    GLSMPerfDebug.end(GLSMPerfDebug.Stage.BUFFERBUILDER_INITIAL_VAO_BIND, initialVaoBindStart);
+                }
+            }
             if (drawPath.changesArrayBufferBinding()) {
                 restoreArrayBuffer = true;
                 GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
@@ -119,10 +127,26 @@ public final class BufferBuilderStreamingDrawer {
                 GLSMDebug.logBufferBuilderUpload(formatDescription, drawMode, state.vertexFlags, stride, vertexCount, byteCount, vao, vbo);
             }
 
-            GLStateManager.prepareWideLineEmulation(drawMode);
-            ShaderManager.getInstance().preDraw(state.vertexFlags);
+            final long prepareDrawStart = perfDebugEnabled
+                ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.BUFFERBUILDER_PREPARE_DRAW) : 0L;
+            try {
+                GLStateManager.prepareWideLineEmulation(drawMode);
+                ShaderManager.getInstance().preDraw(state.vertexFlags);
+            } finally {
+                if (perfDebugEnabled) {
+                    GLSMPerfDebug.end(GLSMPerfDebug.Stage.BUFFERBUILDER_PREPARE_DRAW, prepareDrawStart);
+                }
+            }
             if (checkDrawErrors) {
-                RenderDebugHooksHolder.checkDrawError("bufferbuilder-stream:after-predraw", debugSource, drawMode, state.vertexFlags, stride, vertexCount, formatDescription, vao, vbo);
+                final long checkDrawErrorStart = perfDebugEnabled
+                    ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.BUFFERBUILDER_CHECK_DRAW_ERRORS) : 0L;
+                try {
+                    RenderDebugHooksHolder.checkDrawError("bufferbuilder-stream:after-predraw", debugSource, drawMode, state.vertexFlags, stride, vertexCount, formatDescription, vao, vbo);
+                } finally {
+                    if (perfDebugEnabled) {
+                        GLSMPerfDebug.end(GLSMPerfDebug.Stage.BUFFERBUILDER_CHECK_DRAW_ERRORS, checkDrawErrorStart);
+                    }
+                }
             }
             final long drawStart = perfDebugEnabled ? GLSMPerfDebug.now() : 0L;
             VanillaVertexBufferRenderer.drawArrays(drawMode, firstVertex, vertexCount);
@@ -130,15 +154,39 @@ public final class BufferBuilderStreamingDrawer {
                 GLSMPerfDebug.record(GLSMPerfDebug.Stage.BUFFERBUILDER_DRAW_CALL, drawStart, GLSMPerfDebug.now());
             }
             if (checkDrawErrors) {
-                RenderDebugHooksHolder.checkDrawError("bufferbuilder-stream:after-draw", debugSource, drawMode, state.vertexFlags, stride, vertexCount, formatDescription, vao, vbo);
+                final long checkDrawErrorStart = perfDebugEnabled
+                    ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.BUFFERBUILDER_CHECK_DRAW_ERRORS) : 0L;
+                try {
+                    RenderDebugHooksHolder.checkDrawError("bufferbuilder-stream:after-draw", debugSource, drawMode, state.vertexFlags, stride, vertexCount, formatDescription, vao, vbo);
+                } finally {
+                    if (perfDebugEnabled) {
+                        GLSMPerfDebug.end(GLSMPerfDebug.Stage.BUFFERBUILDER_CHECK_DRAW_ERRORS, checkDrawErrorStart);
+                    }
+                }
             }
         } finally {
-            GLStateManager.glBindVertexArray(savedVao);
-            if (restoreArrayBuffer) {
-                GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVbo);
+            final long restoreBindingsStart = perfDebugEnabled
+                ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.BUFFERBUILDER_RESTORE_BINDINGS) : 0L;
+            try {
+                GLStateManager.glBindVertexArray(savedVao);
+                if (restoreArrayBuffer) {
+                    GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVbo);
+                }
+            } finally {
+                if (perfDebugEnabled) {
+                    GLSMPerfDebug.end(GLSMPerfDebug.Stage.BUFFERBUILDER_RESTORE_BINDINGS, restoreBindingsStart);
+                }
             }
             if (checkDrawErrors) {
-                RenderDebugHooksHolder.checkDrawError("bufferbuilder-stream:after-restore", debugSource, drawMode, state.vertexFlags, stride, vertexCount, formatDescription, savedVao, savedVbo);
+                final long checkDrawErrorStart = perfDebugEnabled
+                    ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.BUFFERBUILDER_CHECK_DRAW_ERRORS) : 0L;
+                try {
+                    RenderDebugHooksHolder.checkDrawError("bufferbuilder-stream:after-restore", debugSource, drawMode, state.vertexFlags, stride, vertexCount, formatDescription, savedVao, savedVbo);
+                } finally {
+                    if (perfDebugEnabled) {
+                        GLSMPerfDebug.end(GLSMPerfDebug.Stage.BUFFERBUILDER_CHECK_DRAW_ERRORS, checkDrawErrorStart);
+                    }
+                }
             }
         }
     }

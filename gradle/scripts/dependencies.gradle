@@ -66,6 +66,8 @@ dependencies {
         testImplementation "maven.modrinth:gnetum:1.4.3"
         testImplementation files(sharedMinecraftCompileClasspath())
     }
+    glIntegrationTestImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
+    glIntegrationTestRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
 //    modRuntimeOnly 'curse.maven:catalogue-vintage-1465746:7872634'
 //    compileOnly 'maven.modrinth:DistantHorizonsApi:5.1.0'

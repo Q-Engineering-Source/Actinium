@@ -13,6 +13,7 @@ import com.gtnewhorizons.angelica.glsm.shadow.InternalShadowRenderingState;
 import com.gtnewhorizons.angelica.glsm.CompatUniformManager;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
+import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.rendering.RenderingState;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.compat.dh.DHCompat;
@@ -719,6 +720,18 @@ public class ShadowRenderer {
 	}
 
 	public void renderShadows(EntityRenderer levelRenderer, Camera playerCamera) {
+		final boolean perfDebugEnabled = GLSMPerfDebug.isEnabled();
+		final long perfStart = perfDebugEnabled ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.SHADOW_RENDER) : 0L;
+		try {
+			renderShadowsInternal(levelRenderer, playerCamera, perfDebugEnabled);
+		} finally {
+			if (perfDebugEnabled) {
+				GLSMPerfDebug.end(GLSMPerfDebug.Stage.SHADOW_RENDER, perfStart);
+			}
+		}
+	}
+
+	private void renderShadowsInternal(EntityRenderer levelRenderer, Camera playerCamera, boolean perfDebugEnabled) {
         final Minecraft mc = Minecraft.getMinecraft();
         final RenderGlobal rg = mc.renderGlobal;
 		final WorldRenderingPipeline renderingPipeline = Objects.requireNonNull(
@@ -808,20 +821,28 @@ public class ShadowRenderer {
 			WorldRendererCompat renderer = WorldRendererCompatBridge.instance();
 			var terrainViewport = ((ViewportProvider)terrainFrustumHolder.getFrustum()).sodium$createViewport();
 			renderer.markSectionGraphDirty();
-			renderer.setupShadowTerrain(
-				renderer.getLastViewport(),
-				terrainViewport,
-				new SimpleWorldRenderer.CameraState(
-					entityX,
-					entityY,
-					entityZ,
-					playerCamera.getPitch(),
-					playerCamera.getYaw(),
-					halfPlaneLength
-				),
-				this.celeritasShadowFrame++,
-				false
-			);
+			final long setupTerrainStart = perfDebugEnabled
+				? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.SHADOW_SETUP_TERRAIN) : 0L;
+			try {
+				renderer.setupShadowTerrain(
+					renderer.getLastViewport(),
+					terrainViewport,
+					new SimpleWorldRenderer.CameraState(
+						entityX,
+						entityY,
+						entityZ,
+						playerCamera.getPitch(),
+						playerCamera.getYaw(),
+						halfPlaneLength
+					),
+					this.celeritasShadowFrame++,
+					false
+				);
+			} finally {
+				if (perfDebugEnabled) {
+					GLSMPerfDebug.end(GLSMPerfDebug.Stage.SHADOW_SETUP_TERRAIN, setupTerrainStart);
+				}
+			}
 			renderer.setCurrentViewport(terrainViewport);
 		}
 
@@ -838,9 +859,17 @@ public class ShadowRenderer {
 
 		if (shouldRenderTerrain) {
             mc.renderEngine.bindTexture(TextureMap.LOCATION_BLOCKS_TEXTURE);
-			TerrainPhaseScope.runOpaque(renderingPipeline,
-				() -> WorldRendererCompatBridge.instance().drawChunkLayersDeduplicated(
-					OPAQUE_SHADOW_TERRAIN_LAYERS, terrainX, terrainY, terrainZ));
+			final long opaqueTerrainStart = perfDebugEnabled
+				? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.SHADOW_OPAQUE_TERRAIN) : 0L;
+			try {
+				TerrainPhaseScope.runOpaque(renderingPipeline,
+					() -> WorldRendererCompatBridge.instance().drawChunkLayersDeduplicated(
+						OPAQUE_SHADOW_TERRAIN_LAYERS, terrainX, terrainY, terrainZ));
+			} finally {
+				if (perfDebugEnabled) {
+					GLSMPerfDebug.end(GLSMPerfDebug.Stage.SHADOW_OPAQUE_TERRAIN, opaqueTerrainStart);
+				}
+			}
 		}
 
 		// Reset viewport in case terrain rendering changed it
@@ -869,14 +898,21 @@ public class ShadowRenderer {
 			WorldRendererCompatBridge.instance().setCurrentViewport(((ViewportProvider)entityShadowFrustum).sodium$createViewport());
 		}
 
-		if (shouldRenderEntities) {
-			renderEntities(levelRenderer, entityShadowFrustum, null, modelView, renderOriginX, renderOriginY, renderOriginZ, tickDelta);
-		} else if (shouldRenderPlayer) {
-			renderPlayerEntity(levelRenderer, entityShadowFrustum, null, modelView, renderOriginX, renderOriginY, renderOriginZ, tickDelta);
-		}
+		final long entitiesStart = perfDebugEnabled ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.SHADOW_ENTITIES) : 0L;
+		try {
+			if (shouldRenderEntities) {
+				renderEntities(levelRenderer, entityShadowFrustum, null, modelView, renderOriginX, renderOriginY, renderOriginZ, tickDelta);
+			} else if (shouldRenderPlayer) {
+				renderPlayerEntity(levelRenderer, entityShadowFrustum, null, modelView, renderOriginX, renderOriginY, renderOriginZ, tickDelta);
+			}
 
-		if (shouldRenderBlockEntities) {
-			renderTileEntities(null, modelView, renderOriginX, renderOriginY, renderOriginZ, tickDelta, hasEntityFrustum);
+			if (shouldRenderBlockEntities) {
+				renderTileEntities(null, modelView, renderOriginX, renderOriginY, renderOriginZ, tickDelta, hasEntityFrustum);
+			}
+		} finally {
+			if (perfDebugEnabled) {
+				GLSMPerfDebug.end(GLSMPerfDebug.Stage.SHADOW_ENTITIES, entitiesStart);
+			}
 		}
 
 		profiler.endStartSection("draw entities");
@@ -893,9 +929,17 @@ public class ShadowRenderer {
 		// It doesn't matter a ton, since this just means that they won't be sorted in the getNormal rendering pass.
 		// Just something to watch out for, however...
 		if (shouldRenderTranslucent) {
-			TerrainPhaseScope.runTranslucent(renderingPipeline,
-				() -> WorldRendererCompatBridge.instance().drawChunkLayer(
-					BlockRenderLayer.TRANSLUCENT, terrainX, terrainY, terrainZ));
+			final long translucentTerrainStart = perfDebugEnabled
+				? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.SHADOW_TRANSLUCENT_TERRAIN) : 0L;
+			try {
+				TerrainPhaseScope.runTranslucent(renderingPipeline,
+					() -> WorldRendererCompatBridge.instance().drawChunkLayer(
+						BlockRenderLayer.TRANSLUCENT, terrainX, terrainY, terrainZ));
+			} finally {
+				if (perfDebugEnabled) {
+					GLSMPerfDebug.end(GLSMPerfDebug.Stage.SHADOW_TRANSLUCENT_TERRAIN, translucentTerrainStart);
+				}
+			}
 		}
 
 		if (celeritasManaged) {
@@ -931,7 +975,16 @@ public class ShadowRenderer {
 
 		profiler.endStartSection("shadowcomp");
 
-		if (compositeRenderer != null) compositeRenderer.renderAll();
+		if (compositeRenderer != null) {
+			final long compositeStart = perfDebugEnabled ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.SHADOW_COMPOSITE) : 0L;
+			try {
+				compositeRenderer.renderAll();
+			} finally {
+				if (perfDebugEnabled) {
+					GLSMPerfDebug.end(GLSMPerfDebug.Stage.SHADOW_COMPOSITE, compositeStart);
+				}
+			}
+		}
 
 		if (celeritasManaged) {
 			RenderDevice.exitManagedCode();
