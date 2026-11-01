@@ -93,7 +93,9 @@ public class DSAARB extends DSAUnsupported {
             super.bindTextureToUnit(unit, texture);
         } else {
             RENDER_BACKEND.bindTextureUnit(unit, texture);
-            GLStateManager.getTextures().getTextureUnitBindings(unit).setBinding(texture);
+            final var binding = GLStateManager.getTextures().getTextureUnitBindings(unit);
+            binding.beforeModify();
+            binding.setBinding(texture);
         }
     }
 
