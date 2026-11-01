@@ -84,6 +84,11 @@ public class DisplayListManager {
     // Display list compilation state (current/active context)
     private static int glListMode = 0;
     private static int glListId = -1;
+    private static int recordedStatePushes;
+    private static long compilationId;
+    private static long nextCompilationId;
+    private static final Deque<LiveStateScope> liveStateScopes = new ArrayDeque<>();
+    private static final DisplayListCommand POP_STATE = GLStateManager::popState;
     private static CommandRecorder currentRecorder = null;  // Null when not recording
     private static volatile Thread recordingThread = null;  // For thread-safety
     private static List<AccumulatedDraw> accumulatedDraws = null;
@@ -117,12 +122,16 @@ public class DisplayListManager {
         List<AccumulatedDraw> draws,
         Matrix4fStack transform,
         StackTraceElement[] stackTrace,
+        int recordedStatePushes,
+        long compilationId,
 
         // Debug logging fields (only used when LOG_DISPLAY_LIST_COMPILATION)
         List<String> pendingOps,
         List<List<String>> matrixSources,
         List<String> drawSources
     ) {}
+
+    private record LiveStateScope(long compilationId, int depth) {}
 
     public static RecordMode getRecordMode() {
         if (currentRecorder == null || Thread.currentThread() != recordingThread) {
@@ -429,6 +438,42 @@ public class DisplayListManager {
         if (currentRecorder == null) return;
         drawBarrier();
         currentRecorder.recordPopAttrib();
+    }
+
+    public static int virtualStateDepth(RecordMode mode) {
+        return mode == RecordMode.COMPILE ? recordedStatePushes : 0;
+    }
+
+    public static void recordPushState(StateSet set) {
+        currentRecorder.recordComplexCommand(set.pushCommand);
+        recordedStatePushes++;
+    }
+
+    public static void liveStatePushed(int depth) {
+        liveStateScopes.push(new LiveStateScope(compilationId, depth));
+    }
+
+    public static void liveStatePopped(int depth) {
+        if (Thread.currentThread() != recordingThread) return;
+        final LiveStateScope scope = liveStateScopes.peek();
+        if (scope != null && scope.depth() == depth) {
+            liveStateScopes.pop();
+        }
+    }
+
+    private static boolean hasLiveStateScope() {
+        final LiveStateScope scope = liveStateScopes.peek();
+        return scope != null && scope.compilationId() == compilationId;
+    }
+
+    public static boolean recordPopStateIfPending() {
+        if (recordedStatePushes > 0) {
+            drawBarrier();
+            currentRecorder.recordComplexCommand(POP_STATE);
+            recordedStatePushes--;
+            return true;
+        }
+        return false;
     }
 
     public static void recordFogf(int pname, float param) {
@@ -757,7 +802,7 @@ public class DisplayListManager {
             // Nested display list compilation violates OpenGL spec, but some of our optimizations require it
             final CompilationContext parentContext = new CompilationContext(
                 glListId, glListMode, currentRecorder, accumulatedDraws, relativeTransform,
-                compilationStackTrace, pendingTransformOps, multMatrixSources, drawRangeSources
+                compilationStackTrace, recordedStatePushes, compilationId, pendingTransformOps, multMatrixSources, drawRangeSources
             );
             compilationStack.push(parentContext);
         }
@@ -769,6 +814,8 @@ public class DisplayListManager {
         accumulatedDraws = new ArrayList<>(16);   // Fewer draws than commands typically
         relativeTransform = new Matrix4fStack(GLStateManager.MAX_MODELVIEW_STACK_DEPTH);
         stateGeneration = 0;
+        recordedStatePushes = 0;
+        compilationId = ++nextCompilationId;
         compilationStackTrace = LOG_DISPLAY_LIST_COMPILATION ? Thread.currentThread().getStackTrace() : null;
 
         if (LOG_DISPLAY_LIST_COMPILATION) {
@@ -801,6 +848,15 @@ public class DisplayListManager {
 
         // Works for both root and nested lists
         TessellatorManager.stopCapturingDirect();
+
+        boolean unbalancedStatePush = false;
+        while (recordPopStateIfPending()) unbalancedStatePush = true;
+        while (hasLiveStateScope()) {
+            GLStateManager.popState();
+        }
+        if (unbalancedStatePush) {
+            GLStateManager.warnOnce("unbalanced-state-push", "Display list {} ended with unpopped internal state pushes - closing them", glListId);
+        }
 
         final CompiledDisplayList compiled;
         final CommandBuffer rawCommandBuffer = currentRecorder.getBuffer();
@@ -862,6 +918,8 @@ public class DisplayListManager {
             accumulatedDraws = parentContext.draws;
             relativeTransform = parentContext.transform;
             compilationStackTrace = parentContext.stackTrace;
+            recordedStatePushes = parentContext.recordedStatePushes;
+            compilationId = parentContext.compilationId;
             pendingTransformOps = parentContext.pendingOps;
             multMatrixSources = parentContext.matrixSources;
             drawRangeSources = parentContext.drawSources;
@@ -879,6 +937,8 @@ public class DisplayListManager {
             drawRangeSources = null;
             glListId = -1;
             glListMode = 0;
+            recordedStatePushes = 0;
+            compilationId = 0;
         }
     }
 

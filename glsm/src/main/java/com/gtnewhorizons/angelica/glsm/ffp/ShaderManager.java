@@ -15,6 +15,7 @@ import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
 import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMInitConfig;
+import com.gtnewhorizons.angelica.glsm.stacks.StackIdAllocator;
 import lombok.Getter;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
@@ -55,8 +56,8 @@ public class ShaderManager {
         new Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
         new Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
     };
-    @Getter private static final Vec3fStack normalStack = new Vec3fStack(currentNormal);
-    @Getter private static final Vec4fStack texCoordStack = new Vec4fStack(currentTexCoords[0]);
+    private static final int NORMAL_STACK_ID = StackIdAllocator.nextStaticId();
+    private static final int TEX_COORD_STACK_ID = StackIdAllocator.nextStaticId();
     @Getter private static int normalGeneration;
     @Getter private static int texCoordGeneration;
     @Getter private boolean enabled = false;
@@ -71,6 +72,22 @@ public class ShaderManager {
 
     public static ShaderManager getInstance() {
         return Holder.INSTANCE;
+    }
+
+    public static Vec3fStack createNormalStack() {
+        return new Vec3fStack(currentNormal, NORMAL_STACK_ID);
+    }
+
+    public static Vec4fStack createTexCoordStack() {
+        return new Vec4fStack(currentTexCoords[0], TEX_COORD_STACK_ID);
+    }
+
+    public static Vec3fStack getNormalStack() {
+        return GLStateManager.getNormalStack();
+    }
+
+    public static Vec4fStack getTexCoordStack() {
+        return GLStateManager.getTexCoordStack();
     }
 
     public void enable() {
@@ -267,16 +284,19 @@ public class ShaderManager {
     public static Vector4f getCurrentTexCoord(int unit) { return currentTexCoords[unit]; }
 
     public static void setCurrentNormal(float x, float y, float z) {
+        getNormalStack().beforeModify();
         currentNormal.set(x, y, z);
         normalGeneration++;
     }
 
     public static void setCurrentTexCoord(float s, float t, float r, float q) {
+        getTexCoordStack().beforeModify();
         currentTexCoords[0].set(s, t, r, q);
         texCoordGeneration++;
     }
 
     public static void setCurrentTexCoord(int unit, float s, float t, float r, float q) {
+        if (unit == 0) getTexCoordStack().beforeModify();
         currentTexCoords[unit].set(s, t, r, q);
         texCoordGeneration++;
     }
