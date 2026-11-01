@@ -1,5 +1,6 @@
 package com.dhj.actinium.mixin.features.iris;
 
+import com.dhj.actinium.render.CloudRenderSettings;
 import net.coderbot.iris.pipeline.SkyRenderDistance;
 import net.minecraft.client.settings.GameSettings;
 import org.spongepowered.asm.mixin.Mixin;
@@ -19,7 +20,7 @@ public abstract class MixinGameSettingsClouds {
     @Inject(method = "shouldRenderClouds", at = @At("HEAD"), cancellable = true)
     private void actinium$keepCloudsAtLowRenderDistance(CallbackInfoReturnable<Integer> cir) {
         if (this.renderDistanceChunks < SkyRenderDistance.MINIMUM_RENDER_DISTANCE_CHUNKS) {
-            cir.setReturnValue(this.clouds == 0 ? 2 : this.clouds);
+            cir.setReturnValue(CloudRenderSettings.effectiveCloudMode(this.clouds));
         }
     }
 }
