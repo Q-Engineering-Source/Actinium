@@ -1,5 +1,6 @@
 package com.dhj.actinium.mixin.features.iris;
 
+import com.dhj.actinium.render.CloudRenderSettings;
 import com.dhj.actinium.render.GuiGlStateBoundary;
 import com.dhj.actinium.render.RenderWorldRecursionGuard;
 import com.dhj.actinium.render.RevoScreenEffectsGradient;
@@ -701,9 +702,8 @@ public abstract class EntityRendererIrisMixin implements IResourceManagerReloadL
         method = "renderCloudsCheck",
         at = @At(value = "INVOKE", target = "Lnet/minecraft/client/settings/GameSettings;shouldRenderClouds()I")
     )
-    private int actinium$forceCloudsBelowMinimumDistance(GameSettings settings) {
-        return settings.renderDistanceChunks < SkyRenderDistance.MINIMUM_RENDER_DISTANCE_CHUNKS
-            && settings.clouds == 0 ? 2 : settings.clouds;
+    private int actinium$useConfiguredCloudMode(GameSettings settings) {
+        return CloudRenderSettings.effectiveCloudMode(settings.clouds);
     }
 
     @Inject(
