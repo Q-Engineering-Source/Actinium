@@ -1,10 +1,16 @@
 package com.gtnewhorizons.angelica.glsm.hooks;
 
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
+
 public final class GLSMConfig {
 
-    // Lightmap (replaces OpenGlHelper.lastBrightnessX/Y)
-    public static float lastBrightnessX;
-    public static float lastBrightnessY;
+    public static float getLastBrightnessX() {
+        return GLStateManager.getLastBrightnessX();
+    }
+
+    public static float getLastBrightnessY() {
+        return GLStateManager.getLastBrightnessY();
+    }
 
     // True while StellarCore renders HUD content into its cached framebuffer
     // (HUDCaching.renderingCacheOverride). Mirrors the alpha-factor override

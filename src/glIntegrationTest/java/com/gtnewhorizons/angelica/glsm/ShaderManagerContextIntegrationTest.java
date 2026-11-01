@@ -73,13 +73,13 @@ class ShaderManagerContextIntegrationTest extends GLStateManagerIntegrationFixtu
             }
 
             final float[] restored = workerRestored.get(10, TimeUnit.SECONDS);
-            assertEquals(1.0f, restored[0], 0.0001f);
-            assertEquals(2.0f, restored[1], 0.0001f);
-            assertEquals(3.0f, restored[2], 0.0001f);
-            assertEquals(1.0f, restored[3], 0.0001f);
-            assertEquals(2.0f, restored[4], 0.0001f);
-            assertEquals(3.0f, restored[5], 0.0001f);
-            assertEquals(4.0f, restored[6], 0.0001f);
+            assertEquals(0.0f, restored[0], 0.0001f);
+            assertEquals(0.0f, restored[1], 0.0001f);
+            assertEquals(1.0f, restored[2], 0.0001f);
+            assertEquals(0.0f, restored[3], 0.0001f);
+            assertEquals(0.0f, restored[4], 0.0001f);
+            assertEquals(0.0f, restored[5], 0.0001f);
+            assertEquals(1.0f, restored[6], 0.0001f);
         } finally {
             allowWorkerModify.countDown();
             allowWorkerPop.countDown();

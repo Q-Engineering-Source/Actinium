@@ -97,6 +97,6 @@ class VanillaVertexBufferRendererAttributeLayoutTest {
         assertEquals(
             VertexFlags.TEXTURE_BIT | VertexFlags.BRIGHTNESS_BIT,
             VanillaVertexBufferRenderer.vertexFlags(perUnitUvFormat(0, 1, 2, 3)),
-            "units 2/3 are tracked per attribute slot in VertexAttribState; units 0/1 keep their flags");
+            "units 2/3 are tracked per attribute slot in VAOManager; units 0/1 keep their flags");
     }
 }

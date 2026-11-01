@@ -2,7 +2,7 @@ package com.gtnewhorizons.angelica.glsm;
 
 import com.gtnewhorizons.angelica.glsm.debug.GLSMDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
-import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
+import com.gtnewhorizons.angelica.glsm.ffp.VAOManager;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
 
@@ -208,7 +208,7 @@ public final class QuadConverter {
         final int quadCount = indexCount / 4;
         final int triIndexCount = quadCount * 6;
 
-        final int bytesPerIndex = VertexAttribState.Attrib.glTypeSizeBytes(type);
+        final int bytesPerIndex = VAOManager.Attrib.glTypeSizeBytes(type);
 
         // Read source indices from caller's EBO
         final ByteBuffer src = memAlloc(indexCount * bytesPerIndex);

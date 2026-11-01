@@ -4,7 +4,7 @@ import com.gtnewhorizon.gtnhlib.client.renderer.DirectTessellator;
 import com.gtnewhorizon.gtnhlib.client.renderer.TessellatorManager;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormatElement.Usage;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
-import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
+import com.gtnewhorizons.angelica.glsm.ffp.VAOManager;
 import com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
@@ -180,7 +180,7 @@ public final class ImmediateModeRecorder {
         int baseOffset;
         int size;
         int loc;
-        VertexAttribState.Attrib attrib;
+        VAOManager.Attrib attrib;
     }
 
     private static final AttribReader[] readers = new AttribReader[NUM_ATTRIBS];
@@ -198,7 +198,7 @@ public final class ImmediateModeRecorder {
 
     /**
      * Process a glDrawArrays call during display list recording.
-     * Reads vertex data from VBOs or client memory referenced by VertexAttribState and converts to immediate mode geometry.
+     * Reads vertex data from VBOs or client memory referenced by VAOManager and converts to immediate mode geometry.
      */
     public static DirectTessellator processDrawArraysFromAttribs(int mode, int first, int count) {
         final int readVBOCount = readbackAttribVBOs(first, count);
@@ -232,7 +232,7 @@ public final class ImmediateModeRecorder {
                 return null;
             }
 
-            final int indexSize = VertexAttribState.Attrib.glTypeSizeBytes(indexType);
+            final int indexSize = VAOManager.Attrib.glTypeSizeBytes(indexType);
             final int eboReadOffset = (int) indicesOffset;
             final int eboReadSize = indicesCount * indexSize;
             if (eboReadOffset + eboReadSize > eboSize) {
@@ -266,7 +266,7 @@ public final class ImmediateModeRecorder {
         for (int i = 0; i < NUM_ATTRIBS; i++) {
             scratchAttribBuffers[i] = null;
             scratchAttribBaseOffsets[i] = 0;
-            final VertexAttribState.Attrib a = VertexAttribState.get(i);
+            final VAOManager.Attrib a = GLStateManager.getVertexAttrib(i);
             if (!a.enabled) continue;
 
             if (a.vboId != 0) {
@@ -301,7 +301,7 @@ public final class ImmediateModeRecorder {
 
                         for (int k = 0; k < NUM_ATTRIBS; k++) {
                             if (k == i) continue;
-                            final VertexAttribState.Attrib ak = VertexAttribState.get(k);
+                            final VAOManager.Attrib ak = GLStateManager.getVertexAttrib(k);
                             if (!ak.enabled || ak.vboId != a.vboId) continue;
                             final int ks = ak.effectiveStride();
                             rangeStart = Math.min(rangeStart, ak.offset + (long) firstVertex * ks);
@@ -353,7 +353,7 @@ public final class ImmediateModeRecorder {
         for (int i = 0; i < NUM_ATTRIBS; i++) {
             final ByteBuffer buf = scratchAttribBuffers[i];
             if (buf == null) continue;
-            final VertexAttribState.Attrib a = VertexAttribState.get(i);
+            final VAOManager.Attrib a = GLStateManager.getVertexAttrib(i);
 
             final AttribReader r = readers[i];
             r.data = buf;

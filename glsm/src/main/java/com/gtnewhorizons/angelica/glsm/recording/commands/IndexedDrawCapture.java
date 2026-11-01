@@ -5,7 +5,7 @@ import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.GLTypes;
 import com.gtnewhorizons.angelica.glsm.QuadConverter;
 import com.gtnewhorizons.angelica.glsm.recording.AttribSnapshot;
-import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
+import com.gtnewhorizons.angelica.glsm.ffp.VAOManager;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
 
@@ -129,7 +129,7 @@ public final class IndexedDrawCapture {
             if (snap == null) return null;
 
             int enabledCount = 0;
-            for (int i = 0; i < VertexAttribState.MAX_ATTRIBS; i++) {
+            for (int i = 0; i < VAOManager.MAX_ATTRIBS; i++) {
                 if (snap.get(i) != null) enabledCount++;
             }
             if (enabledCount == 0) {
@@ -141,7 +141,7 @@ public final class IndexedDrawCapture {
             final int[] types = new int[enabledCount];
             final boolean[] normalized = new boolean[enabledCount];
             int k = 0;
-            for (int i = 0; i < VertexAttribState.MAX_ATTRIBS; i++) {
+            for (int i = 0; i < VAOManager.MAX_ATTRIBS; i++) {
                 final AttribSnapshot.AttribDesc d = snap.get(i);
                 if (d == null) continue;
                 locations[k] = i;

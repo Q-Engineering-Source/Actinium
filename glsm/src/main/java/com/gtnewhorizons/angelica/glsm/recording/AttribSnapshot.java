@@ -3,7 +3,7 @@ package com.gtnewhorizons.angelica.glsm.recording;
 import com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.GLTypes;
-import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
+import com.gtnewhorizons.angelica.glsm.ffp.VAOManager;
 import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.lwjgl.opengl.GL15;
@@ -70,7 +70,7 @@ public final class AttribSnapshot {
      * allocating any hashmaps. A second distinct VBO promotes to the map-backed fallback.
      */
     public static AttribSnapshot snapshot(int firstVertex, int vertexCount) {
-        final AttribDesc[] out = new AttribDesc[VertexAttribState.MAX_ATTRIBS];
+        final AttribDesc[] out = new AttribDesc[VAOManager.MAX_ATTRIBS];
         final List<ByteBuffer> allocated = new ArrayList<>();
         final int prevVBO = GLStateManager.getBoundVBO();
         boolean success = false;
@@ -82,8 +82,8 @@ public final class AttribSnapshot {
         Int2ObjectOpenHashMap<long[]> vboRanges = null;
 
         final long lastVtx = (long) firstVertex + vertexCount - 1;
-        for (int i = 0; i < VertexAttribState.MAX_ATTRIBS; i++) {
-            final VertexAttribState.Attrib a = VertexAttribState.get(i);
+        for (int i = 0; i < VAOManager.MAX_ATTRIBS; i++) {
+            final VAOManager.Attrib a = GLStateManager.getVertexAttrib(i);
             if (a == null || !a.enabled || a.vboId == 0) continue;
             final int stride = a.effectiveStride();
             final long typeBytes = (long) a.size * GLTypes.sizeBytes(a.type);
@@ -118,8 +118,8 @@ public final class AttribSnapshot {
         Int2LongOpenHashMap vboReadOffsets = null;
 
         try {
-            for (int i = 0; i < VertexAttribState.MAX_ATTRIBS; i++) {
-                final VertexAttribState.Attrib a = VertexAttribState.get(i);
+            for (int i = 0; i < VAOManager.MAX_ATTRIBS; i++) {
+                final VAOManager.Attrib a = GLStateManager.getVertexAttrib(i);
                 if (a == null || !a.enabled) continue;
 
                 if (a.vboId != 0) {

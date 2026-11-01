@@ -62,10 +62,10 @@ import com.gtnewhorizons.angelica.glsm.states.ImageUnitBinding;
 import com.gtnewhorizons.angelica.glsm.states.PixelUnpackState;
 import com.gtnewhorizons.angelica.glsm.states.TextureBinding;
 import com.gtnewhorizons.angelica.glsm.states.TextureUnitArray;
-import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
+import com.gtnewhorizons.angelica.glsm.ffp.VAOManager;
+import com.gtnewhorizons.angelica.glsm.streaming.StreamingVaos;
 import com.gtnewhorizons.angelica.glsm.texture.TextureInfo;
 import com.gtnewhorizons.angelica.glsm.texture.TextureInfoCache;
-import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import net.minecraft.client.renderer.GlStateManager;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
@@ -89,6 +89,7 @@ import org.lwjgl.opengl.ARBShaderObjects;
 import org.lwjgl.opengl.ContextCapabilities;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.Drawable;
+import org.lwjgl.opengl.DrawableGL;
 import org.lwjgl.opengl.EXTTextureFilterAnisotropic;
 import org.lwjgl.opengl.GLUtil;
 import org.lwjgl.opengl.OpenGLException;
@@ -124,6 +125,7 @@ import java.nio.ShortBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -158,8 +160,6 @@ public class GLStateManager {
         if (WARN_ONCE.add(key)) LOGGER.warn(fmt, args);
     }
     private static final boolean DEBUG_DRAW_LOGS = Boolean.getBoolean("actinium.glsm.verboseDrawLogs");
-    /** Escape hatch: -Dactinium.glsmFullClientArrayUpload=true restores whole-allocation uploads per draw. */
-    private static final boolean FULL_CLIENT_ARRAY_UPLOAD = Boolean.getBoolean("actinium.glsmFullClientArrayUpload");
 
     // Thread Checking - must be early in static init order so isMainThread() works for state initialization
     @Getter private static final Thread MainThread = Thread.currentThread();
@@ -172,60 +172,99 @@ public class GLStateManager {
 
     public static ContextCapabilities capabilities;
 
-    // All mutable GL tracking state lives in GLContextState: one instance for the primary
-    // (game) context plus one per worker context during parallel chunk building. ctx()
-    // resolves the calling thread's context.
     private static final CopyOnWriteArrayList<GLContextState> registeredContexts = new CopyOnWriteArrayList<>();
     private static volatile GLContextState primaryContext;
+    private static GLContextState mainCtx;
     private static final ThreadLocal<GLContextState> tlWorkerContext = new ThreadLocal<>();
+    private static final ThreadLocal<Long> tlBoundContextHandle = new ThreadLocal<>();
+    private static final IdentityHashMap<Object, GLContextState> drawableContexts = new IdentityHashMap<>();
     private static volatile boolean workerContextsActive;
     private static int workerContextCount;
 
     static GLContextState ctx() {
+        if (Thread.currentThread() == MainThread) {
+            final GLContextState current = mainCtx;
+            return current != null ? current : (mainCtx = primaryContext());
+        }
         if (!workerContextsActive) return primaryContext();
-        final GLContextState st = tlWorkerContext.get();
-        return st != null ? st : primaryContext();
+        final GLContextState current = tlWorkerContext.get();
+        return current != null ? current : primaryContext();
     }
 
     private static GLContextState primaryContext() {
-        GLContextState p = primaryContext;
-        if (p != null) return p;
+        GLContextState primary = primaryContext;
+        if (primary != null) return primary;
         synchronized (GLStateManager.class) {
-            p = primaryContext;
-            if (p == null) {
+            primary = primaryContext;
+            if (primary == null) {
                 StackIdAllocator.beginContext();
-                p = new GLContextState();
-                primaryContext = p;
-                registeredContexts.add(p);
-                p.init();
+                try {
+                    primary = new GLContextState();
+                    primaryContext = primary;
+                    registeredContexts.add(primary);
+                    primary.init();
+                } finally {
+                    StackIdAllocator.endContext();
+                }
+            }
+        }
+        return primary;
+    }
+
+    private static GLContextState newContext() {
+        synchronized (GLStateManager.class) {
+            StackIdAllocator.beginContext();
+            try {
+                final GLContextState created = new GLContextState();
+                registeredContexts.add(created);
+                created.init();
+                return created;
+            } finally {
                 StackIdAllocator.endContext();
             }
         }
-        return p;
+    }
+
+    private static boolean bindThreadContext(GLContextState target) {
+        final GLContextState previous = tlWorkerContext.get();
+        if (Thread.currentThread() == MainThread) mainCtx = target;
+        if (previous == target) return false;
+        synchronized (GLStateManager.class) {
+            if (previous == null) workerContextCount++;
+            if (target == null) workerContextCount--;
+            workerContextsActive = workerContextCount != 0;
+        }
+        if (target == null) tlWorkerContext.remove();
+        else tlWorkerContext.set(target);
+        return true;
     }
 
     static GLContextState enterWorkerContext() {
-        synchronized (GLStateManager.class) {
-            StackIdAllocator.beginContext();
-            final GLContextState st = new GLContextState();
-            tlWorkerContext.set(st);
-            workerContextCount++;
-            workerContextsActive = true;
-            registeredContexts.add(st);
-            st.init();
-            StackIdAllocator.endContext();
-            return st;
+        if (tlWorkerContext.get() != null) {
+            throw new IllegalStateException("Thread " + Thread.currentThread() + " already has a GL context");
         }
+        final GLContextState created = newContext();
+        if (RENDER_BACKEND.hasContext()) initializeDrawableResources(created);
+        bindThreadContext(created);
+        return created;
     }
 
     static void exitWorkerContext() {
-        final GLContextState st = tlWorkerContext.get();
-        if (st != null) {
-            registeredContexts.remove(st);
-            tlWorkerContext.remove();
-            synchronized (GLStateManager.class) {
-                if (--workerContextCount == 0) workerContextsActive = false;
+        final GLContextState current = tlWorkerContext.get();
+        if (current != null) {
+            registeredContexts.remove(current);
+            bindThreadContext(null);
+        }
+    }
+
+    private static GLContextState contextFor(Object drawable) {
+        synchronized (GLStateManager.class) {
+            GLContextState state = drawableContexts.get(drawable);
+            if (state == null) {
+                state = newContext();
+                drawableContexts.put(drawable, state);
             }
+            return state;
         }
     }
 
@@ -259,19 +298,20 @@ public class GLStateManager {
 
     /** Flush deferred vertex attribute uploads. Called before draw to ensure default attrib values are current. */
     public static void flushDeferredVertexAttribs() {
-        RENDER_BACKEND.vertexAttrib4f(Usage.COLOR.getAttributeLocation(), ctx().color.getRed(), ctx().color.getGreen(), ctx().color.getBlue(), ctx().color.getAlpha());
-        ctx().dirtyColorAttrib = false;
-        RENDER_BACKEND.vertexAttrib4f(Usage.SECONDARY_UV.getAttributeLocation(), GLSMConfig.lastBrightnessX, GLSMConfig.lastBrightnessY, 0.0f, 1.0f);
-        ctx().dirtyLightmapAttrib = false;
-        if (ctx().dirtyNormalAttrib) {
+        final GLContextState glCtx = ctx();
+        RENDER_BACKEND.vertexAttrib4f(Usage.COLOR.getAttributeLocation(), glCtx.color.getRed(), glCtx.color.getGreen(), glCtx.color.getBlue(), glCtx.color.getAlpha());
+        glCtx.dirtyColorAttrib = false;
+        RENDER_BACKEND.vertexAttrib4f(Usage.SECONDARY_UV.getAttributeLocation(), glCtx.lastBrightnessX, glCtx.lastBrightnessY, 0.0f, 1.0f);
+        glCtx.dirtyLightmapAttrib = false;
+        if (glCtx.dirtyNormalAttrib) {
             final var n = ShaderManager.getCurrentNormal();
             RENDER_BACKEND.vertexAttrib3f(Usage.NORMAL.getAttributeLocation(), n.x, n.y, n.z);
-            ctx().dirtyNormalAttrib = false;
+            glCtx.dirtyNormalAttrib = false;
         }
-        if (ctx().dirtyTexCoordAttrib) {
+        if (glCtx.dirtyTexCoordAttrib) {
             final var tc = ShaderManager.getCurrentTexCoord();
             RENDER_BACKEND.vertexAttrib4f(Usage.PRIMARY_UV.getAttributeLocation(), tc.x, tc.y, tc.z, tc.w);
-            ctx().dirtyTexCoordAttrib = false;
+            glCtx.dirtyTexCoordAttrib = false;
         }
     }
 
@@ -281,6 +321,30 @@ public class GLStateManager {
 
     public static Vec4fStack getTexCoordStack() {
         return ctx().texCoordStack;
+    }
+
+    public static ShaderManager getFfp() {
+        return ctx().ffp;
+    }
+
+    public static VAOManager getVaoManager() {
+        return ctx().vaos;
+    }
+
+    public static VAOManager.Attrib getVertexAttrib(int index) {
+        return ctx().vaos.attrib(index);
+    }
+
+    public static StreamingVaos getStreamingVaos() {
+        return ctx().streamingVaos;
+    }
+
+    public static float getLastBrightnessX() {
+        return ctx().lastBrightnessX;
+    }
+
+    public static float getLastBrightnessY() {
+        return ctx().lastBrightnessY;
     }
 
     // Highest texture unit index that has ever had a non-zero binding; limits onDeleteTexture scan range
@@ -311,16 +375,14 @@ public class GLStateManager {
         return true;
     }
     @Getter @Setter private static Thread drawableGLHolder = MainThread;
-    // Reference to DrawableGL (main display context) - works with both FML and BLS splash
     @Setter private static Drawable drawableGL = null;
-    // Context handle captured when the default VAO is created during init. Splash replacements
-    // can migrate the game to a different GL context at finish (issue #150); compared against
-    // the current handle to detect the migration. 0 when the backend has no queryable handle.
+    private static Object displayContextToken;
     private static long displayContextHandle;
+    private static long boundDisplayContextHandle;
 
     public static boolean isCachingEnabled() {
         if (splashComplete) return true;
-        return Thread.currentThread() == drawableGLHolder;
+        return Thread.currentThread() == drawableGLHolder || tlWorkerContext.get() != null;
     }
 
     /**
@@ -410,19 +472,9 @@ public class GLStateManager {
             throw new RuntimeException(e);
         }
     }
-
-
-
-    private static int clientArraysVBO = 0;
-    private static int clientArraysVBOCapacity = 0;
-    private static final int[] clientArraysVBOOffsets = new int[VertexAttribState.MAX_ATTRIBS];
-    private static final int[] clientArraysVBOUploadLengths = new int[VertexAttribState.MAX_ATTRIBS];
-    private static final Int2IntOpenHashMap vaoEboMap = new Int2IntOpenHashMap();
-
-    static {
-        vaoEboMap.defaultReturnValue(0);
+    public static int getDefaultVAO() {
+        return ctx().defaultVAO;
     }
-    @Getter private static int defaultVAO; // Non-zero on core profile
 
     public static void reset() {
         final GLContextState glCtx = ctx();
@@ -441,8 +493,7 @@ public class GLStateManager {
 
         glCtx.modelViewMatrix.clear();
         glCtx.projectionMatrix.clear();
-        vaoEboMap.clear();
-        VertexAttribState.reset(glCtx.boundVAO);
+        glCtx.vaos.reset(glCtx.boundVAO);
     }
 
     /**
@@ -629,11 +680,13 @@ public class GLStateManager {
             GLDebug.debugMessage("Angelica Debug Annotator Initialized");
         }
 
-        defaultVAO = RENDER_BACKEND.genVertexArrays();
+        final GLContextState glCtx = ctx();
+        glCtx.defaultVAO = RENDER_BACKEND.genVertexArrays();
         displayContextHandle = RENDER_BACKEND.getContextHandle();
-        RENDER_BACKEND.bindVertexArray(defaultVAO);
-        ctx().boundVAO = defaultVAO;
-        VertexAttribState.init(defaultVAO);
+        if (boundDisplayContextHandle == 0) boundDisplayContextHandle = displayContextHandle;
+        RENDER_BACKEND.bindVertexArray(glCtx.defaultVAO);
+        glCtx.boundVAO = glCtx.defaultVAO;
+        glCtx.vaos.init(glCtx.defaultVAO);
         if (initCallback != null) {
             initCallback.run();
         }
@@ -653,7 +706,8 @@ public class GLStateManager {
     }
 
     public static void requireContext(String call) {
-        if (Thread.currentThread() == MainThread || Thread.currentThread() == drawableGLHolder) return;
+        if (Thread.currentThread() == MainThread || Thread.currentThread() == drawableGLHolder
+            || tlWorkerContext.get() != null) return;
         throw new IllegalStateException(call + " on thread " + Thread.currentThread().getName() + ", which has no GL context");
     }
 
@@ -1105,7 +1159,7 @@ public class GLStateManager {
             case GL11.GL_STENCIL_CLEAR_VALUE -> ctx().stencilState.getClearValue();
 
             case GL15.GL_ARRAY_BUFFER_BINDING -> ctx().boundVBO;
-            case GL15.GL_ELEMENT_ARRAY_BUFFER_BINDING -> ctx().boundEBO;
+            case GL15.GL_ELEMENT_ARRAY_BUFFER_BINDING -> ctx().vaos.boundEBO;
             case GL21.GL_PIXEL_UNPACK_BUFFER_BINDING -> ctx().boundPixelUnpackBuffer;
             case GL21.GL_PIXEL_PACK_BUFFER_BINDING -> ctx().boundPixelPackBuffer;
 
@@ -2793,11 +2847,11 @@ public class GLStateManager {
             // A VAO is always bound post-init (glBindVertexArray(0) redirects to the default
             // VAO), so EBO-backed draws are baked via IndexedDrawCapture. When baking is not
             // possible fall back to Actinium's immediate-mode VBO tessellation.
-            final IndexedDrawCapture capture = IndexedDrawCapture.create(mode, indices_count, type, indices_buffer_offset, ctx().boundEBO);
+            final IndexedDrawCapture capture = IndexedDrawCapture.create(mode, indices_count, type, indices_buffer_offset, ctx().vaos.boundEBO);
             if (capture != null) {
                 DisplayListManager.recordIndexedDrawCapture(capture);
-            } else if (isVBOBound() || VertexAttribState.hasVBOBoundAttrib()) {
-                final DirectTessellator result = ImmediateModeRecorder.processDrawElementsFromVBO(mode, indices_count, type, indices_buffer_offset, ctx().boundEBO);
+            } else if (isVBOBound() || ctx().vaos.hasVBOBoundAttrib()) {
+                final DirectTessellator result = ImmediateModeRecorder.processDrawElementsFromVBO(mode, indices_count, type, indices_buffer_offset, ctx().vaos.boundEBO);
                 if (result != null) {
                     DisplayListManager.addImmediateModeDraw(result);
                 }
@@ -3020,18 +3074,11 @@ public class GLStateManager {
         }
     }
 
-    /**
-     * Selects the FFP variant before a raw draw call. Draws fed by client-side arrays derive
-     * the vertex format from the actually enabled attributes (see
-     * {@link VertexAttribState#currentClientArrayVertexFlags()}): the cached currentVertexFlags
-     * only reflects the last buffer-state setup and may describe attributes this draw does not
-     * provide, making the FFP shader read unset attribute values (e.g. a black default vertex
-     * color for a POSITION-only draw such as the legacy end portal TESR).
-     */
     private static void preDrawFFP() {
-        final ShaderManager ffp = ShaderManager.getInstance();
-        if (VertexAttribState.hasAnyClientSideEnabledAttrib()) {
-            ffp.preDraw(VertexAttribState.currentClientArrayVertexFlags());
+        final VAOManager vaos = ctx().vaos;
+        final ShaderManager ffp = ctx().ffp;
+        if (vaos.hasAnyClientSideEnabledAttrib()) {
+            ffp.preDraw(vaos.currentClientArrayVertexFlags());
         } else {
             ffp.preDraw();
         }
@@ -3044,74 +3091,12 @@ public class GLStateManager {
     private static void prepareClientArrays(int first, int count) {
         final boolean perfDebugEnabled = GLSMPerfDebug.isEnabled();
         final long perfStart = perfDebugEnabled ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.GL_PREPARE_CLIENT_ARRAYS) : 0L;
-        if (ShaderManager.getInstance().isEnabled() && VertexAttribState.hasAnyClientSideEnabledAttrib()) {
-            uploadClientArraysToVBO(first, count);
+        final VAOManager vaos = ctx().vaos;
+        if (ShaderManager.isEnabled() && vaos.hasAnyClientSideEnabledAttrib()) {
+            vaos.uploadClientArraysToVBO(first, count);
         }
         if (perfDebugEnabled) {
             GLSMPerfDebug.end(GLSMPerfDebug.Stage.GL_PREPARE_CLIENT_ARRAYS, perfStart);
-        }
-    }
-
-    /**
-     * If any enabled vertex attribute uses a client-side pointer (no VBO), upload such attribs
-     * into a shared stream VBO so the draw succeeds under core profile. When the draw's vertex
-     * range [first, first + count) is known (count >= 0), each attrib is narrowed to the bytes
-     * that range can actually read; the captured client pointer spans the whole underlying
-     * allocation, which can be megabytes larger than one draw needs. Indexed draws with an
-     * unknown maximum index pass count = -1 and keep the full-allocation upload.
-     */
-    private static void uploadClientArraysToVBO(int first, int count) {
-        final boolean perfDebugEnabled = GLSMPerfDebug.isEnabled();
-        final long perfStart = perfDebugEnabled ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.GL_CLIENT_ARRAY_UPLOAD) : 0L;
-        final boolean fullUpload = FULL_CLIENT_ARRAY_UPLOAD || count < 0;
-        int totalBytes = 0;
-        for (int i = 0; i < VertexAttribState.MAX_ATTRIBS; i++) {
-            clientArraysVBOOffsets[i] = -1;
-            final VertexAttribState.Attrib a = VertexAttribState.get(i);
-            if (!a.enabled || a.clientPointer == null) continue;
-            final int uploadLength = fullUpload ? a.clientPointer.remaining()
-                : VertexAttribState.computeUploadLength(a, first, count);
-            clientArraysVBOUploadLengths[i] = uploadLength;
-            clientArraysVBOOffsets[i] = totalBytes;
-            totalBytes += uploadLength;
-        }
-        if (totalBytes == 0) {
-            if (perfDebugEnabled) {
-                GLSMPerfDebug.end(GLSMPerfDebug.Stage.GL_CLIENT_ARRAY_UPLOAD, perfStart);
-            }
-            return;
-        }
-
-        if (clientArraysVBO == 0) {
-            clientArraysVBO = RENDER_BACKEND.genBuffers();
-        }
-
-        final int savedVBO = ctx().boundVBO;
-        glBindBuffer(GL15.GL_ARRAY_BUFFER, clientArraysVBO);
-
-        if (totalBytes > clientArraysVBOCapacity) {
-            int newCap = Math.max(4096, clientArraysVBOCapacity);
-            while (newCap < totalBytes) newCap *= 2;
-            clientArraysVBOCapacity = newCap;
-        }
-        RENDER_BACKEND.bufferData(GL15.GL_ARRAY_BUFFER, clientArraysVBOCapacity, GL15.GL_STREAM_DRAW);
-        if (DEBUG_DRAW_LOGS) {
-            GLSMDebug.logClientArrayUpload(totalBytes, clientArraysVBOCapacity, clientArraysVBO, savedVBO, clientArraysVBOOffsets);
-        }
-
-        for (int i = 0; i < VertexAttribState.MAX_ATTRIBS; i++) {
-            if (clientArraysVBOOffsets[i] < 0) continue;
-            final VertexAttribState.Attrib a = VertexAttribState.get(i);
-            final ByteBuffer slice = a.clientPointer.duplicate();
-            slice.limit(slice.position() + clientArraysVBOUploadLengths[i]);
-            RENDER_BACKEND.bufferSubData(GL15.GL_ARRAY_BUFFER, clientArraysVBOOffsets[i], slice);
-            RENDER_BACKEND.vertexAttribPointer(i, a.size, a.type, a.normalized, a.stride, (long) clientArraysVBOOffsets[i]);
-        }
-
-        glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVBO);
-        if (perfDebugEnabled) {
-            GLSMPerfDebug.end(GLSMPerfDebug.Stage.GL_CLIENT_ARRAY_UPLOAD, perfStart);
-            GLSMPerfDebug.countClientArrayUpload(totalBytes);
         }
     }
 
@@ -3336,7 +3321,7 @@ public class GLStateManager {
     }
 
     public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, long offset) {
-        VertexAttribState.set(index, size, type, normalized, stride, offset, ctx().boundVBO);
+        ctx().vaos.setAttribute(index, size, type, normalized, stride, offset, ctx().boundVBO);
         RENDER_BACKEND.vertexAttribPointer(index, size, type, normalized, stride, offset);
     }
 
@@ -3345,40 +3330,40 @@ public class GLStateManager {
     }
 
     public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, FloatBuffer pointer) {
-        VertexAttribState.set(index, size, type, normalized, stride, MemoryUtilities.memByteBuffer(pointer), 0);
+        ctx().vaos.setAttribute(index, size, type, normalized, stride, MemoryUtilities.memByteBuffer(pointer), 0);
     }
 
     public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, DoubleBuffer pointer) {
-        VertexAttribState.set(index, size, type, normalized, stride, MemoryUtilities.memByteBuffer(pointer), 0);
+        ctx().vaos.setAttribute(index, size, type, normalized, stride, MemoryUtilities.memByteBuffer(pointer), 0);
     }
 
     public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, IntBuffer pointer) {
-        VertexAttribState.set(index, size, type, normalized, stride, MemoryUtilities.memByteBuffer(pointer), 0);
+        ctx().vaos.setAttribute(index, size, type, normalized, stride, MemoryUtilities.memByteBuffer(pointer), 0);
     }
 
     public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, ShortBuffer pointer) {
-        VertexAttribState.set(index, size, type, normalized, stride, MemoryUtilities.memByteBuffer(pointer), 0);
+        ctx().vaos.setAttribute(index, size, type, normalized, stride, MemoryUtilities.memByteBuffer(pointer), 0);
     }
 
     public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, ByteBuffer pointer) {
-        VertexAttribState.set(index, size, type, normalized, stride, pointer, 0);
+        ctx().vaos.setAttribute(index, size, type, normalized, stride, pointer, 0);
     }
 
     public static void glVertexAttribIPointer(int index, int size, int type, int stride, long offset) {
-        VertexAttribState.set(index, size, type, false, stride, offset, ctx().boundVBO);
+        ctx().vaos.setAttribute(index, size, type, false, stride, offset, ctx().boundVBO);
         RENDER_BACKEND.vertexAttribIPointer(index, size, type, stride, offset);
     }
 
     public static void glVertexAttribIPointer(int index, int size, int type, int stride, ByteBuffer pointer) {
-        VertexAttribState.set(index, size, type, false, stride, pointer, 0);
+        ctx().vaos.setAttribute(index, size, type, false, stride, pointer, 0);
     }
 
     public static void glVertexAttribIPointer(int index, int size, int type, int stride, IntBuffer pointer) {
-        VertexAttribState.set(index, size, type, false, stride, MemoryUtilities.memByteBuffer(pointer), 0);
+        ctx().vaos.setAttribute(index, size, type, false, stride, MemoryUtilities.memByteBuffer(pointer), 0);
     }
 
     public static void glVertexAttribIPointer(int index, int size, int type, int stride, ShortBuffer pointer) {
-        VertexAttribState.set(index, size, type, false, stride, MemoryUtilities.memByteBuffer(pointer), 0);
+        ctx().vaos.setAttribute(index, size, type, false, stride, MemoryUtilities.memByteBuffer(pointer), 0);
     }
 
     public static void glVertexAttribDivisor(int index, int divisor) { RENDER_BACKEND.vertexAttribDivisor(index, divisor); }
@@ -3391,12 +3376,12 @@ public class GLStateManager {
     public static void glVertexAttribBinding(int attribindex, int bindingindex) { RENDER_BACKEND.vertexAttribBinding(attribindex, bindingindex); }
 
     public static void glEnableVertexAttribArray(int index) {
-        VertexAttribState.setEnabled(index, true);
+        ctx().vaos.setEnabled(index, true);
         RENDER_BACKEND.enableVertexAttribArray(index);
     }
 
     public static void glDisableVertexAttribArray(int index) {
-        VertexAttribState.setEnabled(index, false);
+        ctx().vaos.setEnabled(index, false);
         RENDER_BACKEND.disableVertexAttribArray(index);
     }
 
@@ -3417,7 +3402,7 @@ public class GLStateManager {
             case GL11.GL_TEXTURE_COORD_ARRAY -> switch (ctx().clientActiveTextureUnit) {
                 // Units 0/1 are the legacy texture/lightmap slots. Units 2/3 are the extended
                 // multi-texture UV slots (attributes 5/6) and carry no legacy FFP format flag; their
-                // per-vertex availability is tracked per attribute in VertexAttribState. This mirrors
+                // per-vertex availability is tracked per attribute in VAOManager. This mirrors
                 // texCoordAttributeLocation(), which supports exactly units 0..3.
                 case 0 -> VertexFlags.TEXTURE_BIT;
                 case 1 -> VertexFlags.BRIGHTNESS_BIT;
@@ -3924,54 +3909,128 @@ public class GLStateManager {
         drawable.makeCurrent();
         CurrentThread = Thread.currentThread();
 
-        // Post-splash: single context, always cache
-        if (splashComplete) return;
+        final boolean display;
+        try {
+            display = drawable == Display.getDrawable();
+        } catch (Exception e) {
+            LOGGER.warn("Display not ready in makeCurrent", e);
+            return;
+        }
+        final Object token = drawable instanceof DrawableGL drawableGL
+            ? drawableGL.getContext()
+            : drawable;
+        final long nativeHandle = RENDER_BACKEND.getContextHandle();
+        if (display) {
+            if (!splashComplete) GLStateManager.drawableGL = drawable;
+            bindDisplayContext(token, nativeHandle);
+        } else {
+            bindDrawableContext(token, nativeHandle);
+        }
+    }
 
-        if (drawableGL == null) {
-            // Lazy-capture DrawableGL reference (Display.getDrawable()) on first opportunity
-            try {
-                if (drawable == Display.getDrawable()) {
-                    drawableGL = drawable;
-                }
-            } catch (Exception e) {
-                // Display not ready - can't identify DrawableGL yet, will retry next call
-                LOGGER.warn("Display not ready in makeCurrent", e);
-                return;
+    public static void releaseContext(Drawable drawable) throws LWJGLException {
+        drawable.releaseContext();
+        releaseBoundContext();
+    }
+
+    public static void registerDrawableContext(Object contextToken) {
+        if (contextToken == null) throw new IllegalArgumentException("contextToken must not be null");
+        contextFor(contextToken);
+    }
+
+    public static void bindDisplayContext(Object contextToken, long nativeHandle) {
+        if (contextToken == null) throw new IllegalArgumentException("contextToken must not be null");
+        if (displayContextHandle == 0) displayContextHandle = nativeHandle;
+        boundDisplayContextHandle = nativeHandle;
+        displayContextToken = contextToken;
+        synchronized (GLStateManager.class) {
+            drawableContexts.put(contextToken, primaryContext());
+        }
+        if (!splashComplete) drawableGLHolder = Thread.currentThread();
+        tlBoundContextHandle.set(nativeHandle);
+        if (bindThreadContext(null)) replayStateToBackend();
+    }
+
+    public static void bindDrawableContext(Object contextToken, long nativeHandle) {
+        if (contextToken == null) throw new IllegalArgumentException("contextToken must not be null");
+        if (contextToken == displayContextToken) {
+            bindDisplayContext(contextToken, nativeHandle);
+            return;
+        }
+        final GLContextState target = contextFor(contextToken);
+        if (!target.viewportInitialized) {
+            final IntBuffer viewport = BufferUtils.createIntBuffer(4);
+            RENDER_BACKEND.getInteger(GL11.GL_VIEWPORT, viewport);
+            target.viewportState.setViewPort(viewport.get(0), viewport.get(1), viewport.get(2), viewport.get(3));
+            target.viewportInitialized = true;
+        }
+        initializeDrawableResources(target);
+        if (drawableGLHolder == Thread.currentThread()) drawableGLHolder = null;
+        tlBoundContextHandle.set(nativeHandle);
+        if (bindThreadContext(target)) replayStateToBackend();
+    }
+
+    private static void initializeDrawableResources(GLContextState glCtx) {
+        if (glCtx.defaultVAO == 0) {
+            glCtx.defaultVAO = RENDER_BACKEND.genVertexArrays();
+        }
+        if (!glCtx.vaos.isInitialized()) {
+            glCtx.boundVAO = glCtx.defaultVAO;
+            glCtx.vaos.init(glCtx.defaultVAO);
+        }
+    }
+
+    public static void releaseBoundContext() {
+        bindThreadContext(null);
+        tlBoundContextHandle.remove();
+        if (drawableGLHolder == Thread.currentThread()) drawableGLHolder = null;
+    }
+
+    public static long getBoundContextHandle() {
+        final Long handle = tlBoundContextHandle.get();
+        return handle != null ? handle : 0L;
+    }
+
+    public static void retireDrawableContext(Object contextToken) {
+        if (contextToken == displayContextToken) {
+            retireDisplayContext(contextToken);
+            return;
+        }
+        final GLContextState retired;
+        synchronized (GLStateManager.class) {
+            retired = drawableContexts.remove(contextToken);
+            if (retired != null) registeredContexts.remove(retired);
+        }
+        if (retired != null && tlWorkerContext.get() == retired) releaseBoundContext();
+    }
+
+    public static void retireDisplayContext(Object contextToken) {
+        synchronized (GLStateManager.class) {
+            drawableContexts.remove(contextToken);
+            if (displayContextToken == contextToken) {
+                displayContextToken = null;
+                boundDisplayContextHandle = 0;
             }
         }
-
-        if (drawableGL != null && drawable == drawableGL) {
-            // Switching TO DrawableGL - enable caching for this thread
-            drawableGLHolder = CurrentThread;
-        } else if (drawableGLHolder == CurrentThread) {
-            // This thread held DrawableGL but is switching AWAY - disable caching
-            drawableGLHolder = null;
-        }
-        // else: Thread switching to non-DrawableGL, wasn't holder - no change needed
     }
 
-    /**
-     * Whether the current GL context differs from the one the default VAO was created on during
-     * init (issue #150). Splash replacements can migrate the game to their own context at finish;
-     * container objects (VAOs) from the startup context are invalid afterwards, while VBOs are
-     * shared and stay valid.
-     */
     public static boolean displayContextMigrated() {
-        return displayContextHandle != 0 && RENDER_BACKEND.getContextHandle() != displayContextHandle;
+        return displayContextHandle != 0 && boundDisplayContextHandle != 0
+            && boundDisplayContextHandle != displayContextHandle;
     }
 
-    /**
-     * Recreate the default VAO on the current context and force the binding bookkeeping back in
-     * sync. Only meaningful after {@link #displayContextMigrated()} reported a migration.
-     */
     public static void recreateDefaultVertexArray() {
-        defaultVAO = glGenVertexArrays();
-        ctx().boundVAO = -1;
+        final GLContextState glCtx = ctx();
+        glCtx.defaultVAO = glGenVertexArrays();
+        glCtx.boundVAO = -1;
         glBindVertexArray(0);
-        VertexAttribState.init(defaultVAO);
-        // Adopt the new context handle so displayContextMigrated() stops firing, then re-seed
-        // every cached state value onto the fresh context (issue #150/#151).
-        displayContextHandle = RENDER_BACKEND.getContextHandle();
+        glCtx.vaos.init(glCtx.defaultVAO);
+        glCtx.streamingVaos.reset();
+        glCtx.ffp.resetForContextMigration();
+        if (boundDisplayContextHandle == 0) {
+            boundDisplayContextHandle = RENDER_BACKEND.getContextHandle();
+        }
+        displayContextHandle = boundDisplayContextHandle;
         replayStateToBackend();
     }
 
@@ -6565,22 +6624,18 @@ public class GLStateManager {
 
     private static void invalidateDeletedBuffer(int buffer) {
         if (buffer == 0) return;
-        if (ctx().boundVBO == buffer) {
-            ctx().boundVBO = 0;
+        final GLContextState glCtx = ctx();
+        if (glCtx.boundVBO == buffer) {
+            glCtx.boundVBO = 0;
         }
-        if (ctx().boundEBO == buffer) {
-            ctx().boundEBO = 0;
-            vaoEboMap.put(ctx().boundVAO, 0);
-        }
+        glCtx.vaos.onDeleteBuffer(buffer);
     }
 
     public static void glBindBuffer(int target, int buffer) {
         if (target == GL15.GL_ARRAY_BUFFER) {
-            // if (boundVBO == buffer) return; TODO figure out why this breaks switching async occlusion mode
             ctx().boundVBO = buffer;
         } else if (target == GL15.GL_ELEMENT_ARRAY_BUFFER) {
-            ctx().boundEBO = buffer;
-            vaoEboMap.put(ctx().boundVAO, buffer);
+            ctx().vaos.onBindEBO(buffer);
         } else if (target == GL21.GL_PIXEL_UNPACK_BUFFER) {
             ctx().boundPixelUnpackBuffer = buffer;
         } else if (target == GL21.GL_PIXEL_PACK_BUFFER) {
@@ -6894,30 +6949,24 @@ public class GLStateManager {
             // Since the vao needs to be bound to do stuff like state setup & data upload, it'll still execute the bind call.
             // This is technically wrong, but I'm not sure if there's a better solution here.
         }
+        final GLContextState glCtx = ctx();
         if (array == 0) {
-            array = defaultVAO;
+            array = glCtx.defaultVAO;
         }
         RENDER_BACKEND.bindVertexArray(array);
-        if (ctx().boundVAO != array) {
-            ctx().boundVAO = array;
-            ctx().boundEBO = vaoEboMap.get(array);
-            VertexAttribState.onBindVertexArray(array);
-            if (ShaderManager.getInstance().isEnabled()) {
-                ShaderManager.getInstance().onBindVertexArray(array);
-            }
+        if (glCtx.boundVAO != array) {
+            glCtx.boundVAO = array;
+            glCtx.vaos.onBindVertexArrayPre(array);
         }
     }
 
     public static void glDeleteVertexArrays(int array) {
-        ShaderManager.getInstance().onDeleteVertexArray(array);
-        VertexAttribState.onDeleteVertexArray(array);
-        vaoEboMap.remove(array);
-        if (array == ctx().boundVAO) {
-            // Deleting the bound VAO implicitly unbinds it. Rebind the default VAO.
-            ctx().boundVAO = defaultVAO;
-            ctx().boundEBO = vaoEboMap.get(defaultVAO);
-            VertexAttribState.onBindVertexArray(defaultVAO);
-            RENDER_BACKEND.bindVertexArray(defaultVAO);
+        final GLContextState glCtx = ctx();
+        glCtx.vaos.onDeleteVertexArray(array);
+        if (array == glCtx.boundVAO) {
+            glCtx.boundVAO = glCtx.defaultVAO;
+            glCtx.vaos.onBindVertexArrayPre(glCtx.defaultVAO);
+            RENDER_BACKEND.bindVertexArray(glCtx.defaultVAO);
         }
         RENDER_BACKEND.deleteVertexArrays(array);
     }
@@ -6932,13 +6981,7 @@ public class GLStateManager {
 
     public static int glGenVertexArrays() {
         final int array = RENDER_BACKEND.genVertexArrays();
-        // The driver recycles ids of deleted VAOs, and the splash screen's separate GL context
-        // hands out the same numeric ids as the main context. Forget whatever this id meant
-        // before: any cached state for it describes a dead object and must not leak into the
-        // new VAO (issue #150).
-        ShaderManager.getInstance().onDeleteVertexArray(array);
-        VertexAttribState.onDeleteVertexArray(array);
-        vaoEboMap.remove(array);
+        ctx().vaos.onDeleteVertexArray(array);
         return array;
     }
 
@@ -7282,9 +7325,10 @@ public class GLStateManager {
 
     public static void setLightmapTextureCoords(int unit, float x, float y) {
         if (unit == GL13.GL_TEXTURE1) {
-            GLSMConfig.lastBrightnessX = x;
-            GLSMConfig.lastBrightnessY = y;
-            ctx().dirtyLightmapAttrib = true;
+            final GLContextState glCtx = ctx();
+            glCtx.lastBrightnessX = x;
+            glCtx.lastBrightnessY = y;
+            glCtx.dirtyLightmapAttrib = true;
             if (GLSMHooks.LIGHTMAP_COORDS.hasListeners()) {
                 GLSMHooks.lightmapCoordsEvent.x = x;
                 GLSMHooks.lightmapCoordsEvent.y = y;
@@ -8411,6 +8455,11 @@ public class GLStateManager {
             booleanStates.get(i).applyToBackend();
         }
 
+        RENDER_BACKEND.bindVertexArray(glCtx.boundVAO != 0 ? glCtx.boundVAO : glCtx.defaultVAO);
+        RENDER_BACKEND.bindBuffer(GL15.GL_ARRAY_BUFFER, glCtx.boundVBO);
+        RENDER_BACKEND.useProgram(glCtx.activeProgram);
+        glCtx.ffp.invalidateProgram();
+
         RENDER_BACKEND.depthFunc(glCtx.depthState.getFunc());
         RENDER_BACKEND.depthMask(glCtx.depthState.isMaskEnabled());
         RENDER_BACKEND.clearDepth(glCtx.depthState.getClearValue());
@@ -8921,7 +8970,7 @@ public class GLStateManager {
     }
 
     public static int getBoundEBO() {
-        return ctx().boundEBO;
+        return ctx().vaos.boundEBO;
     }
 
     public static int getBoundVAO() {

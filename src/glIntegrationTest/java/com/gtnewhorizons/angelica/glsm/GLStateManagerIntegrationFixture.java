@@ -20,13 +20,17 @@ import static org.lwjgl.sdl.SDLVideo.SDL_WINDOW_HIDDEN;
 import static org.lwjgl.sdl.SDLVideo.SDL_WINDOW_OPENGL;
 
 public abstract class GLStateManagerIntegrationFixture {
-    private static long window;
-    private static long context;
+    protected static final int WINDOW_WIDTH = 64;
+    protected static final int WINDOW_HEIGHT = 64;
+
+    protected static long window;
+    protected static long context;
 
     @BeforeAll
     static void createGlContext() {
         assertTrue(SDL_Init(SDL_INIT_VIDEO), () -> sdlError("SDL_Init"));
-        window = SDL_CreateWindow("Actinium GLSM integration", 64, 64, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+        window = SDL_CreateWindow(
+            "Actinium GLSM integration", WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
         assertNotEquals(MemoryUtil.NULL, window, () -> sdlError("SDL_CreateWindow"));
         context = SDL_GL_CreateContext(window);
         assertNotEquals(MemoryUtil.NULL, context, () -> sdlError("SDL_GL_CreateContext"));

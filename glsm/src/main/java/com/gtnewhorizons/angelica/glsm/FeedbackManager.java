@@ -1,7 +1,7 @@
 package com.gtnewhorizons.angelica.glsm;
 
 import com.gtnewhorizons.angelica.glsm.recording.ImmediateModeRecorder;
-import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
+import com.gtnewhorizons.angelica.glsm.ffp.VAOManager;
 import com.gtnewhorizons.angelica.glsm.states.ViewportState;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
@@ -127,12 +127,12 @@ public class FeedbackManager {
     }
 
     private static int positionStride() {
-        final int s = VertexAttribState.get(0).effectiveStride();
+        final int s = GLStateManager.getVertexAttrib(0).effectiveStride();
         return (s != 0) ? s : 12;
     }
 
     private static long positionOffset() {
-        return VertexAttribState.get(0).offset;
+        return GLStateManager.getVertexAttrib(0).offset;
     }
 
     public static void processDrawArrays(int mode, int first, int count) {
@@ -151,7 +151,7 @@ public class FeedbackManager {
         computeMVP();
         final int stride = positionStride();
 
-        final int elementSize = VertexAttribState.Attrib.glTypeSizeBytes(type);
+        final int elementSize = VAOManager.Attrib.glTypeSizeBytes(type);
         final int indexByteCount = indexCount * elementSize;
         ensureIndexReadbackCapacity(indexByteCount);
         indexReadbackBuf.clear().limit(indexByteCount);

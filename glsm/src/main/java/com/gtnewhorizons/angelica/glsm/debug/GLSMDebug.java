@@ -2,7 +2,7 @@ package com.gtnewhorizons.angelica.glsm.debug;
 
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
-import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
+import com.gtnewhorizons.angelica.glsm.ffp.VAOManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11;
@@ -173,9 +173,9 @@ public final class GLSMDebug {
         if (count > CLIENT_ARRAY_LIMIT) return;
 
         final StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < VertexAttribState.MAX_ATTRIBS; i++) {
+        for (int i = 0; i < VAOManager.MAX_ATTRIBS; i++) {
             if (offsets[i] < 0) continue;
-            final VertexAttribState.Attrib attrib = VertexAttribState.get(i);
+            final VAOManager.Attrib attrib = GLStateManager.getVertexAttrib(i);
             if (sb.length() > 0) sb.append(' ');
             sb.append(i)
                 .append(":dst=").append(offsets[i])
@@ -331,7 +331,7 @@ public final class GLSMDebug {
     private static String attributeSummary() {
         final StringBuilder sb = new StringBuilder();
         for (int i : new int[] {0, 1, 2, 3, 4}) {
-            final VertexAttribState.Attrib attrib = VertexAttribState.get(i);
+            final VAOManager.Attrib attrib = GLStateManager.getVertexAttrib(i);
             if (sb.length() > 0) sb.append(' ');
             sb.append(i)
                 .append(":en=").append(attrib.enabled)

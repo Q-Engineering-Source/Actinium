@@ -6,7 +6,6 @@ import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.compat.FogDistanceModeBridge;
 import com.gtnewhorizons.angelica.glsm.states.TexGenState;
 import com.gtnewhorizons.angelica.glsm.states.TextureUnitArray;
-import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormatElement;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
@@ -232,11 +231,9 @@ public final class VertexKey {
         if (hasTexCoord) bits |= (1L << BIT_HAS_VERTEX_TEX);
         if (hasLightmap) bits |= (1L << BIT_HAS_VERTEX_LIGHTMAP);
 
-        // Per-vertex texcoords for the extended units 2/3 (issue #175): present when the draw
-        // enables the matching UV attribute slot (locations 5/6). Tracked per attribute in
-        // VertexAttribState rather than a format flag, since the legacy flags only cover units 0/1.
+        // Per-vertex texcoords for units 2/3 use their attribute slots because legacy flags cover units 0/1.
         for (int i = 2; i < MAX_UNITS; i++) {
-            if (VertexAttribState.isAttribEnabled(VertexFormatElement.Usage.uvAttributeLocation(i))) {
+            if (GLStateManager.getVaoManager().isAttribEnabled(VertexFormatElement.Usage.uvAttributeLocation(i))) {
                 bits |= (1L << (BIT_HAS_VERTEX_TEX2 + (i - 2)));
             }
         }
