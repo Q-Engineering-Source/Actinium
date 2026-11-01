@@ -9,13 +9,11 @@ import com.gtnewhorizons.angelica.glsm.debug.GLSMDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredBlendHandler;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
-import com.gtnewhorizons.angelica.glsm.stacks.Vec3fStack;
-import com.gtnewhorizons.angelica.glsm.stacks.Vec4fStack;
-import com.gtnewhorizons.angelica.glsm.states.VertexAttribState;
-import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
-import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMInitConfig;
 import com.gtnewhorizons.angelica.glsm.stacks.StackIdAllocator;
+import com.gtnewhorizons.angelica.glsm.stacks.Vec3fStack;
+import com.gtnewhorizons.angelica.glsm.stacks.Vec4fStack;
+import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
 import lombok.Getter;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
@@ -25,86 +23,71 @@ import java.util.Arrays;
 
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
 
-/**
- * FFP shader manager
- */
-public class ShaderManager {
-
-    private static final class Holder {
-
-        static final ShaderManager INSTANCE = new ShaderManager();
-    }
-
+public final class ShaderManager {
     private static final boolean DEBUG_DRAW_LOGS = Boolean.getBoolean("actinium.glsm.verboseDrawLogs");
 
-    private final ShaderCache cache = new ShaderCache();
+    private ShaderCache cache = new ShaderCache();
     private final Uniforms uniforms = new Uniforms();
-    private final Int2IntOpenHashMap vaoVertexFlags = new Int2IntOpenHashMap();
 
     @Getter
-    private boolean active = false;
-    private Program currentProgram = null;
+    private boolean active;
+    private Program currentProgram;
     private long currentVertexKeyPacked = Long.MIN_VALUE;
     private final long[] currentFKScratch = new long[FragmentKey.MAX_UNITS];
     private final long[] currentFKPacked = new long[FragmentKey.MAX_UNITS];
-    private int currentFKLen = 0;
+    private int currentFKLen;
 
-    @Getter private static final Vector3f currentNormal = new Vector3f(0.0f, 0.0f, 1.0f);
-    private static final Vector4f[] currentTexCoords = {
+    public final Vector3f currentNormal = new Vector3f(0.0f, 0.0f, 1.0f);
+    public final Vector4f[] currentTexCoords = {
         new Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
         new Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
         new Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
         new Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
     };
-    private static final int NORMAL_STACK_ID = StackIdAllocator.nextStaticId();
-    private static final int TEX_COORD_STACK_ID = StackIdAllocator.nextStaticId();
-    @Getter private static int normalGeneration;
-    @Getter private static int texCoordGeneration;
-    @Getter private boolean enabled = false;
-    private int currentVertexFlags = VertexFlags.TEXTURE_BIT | VertexFlags.COLOR_BIT | VertexFlags.NORMAL_BIT;
+    public final Vec3fStack normalStack = new Vec3fStack(currentNormal, StackIdAllocator.nextId());
+    public final Vec4fStack texCoordStack = new Vec4fStack(currentTexCoords[0], StackIdAllocator.nextId());
+    public int normalGeneration;
+    public int texCoordGeneration;
 
-    private ShaderManager() {
-        vaoVertexFlags.defaultReturnValue(-1);
+    @Getter
+    private static boolean enabled;
+    private static boolean vertexFormatOverrideRegistered;
+
+    public ShaderManager() {
+        configureCacheDump();
+    }
+
+    private void configureCacheDump() {
         if (Boolean.parseBoolean(System.getProperty("angelica.dumpShaders", "false"))) {
             cache.setDumpDir(Paths.get("ffp_shaders"));
         }
     }
 
     public static ShaderManager getInstance() {
-        return Holder.INSTANCE;
-    }
-
-    public static Vec3fStack createNormalStack() {
-        return new Vec3fStack(currentNormal, NORMAL_STACK_ID);
-    }
-
-    public static Vec4fStack createTexCoordStack() {
-        return new Vec4fStack(currentTexCoords[0], TEX_COORD_STACK_ID);
+        return GLStateManager.getFfp();
     }
 
     public static Vec3fStack getNormalStack() {
-        return GLStateManager.getNormalStack();
+        return getInstance().normalStack;
     }
 
     public static Vec4fStack getTexCoordStack() {
-        return GLStateManager.getTexCoordStack();
+        return getInstance().texCoordStack;
     }
 
-    public void enable() {
+    public static synchronized void enable() {
         warmUp();
         enabled = true;
-
-        VertexFormat.registerSetupBufferStateOverride((format, offset) -> {
-            currentVertexFlags = format.getVertexFlags();
-            vaoVertexFlags.put(GLStateManager.getBoundVAO(), currentVertexFlags);
-            return false;
-        });
-
+        if (!vertexFormatOverrideRegistered) {
+            VertexFormat.registerSetupBufferStateOverride((format, offset) -> {
+                GLStateManager.getVaoManager().setFormatVertexFlags(format.getVertexFlags());
+                return false;
+            });
+            vertexFormatOverrideRegistered = true;
+        }
         GLStateManager.LOGGER.info("FFP shader emulation enabled");
     }
 
-    // Force loading of classes before the SplashThread kicks off
-    // Ensure it's GL free
     private static void warmUp() {
         try {
             final long[] fkScratch = new long[FragmentKey.MAX_UNITS];
@@ -116,26 +99,25 @@ public class ShaderManager {
             FragmentShaderGenerator.generate(FragmentKey.fromPacked(fkScratch, fkLen));
             GeometryShaderGenerator.generate(vk);
             final Class<?>[] touched = { Program.class, ShaderCache.class, TessellatorStreamingDrawer.class, QuadConverter.class };
-            for (Class<?> c : touched) {
-                c.getName();
-            }
+            for (Class<?> c : touched) c.getName();
         } catch (Throwable t) {
             GLStateManager.LOGGER.warn("FFP warmup failed; draw-path classes will resolve lazily", t);
         }
     }
 
-    public void disable() {
+    public static void disable() {
         enabled = false;
     }
 
     public synchronized void activate() {
         if (active) return;
         active = true;
+        final int vertexFlags = GLStateManager.getVaoManager().getVertexFlags();
         updateVariant(
-            (currentVertexFlags & VertexFlags.COLOR_BIT) != 0,
-            (currentVertexFlags & VertexFlags.NORMAL_BIT) != 0,
-            (currentVertexFlags & VertexFlags.TEXTURE_BIT) != 0,
-            (currentVertexFlags & VertexFlags.BRIGHTNESS_BIT) != 0
+            (vertexFlags & VertexFlags.COLOR_BIT) != 0,
+            (vertexFlags & VertexFlags.NORMAL_BIT) != 0,
+            (vertexFlags & VertexFlags.TEXTURE_BIT) != 0,
+            (vertexFlags & VertexFlags.BRIGHTNESS_BIT) != 0
         );
         uploadUniforms();
     }
@@ -157,17 +139,13 @@ public class ShaderManager {
                 if (currentProgramId != 0) {
                     CompatUniformManager.onUseProgram(currentProgramId);
                     notifyDrawObserver(hasColor, hasNormal, hasTexCoord, hasLightmap);
-                    if (perfDebugEnabled) {
-                        GLSMPerfDebug.end(GLSMPerfDebug.Stage.FFP_PREDRAW, perfStart);
-                    }
+                    if (perfDebugEnabled) GLSMPerfDebug.end(GLSMPerfDebug.Stage.FFP_PREDRAW, perfStart);
                     return;
                 }
                 active = true;
             } else {
                 notifyDrawObserver(hasColor, hasNormal, hasTexCoord, hasLightmap);
-                if (perfDebugEnabled) {
-                    GLSMPerfDebug.end(GLSMPerfDebug.Stage.FFP_PREDRAW, perfStart);
-                }
+                if (perfDebugEnabled) GLSMPerfDebug.end(GLSMPerfDebug.Stage.FFP_PREDRAW, perfStart);
                 return;
             }
         }
@@ -175,29 +153,17 @@ public class ShaderManager {
         final int fkLen = FragmentKey.packFromState(currentFKScratch);
         final int fragUnitMask = FragmentKey.unitMaskFromPacked(currentFKScratch, fkLen);
         final long vkPacked = VertexKey.packFromState(hasColor, hasNormal, hasTexCoord, hasLightmap, fragUnitMask);
-
         if (!isCurrentVariant(currentVertexKeyPacked, currentFKPacked, currentFKLen, vkPacked, currentFKScratch, fkLen)) {
             commitVariant(vkPacked, fkLen);
         }
-
         uploadUniforms();
         notifyDrawObserver(hasColor, hasNormal, hasTexCoord, hasLightmap);
-        if (perfDebugEnabled) {
-            GLSMPerfDebug.end(GLSMPerfDebug.Stage.FFP_PREDRAW, perfStart);
-        }
+        if (perfDebugEnabled) GLSMPerfDebug.end(GLSMPerfDebug.Stage.FFP_PREDRAW, perfStart);
     }
 
-    private static void notifyDrawObserver(
-        boolean hasColor,
-        boolean hasNormal,
-        boolean hasTexCoord,
-        boolean hasLightmap
-    ) {
+    private static void notifyDrawObserver(boolean hasColor, boolean hasNormal, boolean hasTexCoord, boolean hasLightmap) {
         final var observer = GLSMHooks.drawCallObserver;
-        if (observer == null) {
-            return;
-        }
-
+        if (observer == null) return;
         int vertexFlags = 0;
         if (hasColor) vertexFlags |= VertexFlags.COLOR_BIT;
         if (hasNormal) vertexFlags |= VertexFlags.NORMAL_BIT;
@@ -207,10 +173,8 @@ public class ShaderManager {
     }
 
     public synchronized void preDraw(int vertexFlags) {
-        currentVertexFlags = vertexFlags;
-        if (DEBUG_DRAW_LOGS) {
-            GLSMDebug.logFfpPreDraw(vertexFlags);
-        }
+        setCurrentVertexFlags(vertexFlags);
+        if (DEBUG_DRAW_LOGS) GLSMDebug.logFfpPreDraw(vertexFlags);
         preDraw(
             (vertexFlags & VertexFlags.COLOR_BIT) != 0,
             (vertexFlags & VertexFlags.NORMAL_BIT) != 0,
@@ -220,13 +184,7 @@ public class ShaderManager {
     }
 
     public void preDraw() {
-        // Draw entry points reached without an explicit VertexFormat (raw GL draws from
-        // third-party mods, e.g. HBM-CE's VAO path) must not trust the globally tracked
-        // currentVertexFlags: client-state calls during model upload can leak bits (e.g.
-        // COLOR_BIT) into it without a matching VAO attribute, which makes the shader read
-        // default (0,0,0,1) for the missing attribute and render black. Derive from the
-        // currently bound VAO's actual attribute enablement instead.
-        preDraw(VertexAttribState.currentClientArrayVertexFlags());
+        preDraw(GLStateManager.getVaoManager().currentClientArrayVertexFlags());
     }
 
     private void updateVariant(boolean hasColor, boolean hasNormal, boolean hasTexCoord, boolean hasLightmap) {
@@ -270,61 +228,92 @@ public class ShaderManager {
     }
 
     private void uploadUniforms() {
-        if (currentProgram != null) {
-            final boolean perfDebugEnabled = GLSMPerfDebug.isEnabled();
-            final long perfStart = perfDebugEnabled ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.FFP_UNIFORMS) : 0L;
-            uniforms.upload(currentProgram);
-            if (perfDebugEnabled) {
-                GLSMPerfDebug.end(GLSMPerfDebug.Stage.FFP_UNIFORMS, perfStart);
-            }
-        }
+        if (currentProgram == null) return;
+        final boolean perfDebugEnabled = GLSMPerfDebug.isEnabled();
+        final long perfStart = perfDebugEnabled ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.FFP_UNIFORMS) : 0L;
+        uniforms.upload(currentProgram);
+        if (perfDebugEnabled) GLSMPerfDebug.end(GLSMPerfDebug.Stage.FFP_UNIFORMS, perfStart);
     }
 
-    public static Vector4f getCurrentTexCoord() { return currentTexCoords[0]; }
-    public static Vector4f getCurrentTexCoord(int unit) { return currentTexCoords[unit]; }
+    public static Vector3f getCurrentNormal() {
+        return getInstance().currentNormal;
+    }
+
+    public static Vector4f getCurrentTexCoord() {
+        return getInstance().currentTexCoords[0];
+    }
+
+    public static Vector4f getCurrentTexCoord(int unit) {
+        return getInstance().currentTexCoords[unit];
+    }
 
     public static void setCurrentNormal(float x, float y, float z) {
-        getNormalStack().beforeModify();
-        currentNormal.set(x, y, z);
-        normalGeneration++;
+        final ShaderManager ffp = getInstance();
+        ffp.normalStack.beforeModify();
+        ffp.currentNormal.set(x, y, z);
+        ffp.normalGeneration++;
     }
 
     public static void setCurrentTexCoord(float s, float t, float r, float q) {
-        getTexCoordStack().beforeModify();
-        currentTexCoords[0].set(s, t, r, q);
-        texCoordGeneration++;
+        final ShaderManager ffp = getInstance();
+        ffp.texCoordStack.beforeModify();
+        ffp.currentTexCoords[0].set(s, t, r, q);
+        ffp.texCoordGeneration++;
     }
 
     public static void setCurrentTexCoord(int unit, float s, float t, float r, float q) {
-        if (unit == 0) getTexCoordStack().beforeModify();
-        currentTexCoords[unit].set(s, t, r, q);
-        texCoordGeneration++;
+        final ShaderManager ffp = getInstance();
+        if (unit == 0) ffp.texCoordStack.beforeModify();
+        ffp.currentTexCoords[unit].set(s, t, r, q);
+        ffp.texCoordGeneration++;
     }
 
-    public static void bumpNormalGeneration() { normalGeneration++; }
-    public static void bumpTexCoordGeneration() { texCoordGeneration++; }
-
-    public void enableClientVertexFlag(int flag) {currentVertexFlags |= flag;}
-    public void disableClientVertexFlag(int flag) {currentVertexFlags &= ~flag;}
-    public void clearClientVertexFlags() {currentVertexFlags = 0;}
-    public int getCurrentVertexFlags() {return currentVertexFlags;}
-    public void setCurrentVertexFlags(int flags) {currentVertexFlags = flags;}
-
-    public void onBindVertexArray(int vaoId) {
-        final int flags = vaoVertexFlags.get(vaoId);
-        if (flags != -1) {
-            currentVertexFlags = flags;
-        } else {
-            // VAO never seen through the vanilla VertexFormat setup path (e.g. a third-party
-            // VAO like HBM-CE's OBJ models): do not keep whatever flags a previous draw left
-            // behind, derive them from the VAO's actual attributes so a later raw draw cannot
-            // pick up leaked COLOR_BIT/NORMAL_BIT and render black.
-            currentVertexFlags = VertexAttribState.currentClientArrayVertexFlags();
-        }
+    public static int getNormalGeneration() {
+        return getInstance().normalGeneration;
     }
 
-    public void onDeleteVertexArray(int vaoId) {
-        vaoVertexFlags.remove(vaoId);
+    public static int getTexCoordGeneration() {
+        return getInstance().texCoordGeneration;
+    }
+
+    public static void bumpNormalGeneration() {
+        getInstance().normalGeneration++;
+    }
+
+    public static void bumpTexCoordGeneration() {
+        getInstance().texCoordGeneration++;
+    }
+
+    public void enableClientVertexFlag(int flag) {
+        GLStateManager.getVaoManager().enableClientVertexFlag(flag);
+    }
+
+    public void disableClientVertexFlag(int flag) {
+        GLStateManager.getVaoManager().disableClientVertexFlag(flag);
+    }
+
+    public void clearClientVertexFlags() {
+        GLStateManager.getVaoManager().setVertexFlags(0);
+    }
+
+    public int getCurrentVertexFlags() {
+        return GLStateManager.getVaoManager().getVertexFlags();
+    }
+
+    public void setCurrentVertexFlags(int flags) {
+        GLStateManager.getVaoManager().setVertexFlags(flags);
+    }
+
+    public void invalidateProgram() {
+        currentProgram = null;
+        currentVertexKeyPacked = Long.MIN_VALUE;
+        currentFKLen = 0;
+    }
+
+    public void resetForContextMigration() {
+        cache = new ShaderCache();
+        configureCacheDump();
+        invalidateProgram();
     }
 
     public void destroy() {
@@ -338,7 +327,8 @@ public class ShaderManager {
     }
 
     public String getDebugInfo() {
-        return String.format("FFP: %d programs (%d vert, %d frag variants)",
+        return String.format(
+            "FFP: %d programs (%d vert, %d frag variants)",
             cache.getProgramCount(), cache.getVertexVariantCount(), cache.getFragmentVariantCount());
     }
 }

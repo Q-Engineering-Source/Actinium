@@ -2,6 +2,8 @@ package com.gtnewhorizons.angelica.glsm;
 
 import com.gtnewhorizon.gtnhlib.client.renderer.stacks.IStateStack;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
+import com.gtnewhorizons.angelica.glsm.ffp.VAOManager;
+import com.gtnewhorizons.angelica.glsm.streaming.StreamingVaos;
 import com.gtnewhorizons.angelica.glsm.stacks.AlphaStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.BlendStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.BooleanStateStack;
@@ -106,8 +108,9 @@ class GLContextState {
     public final int[] savedColorGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
     public final int[] savedNormalGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
     public final int[] savedTexCoordGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
-    public final Vec3fStack normalStack = member(ShaderManager.createNormalStack());
-    public final Vec4fStack texCoordStack = member(ShaderManager.createTexCoordStack());
+    public final ShaderManager ffp = new ShaderManager();
+    public final Vec3fStack normalStack = member(ffp.normalStack);
+    public final Vec4fStack texCoordStack = member(ffp.texCoordStack);
     public final IntegerStateStack activeTextureUnit = member(new IntegerStateStack(0, StackIdAllocator.nextId()).restoreBit(StateSet.R_ACTIVE_UNIT));
     public int clientActiveTextureUnit;
     public final IntegerStateStack shadeModelState = member(new IntegerStateStack(GL11.GL_SMOOTH, StackIdAllocator.nextId()));
@@ -193,11 +196,16 @@ class GLContextState {
     public final MaterialStateStack frontMaterial = member(new MaterialStateStack(GL11.GL_FRONT, StackIdAllocator.nextId()));
     public final MaterialStateStack backMaterial = member(new MaterialStateStack(GL11.GL_BACK, StackIdAllocator.nextId()));
     public final ViewPortStateStack viewportState = member(new ViewPortStateStack(StackIdAllocator.nextId()));
+    public boolean viewportInitialized;
     public int activeProgram;
     public final IntegerStateStack programStack = member(new IntegerStateStack(0, StackIdAllocator.nextId()));
     public int listBase;
+    public int defaultVAO;
+    public final VAOManager vaos = new VAOManager();
+    public final StreamingVaos streamingVaos = new StreamingVaos();
+    public float lastBrightnessX;
+    public float lastBrightnessY;
     public int boundVBO;
-    public int boundEBO;
     public int boundVAO;
     public int boundPixelUnpackBuffer;
     public int boundPixelPackBuffer;
