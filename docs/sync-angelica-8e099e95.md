@@ -116,12 +116,12 @@
 | 80 | `bfb66d84` | Fix interop with Serene Seasons and other similar mods (#2240) | 2026-10-08 | 待同步 | F11 | `BiomeGenBase` 互操作 mixin，本地无该 mixin |
 | 81 | `1946c2ad` | Fix dark AE2 cables when shaders enabled (#2223) | 2026-10-09 | 待同步 | F11 | AE2 线缆变暗，本地缺 `IsbrhDispatch` |
 | 82 | `990dadc0` | Reject non 3.3 core with a more clear message (#2243) | 2026-10-10 | 待同步 | P01 | 非 3.3 core 的拒绝信息；本地由 `CoreProfileDisplayCreator` 承担，需评估信息合并方式 |
-| 83 | `2f1f380e` | Bug Cleanup after 2.9RC2 (#2239) | 2026-10-10 | 分 hunk 同步 | G04 + G07 + F11 | 取 `DisplayListVBO`、`DisplayListVBOBuilder`、`ImmediateModeRecorder`、新增 `LineDrawHandler` 与 `LineQuads`〈G04〉，`VertexKey`/`VertexShaderGenerator`/`ShaderManager` 的宽线路径〈G07〉，以及 `SelectionBoxRenderer` 与删除 `selection_box.geom.glsl`〈F11〉。`GeometryShaderGenerator.java` 在上游是删除，本地仍存在且被 `ShaderCache`（`glsm/src/main/java/com/gtnewhorizons/angelica/glsm/ffp/ShaderCache.java:223`）与 `ShaderManager`（同目录 `ShaderManager.java:100`）使用；待 G04 的 `LineQuads` 替代路径具备后再移除该类，本次不删。排除：`sdl-gpu/` 的 `Device`、`InstancedConstantBuffers` 与实例化常量缓冲 |
+| 83 | `2f1f380e` | Bug Cleanup after 2.9RC2 (#2239) | 2026-10-10 | 分 hunk 同步 | G07 + F11 | 取 `DisplayListVBO`、`DisplayListVBOBuilder`、`ImmediateModeRecorder`、新增 `LineDrawHandler` 与 `LineQuads`〈G04〉，`VertexKey`/`VertexShaderGenerator`/`ShaderManager` 的宽线路径〈G07〉，以及 `SelectionBoxRenderer` 与删除 `selection_box.geom.glsl`〈F11〉。`GeometryShaderGenerator.java` 在上游是删除，本地仍存在且被 `ShaderCache`（`glsm/src/main/java/com/gtnewhorizons/angelica/glsm/ffp/ShaderCache.java:223`）与 `ShaderManager`（同目录 `ShaderManager.java:100`）使用；待 G04 的 `LineQuads` 替代路径具备后再移除该类，本次不删。排除：`sdl-gpu/` 的 `Device`、`InstancedConstantBuffers` 与实例化常量缓冲 |
 | 84 | `d29a8278` | Make API functions for enderstorage to use (#2244) | 2026-10-10 | 待同步 | F11 | 末影存储使用的 API 函数，本地缺 `api/shaders/ShaderPacks` |
 | 85 | `2ed838ac` | Fix shaders that redefine a GLSL built-in failing on SDL-GPU and GLES (#2245) | 2026-10-10 | 分 hunk 同步 | S05 | 取 `GlslVulkanPreprocess` 的内置函数重命名与 `SpirvShaderTranslator` 修正；SDL/GLES 交叉编译测试排除 |
 | 86 | `3978be16` | Answer legacy GL queries from tracked state (#2247) | 2026-10-10 | 分 hunk 同步 | G03 | 取通用 hunks：`LegacyQueries`、`StateSet`、`GLContextState`、`FeedbackManager`、`Feature`、`VAOManager`、`states/PointState` 与 `states/TextureUnitArray`、`GLSMRedirector` 的查询重定向，以及根项目 `src/test` 的查询往返与 capture gate 测试。本地 `glGetInteger`（`GLStateManager.java:1032`）已覆盖部分分支但没有 `LegacyQueries` 与 `StateSet` 支撑。排除 `sdl-gpu/src/test` 的 115 个文件与 `lwjgl3-backend`、`tracy-client` 的测试工件 |
 | 87 | `69428c12` | Fix MixinRendererLivingEntity_GlintClock expected count (#2248) | 2026-10-11 | 待同步 | F02 | Glint 时钟 mixin 期望计数，本地无该 mixin |
-| 88 | `23aa0436` | Fix crash replaying display lists compiled during the splash screen (#2250) | 2026-10-10 | 待同步 | G04 | splash 期编译的 display list 回放崩溃；本地 `CommandBufferExecutor` 无索引批量命令 |
+| 88 | `23aa0436` | Fix crash replaying display lists compiled during the splash screen (#2250) | 2026-10-10 | 待同步 | G04 | splash 期编译的 display list 回放崩溃：`IndexedDrawBatch` 在编译上下文建 VAO、`BIND_VAO` 无条件重放。已移植（`feat/glsm-display-list-recording`）：改为首次 `bind()` 时在当前上下文建数组，`CompiledDisplayList` 记录编译上下文并据此过滤 `BIND_VAO`，新增 `DisplayListContextBindIntegrationTest` |
 | 89 | `3d3d0f9e` | Angelica side fix to RC Lantern rendering.  Works with or without a patched RC (#2251) | 2026-10-11 | 待同步 | F11 | RC 灯笼渲染修正，本地无该 mixin |
 | 90 | `d3dee841` | Skip zero-size buffer uploads and readbacks on SDL-GPU (#2249) | 2026-10-11 | 不适用 | — | 全部 `sdl-gpu/` 缓冲上传与回读 |
 | 91 | `46f81570` | New workflow (#2252) | 2026-10-11 | 不适用 | — | CI 工作流替换 |
@@ -134,7 +134,7 @@
 | 98 | `8e180962` | Stop resetting SDL GPU to OpenGL on unrelated crashes (#2266) | 2026-10-16 | 分 hunk 同步 | G05 | 取通用 hunks：`glsm/backend/BackendStartGuard`、`BackendStartGuardTest`、`BackendOptions` 的崩溃分类与选项读取，`glsm/GLContextState`、`GLStateManager` 的点尺寸查询缓存改造；`loading/AngelicaClientTweaker` 与 `proxy/ClientProxy` 的启动链加固。**前置来源：**`BackendOptions`、`BackendStartGuard`、`BackendStartGuardTest` 由 `2a8c8756` 新增，本提交对它们是修改（`M`）；本地当前无这三个文件，需先落 `2a8c8756` 的通用 hunks。该提交**不包含** `SystemProperties`（`git show --name-only` 无匹配）；上游的 `glsm/config/SystemProperties` 在 `2a8c8756` 里为 `M`（修改既有文件），本地尚未建立该类（`glsm/src/main/java` 下无 `config` 包）。排除：`sdl-gpu/SDLGPUGate`、SDL 崩溃回退路径与 `MixinInitGLStateManager` 的 SDL 分支 |
 | 99 | `8537835d` | Fix Player Capture for EP in SDL-GPU (#2262) | 2026-10-17 | 待同步 | F04 + G07 | 玩家反射捕获，依赖 `VertexWriteReplays` 与 `RwImageStoreExtractor` |
 | 100 | `cfc6e12e` | Minor Compute Cull Optimizations (#2263) | 2026-10-17 | 分 hunk 同步 | C01 | 取通用 hunks：`glsm/GLContextState` 新增的 `uniformBufferBindings`、`storageBufferBindings` 数组与 `GLStateManager` 的 `INDEXED_BUFFER_SLOTS`、`trackIndexedBufferBinding`、`glBindBufferBase` 跟踪、`glDeleteBuffers` 的绑定清理（本地 `glBindBufferBase` 为直接转发，无跟踪），以及 `GLSM_DeletedBufferBinding_GLTest`。排除：`GpuDrivenChunkCuller`、`GpuTerrainCuller` 的 GPU 剔除器改动（本地无这两个类，随 C01 的剔除设施一并补齐） |
-| 101 | `ab3bf176` | Set entity, block entity and item IDs per vertex (#2265) | 2026-10-17 | 分 hunk 同步 | G04 + G07 | 取通用 hunks：`glsm/streaming/TessellatorEntityIds`、`StreamingVaos`、`TessellatorStreamingDrawer`、`glsm/ffp/InstancedAttribs`、`ShaderManager`、`glsm/hooks/ImmediateExtendedAttribHandler`、`glsm/GLContextState`、`GLStateManager`、`iris/ImmediateExtendedAttribs`、`iris/IrisGLSMBridge`、`iris/gl/shader/ProgramCreator`、`iris/uniforms/CapturedRenderingState`、`MixinTessellator_CoreProfile`、`rendering/tesr/ModelPartBatcher`，以及 `TessellatorEntityIdsGLTest`、`InstancedFFPDrawGLTest`、`IrisInstancingGLTest`、`AttributeTransformerInstancedTest`（落根项目 `src/test`）。排除：`sdl-gpu/glsm/GlsmSdlAttribBindingTest`、`GlsmSdlFfpTest`、`GlsmSdlTessellatorEntityIdsTest` 与 `glsm/testFixtures` 的 `EntityIdsOnlyHandler`、`TessellatorEntityIdsFixture`、`FfpFixture` |
+| 101 | `ab3bf176` | Set entity, block entity and item IDs per vertex (#2265) | 2026-10-17 | 分 hunk 同步 | G07 | 取通用 hunks：`glsm/streaming/TessellatorEntityIds`、`StreamingVaos`、`TessellatorStreamingDrawer`、`glsm/ffp/InstancedAttribs`、`ShaderManager`、`glsm/hooks/ImmediateExtendedAttribHandler`、`glsm/GLContextState`、`GLStateManager`、`iris/ImmediateExtendedAttribs`、`iris/IrisGLSMBridge`、`iris/gl/shader/ProgramCreator`、`iris/uniforms/CapturedRenderingState`、`MixinTessellator_CoreProfile`、`rendering/tesr/ModelPartBatcher`，以及 `TessellatorEntityIdsGLTest`、`InstancedFFPDrawGLTest`、`IrisInstancingGLTest`、`AttributeTransformerInstancedTest`（落根项目 `src/test`）。排除：`sdl-gpu/glsm/GlsmSdlAttribBindingTest`、`GlsmSdlFfpTest`、`GlsmSdlTessellatorEntityIdsTest` 与 `glsm/testFixtures` 的 `EntityIdsOnlyHandler`、`TessellatorEntityIdsFixture`、`FfpFixture` |
 | 102 | `482dece0` | Expand SDL-GPU's GLSM redirector to GLSM and remove unredirected GL workarounds and move action back to master (#2268) | 2026-10-17 | 分 hunk 同步 | G05 | 取 `glsm` 侧重定向代理与测试夹具（`GlsmRedirectAgent`、`GLSMCoreExtension`）；`sdl-gpu/src/glsmSdlAgent` 与构建脚本排除 |
 | 103 | `69019b9a` | Implement metadata checking into the NBT path of block.properties parsing (#2267) | 2026-10-18 | 待同步 | P01 | block.properties 的 NBT 路径加入元数据判定；本地 `NbtConditionalIdMap.addCondition` 无 `metas` 参数，`NbtCondition` 无元数据集合 |
 | 104 | `fa8842a6` | Fix birch and spruce leaves showing the oak biome color with fancy biome blending (#2273) | 2026-10-18 | 待同步 | F11 | 桦木与云杉树叶混色，依赖 `BiomeVertexBlender` |
@@ -186,10 +186,10 @@
 | G01 | `9dd60f6a`、`53776684`、`fe82cd32`（StateSet）、`85d0641a`、`6c5e146f` |
 | G02 | `a8c29fa3` |
 | G03 | `12fa08ab`、`7cd97d12`、`44c930f4`、`6dfb0312`、`3978be16`、`85892c0f`、`b6a4497f`、`e98c927a` |
-| G04 | `23aa0436`、`2f1f380e`（recording/LineQuads）、`ab3bf176`（streaming 与 `TessellatorEntityIds`） |
+| G04 | `23aa0436` |
 | G05 | `e84c8c8d`、`73d61d38`、`1babfd96`、`482dece0`、`49db8e11`（非 SDL-only）、`7bb5bfd4`、`8e180962`、`2a8c8756`、`1587a12c`、`12857006`、`10922edc` |
 | G06 | `91e67f8d` |
-| G07 | `102c6cad`、`2f1f380e`（FFP/AttributeTransformer）、`ab3bf176`（Iris/FFP）、`5ed1c925`、`8537835d` |
+| G07 | `102c6cad`、`2f1f380e`（recording/LineQuads + FFP/AttributeTransformer）、`ab3bf176`（streaming 与 `TessellatorEntityIds` + Iris/FFP）、`5ed1c925`、`8537835d` |
 | C01 | `48eb54f5`、`625b6f40`、`f33e50ce`、`c64f4225`、`98c1af33`、`fcf8ad06`、`cfc6e12e`、`c9d46e70`（`MixinShaderLoader`） |
 | C02 | `0d003b82`、`88e905ca`、`588a269e`、`170bb7d1`、`1ce0ce4e`、`d7a146f0`、`57ca70de`、`ba098143` |
 | C03 | `2334caab0`（范围外前置）、`86d4cfe7` |
@@ -231,7 +231,7 @@
 | `5ed1c925` | Dragon API 与发光束、眼渲染 → F02；顶点重放与 `AttributeTransformer` 扩展 → G07 |
 | `8537835d` | 玩家反射捕获 → F04；顶点重写回放判定 → G07 |
 | `cd0a9608` | 图集加载策略与异步图集 → S02；`com/prupe` 的 `TexturePackAPI` → F12 |
-| `2f1f380e` | recording/LineQuads → G04；FFP 宽线与 `AttributeTransformer` → G07；`SelectionBoxRenderer` 等通用兼容 → F11 |
+| `2f1f380e` | recording/LineQuads 与 FFP 宽线、`AttributeTransformer` 同属一次宽线重写（`LineQuads` 数据、`GLStateManager` 拦截、FFP 顶点着色器三处必须同批落地），合并在 G07；`SelectionBoxRenderer` 等通用兼容 → F11 |
 | `1587a12c` | `MainThreadPump` → G05；`DebugCounters` 与 `FlybyRunner` 采集 → S03 |
 | `74ea5c47` | `rendering/FpsReducer` 帧率限制器 → F09；`zoom/Zoom` 的 key category 整理（无 mixin）→ F10 |
 | `2d9d1a45` | 实体图集与 instances 分支 → F03；`PBRTextureManager` 的资源索引与加载顺序 → S03 |
@@ -241,7 +241,7 @@
 | `38b1d9a0` | 通用启动优化 → S03；`com/prupe` 启动路径 → F12 |
 | `85892c0f` | DSA 绑定恢复与纹理跟踪 → G03；`mcpatcherforge` 的 `MixinRenderBlocks` 重组 → F12 |
 | `fe82cd32` | `StateSet` 修正 → G01；`BatchDrawDefaults` 与 `TextDrawState` → F02；字体与选项页 → F05 |
-| `ab3bf176` | 每顶点实体 ID 的 streaming 部分 → G04；Iris 与 FFP 侧 → G07 |
+| `ab3bf176` | 每顶点实体 ID 的 streaming、Iris 与 FFP 侧同属一条数据链（`TessellatorEntityIds` 读 `Tessellator` 顶点游标，写入由 `ImmediateExtendedAttribHandler` 消费，调用方在 Iris 的 `CapturedRenderingState`），合并在 G07 |
 
 ## 统计与核对方法
 
