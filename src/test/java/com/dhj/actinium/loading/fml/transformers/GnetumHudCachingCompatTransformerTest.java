@@ -6,6 +6,7 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 
 import java.io.IOException;
@@ -23,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies that {@link GnetumHudCachingCompatTransformer} mirrors every
- * constant {@code Gnetum.rendering} store onto {@code GLSMConfig.hudCacheOverride},
+ * constant {@code Gnetum.rendering} store onto {@code GLStateManager.setHudCacheOverride},
  * using the real {@code GuiIngameForgeMixin} class bytes from the Gnetum
  * dependency.
  */
@@ -33,8 +34,8 @@ class GnetumHudCachingCompatTransformerTest {
     private static final String MIXIN_CLASS =
         "me.decce.gnetum.mixins.early.GuiIngameForgeMixin";
     private static final String GNETUM_OWNER = "me/decce/gnetum/Gnetum";
-    private static final String GLSM_CONFIG_OWNER =
-        "com/gtnewhorizons/angelica/glsm/hooks/GLSMConfig";
+    private static final String GL_STATE_MANAGER_OWNER =
+        "com/gtnewhorizons/angelica/glsm/GLStateManager";
 
     @Test
     void transformMirrorsEveryRenderingStore() throws IOException {
@@ -45,7 +46,7 @@ class GnetumHudCachingCompatTransformerTest {
         assertNotNull(transformed);
         assertNotSame(original, transformed, "target class must be rewritten");
         assertTrue(transformed.length > original.length,
-            "mirrored stores must add instructions");
+            "mirrored calls must add instructions");
 
         List<String> events = collectMirrorEvents(transformed);
         assertEquals(List.of(
@@ -105,16 +106,16 @@ class GnetumHudCachingCompatTransformerTest {
                         "mirrored store must re-push the mirrored constant");
                     AbstractInsnNode mirrorStore = mirrorPush.getNext();
                     assertNotNull(mirrorStore);
-                    assertEquals(Opcodes.PUTSTATIC, mirrorStore.getOpcode());
-                    FieldInsnNode mirrorField = (FieldInsnNode) mirrorStore;
-                    assertEquals(GLSM_CONFIG_OWNER, mirrorField.owner);
-                    assertEquals("hudCacheOverride", mirrorField.name);
-                    assertEquals("Z", mirrorField.desc);
+                    assertEquals(Opcodes.INVOKESTATIC, mirrorStore.getOpcode());
+                    MethodInsnNode mirrorCall = (MethodInsnNode) mirrorStore;
+                    assertEquals(GL_STATE_MANAGER_OWNER, mirrorCall.owner);
+                    assertEquals("setHudCacheOverride", mirrorCall.name);
+                    assertEquals("(Z)V", mirrorCall.desc);
                     events.add("mirror=" + (value == 1));
                 } else if ("renderingCanceled".equals(field.name)) {
                     AbstractInsnNode next = instruction.getNext();
                     if (next != null && next.getOpcode() == Opcodes.PUTSTATIC) {
-                        assertNotEquals(GLSM_CONFIG_OWNER, ((FieldInsnNode) next).owner,
+                        assertNotEquals(GL_STATE_MANAGER_OWNER, ((FieldInsnNode) next).owner,
                             "renderingCanceled stores must not be mirrored");
                     }
                 }

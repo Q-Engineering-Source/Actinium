@@ -10,6 +10,7 @@ import java.util.function.Consumer;
  */
 public final class GLSMInitConfig {
     private final boolean lwjglDebug;
+    private final boolean noErrorChecks;
     private final StreamingUploader.UploadStrategy streamingUploadStrategy;
     private final boolean framebufferSupported;
     private final boolean fboEnabled;
@@ -22,6 +23,7 @@ public final class GLSMInitConfig {
 
     private GLSMInitConfig(Builder builder) {
         this.lwjglDebug = builder.lwjglDebug;
+        this.noErrorChecks = builder.noErrorChecks;
         this.streamingUploadStrategy = builder.streamingUploadStrategy;
         this.framebufferSupported = builder.framebufferSupported;
         this.fboEnabled = builder.fboEnabled;
@@ -38,6 +40,12 @@ public final class GLSMInitConfig {
     }
 
     public boolean isLwjglDebug() { return lwjglDebug; }
+    /**
+     * Returns whether GL error queries are skipped for this session.
+     *
+     * @return {@code true} when the host disabled GL error reporting
+     */
+    public boolean isNoErrorChecks() { return noErrorChecks; }
     public StreamingUploader.UploadStrategy getStreamingUploadStrategy() { return streamingUploadStrategy; }
     public boolean isFramebufferSupported() { return framebufferSupported; }
     public boolean isFboEnabled() { return fboEnabled; }
@@ -55,6 +63,7 @@ public final class GLSMInitConfig {
 
     public static final class Builder {
         private boolean lwjglDebug = false;
+        private boolean noErrorChecks = false;
         private StreamingUploader.UploadStrategy streamingUploadStrategy = StreamingUploader.UploadStrategy.BUFFER_DATA;
         private boolean framebufferSupported = false;
         private boolean fboEnabled = false;
@@ -70,6 +79,17 @@ public final class GLSMInitConfig {
 
         public Builder lwjglDebug(boolean lwjglDebug) {
             this.lwjglDebug = lwjglDebug;
+            return this;
+        }
+
+        /**
+         * Skips GL error queries issued through this library for the session.
+         *
+         * @param noErrorChecks {@code true} to stop querying and reporting GL errors
+         * @return this builder
+         */
+        public Builder noErrorChecks(boolean noErrorChecks) {
+            this.noErrorChecks = noErrorChecks;
             return this;
         }
 

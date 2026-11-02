@@ -28,6 +28,7 @@ public final class CowDispatch {
     public static final byte LINE = 20;
     public static final byte TEXTURE_BINDING = 21;
     public static final byte TEX_ENV = 22;
+    public static final byte SCISSOR = 23;
 
     private CowDispatch() {}
 
@@ -56,6 +57,7 @@ public final class CowDispatch {
         if (type == LineStateStack.class) return LINE;
         if (type == TextureBindingStack.class) return TEXTURE_BINDING;
         if (type == TexEnvState.class) return TEX_ENV;
+        if (type == ScissorStateStack.class) return SCISSOR;
         throw new IllegalStateException("Unknown CowStateStack class: " + type.getName());
     }
 
@@ -84,6 +86,37 @@ public final class CowDispatch {
             case LINE -> ((LineStateStack) stack).topSlotChanged();
             case TEXTURE_BINDING -> ((TextureBindingStack) stack).topSlotChanged();
             case TEX_ENV -> ((TexEnvState) stack).topSlotChanged();
+            case SCISSOR -> ((ScissorStateStack) stack).topSlotChanged();
+            default -> throw new IllegalStateException("Unknown kind: " + kind);
+        };
+    }
+
+    public static boolean slotChanged(byte kind, CowStateStack<?> stack, int slot) {
+        return switch (kind) {
+            case BLEND -> ((BlendStateStack) stack).slotChanged(slot);
+            case BOOLEAN -> ((BooleanStateStack) stack).slotChanged(slot);
+            case CLIP_PLANE_BOOLEAN -> ((ClipPlaneBooleanState) stack).slotChanged(slot);
+            case TEXTURE_UNIT_BOOLEAN -> ((TextureUnitBooleanStateStack) stack).slotChanged(slot);
+            case COLOR_MASK -> ((ColorMaskStack) stack).slotChanged(slot);
+            case LIGHT_STATE -> ((LightStateStack) stack).slotChanged(slot);
+            case MATERIAL -> ((MaterialStateStack) stack).slotChanged(slot);
+            case STENCIL -> ((StencilStateStack) stack).slotChanged(slot);
+            case MATRIX_MODE -> ((MatrixModeStack) stack).slotChanged(slot);
+            case LIGHT_MODEL -> ((LightModelStateStack) stack).slotChanged(slot);
+            case ALPHA -> ((AlphaStateStack) stack).slotChanged(slot);
+            case POINT -> ((PointStateStack) stack).slotChanged(slot);
+            case FOG -> ((FogStateStack) stack).slotChanged(slot);
+            case VEC4F -> ((Vec4fStack) stack).slotChanged(slot);
+            case VEC3F -> ((Vec3fStack) stack).slotChanged(slot);
+            case INTEGER -> ((IntegerStateStack) stack).slotChanged(slot);
+            case DEPTH -> ((DepthStateStack) stack).slotChanged(slot);
+            case VIEWPORT -> ((ViewPortStateStack) stack).slotChanged(slot);
+            case POLYGON -> ((PolygonStateStack) stack).slotChanged(slot);
+            case COLOR4 -> ((Color4Stack) stack).slotChanged(slot);
+            case LINE -> ((LineStateStack) stack).slotChanged(slot);
+            case TEXTURE_BINDING -> ((TextureBindingStack) stack).slotChanged(slot);
+            case TEX_ENV -> ((TexEnvState) stack).slotChanged(slot);
+            case SCISSOR -> ((ScissorStateStack) stack).slotChanged(slot);
             default -> throw new IllegalStateException("Unknown kind: " + kind);
         };
     }
@@ -113,6 +146,7 @@ public final class CowDispatch {
             case LINE -> ((LineStateStack) stack).restoreSlot(slot);
             case TEXTURE_BINDING -> ((TextureBindingStack) stack).restoreSlot(slot);
             case TEX_ENV -> ((TexEnvState) stack).restoreSlot(slot);
+            case SCISSOR -> ((ScissorStateStack) stack).restoreSlot(slot);
             default -> throw new IllegalStateException("Unknown kind: " + kind);
         }
     }

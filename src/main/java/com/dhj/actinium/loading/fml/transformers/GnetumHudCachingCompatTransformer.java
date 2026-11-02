@@ -11,6 +11,7 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 
 /**
@@ -24,7 +25,8 @@ import org.objectweb.asm.tree.MethodNode;
  * Gnetum registers its mixin configs through MixinBooter's early loader, so a mixin targeting its
  * classes cannot be guaranteed to apply; a launchwrapper transformer runs before the class is defined
  * regardless of load timing. This transformer mirrors every constant {@code Gnetum.rendering} store
- * inside {@code GuiIngameForgeMixin} onto {@code GLSMConfig.hudCacheOverride}.
+ * inside {@code GuiIngameForgeMixin} onto {@code GLStateManager.setHudCacheOverride}, which keeps the
+ * cached blend factors and reissues only the driver's alpha factors.
  */
 public final class GnetumHudCachingCompatTransformer implements IClassTransformer {
     private static final Logger LOGGER = LogManager.getLogger("Actinium");
@@ -36,10 +38,10 @@ public final class GnetumHudCachingCompatTransformer implements IClassTransforme
     private static final String OVERRIDE_FIELD = "rendering";
     private static final String OVERRIDE_DESC = "Z";
 
-    private static final String GLSM_CONFIG_OWNER =
-        "com/gtnewhorizons/angelica/glsm/hooks/GLSMConfig";
-    private static final String GLSM_CONFIG_FIELD = "hudCacheOverride";
-    private static final String GLSM_CONFIG_DESC = "Z";
+    private static final String GL_STATE_MANAGER_OWNER =
+        "com/gtnewhorizons/angelica/glsm/GLStateManager";
+    private static final String HUD_OVERRIDE_METHOD = "setHudCacheOverride";
+    private static final String HUD_OVERRIDE_DESC = "(Z)V";
 
     // Gnetum 1.4.3 opens and closes the window exactly once per HUD render.
     private static final int EXPECTED_STORES = 2;
@@ -99,13 +101,13 @@ public final class GnetumHudCachingCompatTransformer implements IClassTransforme
                     return 0;
                 }
                 // The pushed constant was consumed by the original store, so
-                // re-push it for the mirrored store (net stack change: zero).
+                // re-push it for the mirrored call (net stack change: zero).
                 // InsnList has no "insert after", so anchor on the next node.
                 AbstractInsnNode anchor = instruction.getNext();
                 InsnList mirror = new InsnList();
                 mirror.add(new InsnNode(value == 1 ? Opcodes.ICONST_1 : Opcodes.ICONST_0));
-                mirror.add(new FieldInsnNode(
-                    Opcodes.PUTSTATIC, GLSM_CONFIG_OWNER, GLSM_CONFIG_FIELD, GLSM_CONFIG_DESC));
+                mirror.add(new MethodInsnNode(
+                    Opcodes.INVOKESTATIC, GL_STATE_MANAGER_OWNER, HUD_OVERRIDE_METHOD, HUD_OVERRIDE_DESC, false));
                 if (anchor == null) {
                     method.instructions.add(mirror);
                 } else {

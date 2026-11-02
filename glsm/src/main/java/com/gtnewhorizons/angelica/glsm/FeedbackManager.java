@@ -44,6 +44,11 @@ public class FeedbackManager {
         int read(int i);
     }
 
+    /** Returns the current software render mode, mirroring what {@code glGetIntegerv(GL_RENDER_MODE)} reports. */
+    public static int getRenderMode() {
+        return renderMode;
+    }
+
     public static boolean isFeedbackMode() {
         return renderMode == GL11.GL_FEEDBACK;
     }

@@ -23,6 +23,7 @@ public final class StateSet {
     public static final int R_ACTIVE_UNIT = 1 << 13;
     public static final int R_PROGRAM = 1 << 14;
     public static final int R_SCISSOR = 1 << 15;
+    public static final int R_HINT = 1 << 16;
 
     public static final int B_FRAG_COLORBUF = 1;
     public static final int B_FRAG_TEXTURE = 1 << 1;
@@ -211,6 +212,7 @@ public final class StateSet {
         if ((mask & GL11.GL_SCISSOR_BIT) != 0) restore |= R_SCISSOR;
         if ((mask & GL11.GL_LINE_BIT) != 0) restore |= R_LINE;
         if ((mask & GL11.GL_POINT_BIT) != 0) restore |= R_POINT;
+        if ((mask & GL11.GL_HINT_BIT) != 0) restore |= R_HINT;
         if ((mask & GL11.GL_POLYGON_BIT) != 0) restore |= R_POLYGON;
         if ((mask & GL11.GL_TEXTURE_BIT) != 0) {
             restore |= R_TEXTURE | R_ACTIVE_UNIT;

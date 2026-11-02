@@ -92,6 +92,7 @@ public final class StandardOptions {
         public static final OptionIdentifier<Void> ACTINIUM_GPU_PERF_DEBUG = OptionIdentifier.create(ACTINIUM_MOD_NAME, "gpu_perf_debug");
         public static final OptionIdentifier<Void> ACTINIUM_FRAME_GL_ERROR_CHECK = OptionIdentifier.create(ACTINIUM_MOD_NAME, "frame_gl_error_check");
         public static final OptionIdentifier<Void> ACTINIUM_POST_RENDER_GL_ERROR_CHECK = OptionIdentifier.create(ACTINIUM_MOD_NAME, "post_render_gl_error_check");
+        public static final OptionIdentifier<Void> ACTINIUM_DISABLE_ERROR_CHECKS = OptionIdentifier.create(ACTINIUM_MOD_NAME, "disable_error_checks");
         public static final OptionIdentifier<Void> ACTINIUM_REDIRECTOR_DEBUG = OptionIdentifier.create(ACTINIUM_MOD_NAME, "redirector_debug");
         public static final OptionIdentifier<Void> ACTINIUM_REDIRECTOR_LOG_SPAM = OptionIdentifier.create(ACTINIUM_MOD_NAME, "redirector_log_spam");
         public static final OptionIdentifier<Void> ACTINIUM_REDIRECTOR_CLASS_DUMP = OptionIdentifier.create(ACTINIUM_MOD_NAME, "redirector_class_dump");

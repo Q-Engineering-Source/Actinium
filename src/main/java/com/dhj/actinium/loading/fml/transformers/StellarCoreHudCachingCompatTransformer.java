@@ -24,7 +24,7 @@ import org.objectweb.asm.tree.MethodNode;
  * {@code HUDCaching} is loaded by StellarCore's own early mixin loader before any mixin prepare phase
  * can run; a mixin targeting it fails with {@code MixinTargetAlreadyLoadedException}, so this
  * transformer rewrites {@code renderCachedHud} directly: after each {@code renderingCacheOverride}
- * store it mirrors the value onto {@code GLSMConfig.hudCacheOverride}, and right before the
+ * store it calls {@code GLStateManager.setHudCacheOverride} with the same value, and right before the
  * {@code GuiIngame.renderGameOverlay} call inside the override window it restores the HUD baseline,
  * whose normal call site in {@code EntityRenderer.updateCameraAndRender} is replaced by StellarCore's
  * {@code @Redirect}.
@@ -42,10 +42,10 @@ public final class StellarCoreHudCachingCompatTransformer implements IClassTrans
     private static final String OVERRIDE_FIELD = "renderingCacheOverride";
     private static final String OVERRIDE_DESC = "Z";
 
-    private static final String GLSM_CONFIG_OWNER =
-        "com/gtnewhorizons/angelica/glsm/hooks/GLSMConfig";
-    private static final String GLSM_CONFIG_FIELD = "hudCacheOverride";
-    private static final String GLSM_CONFIG_DESC = "Z";
+    private static final String GL_STATE_MANAGER_OWNER =
+        "com/gtnewhorizons/angelica/glsm/GLStateManager";
+    private static final String HUD_OVERRIDE_METHOD = "setHudCacheOverride";
+    private static final String HUD_OVERRIDE_DESC = "(Z)V";
 
     private static final String BOUNDARY_OWNER = "com/dhj/actinium/render/GuiGlStateBoundary";
     private static final String BOUNDARY_METHOD = "restoreHudBaseline";
@@ -108,13 +108,13 @@ public final class StellarCoreHudCachingCompatTransformer implements IClassTrans
                     return false;
                 }
                 // The pushed constant was consumed by the original store, so
-                // re-push it for the mirrored store (net stack change: zero).
+                // re-push it for the mirrored call (net stack change: zero).
                 // InsnList has no "insert after", so anchor on the next node.
                 AbstractInsnNode anchor = instruction.getNext();
                 InsnList mirror = new InsnList();
                 mirror.add(new InsnNode(value == 1 ? Opcodes.ICONST_1 : Opcodes.ICONST_0));
-                mirror.add(new FieldInsnNode(
-                    Opcodes.PUTSTATIC, GLSM_CONFIG_OWNER, GLSM_CONFIG_FIELD, GLSM_CONFIG_DESC));
+                mirror.add(new MethodInsnNode(
+                    Opcodes.INVOKESTATIC, GL_STATE_MANAGER_OWNER, HUD_OVERRIDE_METHOD, HUD_OVERRIDE_DESC, false));
                 if (anchor == null) {
                     method.instructions.add(mirror);
                 } else {

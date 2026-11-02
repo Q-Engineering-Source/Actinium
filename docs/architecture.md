@@ -328,11 +328,12 @@ bounded ByteBuffer 视图由 drawRaw 统一创建。此改动已通过自动化�
 核心原则：所有 GL 调用不直接调用 OpenGL，而是路由到 `BackendManager.RENDER_BACKEND`
 （ServiceLoader 加载的后端）。
 
-- **顶层 `com.gtnewhorizons.angelica.glsm`**（约 20 类）：`GLStateManager`（6300+ 行状态
-  缓存管理器，静态初始化时查询 GL 能力，必须在 GL context 创建后加载）、`RenderSystem`
-  （GL 调用抽象 + 渲染线程断言）、`DisplayListManager`/`DisplayListIDAllocator`、
-  `CommandBufferBuilder`、`TransformOptimizer`（矩阵变换累积/坍缩优化）、`QuadConverter`、
-  `CompatShaderTransformer`/`GlslTransformUtils`/`CompatUniformManager`/
+- **顶层 `com.gtnewhorizons.angelica.glsm`**（约 25 类）：`GLStateManager`（9000+ 行状态
+  缓存管理器，静态初始化时查询 GL 能力，必须在 GL context 创建后加载）、`LegacyQueries`
+  （core profile 已删除的 legacy `glGet*` pname 的描述符表与类型转换，答案来自跟踪状态）、
+  `RenderSystem`（GL 调用抽象 + 渲染线程断言）、`DisplayListManager`/
+  `DisplayListIDAllocator`、`CommandBufferBuilder`、`TransformOptimizer`（矩阵变换累积/坍缩优化）、
+  `QuadConverter`、`CompatShaderTransformer`/`GlslTransformUtils`/`CompatUniformManager`/
   `CompatProgramUniformState(s)`（旧 GLSL/uniform 兼容，`actinium_renamed_` 前缀重命名）、
   `Feature`/`GLFeatureSet`、`FeedbackManager`、`GpuCommandDiagnostics`、`Vendor`、`GLDebug`、
   `ITessellatorData`。
@@ -361,11 +362,14 @@ bounded ByteBuffer 视图由 drawRaw 统一创建。此改动已通过自动化�
 - **`redirect/`**：`GLSMRedirector`（GL 调用重定向）、`RedirectorDebugOptions`。
 - **`shadow/`**：`InternalShadowRenderingState` —— shadow pass 矩阵与渲染开关状态。
 - **`stacks/`**：全部状态栈（Alpha/Blend/Boolean/Color4/ColorMask/Depth/Fog/Integer/Light/
-  LightModel/Line/Material/MatrixMode/Point/Polygon/Stencil/TextureBinding/
-  TextureUnitBoolean/ViewPort/Vec3f/Vec4f），接口 `IStateStack`。
+  LightModel/Line/Material/MatrixMode/Point/Polygon/Scissor/Stencil/TextureBinding/
+  TextureUnitBoolean/ViewPort/Vec3f/Vec4f），接口 `IStateStack`；`CowDepths`/`CowDispatch`/
+  `CowStateStack` 提供写时复制槽位与分派，`RetainedState` 记录一次 push 内命中的栈 id
+  以便 pop 之后重放，`StackIdAllocator` 按 context 分配栈 id。
 - **`states/`**：与 stacks 一一对应的状态值对象（`ISettableState`），另有
   `TextureUnitArray`、`GenerationTrackedState`、`TexEnvState`、`TexGenState`、
-  `VertexAttribState`、`ClipPlaneState`。
+  `VertexAttribState`、`ClipPlaneState`、`PixelStoreState`（pack/unpack 两族像素存储参数）、
+  `ScissorState`。
 - **`streaming/`**（流式 VBO）：`StreamingBuffer` 接口、`OrphanStreamingBuffer`、
   `PersistentStreamingBuffer`、`GlFence`、`StreamingUploader`、`TessellatorStreamingDrawer`。
 - **`texture/`**：`TextureInfo`/`TextureInfoCache` —— 跨 GL context 共享的服务端纹理状态缓存。

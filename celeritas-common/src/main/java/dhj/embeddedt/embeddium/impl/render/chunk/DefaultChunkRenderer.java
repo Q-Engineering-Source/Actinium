@@ -134,6 +134,7 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
 
         // If there is no active program, shader compilation probably failed, and we can't render anything.
         if (this.activeProgram != null) {
+            boolean checkDrawErrors = RenderDebugHooksHolder.shouldCaptureGlState();
             long totalStartNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
             long fillNanos = 0L;
             long tessellationNanos = 0L;
@@ -251,6 +252,10 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
                     } else {
                         batch.execute(commandList, tessellation, primitiveType);
                     }
+                    if (checkDrawErrors) {
+                        RenderDebugHooksHolder.checkDrawError("chunk-region:after-draw", renderPass.name(), primitiveType.getId(),
+                            0, 0, batch.size(), null, -1, -1);
+                    }
                     if (drawStartNanos != 0L) {
                         drawNanos += System.nanoTime() - drawStartNanos;
                     }
@@ -269,7 +274,7 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
                     }
                     setModelMatrixUniforms(shader, region, camera);
                     shader.setSectionAges(timestamp, region.getSectionLoadTimes());
-                    drawAnimatedSections(animatedSections, shader, region, camera, commandList, tessellation, primitiveType, renderPass);
+                    drawAnimatedSections(animatedSections, shader, region, camera, commandList, tessellation, primitiveType, renderPass, checkDrawErrors);
                     if (animatedStartNanos != 0L) {
                         drawNanos += System.nanoTime() - animatedStartNanos;
                     }
@@ -309,7 +314,8 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
                                       CommandList commandList,
                                       GlTessellation tessellation,
                                       GlPrimitiveType primitiveType,
-                                      TerrainRenderPass pass) {
+                                      TerrainRenderPass pass,
+                                      boolean checkDrawErrors) {
         float baseX = getCameraTranslation(region.getOriginX(), camera.intX, camera.fracX);
         float baseY = getCameraTranslation(region.getOriginY(), camera.intY, camera.fracY);
         float baseZ = getCameraTranslation(region.getOriginZ(), camera.intZ, camera.fracZ);
@@ -323,6 +329,10 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
                         .ensureCapacity(commandList, this.batch.getIndexBufferSize());
             }
             this.individualEmitter.executeBatch(commandList, tessellation, primitiveType, this.batch);
+            if (checkDrawErrors) {
+                RenderDebugHooksHolder.checkDrawError("chunk-animated:after-draw", pass.name(), primitiveType.getId(),
+                    0, 0, this.batch.size(), null, -1, -1);
+            }
         }
 
         shader.setRegionOffset(baseX, baseY, baseZ);

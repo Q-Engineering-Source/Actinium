@@ -37,7 +37,8 @@ import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACK
  * This class is responsible for abstracting calls to OpenGL and asserting that calls are run on the render thread.
  */
 public class RenderSystem {
-    private static DSAAccess dsaState;
+    /** Bind-based fallback until {@link #initRenderer()} detects a DSA flavour, so pre-init callers never see null. */
+    private static DSAAccess dsaState = new DSAUnsupported();
     private static boolean supportsCompute;
     private static boolean supportsImageLoadStore;
     private static boolean supportsSSBO;
@@ -77,10 +78,12 @@ public class RenderSystem {
             GLStateManager.LOGGER.info("OpenGL ES {}.{} detected", glesVersion / 100, (glesVersion / 10) % 10);
         }
 
+        boolean dsaEnabled = false;
         if (!isGLES) {
             try {
                 if (GLStateManager.capabilities.OpenGL45) {
                     dsaState = (Runtime.version().feature() > 8 && GLStateManager.capabilities.GL_EXT_direct_state_access) ? new DSAEXT() : new DSACore();
+                    dsaEnabled = true;
                     GLStateManager.LOGGER.info("OpenGL 4.5 detected, enabling DSA.");
                 }
 
@@ -89,14 +92,15 @@ public class RenderSystem {
             try {
                 // lwjglx's ContextCapabilities has no GL_ARB_direct_state_access field, so probe
                 // the extension string instead of the capability flag Angelica uses.
-                if (dsaState == null && hasExtension("GL_ARB_direct_state_access")) {
+                if (!dsaEnabled && hasExtension("GL_ARB_direct_state_access")) {
                     dsaState = new DSAARB();
+                    dsaEnabled = true;
                     GLStateManager.LOGGER.info("ARB_direct_state_access detected, enabling DSA.");
                 }
             } catch (NoSuchFieldError ignored) {
             }
         }
-        if (dsaState == null) {
+        if (!dsaEnabled) {
             dsaState = new DSAUnsupported();
             GLStateManager.LOGGER.info("{}", isGLES ? "GLES context, using DSAUnsupported (bind-based) fallback." : "No DSA support detected, falling back to legacy OpenGL.");
         }

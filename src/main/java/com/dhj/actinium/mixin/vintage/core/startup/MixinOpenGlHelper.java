@@ -35,6 +35,7 @@ public class MixinOpenGlHelper {
         GLStateManager.setDrawableGL(Display.getDrawable());
         GLStateManager.initialize(GLSMInitConfig.builder()
             .lwjglDebug(ActiniumStartupDebugConfig.enableLwjglDebug())
+            .noErrorChecks(ActiniumRuntime.options().debug.disableErrorChecks && !ActiniumStartupDebugConfig.enableLwjglDebug())
             .displaySize(mc.displayWidth, mc.displayHeight)
             .framebufferSupported(OpenGlHelper.framebufferSupported)
             .fboEnabled(mc.gameSettings.fboEnable)
