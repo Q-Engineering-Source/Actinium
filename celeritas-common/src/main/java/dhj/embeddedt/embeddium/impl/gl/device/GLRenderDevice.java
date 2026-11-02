@@ -87,9 +87,12 @@ public class GLRenderDevice implements RenderDevice {
 
         @Override
         public void bindVertexArray(GlVertexArray array) {
-            if (this.stateTracker.makeVertexArrayActive(array)) {
-                LWJGL.glBindVertexArray(array.handle());
-            }
+            // GLSM shares this GL context and binds vertex arrays of its own without going through
+            // this tracker, so the cached handle can name a VAO that is no longer bound. Always issue
+            // the bind: a skipped rebind here draws with GLSM's array and no element buffer
+            // (GL_INVALID_OPERATION, missing sections).
+            this.stateTracker.makeVertexArrayActive(array);
+            LWJGL.glBindVertexArray(array.handle());
         }
 
         @Override
@@ -115,16 +118,19 @@ public class GLRenderDevice implements RenderDevice {
 
         @Override
         public void bindBuffer(GlBufferTarget target, @Nullable GlBuffer buffer) {
-            if (this.stateTracker.makeBufferActive(target, buffer)) {
-                LWJGL.glBindBuffer(target.getTargetParameter(), buffer != null ? buffer.handle() : 0);
-            }
+            // The same reasoning as the vertex array binds applies to every buffer target: GLSM binds
+            // buffers directly, so a skipped rebind here can leave a different object bound. A skipped
+            // ARRAY_BUFFER bind makes the following glBufferData address buffer 0 and fail with
+            // GL_INVALID_OPERATION, dropping the upload.
+            this.stateTracker.makeBufferActive(target, buffer);
+            LWJGL.glBindBuffer(target.getTargetParameter(), buffer != null ? buffer.handle() : 0);
         }
 
         @Override
         public void unbindVertexArray() {
-            if (this.stateTracker.makeVertexArrayActive(null)) {
-                LWJGL.glBindVertexArray(GlVertexArray.NULL_ARRAY_ID);
-            }
+            // Same reasoning as bindVertexArray: GLSM's own binds are invisible to this tracker.
+            this.stateTracker.makeVertexArrayActive(null);
+            LWJGL.glBindVertexArray(GlVertexArray.NULL_ARRAY_ID);
         }
 
         @Override

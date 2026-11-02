@@ -21,9 +21,20 @@ import org.lwjgl.opengl.GL43;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public final class GLDebug {
     private static final Logger LOGGER = LogManager.getLogger("GLSM/GLDebug");
+
+    /**
+     * Per-message cap on driver debug output. A defect that fires on every draw produces thousands of
+     * messages per second, and each one carries a stack trace; without a cap the log grows faster than
+     * it can be read and the game stalls on log I/O.
+     */
+    private static final int MESSAGE_LOG_LIMIT = 8;
+    private static final Map<Long, AtomicInteger> MESSAGE_COUNTS = new ConcurrentHashMap<>();
 
     /**
      * Installs the driver debug callback requested by the startup configuration.
@@ -97,6 +108,16 @@ public final class GLDebug {
     }
 
     private static void logDebugMessage(int id, String source, String type, String severity, String message) {
+        final long key = ((long) source.hashCode() << 32) | (id & 0xFFFFFFFFL);
+        final int count = MESSAGE_COUNTS.computeIfAbsent(key, ignored -> new AtomicInteger()).incrementAndGet();
+        if (count > MESSAGE_LOG_LIMIT) {
+            if (count == MESSAGE_LOG_LIMIT + 1) {
+                GLStateManager.LOGGER.error("[GL] {} {} (0x{}) from {} repeats more than {} times; further messages of this kind are suppressed",
+                    severity, type, id, source, MESSAGE_LOG_LIMIT);
+            }
+            return;
+        }
+
         final String fullMessage = String.format("[GL] %s %s (0x%X) from %s: %s%s", severity, type, id, source, message, buildStackTrace());
 
         if ("HIGH".equals(severity)) {
