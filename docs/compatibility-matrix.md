@@ -306,7 +306,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 | ScalingGUIs | 待实机验证 | `Mods.SCALINGGUIS` 门控 + RSO 外部按钮 | 1.12.2-1.0.3.1：RSO 页的 GUI Scale 滑块替换为打开其配置 GUI 的无背景按钮；未加载时保留原滑块，详见 [docs/compat/scalingguis.md](compat/scalingguis.md) |
 | Fluidlogged API  | 代码支持 | compile-only API、条件调用              | 尚缺当前运行时验证记录      |
 | Gibbed           | 代码支持 | late Mixin、模型批处理路径                 | 尚缺当前运行时验证记录      |
-| Chunk Animator   | 部分 | 条件桥（ChunkAnimationProvider）+ 动画 section 单独绘制 | 1.12.2-1.2.1（236484:3850023）dev 运行通过（coremod 加载、兼容层启用、进世界无异常）；动画视觉确认待补，详见 [docs/compat/chunkanimator.md](compat/chunkanimator.md) |
+| Chunk Animator   | 部分 | 条件桥（ChunkAnimationProvider）+ 动画 section 单独绘制 | 1.12.2-1.2.1（236484:3850023）dev 与整合包实测通过（coremod 加载、兼容层启用、进世界无异常、动画可见）；2026-11-02 修复装入后区块与水面随机消失（indirect 命令缓冲上传被缓存跳过），详见 [docs/compat/chunkanimator.md](compat/chunkanimator.md) |
 | VoxelMap         | 部分 | 条件 Mixin（CPU 纹理路径 + 线性过滤 + scissor 重路由 + HudCaching alpha 保护） | 1.9.25 小地图黑屏/黑块已修复（dev 验证圆内正常显示地图内容、HUD 不被缓存隐藏，见 [docs/compat/voxelmap.md](compat/voxelmap.md)）；已知缺口：与 StellarCore `HudCaching` 组合时小地图圆周仍可能残留黑块（VoxelMap 全屏清 alpha + DST_ALPHA 混合与 HUD 缓存 FBO 的第三方冲突，`HudCaching=false` 即消失，非本模组缺陷）；验证 VoxelMap 需停用 JourneyMap（二者频道冲突） |
 | ModernUI         | 代码支持 | GUI scale hook                     | 尚缺当前运行时验证记录      |
 | Mekanism-CE-Unofficial | 部分 | 条件 Mixin（Mekanism glow pass 的 deferred alpha blend 与 Iris blend lock 桥接） | 10.0.5.021（CurseForge `840735:8862568`）：MakeUp UltraFast 9.1f 下大型化学清洗机贴图已恢复，详见 [docs/compat/mekanism.md](compat/mekanism.md)；其他光影包及手持模型回归待验证 |

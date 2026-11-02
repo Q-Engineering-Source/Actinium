@@ -1,6 +1,6 @@
 # Chunk Animator 兼容（chunkanimator 1.12.2-1.2.1）
 
-最后更新：2026-09-18。分支：`feat/chunk-animator-compat`。
+最后更新：2026-11-02。分支：`fix/chunkanimator-vanishing-chunks`。
 
 ## 模组机制（反编译结论）
 
@@ -42,10 +42,10 @@ Actinium 的 celeritas 区块管线接管后：
 | Chunk Animator 原版 hook | Actinium 等价钩子 | 位置 |
 | --- | --- | --- |
 | `RenderChunk.setOrigin` | `ChunkAnimationProvider.onSectionAdded(RenderSection)` | `RenderSectionManager.onSectionAdded`（渲染线程，section 进入渲染距离） |
-| `ChunkRenderContainer.preRenderChunk` | `ChunkAnimationProvider.getSectionOffset(RenderSection, float[3])` | `DefaultChunkRenderer.fillCommandBuffer`（渲染线程，每 pass 每可见 section） |
+| `ChunkRenderContainer.preRenderChunk` | `ChunkAnimationProvider.getSectionOffset(RenderSection, float[3])` | `DefaultChunkRenderer.drawAnimatedSections`（渲染线程，每 pass 每动画 section） |
 
 绘制拆分：动画中的 section 不能共享 region 的批量变换（`u_RegionOffset` 是 region 级
-uniform），因此 `fillCommandBuffer` 将其从 region 多批绘制中排除，region 批绘制结束后用
+uniform），因此 `BatchAssembler.fillRegion` 将其从 region 多批绘制中排除，region 批绘制结束后用
 独立 `IndividualDrawEmitter` 逐个绘制，绘制前把 region 偏移叠加动画偏移写入
 `shader.setRegionOffset`，绘制后恢复。动画结束后 provider 返回 `false`，section 自动
 回到 region 批，无持续开销。
@@ -97,6 +97,49 @@ mcp_stable/39/`，与 genSources 同源）复制到 `run/mcp/`，无需手工干
 > `Could not get unknown property 'fg'`，已探测确认），最终采用映射复制方案，
 > 效果等同——复用 Unimined 反混淆管线产物。依赖保持 `modImplementation`，
 > dev 运行自动加载 Chunk Animator（生产环境由用户自行安装）。
+
+## 故障：区块与水面随机消失（2026-11-02）
+
+症状：与 Chunk Animator 一起安装时，新区块升起过程中整块区块与水面随机消失，退出即恢复。
+环境为 1.12.2 整合包实测实例，`multi_draw_mode=INDIRECT`。
+
+日志证据（`alpha-0.0.14-54f467c2`，装 Chunk Animator）：`latest.log` 里 27232 条
+`checkpoint=actinium:draw-chunk-layer:*:after-super` 全部为 `error=1282`，按图层分
+Mipped Cutout 10374、Solid 9426、Translucent 7432；同一开关下的 `b977d70b` 与
+`4b192ea0` 会话 checkpoint 行数为 0。这两次会话没有安装 Chunk Animator，ephemeral
+indirect 路径不执行，因此这组对比只能确定症状只在该路径出现，无法判定引入版本；
+缓存失步的代码在更早的版本中同样存在。驱动 debug 回调（`enable_lwjgl_debug`）打出的
+调用栈定位到唯一失败点：
+
+```
+GL_INVALID_OPERATION: Target buffer must be bound.
+  GLRenderDevice$ImmediateCommandList.uploadData
+  IndirectMultiDrawBatch.upload
+  DefaultChunkRenderer.render（ephemeralBatch 上传）
+```
+
+根因：`ImmediateCommandList` 的 `bindVertexArray`/`bindBuffer` 按 `GlStateTracker`
+缓存跳过重复绑定，而该缓存有两个失步来源。一是 GLSM 在同一上下文里直接绑定
+VAO 与缓冲，不经过这份缓存（`glBindVertexArray(0)` 还会被 GLSM 改写成绑定
+defaultVAO）。二是 `IndirectMultiDrawBatch.delete()` 直接调用 `GlMutableBuffer.delete()`
+删除 GL 名字，绕过 `CommandList.deleteBuffer`，tracker 里保留已删除的句柄；驱动删除
+当前绑定的缓冲会把目标绑定复位为 0，下一帧新缓冲复用同一名字时缓存判定"已绑定"而
+跳过绑定，`glBufferData` 打到 0，上传失败，该 region 的 indirect 命令无数据，
+动画 section 当帧不绘制。
+
+修复：celeritas 的即时命令列表不再用缓存决定是否下发 GL 调用。
+`bindVertexArray`/`unbindVertexArray` 与 `bindBuffer`（覆盖 ARRAY_BUFFER、
+ELEMENT_ARRAY_BUFFER、DRAW_INDIRECT_BUFFER）一律实际绑定，`GlStateTracker` 仅保留
+删除通知。另在 `DefaultChunkRenderer` 的 region 批次与动画 section 绘制后接入
+`RenderDebugHooksHolder.checkDrawError`（受 `enable_actinium_gl_debug` 门控），
+`GLDebug` 的驱动消息按 (source, id) 限流 8 条，避免单个缺陷按帧刷屏。
+
+验证记录（`alpha-0.0.14-chunkfix2`，同一整合包 + Chunk Animator）：
+
+- `checkpoint` 行数 0、`error=1282` 0、`draw-error` 0、驱动 `[GL]` 消息 0；
+- `terrain-renderer-timing` 显示 solid `regions=13,batches=12,commands=644`、
+  water `regions=6,batches=6,commands=124`，ephemeral indirect 上传路径每帧执行且无错误；
+- 区块与水面不再消失。
 
 ## 参考
 
