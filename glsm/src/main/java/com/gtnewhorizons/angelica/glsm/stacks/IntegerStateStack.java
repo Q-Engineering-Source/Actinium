@@ -10,8 +10,8 @@ public final class IntegerStateStack extends IntegerState implements CowStateSta
     public IntegerStateStack(int value, int id) {
         cow.id = id;
         setValue(value);
-        stack = new IntegerState[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
-        for (int i = 0; i < GLStateManager.MAX_ATTRIB_STACK_DEPTH; i++) {
+        stack = new IntegerState[GLStateManager.STATE_SLOTS];
+        for (int i = 0; i < GLStateManager.STATE_SLOTS; i++) {
             stack[i] = new IntegerState();
             stack[i].setValue(value);
         }
@@ -27,6 +27,11 @@ public final class IntegerStateStack extends IntegerState implements CowStateSta
     @Override
     public CowDepths cowDepths() {
         return cow;
+    }
+
+    @Override
+    public boolean slotChanged(int slot) {
+        return !sameAs(stack[slot]);
     }
 
     @Override

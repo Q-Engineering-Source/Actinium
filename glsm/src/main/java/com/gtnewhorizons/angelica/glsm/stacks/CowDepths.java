@@ -29,6 +29,10 @@ public final class CowDepths {
         return pointer++;
     }
 
+    public boolean claimedAt(int depth) {
+        return pointer > 0 && slotDepth[pointer - 1] == depth;
+    }
+
     public int claimUnconditional() {
         slotDepth[pointer] = -1;
         return pointer++;

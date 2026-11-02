@@ -75,6 +75,7 @@ public class GLSMRedirector {
     private static final String OPEN_GL_HELPER = "net/minecraft/client/renderer/OpenGlHelper";
     private static final String EXT_BLEND_FUNC = "org/lwjgl/opengl/EXTBlendFuncSeparate";
     private static final String EXT_SECONDARY_COLOR = "org/lwjgl/opengl/EXTSecondaryColor";
+    private static final String EXT_FOG_COORD = "org/lwjgl/opengl/EXTFogCoord";
     private static final String ARB_MULTI_TEXTURE = "org/lwjgl/opengl/ARBMultitexture";
     private static final String ARB_SHADER_OBJECTS = "org/lwjgl/opengl/ARBShaderObjects";
     private static final String ARB_INSTANCED_ARRAYS = "org/lwjgl/opengl/ARBInstancedArrays";
@@ -170,6 +171,7 @@ public class GLSMRedirector {
             .add("glDrawBuffer")
             .add("glDrawElements")
             .add("glEdgeFlag")
+            .add("glEdgeFlagPointer")
             .add("glEnd")
             .add("glEndList")
             .add("glFog")
@@ -190,6 +192,7 @@ public class GLSMRedirector {
             .add("glGetBooleani_v")
             .add("glGetLight")
             .add("glGetMaterial")
+            .add("glGetPointer")
             .add("glGetTexLevelParameteri")
             .add("glGetTexLevelParameterf")
             .add("glGetBooleanv", "glGetBoolean")
@@ -345,6 +348,8 @@ public class GLSMRedirector {
             .add("glMultiDrawArrays")
             .add("glPointParameterf")
             .add("glPointParameteri")
+            .add("glFogCoordPointer")
+            .add("glSecondaryColorPointer")
             // Removed in core profile - emulated by the FFP shaders, calling through would abort the JVM
             .add("glSecondaryColor3f")
             .add("glSecondaryColor3d")
@@ -796,7 +801,10 @@ public class GLSMRedirector {
             .add("glSecondaryColor3bEXT", "glSecondaryColor3b")
             .add("glSecondaryColor3fEXT", "glSecondaryColor3f")
             .add("glSecondaryColor3dEXT", "glSecondaryColor3d")
-            .add("glSecondaryColor3ubEXT", "glSecondaryColor3ub"));
+            .add("glSecondaryColor3ubEXT", "glSecondaryColor3ub")
+            .add("glSecondaryColorPointerEXT", "glSecondaryColorPointer"));
+        METHOD_REDIRECTS.put(EXT_FOG_COORD, RedirectMap.newMap()
+            .add("glFogCoordPointerEXT", "glFogCoordPointer"));
         METHOD_REDIRECTS.put(ARB_MULTI_TEXTURE, RedirectMap.newMap()
             .add("glActiveTextureARB")
             .add("glClientActiveTextureARB", "glClientActiveTexture")

@@ -9,8 +9,8 @@ public final class FogStateStack extends FogState implements CowStateStack<FogSt
 
     public FogStateStack(int id) {
         cow.id = id;
-        stack = new FogState[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
-        for (int i = 0; i < GLStateManager.MAX_ATTRIB_STACK_DEPTH; i++) {
+        stack = new FogState[GLStateManager.STATE_SLOTS];
+        for (int i = 0; i < GLStateManager.STATE_SLOTS; i++) {
             stack[i] = new FogState();
         }
     }
@@ -18,6 +18,11 @@ public final class FogStateStack extends FogState implements CowStateStack<FogSt
     @Override
     public CowDepths cowDepths() {
         return cow;
+    }
+
+    @Override
+    public boolean slotChanged(int slot) {
+        return !sameAs(stack[slot]);
     }
 
     @Override

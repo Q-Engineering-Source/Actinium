@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Verifies that {@link StellarCoreHudCachingCompatTransformer} mirrors
  * StellarCore's {@code renderingCacheOverride} window onto
- * {@code GLSMConfig.hudCacheOverride} and restores the HUD baseline right
+ * {@code GLStateManager.setHudCacheOverride} and restores the HUD baseline right
  * before the cached {@code renderGameOverlay} call, using the real
  * {@code HUDCaching} class bytes from the StellarCore dependency.
  */
@@ -35,8 +35,8 @@ class StellarCoreHudCachingCompatTransformerTest {
         "github.kasuminova.stellarcore.client.hudcaching.HUDCaching";
     private static final String OVERRIDE_OWNER =
         "github/kasuminova/stellarcore/client/hudcaching/HUDCaching";
-    private static final String GLSM_CONFIG_OWNER =
-        "com/gtnewhorizons/angelica/glsm/hooks/GLSMConfig";
+    private static final String GLSM_STATE_MANAGER_OWNER =
+        "com/gtnewhorizons/angelica/glsm/GLStateManager";
     private static final String BOUNDARY_OWNER =
         "com/dhj/actinium/render/GuiGlStateBoundary";
 
@@ -49,17 +49,17 @@ class StellarCoreHudCachingCompatTransformerTest {
         assertNotNull(transformed);
         assertNotSame(original, transformed, "target class must be rewritten");
         assertTrue(transformed.length > original.length,
-            "mirrored stores and baseline restore must add instructions");
+            "mirrored calls and baseline restore must add instructions");
 
         List<String> events = collectRenderCachedHudEvents(transformed);
         assertEquals(List.of(
             "renderGameOverlay",                    // non-cached early path, no restore
             "override=true",
-            "mirror=true",
+            "hudOverride=true",
             "restoreHudBaseline",
             "renderGameOverlay",                    // cached render, restore applied
             "override=false",
-            "mirror=false"
+            "hudOverride=false"
         ), events);
     }
 
@@ -104,13 +104,17 @@ class StellarCoreHudCachingCompatTransformerTest {
                     assertEquals(value == 1 ? Opcodes.ICONST_1 : Opcodes.ICONST_0,
                         instruction.getPrevious().getOpcode(),
                         "original override store must still be preceded by its constant");
-                } else if (GLSM_CONFIG_OWNER.equals(field.owner) && "hudCacheOverride".equals(field.name)) {
-                    int value = constantBefore(instruction);
-                    events.add("mirror=" + (value == 1));
-                    assertEquals(value == 1 ? Opcodes.ICONST_1 : Opcodes.ICONST_0,
-                        instruction.getPrevious().getOpcode(),
-                        "mirrored store must re-push the mirrored constant");
                 }
+            } else if (instruction.getOpcode() == Opcodes.INVOKESTATIC
+                && instruction instanceof MethodInsnNode call
+                && GLSM_STATE_MANAGER_OWNER.equals(call.owner)
+                && "setHudCacheOverride".equals(call.name)) {
+                int value = constantBefore(instruction);
+                events.add("hudOverride=" + (value == 1));
+                assertEquals("(Z)V", call.desc);
+                assertEquals(value == 1 ? Opcodes.ICONST_1 : Opcodes.ICONST_0,
+                    instruction.getPrevious().getOpcode(),
+                    "setter call must re-push the override constant");
             } else if (instruction.getOpcode() == Opcodes.INVOKESTATIC
                 && instruction instanceof MethodInsnNode call
                 && BOUNDARY_OWNER.equals(call.owner)

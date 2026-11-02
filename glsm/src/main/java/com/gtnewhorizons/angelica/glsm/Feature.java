@@ -94,6 +94,7 @@ public class Feature {
             , GLStateManager.getSecondaryColor() // Current secondary color
             , ShaderManager.getNormalStack()    // Current normal vector
             , ShaderManager.getTexCoordStack()  // Current texture coordinates
+            , GLStateManager.getEdgeFlagState() // GL_EDGE_FLAG flag
             // Current color index
             // Current raster position
             // GL_CURRENT_RASTER_POSITION_VALID flag
@@ -153,6 +154,8 @@ public class Feature {
             , GLStateManager.getMultisampleState() // GL_MULTISAMPLE flag
             , GLStateManager.getNormalizeState() // GL_NORMALIZE flag
             , GLStateManager.getPointSmoothState() // GL_POINT_SMOOTH flag
+            , GLStateManager.getPointSpriteState() // GL_POINT_SPRITE flag
+            , GLStateManager.getVertexProgramTwoSideState() // GL_VERTEX_PROGRAM_TWO_SIDE flag
             , GLStateManager.getPolygonOffsetPointState() // GL_POLYGON_OFFSET_POINT flag
             , GLStateManager.getPolygonOffsetLineState() // GL_POLYGON_OFFSET_LINE flag
             , GLStateManager.getPolygonOffsetFillState() // GL_POLYGON_OFFSET_FILL flag
@@ -171,11 +174,12 @@ public class Feature {
             enableBits.add(GLStateManager.getClipPlaneStates()[i]);
         }
 
-        // GL_TEXTURE_1D, GL_TEXTURE_2D, GL_TEXTURE_3D flags
+        // GL_TEXTURE_1D, GL_TEXTURE_2D, GL_TEXTURE_3D, GL_TEXTURE_CUBE_MAP flags
         for(int i = 0 ; i < GLStateManager.MAX_TEXTURE_UNITS; i++) {
             enableBits.add(GLStateManager.getTextures().getTexture1DStates(i));
             enableBits.add(GLStateManager.getTextures().getTextureUnitStates(i));
             enableBits.add(GLStateManager.getTextures().getTexture3DStates(i));
+            enableBits.add(GLStateManager.getTextures().getTextureCubeMapStates(i));
         }
 
         // Flags GL_TEXTURE_GEN_x where x is S, T, R, or Q
@@ -214,13 +218,7 @@ public class Feature {
                                        // ^^ GL_FOG_MODE value
         ));
         attribToFeatures.put(GL11.GL_HINT_BIT, ImmutableSet.of(
-            // GL_PERSPECTIVE_CORRECTION_HINT setting
-            // GL_POINT_SMOOTH_HINT setting
-            // GL_LINE_SMOOTH_HINT setting
-            // GL_POLYGON_SMOOTH_HINT setting
-            // GL_FOG_HINT setting
-            // GL_GENERATE_MIPMAP_HINT setting
-            // GL_TEXTURE_COMPRESSION_HINT setting
+            GLStateManager.getHintState() // GL_PERSPECTIVE_CORRECTION_HINT .. GL_FRAGMENT_SHADER_DERIVATIVE_HINT, packed
         ));
         attribToFeatures.put(GL11.GL_LIGHTING_BIT, ImmutableSet.of(
             GLStateManager.getColorMaterial() // GL_COLOR_MATERIAL enable bit
@@ -282,7 +280,8 @@ public class Feature {
         ));
         attribToFeatures.put(GL11.GL_POINT_BIT, ImmutableSet.of(
               GLStateManager.getPointSmoothState() // GL_POINT_SMOOTH flag
-            , GLStateManager.getPointState() // Point size
+            , GLStateManager.getPointSpriteState() // GL_POINT_SPRITE flag
+            , GLStateManager.getPointState() // Point size, point parameters, sprite coord origin
         ));
         attribToFeatures.put(GL11.GL_POLYGON_BIT, ImmutableSet.of(
               GLStateManager.getCullState() // GL_CULL_FACE enable bit
@@ -298,7 +297,7 @@ public class Feature {
         ));
         attribToFeatures.put(GL11.GL_SCISSOR_BIT, ImmutableSet.of(
               GLStateManager.getScissorTest() // GL_SCISSOR_TEST enable bit
-            // Scissor box
+            , GLStateManager.getScissorState() // GL_SCISSOR_BOX
         ));
         attribToFeatures.put(GL11.GL_STENCIL_BUFFER_BIT, ImmutableSet.of(
               GLStateManager.getStencilTest() // GL_STENCIL_TEST enable bit
