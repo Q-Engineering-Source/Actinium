@@ -184,7 +184,7 @@ public class GLStateManager {
     private static volatile boolean workerContextsActive;
     private static int workerContextCount;
 
-    static GLContextState ctx() {
+    public static GLContextState ctx() {
         if (Thread.currentThread() == MainThread) {
             final GLContextState current = mainCtx;
             return current != null ? current : (mainCtx = primaryContext());

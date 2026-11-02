@@ -49,7 +49,7 @@ import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
-class GLContextState {
+public class GLContextState {
     private final List<IStateStack<?>> allStacksBuilder = new ArrayList<>();
     IStateStack<?>[] allStacks;
     final List<BooleanStateStack> allBooleanStates = new ArrayList<>();

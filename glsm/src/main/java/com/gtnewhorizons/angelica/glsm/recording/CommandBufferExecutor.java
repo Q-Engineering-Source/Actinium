@@ -35,8 +35,9 @@ public final class CommandBufferExecutor {
      * @param buffer position should be at 0, limit at size
      * @param complexObjects e.g. {@code TexImage2DCmd}
      * @param ownedVbos indexed by {@code DrawRange} commands
+     * @param compiledDisplayList the list being replayed, used to validate recorded vertex array names
      */
-    public static void execute(ByteBuffer buffer, Object[] complexObjects, DisplayListVBO ownedVbos) {
+    public static void execute(ByteBuffer buffer, Object[] complexObjects, DisplayListVBO ownedVbos, CompiledDisplayList compiledDisplayList) {
         long ptr = memAddress(buffer);
         final long end = ptr + buffer.limit();
 
@@ -531,8 +532,9 @@ public final class CommandBufferExecutor {
                     ptr += 4;
                 }
                 case GLCommand.BIND_VAO -> {
-                    GLStateManager.glBindVertexArray(memGetInt(ptr));
+                    final int vao = memGetInt(ptr);
                     ptr += 4;
+                    if (compiledDisplayList.replaysVertexArrayBind(vao)) GLStateManager.glBindVertexArray(vao);
                 }
 
                 case GLCommand.COMPLEX_REF -> {
