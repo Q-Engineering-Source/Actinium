@@ -889,7 +889,7 @@ public class DisplayListManager {
             // captures' CPU-side vertex/index buffers (already uploaded by build()).
             currentRecorder.free();
 
-            compiled = new CompiledDisplayList(finalBuffer.toBuffer(), finalBuffer.getComplexObjects(), compiledBuffers, indexedBatches);
+            compiled = new CompiledDisplayList(finalBuffer.toBuffer(), finalBuffer.getComplexObjects(), compiledBuffers, indexedBatches, GLStateManager.ctx());
         } else {
             if (currentRecorder != null) {
                 currentRecorder.free();

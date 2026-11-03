@@ -1,6 +1,8 @@
 package com.gtnewhorizons.angelica.glsm.recording;
 
 import com.gtnewhorizons.angelica.glsm.DisplayListManager;
+import com.gtnewhorizons.angelica.glsm.GLContextState;
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.recording.commands.DisplayListCommand;
 import com.gtnewhorizons.angelica.glsm.recording.commands.IndexedDrawBatch;
 import it.unimi.dsi.fastutil.ints.Int2IntMap;
@@ -31,18 +33,29 @@ public final class CompiledDisplayList {
      * Empty display list singleton. Per OpenGL spec, an empty list is still valid.
      * This instance does nothing when rendered and is never deleted (shared singleton).
      */
-    public static final CompiledDisplayList EMPTY = new CompiledDisplayList(null, null, null, Collections.emptyList());
+    public static final CompiledDisplayList EMPTY = new CompiledDisplayList(null, null, null, Collections.emptyList(), null);
 
     private final ByteBuffer commandBuffer;     // Off-heap command storage, must be freed
     private final Object[] complexObjects;      // Complex commands (TexImage2D, etc.)
     private final DisplayListVBO ownedVbos;     // GPU resources referenced by index
     private final List<IndexedDrawBatch> indexedBatches; // Shared VAO/VBO/EBO triples per layout group
+    private GLContextState compileCtx;
 
-    public CompiledDisplayList(ByteBuffer commandBuffer, Object[] complexObjects, DisplayListVBO ownedVbos, List<IndexedDrawBatch> indexedBatches) {
+    public CompiledDisplayList(ByteBuffer commandBuffer, Object[] complexObjects, DisplayListVBO ownedVbos, List<IndexedDrawBatch> indexedBatches, GLContextState compileCtx) {
         this.commandBuffer = commandBuffer;
         this.complexObjects = complexObjects;
         this.ownedVbos = ownedVbos;
         this.indexedBatches = indexedBatches;
+        this.compileCtx = compileCtx;
+    }
+
+    /**
+     * A recorded vertex array bind only names a valid array while the list replays in the
+     * context it was compiled in; a list compiled during the splash screen would otherwise
+     * bind an array name that belongs to another context.
+     */
+    boolean replaysVertexArrayBind(int vao) {
+        return vao == 0 || compileCtx == GLStateManager.ctx();
     }
 
     /**
@@ -50,7 +63,7 @@ public final class CompiledDisplayList {
      */
     public void render() {
         if (commandBuffer != null && commandBuffer.limit() > 0) {
-            CommandBufferExecutor.execute(commandBuffer, complexObjects, ownedVbos);
+            CommandBufferExecutor.execute(commandBuffer, complexObjects, ownedVbos, this);
         }
     }
 
@@ -82,6 +95,7 @@ public final class CompiledDisplayList {
         if (commandBuffer != null) {
             memFree(commandBuffer);
         }
+        compileCtx = null;
     }
 
     /**
