@@ -8,6 +8,8 @@ import dhj.embeddedt.embeddium.impl.render.chunk.shader.ChunkFogMode;
 import org.joml.Vector3d;
 
 public class GLStateManagerFogService implements FogService {
+    public static final GLStateManagerFogService INSTANCE = new GLStateManagerFogService();
+
     private final float[] fogColor = new float[4];
 
     @Override
