@@ -3,6 +3,9 @@ package com.dhj.actinium.startup;
 import com.dhj.actinium.debug.ActiniumStartupDebugConfig;
 import com.dhj.actinium.debug.CoreProfileContextAttributes;
 import com.dhj.actinium.debug.OpenGlVersion;
+import com.gtnewhorizons.angelica.config.GLVersionChoice;
+import com.gtnewhorizons.angelica.config.SystemProperties;
+import com.gtnewhorizons.angelica.glsm.backend.BackendOptions;
 import net.minecraftforge.common.ForgeEarlyConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -44,9 +47,10 @@ public final class CoreProfileDisplayCreator {
     }
 
     private static void createWithFallback(PixelFormat format, boolean lwjglDebug) throws LWJGLException {
-        int maxMajor = 4;
-        boolean macos = LWJGLUtil.getPlatform() == LWJGLUtil.PLATFORM_MACOSX;
-        int maxMinor = macos ? 1 : 6;
+        final boolean macos = LWJGLUtil.getPlatform() == LWJGLUtil.PLATFORM_MACOSX;
+        final GLVersionChoice requested = GLVersionChoice.of(requestedGlVersion(), macos ? 41 : 46);
+        final int maxMajor = requested == GLVersionChoice.AUTO ? 4 : requested.version() / 10;
+        final int maxMinor = requested == GLVersionChoice.AUTO ? (macos ? 1 : 6) : requested.version() % 10;
         Exception lastException = null;
         String lastRejection = null;
 
@@ -146,6 +150,31 @@ public final class CoreProfileDisplayCreator {
             Display.destroy();
         } catch (RuntimeException destroyFailure) {
             LOGGER.warn("Failed to destroy an unsuccessful OpenGL context", destroyFailure);
+        }
+    }
+
+    /**
+     * Resolves the core profile version to request. {@link SystemProperties#GL_PROFILE} wins when it
+     * parses, otherwise the configuration value recorded by {@link BackendOptions} decides. Zero
+     * leaves the choice to the probe, which {@link GLVersionChoice#of} resolves to
+     * {@link GLVersionChoice#AUTO}.
+     */
+    private static int requestedGlVersion() {
+        final String raw = SystemProperties.GL_PROFILE.trim();
+        if (raw.isEmpty()) {
+            return BackendOptions.configGlVersion();
+        }
+        final int dot = raw.indexOf('.');
+        try {
+            if (dot < 0) {
+                return Integer.parseInt(raw) * 10;
+            }
+            final int major = Integer.parseInt(raw.substring(0, dot));
+            final String minorPart = raw.substring(dot + 1);
+            return major * 10 + (minorPart.isEmpty() ? 0 : Integer.parseInt(minorPart));
+        } catch (NumberFormatException e) {
+            LOGGER.warn("Ignoring unparsable angelica.glProfile value '{}'", raw);
+            return BackendOptions.configGlVersion();
         }
     }
 }

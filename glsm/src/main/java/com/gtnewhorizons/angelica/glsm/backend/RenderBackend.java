@@ -62,6 +62,13 @@ public abstract class RenderBackend {
      */
     public void onPersistentBufferWrite(int glId, long offset, long size) {}
 
+    /**
+     * Reports whether a buffer was created with {@code glBufferStorage} and can never be
+     * re-specified, so a caller that wants to replace its contents knows re-storing is not an
+     * option. Backends that map through the driver report false and never ask.
+     */
+    public boolean isBufferImmutable(int glId) { return false; }
+
     public abstract void flush();
     public abstract void finish();
 
