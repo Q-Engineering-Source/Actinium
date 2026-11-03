@@ -343,6 +343,11 @@ public class GLStateManager {
 
     // This setting varies depending on driver, so it gets queried at runtime
     public static int DEFAULT_DRAW_BUFFER = 0x0405; // GL_BACK
+    /**
+     * Largest point size the driver accepts, queried once at init. Read through {@link #maxPointSize()} so a
+     * caller that runs before {@code init} still sees a real value instead of the initial NaN.
+     */
+    private static float maxPointSize = Float.NaN;
 
     private static Thread CurrentThread = MainThread;
     @Setter @Getter private static boolean runningSplash = true;
@@ -663,6 +668,8 @@ public class GLStateManager {
             initCallback.run();
         }
 
+        maxPointSize();
+
         // Drain any pending GL errors from initialization. In core profile, some legacy queries may generate GL_INVALID_ENUM. The splash thread inherits the
         // DrawableGL context and its error state, so stale errors here would cause SplashProgress.checkGLError() to fail.
         int err;
@@ -864,19 +871,20 @@ public class GLStateManager {
 
     /**
      * Largest point size the driver accepts, used while the tracked {@code GL_POINT_SIZE_MAX} is still NaN.
-     * The result is cached outside {@link com.gtnewhorizons.angelica.glsm.states.PointState} so a query
-     * does not make the value part of the pushable point state.
+     * The result is cached in a static field rather than {@link com.gtnewhorizons.angelica.glsm.states.PointState}
+     * so a query does not make the value part of the pushable point state. A caller that runs before
+     * {@code init} issues the query itself.
      */
-    static float maxPointSize(GLContextState glCtx) {
-        if (Float.isNaN(glCtx.maxPointSize)) {
-            final FloatBuffer range = glCtx.queryScratch;
+    static float maxPointSize() {
+        if (Float.isNaN(maxPointSize)) {
+            final FloatBuffer range = ctx().queryScratch;
             range.clear();
             RENDER_BACKEND.getFloat(GL11.GL_POINT_SIZE_RANGE, range);
             final float smooth = range.get(1);
             RENDER_BACKEND.getFloat(GL12.GL_ALIASED_POINT_SIZE_RANGE, range);
-            glCtx.maxPointSize = Math.max(smooth, range.get(1));
+            maxPointSize = Math.max(smooth, range.get(1));
         }
-        return glCtx.maxPointSize;
+        return maxPointSize;
     }
 
     public static void glBlendColor(float red, float green, float blue, float alpha) { GLSMBlend.glBlendColor(red, green, blue, alpha); }

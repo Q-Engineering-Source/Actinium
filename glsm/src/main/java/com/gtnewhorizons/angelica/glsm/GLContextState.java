@@ -192,7 +192,6 @@ public class GLContextState {
     public final ClipPlaneState clipPlaneState = new ClipPlaneState();
     public final FloatBuffer queryScratch = BufferUtils.createFloatBuffer(16);
     public final DoubleBuffer queryScratchDouble = BufferUtils.createDoubleBuffer(16);
-    public float maxPointSize = Float.NaN;
     public final MatrixModeStack matrixMode = member(new MatrixModeStack(StackIdAllocator.nextId()));
     public final Matrix4fStack modelViewMatrix = new Matrix4fStack(GLStateManager.MAX_MODELVIEW_STACK_DEPTH);
     public final Matrix4fStack projectionMatrix = new Matrix4fStack(GLStateManager.MAX_PROJECTION_STACK_DEPTH);

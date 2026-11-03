@@ -514,7 +514,7 @@ public final class GLSMQueries {
             case GL14.GL_POINT_SIZE_MIN -> ctx().pointState.getMinSize();
             case GL14.GL_POINT_SIZE_MAX -> {
                 final GLContextState glCtx = ctx();
-                yield Float.isNaN(glCtx.pointState.getMaxSize()) ? maxPointSize(glCtx) : glCtx.pointState.getMaxSize();
+                yield Float.isNaN(glCtx.pointState.getMaxSize()) ? maxPointSize() : glCtx.pointState.getMaxSize();
             }
             case GL14.GL_POINT_FADE_THRESHOLD_SIZE -> ctx().pointState.getFadeThreshold();
             default -> {
