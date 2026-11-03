@@ -278,10 +278,6 @@ public final class GLSMDebug {
             attributeSummary());
     }
 
-    public static boolean forceOrphanStreaming() {
-        return isEnabled();
-    }
-
     public static boolean shouldLogDrawDiagnostics() {
         return shouldLogWorldRender();
     }

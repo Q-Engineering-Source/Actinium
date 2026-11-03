@@ -343,6 +343,11 @@ public class GLStateManager {
 
     // This setting varies depending on driver, so it gets queried at runtime
     public static int DEFAULT_DRAW_BUFFER = 0x0405; // GL_BACK
+    /**
+     * Largest point size the driver accepts, queried once at init. Read through {@link #maxPointSize()} so a
+     * caller that runs before {@code init} still sees a real value instead of the initial NaN.
+     */
+    private static float maxPointSize = Float.NaN;
 
     private static Thread CurrentThread = MainThread;
     @Setter @Getter private static boolean runningSplash = true;
@@ -663,6 +668,8 @@ public class GLStateManager {
             initCallback.run();
         }
 
+        maxPointSize();
+
         // Drain any pending GL errors from initialization. In core profile, some legacy queries may generate GL_INVALID_ENUM. The splash thread inherits the
         // DrawableGL context and its error state, so stale errors here would cause SplashProgress.checkGLError() to fail.
         int err;
@@ -864,19 +871,20 @@ public class GLStateManager {
 
     /**
      * Largest point size the driver accepts, used while the tracked {@code GL_POINT_SIZE_MAX} is still NaN.
-     * The result is cached outside {@link com.gtnewhorizons.angelica.glsm.states.PointState} so a query
-     * does not make the value part of the pushable point state.
+     * The result is cached in a static field rather than {@link com.gtnewhorizons.angelica.glsm.states.PointState}
+     * so a query does not make the value part of the pushable point state. A caller that runs before
+     * {@code init} issues the query itself.
      */
-    static float maxPointSize(GLContextState glCtx) {
-        if (Float.isNaN(glCtx.maxPointSize)) {
-            final FloatBuffer range = glCtx.queryScratch;
+    static float maxPointSize() {
+        if (Float.isNaN(maxPointSize)) {
+            final FloatBuffer range = ctx().queryScratch;
             range.clear();
             RENDER_BACKEND.getFloat(GL11.GL_POINT_SIZE_RANGE, range);
             final float smooth = range.get(1);
             RENDER_BACKEND.getFloat(GL12.GL_ALIASED_POINT_SIZE_RANGE, range);
-            glCtx.maxPointSize = Math.max(smooth, range.get(1));
+            maxPointSize = Math.max(smooth, range.get(1));
         }
-        return glCtx.maxPointSize;
+        return maxPointSize;
     }
 
     public static void glBlendColor(float red, float green, float blue, float alpha) { GLSMBlend.glBlendColor(red, green, blue, alpha); }
@@ -3374,6 +3382,18 @@ public class GLStateManager {
     public static int glGetFramebufferAttachmentParameteri(int target, int attachment, int pname) { return GLSMFramebuffer.glGetFramebufferAttachmentParameteri(target, attachment, pname); }
 
     public static void glFramebufferTexture2D(int target, int attachment, int textarget, int texture, int level) { GLSMFramebuffer.glFramebufferTexture2D(target, attachment, textarget, texture, level); }
+
+    public static void glFramebufferTexture1D(int target, int attachment, int textarget, int texture, int level) { GLSMFramebuffer.glFramebufferTexture1D(target, attachment, textarget, texture, level); }
+
+    public static void glFramebufferTexture3D(int target, int attachment, int textarget, int texture, int level, int zoffset) { GLSMFramebuffer.glFramebufferTexture3D(target, attachment, textarget, texture, level, zoffset); }
+
+    public static void glFramebufferTextureLayer(int target, int attachment, int texture, int level, int layer) { GLSMFramebuffer.glFramebufferTextureLayer(target, attachment, texture, level, layer); }
+
+    public static void glNamedFramebufferTexture(int framebuffer, int attachment, int texture, int level) { GLSMFramebuffer.glNamedFramebufferTexture(framebuffer, attachment, texture, level); }
+
+    public static void glNamedFramebufferTextureLayer(int framebuffer, int attachment, int texture, int level, int layer) { GLSMFramebuffer.glNamedFramebufferTextureLayer(framebuffer, attachment, texture, level, layer); }
+
+    public static void glNamedFramebufferRenderbuffer(int framebuffer, int attachment, int renderbuffertarget, int renderbuffer) { GLSMFramebuffer.glNamedFramebufferRenderbuffer(framebuffer, attachment, renderbuffertarget, renderbuffer); }
 
             public static void glFramebufferTexture(int target, int attachment, int texture, int level) { GLSMFramebuffer.glFramebufferTexture(target, attachment, texture, level); }
 

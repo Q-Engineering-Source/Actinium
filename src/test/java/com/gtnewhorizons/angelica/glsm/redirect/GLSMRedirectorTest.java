@@ -343,6 +343,17 @@ class GLSMRedirectorTest {
         }
     }
 
+    /**
+     * Pixel-pack-buffer readback overloads take a {@code long} offset instead of a buffer, so they are not
+     * covered by the name-only redirect table. Lock them to the GLSM entry points that issue the PBO read.
+     */
+    @Test
+    void rewritesPixelPackBufferReadbackOverloadsToGlsm() {
+        assertRedirectedToGlsm("org/lwjgl/opengl/GL11", "glReadPixels", "(IIIIIIJ)V", "glReadPixels");
+        assertRedirectedToGlsm("org/lwjgl/opengl/GL11C", "glReadPixels", "(IIIIIIJ)V", "glReadPixels");
+        assertRedirectedToGlsm("org/lwjgl/opengl/GL11", "glGetTexImage", "(IIIIJ)V", "glGetTexImage");
+    }
+
     private static void assertRedirectedToGlsm(String owner, String name, String desc, String expectedName) {
         final String label = owner + "." + name + desc;
         byte[] classBytes = generateClassCallingGl(owner, name, desc);

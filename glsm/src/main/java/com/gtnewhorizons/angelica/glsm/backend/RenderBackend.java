@@ -56,6 +56,12 @@ public abstract class RenderBackend {
     /** False on backends where framebuffer completeness checks are unreliable (e.g. some GLES stacks). */
     public boolean framebufferCompletenessIsMeaningful() { return true; }
 
+    /**
+     * Reports a write into a persistently mapped buffer so a backend that tracks the mapping can
+     * keep its own view of the buffer coherent. Backends that map through the GL driver ignore it.
+     */
+    public void onPersistentBufferWrite(int glId, long offset, long size) {}
+
     public abstract void flush();
     public abstract void finish();
 
@@ -196,6 +202,15 @@ public abstract class RenderBackend {
     public abstract void deleteFramebuffers(int framebuffer);
     public abstract void bindFramebuffer(int target, int framebuffer);
     public abstract void framebufferTexture2D(int target, int attachment, int textarget, int texture, int level);
+    public void framebufferTexture1D(int target, int attachment, int textarget, int texture, int level) {
+        throw new UnsupportedOperationException(getName() + ": 1D framebuffer attachments unsupported");
+    }
+    public void framebufferTexture3D(int target, int attachment, int textarget, int texture, int level, int zoffset) {
+        throw new UnsupportedOperationException(getName() + ": 3D framebuffer attachments unsupported");
+    }
+    public void framebufferTextureLayer(int target, int attachment, int texture, int level, int layer) {
+        throw new UnsupportedOperationException(getName() + ": layered framebuffer attachments unsupported");
+    }
     public abstract void framebufferTexture(int target, int attachment, int texture, int level);
     public abstract int genRenderbuffers();
     public abstract void deleteRenderbuffers(int renderbuffer);
@@ -432,6 +447,12 @@ public abstract class RenderBackend {
     public abstract void textureSubImage2D(int texture, int level, int xoffset, int yoffset, int width, int height, int format, int type, IntBuffer pixels);
     public abstract int createFramebuffers();
     public abstract void namedFramebufferTexture(int framebuffer, int attachment, int texture, int level);
+    public void namedFramebufferTextureLayer(int framebuffer, int attachment, int texture, int level, int layer) {
+        throw new UnsupportedOperationException(getName() + ": named layered framebuffer attachments unsupported");
+    }
+    public void namedFramebufferRenderbuffer(int framebuffer, int attachment, int renderbuffertarget, int renderbuffer) {
+        throw new UnsupportedOperationException(getName() + ": named framebuffer renderbuffer attachments unsupported");
+    }
     public abstract void namedFramebufferReadBuffer(int framebuffer, int mode);
     public abstract void namedFramebufferDrawBuffers(int framebuffer, IntBuffer bufs);
     public abstract void blitNamedFramebuffer(int readFramebuffer, int drawFramebuffer, int srcX0, int srcY0, int srcX1, int srcY1, int dstX0, int dstY0, int dstX1, int dstY1, int mask, int filter);

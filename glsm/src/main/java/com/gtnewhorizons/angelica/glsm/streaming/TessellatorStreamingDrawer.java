@@ -7,7 +7,6 @@ import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormat;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.ITessellatorData;
 import com.gtnewhorizons.angelica.glsm.QuadConverter;
-import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
@@ -65,16 +64,9 @@ public class TessellatorStreamingDrawer {
         if (initialized) return;
         initialized = true;
 
-        if (RenderSystem.supportsBufferStorage()
-            && !Boolean.getBoolean("angelica.forceOrphanStreaming")
-            && !Boolean.getBoolean("actinium.glsm.forceOrphanStreaming")) {
-            try {
-                persistentBuffer = new PersistentStreamingBuffer();
-                LOGGER.info("Persistent streaming buffer created ({}MB)", PersistentStreamingBuffer.DEFAULT_CAPACITY / (1024 * 1024));
-            } catch (Exception e) {
-                LOGGER.warn("Failed to create persistent streaming buffer, using orphan fallback", e);
-                persistentBuffer = null;
-            }
+        persistentBuffer = PersistentStreamingBuffer.createOrNull(PersistentStreamingBuffer.DEFAULT_CAPACITY);
+        if (persistentBuffer != null) {
+            LOGGER.info("Persistent streaming buffer created ({}MB)", PersistentStreamingBuffer.DEFAULT_CAPACITY / (1024 * 1024));
         }
     }
 
@@ -237,7 +229,7 @@ public class TessellatorStreamingDrawer {
 
     public static void endFrame() {
         if (persistentBuffer != null) {
-            persistentBuffer.postDraw();
+            persistentBuffer.endFrame();
         }
     }
 
@@ -264,7 +256,7 @@ public class TessellatorStreamingDrawer {
 
         if (persistentBuffer != null) {
             final long uploadStart = perfSampled ? GLSMPerfDebug.now() : 0L;
-            firstVertex = persistentBuffer.upload(packed, vertexSize);
+            firstVertex = persistentBuffer.upload(packed, vertexSize, drawMode == GL11.GL_QUADS ? 4 : 1);
             if (perfSampled) {
                 GLSMPerfDebug.record(GLSMPerfDebug.Stage.STREAM_PERSISTENT_UPLOAD, uploadStart, GLSMPerfDebug.now());
             }
