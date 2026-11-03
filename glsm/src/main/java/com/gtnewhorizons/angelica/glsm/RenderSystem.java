@@ -685,4 +685,21 @@ public class RenderSystem {
         if (bugfix == null || bugfix.isEmpty()) bugfix = "0";
         return major + minor + bugfix;
     }
+
+    /** Lowest core profile version Actinium can run on, packed as {@code major * 10 + minor}. */
+    public static final int MIN_CORE_VERSION = 33;
+
+    /**
+     * Returns the highest version still worth probing after the driver answered {@code actual} to a
+     * {@code requested} core profile. The scan runs downwards, so a driver that reports less than it was
+     * asked for is never asked for more than it admits to again. Values below {@link #MIN_CORE_VERSION}
+     * cannot satisfy the 3.3 requirement, so a rejected request above the floor stops at the floor
+     * instead of stepping through versions that are guaranteed to fail. {@code actual} is {@code -1} when
+     * the driver's version string was unparsable, which carries no information and only steps down once.
+     */
+    public static int probeCapAfterRejection(int requested, int actual) {
+        if (actual >= MIN_CORE_VERSION && actual < requested) return actual;
+        if (actual >= 0 && actual < MIN_CORE_VERSION && requested > MIN_CORE_VERSION) return MIN_CORE_VERSION;
+        return requested - 1;
+    }
 }
