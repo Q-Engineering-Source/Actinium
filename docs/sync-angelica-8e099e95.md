@@ -227,12 +227,12 @@
 | 顺序 | 上游范围 | 内容 | 状态 |
 |---|---|---|---|
 | 1 | `73d61d38` | `FenceQueue`、`GlStreamingRing`，`PersistentStreamingBuffer` 改薄包装，删除 `GlFence` 与 `StreamingBuffer` 接口 | PR #257 |
-| 2 | `1babfd96`、`8e180962`、`7bb5bfd4` | 点尺寸改静态缓存并保留惰性查询，`glReadPixels` 与 `glGetTexImage` 的 PBO 重载重定向测试 | PR #258；`1babfd96` 的 `GLDebug.resetGroupStack`、`RenderBackend.invalidateStateMirror`、`ShaderManager.invalidateBoundProgram` 三项在本地没有崩溃恢复宿主，落地后无调用方，等 `RenderRecovery` 一并做 |
-| 3 | `e84c8c8d` 阶段一 | `TextureTargets`、`RenderBackend` 纹理目标接口与 `Lwjgl3` 实现、`DSAUnsupported`/`DSAARB` 改经 `GLStateManager`、`GLSMRedirector` 表项 | PR #259；`RenderSystem` 的 stencil 与 texture storage 能力查询等第一个真实消费者，随阶段二 |
-| 4 | `2a8c8756`、`10922edc` | `GLVersionChoice` 与其测试，接到 `CoreProfileDisplayCreator` 的版本探测起点；`SystemProperties.GL_PROFILE` 读 `angelica.glProfile` | 本 PR |
-| 5 | `2a8c8756`、`8e180962` | `BackendOptions`、`BackendStartGuard` 与测试，`ActiniumConfig` 增加后端选择项与 GL 版本请求，`Actinium.onConstruct` 记录选项 | 本 PR；`BackendStartGuard` 的 `arm` 与 `disarm` 等 SDL 后端接线，单后端下 `tripped()` 恒为 false |
+| 2 | `1babfd96`、`8e180962`、`7bb5bfd4` | 点尺寸改静态缓存并保留惰性查询，`glReadPixels` 与 `glGetTexImage` 的 PBO 重载重定向测试 | PR #257；`1babfd96` 的 `GLDebug.resetGroupStack`、`RenderBackend.invalidateStateMirror`、`ShaderManager.invalidateBoundProgram` 三项在本地没有崩溃恢复宿主，落地后无调用方，等 `RenderRecovery` 一并做 |
+| 3 | `e84c8c8d` 阶段一 | `TextureTargets`、`RenderBackend` 纹理目标接口与 `Lwjgl3` 实现、`DSAUnsupported`/`DSAARB` 改经 `GLStateManager`、`GLSMRedirector` 表项 | PR #257；`RenderSystem` 的 stencil 与 texture storage 能力查询等第一个真实消费者，随阶段二 |
+| 4 | `2a8c8756`、`10922edc` | `GLVersionChoice` 与其测试，接到 `CoreProfileDisplayCreator` 的版本探测起点；`SystemProperties.GL_PROFILE` 读 `angelica.glProfile` | PR #261 |
+| 5 | `2a8c8756`、`8e180962` | `BackendOptions`、`BackendStartGuard` 与测试，`ActiniumConfig` 增加后端选择项与 GL 版本请求，`Actinium.onConstruct` 记录选项 | PR #261；`BackendStartGuard` 的 `arm` 与 `disarm` 等 SDL 后端接线，单后端下 `tripped()` 恒为 false |
 | 6 | `482dece0` 前置 | `3b4ebcf6`（上游范围外）的 `glsm/loading` 五件套与 `GLSMRedirector` 的四参 `transformClassNode`，之后才能落 `GlsmRedirectAgent` | 待做；本地 `glsm/loading` 结构与上游不同，需按 `AngelicaRedirector` 与 `AngelicaClassDump` 重写，并给 `glIntegrationTest` 加 `javaagent` 配置 |
-| 7 | `12857006` | `RenderBackend.isBufferImmutable`；`onPersistentBufferWrite` 已在顺序 1 落地 | 本 PR |
+| 7 | `12857006` | `RenderBackend.isBufferImmutable`；`onPersistentBufferWrite` 已在顺序 1 落地 | PR #261 |
 | 8 | `e84c8c8d` 阶段二 | 延迟纹理删除状态机，前置是 G02 的 draw lock 与帧结束钩子 | 待做 |
 | — | `1587a12c` | `MainThreadPump` 与 `MainThreadPumpTest` | 待做；唯一驱动方是 SDL 的 presenter，且 `RenderBackend` 缺 `pumpDisplayMessages` 与 `parkNanos`，前置是 F09 的 `2845c9e0` |
 | — | `49db8e11` | `SamplerAliasDeduplicator` 与其测试 | 待做；该类由 `8da561d3` 引入，测试还依赖 `TransformTestSupport`，真正消费点在 SDL 采样器搬运，随 S05 的 `ShaderIndex` 一并做 |
@@ -247,6 +247,75 @@ SDL-GPU 后端确定后续引入，台账中标注为排除的 `sdl-gpu/`、`mol
 | 2 | `Device`、`SDLGPURenderBackend`、`SDLGPUGate` 与 `sdl-gpu/build.gradle.kts` |
 | 3 | 缓冲映射生命周期的 17 个文件（`12857006`）、`MainThreadPump` 的 present 三态（`1587a12c`） |
 | 4 | 采样器搬运与 `SamplerAliasDeduplicator` 的 SDL 接线（`49db8e11`）、`glsmSdlAgent`（`482dece0`） |
+
+## 无 SDL 前提下的 PR 顺序
+
+SDL 后端暂缓期间可推进的全部工作，共 38 个 PR，分三批。批次之间无依赖，可交叉并行；批内编号即顺序。
+
+评估前提：只按本地已有的类与接口判定可落性，纯 SDL / MoltenVK / Tracy 原生采集 / `src/sdl-gpu` 的内容一律不计。G01、G02、G03 的绝大部分已在 #249、#252、#253 落地，台账里仍标「待同步」的行属滞后记录，实际差集见下表的补丁项。
+
+### 批次一：GLSM 收尾
+
+| # | 范围 | 覆盖上游 | 规模 | 前置 |
+|---|---|---|---|---|
+| 1 | `GLSMRedirector` 的 `Util.checkGLError` 表项与 `glGenerateMipmapEXT` 别名、`ImageUnitBinding` 的 `reset` 与默认值、`glBindImageTexture` 跟踪、`MultiListenerNotifier` | `b6a4497f`、`6dfb0312`、`e98c927a`、`85892c0f` | 5 改 1 新，约 200 行 | 无 |
+| 2 | COW 剪枝：`GLContextState.savesState`、`CowStateStack.beforeModify` 提前返回、`popState` 的 `claimedAt` 守卫 | `12fa08ab` | 4 改 1 新，约 150 行 | 无 |
+| 3 | 测试骨架：`ArchScan`、`NoWildcardImportsTest`、`GlsmRedirectAgent`、`GLSMCoreExtension`、`FfpFixture`，`glIntegrationTest` 补 `javaagent` | `85d0641a`、`6c5e146f` | 4 新 2 改，约 400 行 | 无，可与 1、2 并行 |
+| 4 | 门面补齐（334 个无调用方方法），用架构测试防回退 | `91e67f8d` 部分 | 17 改，约 1200 行 | 1、2 |
+| 5 | `Tracy` 的 no-op 门面（只含 `ZoneId`、`zoneId`、`beginZone`、`endZone`，不引入原生采集）与 `ExitStateCapture`、`ExitState`、`BatchStateGuard` | `102c6cad` | 3 新 11 改，约 1500 行 | 4 |
+| 6 | 门面收尾（54 个依赖 `rejectExitCapture` 的方法）与 `GLSMTextureLifetime` 拆出 | `91e67f8d` 剩余 | 18 改，约 800 行 | 5 |
+| 7 | 延迟纹理删除状态机与 `TextureStaging` | `e84c8c8d` 阶段二 | 1 新 8 改，约 700 行 | 6，且需 S02 的 `TextureStaging` |
+| 8 | 宽线 `LineQuads` 与 `LineDrawHandler`，`ImmediateModeRecorder.processDrawElementsFromAttribs`，删除 `GeometryShaderGenerator` | `2f1f380e` | 2 新 8 改 1 删，约 900 行 | 7 |
+| 9 | 逐顶点实体 ID：`TessellatorEntityIds`、`ImmediateExtendedAttribHandler`、`setFfpInstancing` | `ab3bf176` | 2 新 12 改，约 800 行 | 8，且需 F02 的 `FfpExtendedAttribs` 与 `InstancedAttribs` |
+
+### 批次二：Celeritas 与着色器
+
+| # | 范围 | 覆盖上游 | 规模 | 前置 |
+|---|---|---|---|---|
+| 10 | bitraster 远平面判定与半透明排序鲁棒性 | `48eb54f5`、`625b6f40`、`f33e50ce` | 5 改 1 新，约 120 行 | 无 |
+| 11 | 着色器降级迁入 `ShaderLoader` 与 GLES 护栏 | `c64f4225`、`98c1af33`、`c9d46e70` 的 `MixinShaderLoader` | 5 改 1 新，约 90 行 | 无 |
+| 12 | 移除 `FogService` 的 SPI 登记，改走 `ChunkShaderEnvironment` | `7e5e9d7e` | 8 改 1 新 1 删，约 90 行 | 无 |
+| 13 | 移除 `GLRenderDevice.VANILLA_STATE_RESETTER` | `8883da78` | 3 改，约 10 行 | 无 |
+| 14 | `BatchBufferRecycler` 与 `BatchCacheParams` 的视口分键 | `69e91690`、`6bf6a433` | 6 改 3 新，约 320 行 | 无 |
+| 15 | `TerrainDrawStats` 计数与两个埋点 mixin、`CubeStatusTracker` 继承改造 | `c9d46e70` 部分 | 1 改 4 新，约 160 行 | 无 |
+| 16 | 阴影 pass 的搜索门控与上传时机 | `77aec052`、`14cb5f7f` | 4 改，约 130 行 | 14 |
+| 17 | `GLContextState` 的索引缓冲绑定跟踪 | `cfc6e12e` 通用半 | 3 改 1 新，约 180 行 | 无 |
+| 18 | 着色器磁盘缓存与程序二进制缓存、`AngelicaWorkers` | `37afddab`、`38af64f1` 的 glsm 半、`0a4d4896` 的 `ProgramBinaryCache` | 7 改 4 新，约 700 行 | 无 |
+| 19 | GLSL 变换与 Vulkan 预处理修正、`ShaderIndex` | `bdcb4d18`、`159f7ff8`、`2ed838ac`、`38b1d9a0` 的 `GlslTransformUtils` | 4 改 3 新，约 400 行 | 无 |
+| 20 | 预处理缓存与着色器预热 | `38af64f1` 的 Iris 半、`b49d37d8` | 14 改 4 新，约 900 行 | 18 |
+| 21 | 纹理过滤、PBR 可见性与 `DebugCounters` | `08aa3771`、`1587a12c` 的 `DebugCounters` | 8 改 1 新，约 250 行 | 18 |
+| 22 | Iris 着色器缓存开关与图集接口改名 | `0a4d4896` 的 Iris 半、`af599f29` 的图集半 | 8 改，约 350 行 | 18 |
+
+### 批次三：光影包与功能
+
+| # | 范围 | 覆盖上游 | 规模 | 前置 |
+|---|---|---|---|---|
+| 23 | 维度文件夹解析与 NBT 材质映射 | `b7628404`、`69019b9a` | 6 改 1 新，约 80 行 | 无 |
+| 24 | 核心 profile 拒绝信息与探测上限 | `990dadc0` | 2 改 1 新，约 60 行 | 无 |
+| 25 | 阴影 pass 索尼相机与逐层 stage | `cbd16b1a`、`8af9340b` | 3 改，约 60 行 | 无 |
+| 26 | 自定义方块渲染的光影属性（`StateAwareTessellator`、`ImmediateExtendedAttribs`、方块材质属性） | `fe67a22d` | 5 新 4 改加 4 个 mixin，约 350 行 | 23、9 |
+| 27 | 帧节奏：`PacerCore`、`FramePacer`、`FpsReducer` | `338d9419`、`69124e3f`、`74ea5c47` 的 `FpsReducer` | 3 新 3 改，约 900 行 | 无 |
+| 28 | 缩放与鼠标模式选项 | `977db3d6`、`74ea5c47` 的 `Zoom` | 2 新 2 改，约 200 行 | 27 |
+| 29 | 字体改进：分段深度掩码、splash 纹理回退、抗锯齿外扩、自定义字体提供者 | `9081f4c3`、`97057224`、`fa71eda3`、`75a02781`、`5457df53`、`32f8eef1`、`d16c1e7c` | 2 新 9 改，约 700 行 | 无 |
+| 30 | 深色模式与离上下文字体创建 | `61bb779d`、`acedba4e`、`9cb35c67`、`66d2a548`、`8387b4e9`、`231a2ab2`、`0d959c2b` | 6 新 10 改，约 1300 行 | 29 |
+| 31 | 云层重写与云 culling | `939e3146`、`c578970a`、`7f3fb35e`、`888a4de0`、`21a054a4`、`ea50e0a0` 的云部分 | 16 新 2 改，约 2600 行 | 无，需剥离 `jss/notfine` 依赖 |
+| 32 | GUI 物品超采样 | `17a2ed7f` | 3 新 13 改，约 560 行 | 无 |
+| 33 | 现代 F3 调试屏（拆两次提交） | `9bbb0537`、`c9d46e70` 的 `DebugKeyHandler` | 40 新 8 改，约 6000 行 | 无 |
+| 34 | 生物群系混色 | `233c74e0`、`a8e95f70`、`fa8842a6`、`bfb66d84` | 10 新 8 改，约 900 行 | 无 |
+| 35 | 第三方 API 与 RC 灯笼 | `d29a8278`、`3d3d0f9e` | 3 新 1 改，约 80 行 | 无 |
+| 36 | TESR 批处理与实体图集、体素阴影：先 `FfpExtendedAttribs` 与 `InstancedAttribs` 骨架，再实体图集，再完整批量，最后体素与重放 | `9814a96b`、`1f274a64`、`2f4ac2a9`、`7c28a69b`、`69428c12`、`fc8d3e8b`、`9f19d94c`、`db7d3284`、`bc08e4ba`、`7cc9cea3`、`af599f29`、`5ed1c925`、`c9d46e70` 的 `shouldRenderLightBlockEntities`、`2d9d1a45`、`b446968e`、`713509a8`、`80e5b544`、`8537835d` | 45 新 20 改，约 8000 行 | 9、18 |
+| 37 | 区块材质选择与 ISBRH 派发 | `0cae2be1`、`1946c2ad`、`cae4fea2` | 6 新 4 改，约 500 行 | 36 |
+| 38 | CTM 与 notfine 启动路径 | `38b1d9a0` 的 `com/prupe` 半、`85892c0f` 的 mcpatcherforge 半、`cd0a9608` 的 `com/prupe` 半、`2f1f380e` 的 `SelectionBoxRenderer` | 12 新 3 改，约 1200 行 | 37 |
+
+### 关键路径与阻塞
+
+`ExitStateCapture`（#5）是 G06 剩余 54 个方法的硬前置，也是 #6、#7 的前置，整条批次一的价值都压在它上面。`Tracy` 在本地没有 `profiling` 包，不落 no-op 门面的话 `GLSMTextureLifetime` 无法编译，这是 #5 必须先解决的问题。
+
+`FfpExtendedAttribs` 与 `InstancedAttribs` 同时是 #9 与 #36 的前置，建议在 #36 的第一步单独成一个 PR，先于两者落地。
+
+`C001` 到 `C09` 的多数 SHA 在 `D:/Code/celeritas` 仓库而非 Angelica，两条台账（本文件与 `docs/sync-celeritas-b2a70f7f28.md`）必须一起读。`69e91690`、`6bf6a433`、`f33e50ce`、`14cb5f7f`、`77aec052` 在本地两个仓库都不存在，只能用 `gh api repos/GTNewHorizons/Celeritas/commits/<sha>` 取证。
+
+`F12`（#38）需要整包引入 `com/prupe/mcpatcher` 与 `jss/notfine`，这两个包在本地完全不存在；`jss/notfine/core/Settings` 同时是 #31 云渲染与 #28 缩放的依赖，先落 #38 的 `Settings` 部分可以少一次改造成本。
 
 ## 多目标提交的归属拆解
 
