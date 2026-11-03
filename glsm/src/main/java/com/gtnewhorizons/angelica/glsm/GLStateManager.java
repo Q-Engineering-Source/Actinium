@@ -2,7 +2,6 @@ package com.gtnewhorizons.angelica.glsm;
 
 import com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities;
 import com.gtnewhorizon.gtnhlib.bytebuf.Pointer;
-import com.gtnewhorizon.gtnhlib.client.renderer.DirectTessellator;
 import com.gtnewhorizon.gtnhlib.client.renderer.stacks.IStateStack;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFlags;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormatElement.Usage;
@@ -10,7 +9,6 @@ import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
 import com.gtnewhorizons.angelica.glsm.backend.GLDebugMessageListener;
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
-import com.gtnewhorizons.angelica.glsm.debug.GLSMDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GpuCheckpointTracker;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
@@ -23,10 +21,8 @@ import com.gtnewhorizons.angelica.glsm.hooks.GLSMInitConfig;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandRecorder;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandPhase;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandType;
-import com.gtnewhorizons.angelica.glsm.recording.CommandRecorder;
 import com.gtnewhorizons.angelica.glsm.recording.CompiledDisplayList;
 import com.gtnewhorizons.angelica.glsm.recording.ImmediateModeRecorder;
-import com.gtnewhorizons.angelica.glsm.recording.commands.IndexedDrawCapture;
 import com.gtnewhorizons.angelica.glsm.recording.commands.TexImage2DCmd;
 import com.gtnewhorizons.angelica.glsm.recording.commands.TexSubImage2DCmd;
 import com.gtnewhorizons.angelica.glsm.stacks.AlphaStateStack;
@@ -34,7 +30,6 @@ import com.gtnewhorizons.angelica.glsm.stacks.BlendStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.BooleanStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.Color4Stack;
 import com.gtnewhorizons.angelica.glsm.stacks.ColorMaskStack;
-import com.gtnewhorizons.angelica.glsm.stacks.CowDepths;
 import com.gtnewhorizons.angelica.glsm.stacks.CowDispatch;
 import com.gtnewhorizons.angelica.glsm.stacks.CowStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.DepthStateStack;
@@ -126,7 +121,6 @@ import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -162,7 +156,7 @@ public class GLStateManager {
     public static void warnOnce(String key, String fmt, Object... args) {
         if (WARN_ONCE.add(key)) LOGGER.warn(fmt, args);
     }
-    private static final boolean DEBUG_DRAW_LOGS = Boolean.getBoolean("actinium.glsm.verboseDrawLogs");
+    static final boolean DEBUG_DRAW_LOGS = Boolean.getBoolean("actinium.glsm.verboseDrawLogs");
 
     // Thread Checking - must be early in static init order so isMainThread() works for state initialization
     @Getter private static final Thread MainThread = Thread.currentThread();
@@ -171,7 +165,7 @@ public class GLStateManager {
         return Thread.currentThread() == MainThread;
     }
 
-    @Getter private static GLSMInitConfig initConfig;
+    @Getter static GLSMInitConfig initConfig;
 
     public static ContextCapabilities capabilities;
 
@@ -2002,14 +1996,7 @@ public class GLStateManager {
         ctx().dirtyNormalAttrib = true;
     }
 
-    public static void glNormal3f(float nx, float ny, float nz) {
-        ShaderManager.setCurrentNormal(nx, ny, nz);
-        if (DisplayListManager.isRecording() || ImmediateModeRecorder.isDrawing()) {
-            ImmediateModeRecorder.setNormal(nx, ny, nz);
-            return;
-        }
-        ctx().dirtyNormalAttrib = true;
-    }
+    public static void glNormal3f(float nx, float ny, float nz) { GLSMCurrentAttribs.glNormal3f(nx, ny, nz); }
 
     public static void glNormal3i(int nx, int ny, int nz) {
         final float fnx = nx / 2147483647.0f, fny = ny / 2147483647.0f, fnz = nz / 2147483647.0f;
@@ -2057,24 +2044,9 @@ public class GLStateManager {
         }
     }
 
-    public static void glEdgeFlag(boolean flag) {
-        // Edge flags are removed in the core profile and have no vertex-format equivalent; the value is
-        // tracked so glGetBoolean(GL_EDGE_FLAG) and the GL_CURRENT_BIT attribute group keep answering.
-        // A display list being compiled records the call, so the enclosing state stays untouched.
-        if (DisplayListManager.getRecordMode() == RecordMode.COMPILE) return;
-        ctx().edgeFlagState.setEnabled(flag);
-    }
+    public static void glEdgeFlag(boolean flag) { GLSMCurrentAttribs.glEdgeFlag(flag); }
 
-    public static void glColor4f(float red, float green, float blue, float alpha) {
-        final RecordMode mode = DisplayListManager.getRecordMode();
-        if (mode != RecordMode.NONE) {
-            DisplayListManager.recordColor(red, green, blue, alpha);
-            if (mode == RecordMode.COMPILE) {
-                return;
-            }
-        }
-        changeColor(red, green, blue, alpha);
-    }
+    public static void glColor4f(float red, float green, float blue, float alpha) { GLSMCurrentAttribs.glColor4f(red, green, blue, alpha); }
 
     public static void glColor4d(double red, double green, double blue, double alpha) {
         final RecordMode mode = DisplayListManager.getRecordMode();
@@ -2098,16 +2070,7 @@ public class GLStateManager {
         changeColor(b2f(red), b2f(green), b2f(blue), b2f(alpha));
     }
 
-    public static void glColor4ub(byte red, byte green, byte blue, byte alpha) {
-        final RecordMode mode = DisplayListManager.getRecordMode();
-        if (mode != RecordMode.NONE) {
-            DisplayListManager.recordColor(ub2f(red), ub2f(green), ub2f(blue), ub2f(alpha));
-            if (mode == RecordMode.COMPILE) {
-                return;
-            }
-        }
-        changeColor(ub2f(red), ub2f(green), ub2f(blue), ub2f(alpha));
-    }
+    public static void glColor4ub(byte red, byte green, byte blue, byte alpha) { GLSMCurrentAttribs.glColor4ub(red, green, blue, alpha); }
 
     public static void glColor3f(float red, float green, float blue) {
         final RecordMode mode = DisplayListManager.getRecordMode();
@@ -2153,7 +2116,7 @@ public class GLStateManager {
         changeColor(ub2f(red), ub2f(green), ub2f(blue), 1.0F);
     }
 
-    private static float ub2f(byte b) {
+    static float ub2f(byte b) {
         return (b & 0xFF) / 255.0F;
     }
 
@@ -2163,7 +2126,7 @@ public class GLStateManager {
 
     public static float i2f(int i) {return ((i - Integer.MIN_VALUE) & 0xFFFFFFFFL) / 4294967295.0F;}
 
-    private static boolean changeColor(float red, float green, float blue, float alpha) {
+    static boolean changeColor(float red, float green, float blue, float alpha) {
         // Per GL semantics glColor* clamps its components to [0,1] at the API boundary, so clamp
         // before caching: raw out-of-range values would otherwise leak into the FFP u_CurrentColor
         // upload, where Uniforms.sanitizeUniformColor treats any negative channel as the
@@ -2203,16 +2166,7 @@ public class GLStateManager {
         return false;
     }
 
-    public static void glSecondaryColor3f(float red, float green, float blue) {
-        final RecordMode mode = DisplayListManager.getRecordMode();
-        if (mode != RecordMode.NONE) {
-            DisplayListManager.recordSecondaryColor(red, green, blue);
-            if (mode == RecordMode.COMPILE) {
-                return;
-            }
-        }
-        changeSecondaryColor(red, green, blue);
-    }
+    public static void glSecondaryColor3f(float red, float green, float blue) { GLSMCurrentAttribs.glSecondaryColor3f(red, green, blue); }
 
     public static void glSecondaryColor3d(double red, double green, double blue) {
         glSecondaryColor3f((float) red, (float) green, (float) blue);
@@ -2227,7 +2181,7 @@ public class GLStateManager {
     }
 
     /** Helper for glSecondaryColor* - the color sum is emulated by the FFP shaders, nothing is sent to the driver. */
-    private static void changeSecondaryColor(float red, float green, float blue) {
+    static void changeSecondaryColor(float red, float green, float blue) {
         final GLContextState glCtx = ctx();
         if (!isCachingEnabled() || red != glCtx.secondaryColor.getRed() || green != glCtx.secondaryColor.getGreen() || blue != glCtx.secondaryColor.getBlue()) {
             mod(glCtx.secondaryColor);
@@ -2671,14 +2625,7 @@ public class GLStateManager {
         ctx().dirtyTexCoordAttrib = true;
     }
 
-    public static void glTexCoord2f(float s, float t) {
-        if (DisplayListManager.isRecording() || ImmediateModeRecorder.isDrawing()) {
-            ImmediateModeRecorder.setTexCoord(s, t);
-            return;
-        }
-        ShaderManager.setCurrentTexCoord(s, t, 0.0f, 1.0f);
-        ctx().dirtyTexCoordAttrib = true;
-    }
+    public static void glTexCoord2f(float s, float t) { GLSMCurrentAttribs.glTexCoord2f(s, t); }
 
     public static void glTexCoord2d(double s, double t) {
         if (DisplayListManager.isRecording() || ImmediateModeRecorder.isDrawing()) {
@@ -2707,14 +2654,7 @@ public class GLStateManager {
         ctx().dirtyTexCoordAttrib = true;
     }
 
-    public static void glTexCoord4f(float s, float t, float r, float q) {
-        if (DisplayListManager.isRecording() || ImmediateModeRecorder.isDrawing()) {
-            ImmediateModeRecorder.setTexCoord(s, t);
-            return;
-        }
-        ShaderManager.setCurrentTexCoord(s, t, r, q);
-        ctx().dirtyTexCoordAttrib = true;
-    }
+    public static void glTexCoord4f(float s, float t, float r, float q) { GLSMCurrentAttribs.glTexCoord4f(s, t, r, q); }
 
     public static void glTexCoord4d(double s, double t, double r, double q) {
         if (DisplayListManager.isRecording() || ImmediateModeRecorder.isDrawing()) {
@@ -2892,47 +2832,12 @@ public class GLStateManager {
         glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, j);
     }
 
-    public static void glBegin(int mode) {
-        ctx().unit23TexCoordSetDuringDraw = false;
-        if (DisplayListManager.isRecording()) {
-            ImmediateModeRecorder.begin(mode);
-            return;
-        }
-        ImmediateModeRecorder.beginLive(mode);
-    }
+    public static void glBegin(int mode) { GLSMDraws.glBegin(mode); }
 
-    public static void glEnd() {
-        if (DisplayListManager.isRecording()) {
-            final DirectTessellator result = ImmediateModeRecorder.end();
-            if (result != null) {
-                if (DisplayListManager.isCompileAndExecute() && initConfig != null && initConfig.getDirectDrawer() != null) {
-                    DisplayListManager.flushMatrix();
-                    final var recorder = DisplayListManager.pauseRecording();
-                    if (GLSMPerfDebug.isEnabled()) {
-                        GLSMPerfDebug.count(GLSMPerfDebug.Source.DIRECT_COMPILE_EXECUTE);
-                    }
-                    initConfig.getDirectDrawer().accept(result);
-                    DisplayListManager.resumeRecording(recorder);
-                }
-                DisplayListManager.addImmediateModeDraw(result);
-            }
-            return;
-        }
-        final DirectTessellator result = ImmediateModeRecorder.end();
-        if (result != null && initConfig != null && initConfig.getDirectDrawer() != null) {
-            if (GLSMPerfDebug.isEnabled()) {
-                GLSMPerfDebug.count(GLSMPerfDebug.Source.DIRECT_LIVE_IMMEDIATE);
-            }
-            initConfig.getDirectDrawer().accept(result);
-        }
-    }
+    public static void glEnd() { GLSMDraws.glEnd(); }
 
     // Vertex methods for display list recording and live immediate mode
-    public static void glVertex2f(float x, float y) {
-        if (DisplayListManager.isRecording() || ImmediateModeRecorder.isDrawing()) {
-            ImmediateModeRecorder.vertex(x, y, 0.0f);
-        }
-    }
+    public static void glVertex2f(float x, float y) { GLSMDraws.glVertex2f(x, y); }
 
     public static void glVertex2i(int x, int y) {
         if (DisplayListManager.isRecording() || ImmediateModeRecorder.isDrawing()) {
@@ -2946,11 +2851,7 @@ public class GLStateManager {
         }
     }
 
-    public static void glVertex3f(float x, float y, float z) {
-        if (DisplayListManager.isRecording() || ImmediateModeRecorder.isDrawing()) {
-            ImmediateModeRecorder.vertex(x, y, z);
-        }
-    }
+    public static void glVertex3f(float x, float y, float z) { GLSMDraws.glVertex3f(x, y, z); }
 
     public static void glVertex3d(double x, double y, double z) {
         if (DisplayListManager.isRecording() || ImmediateModeRecorder.isDrawing()) {
@@ -2964,193 +2865,17 @@ public class GLStateManager {
         }
     }
 
-    public static void glDrawElements(int mode, ByteBuffer indices) {
-        CommandRecorder savedRecorder = null;
-        final RecordMode recordMode = DisplayListManager.getRecordMode();
-        if (recordMode != RecordMode.NONE) {
-            final IndexedDrawCapture capture = IndexedDrawCapture.createFromClientIndices(mode, indices.remaining(), GL11.GL_UNSIGNED_BYTE, MemoryUtilities.memAddress(indices), indices.remaining());
-            if (capture != null) {
-                DisplayListManager.recordIndexedDrawCapture(capture);
-            }
-            if (recordMode == RecordMode.COMPILE) {
-                return;
-            }
-            savedRecorder = DisplayListManager.pauseRecording();
-        } else if (FeedbackManager.isFeedbackMode()) {
-            FeedbackManager.processDrawElements(mode, indices);
-            return;
-        }
-        try {
-            prepareWideLineEmulation(mode);
-            preDrawFFP();
-            prepareClientArrays();
-            if (DEBUG_DRAW_LOGS) {
-                GLSMDebug.logDrawElements("byte-buffer", mode, indices.remaining(), GL11.GL_UNSIGNED_BYTE, -1L);
-            }
-            recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, indices.remaining());
-            RENDER_BACKEND.drawElements(mode, indices);
-        } finally {
-            if (savedRecorder != null) {
-                DisplayListManager.resumeRecording(savedRecorder);
-            }
-        }
-    }
+    public static void glDrawElements(int mode, ByteBuffer indices) { GLSMDraws.glDrawElements(mode, indices); }
 
-    public static void glDrawElements(int mode, IntBuffer indices) {
-        CommandRecorder savedRecorder = null;
-        final RecordMode recordMode = DisplayListManager.getRecordMode();
-        if (recordMode != RecordMode.NONE) {
-            final IndexedDrawCapture capture = IndexedDrawCapture.createFromClientIndices(mode, indices.remaining(), GL11.GL_UNSIGNED_INT, MemoryUtilities.memAddress(indices), (long) indices.remaining() << 2);
-            if (capture != null) {
-                DisplayListManager.recordIndexedDrawCapture(capture);
-            }
-            if (recordMode == RecordMode.COMPILE) {
-                return;
-            }
-            savedRecorder = DisplayListManager.pauseRecording();
-        } else if (FeedbackManager.isFeedbackMode()) {
-            FeedbackManager.processDrawElements(mode, indices);
-            return;
-        }
-        try {
-            prepareWideLineEmulation(mode);
-            preDrawFFP();
-            prepareClientArrays();
-            if (DEBUG_DRAW_LOGS) {
-                GLSMDebug.logDrawElements("int-buffer", mode, indices.remaining(), GL11.GL_UNSIGNED_INT, -1L);
-            }
-            recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, indices.remaining());
-            if (mode == GL11.GL_QUADS) {
-                QuadConverter.drawQuadElementsAsTriangles(indices);
-            } else {
-                RENDER_BACKEND.drawElements(mode, indices);
-            }
-        } finally {
-            if (savedRecorder != null) {
-                DisplayListManager.resumeRecording(savedRecorder);
-            }
-        }
-    }
+    public static void glDrawElements(int mode, IntBuffer indices) { GLSMDraws.glDrawElements(mode, indices); }
 
-    public static void glDrawElements(int mode, ShortBuffer indices) {
-        CommandRecorder savedRecorder = null;
-        final RecordMode recordMode = DisplayListManager.getRecordMode();
-        if (recordMode != RecordMode.NONE) {
-            final IndexedDrawCapture capture = IndexedDrawCapture.createFromClientIndices(mode, indices.remaining(), GL11.GL_UNSIGNED_SHORT, MemoryUtilities.memAddress(indices), (long) indices.remaining() << 1);
-            if (capture != null) {
-                DisplayListManager.recordIndexedDrawCapture(capture);
-            }
-            if (recordMode == RecordMode.COMPILE) {
-                return;
-            }
-            savedRecorder = DisplayListManager.pauseRecording();
-        } else if (FeedbackManager.isFeedbackMode()) {
-            FeedbackManager.processDrawElements(mode, indices);
-            return;
-        }
-        try {
-            prepareWideLineEmulation(mode);
-            preDrawFFP();
-            prepareClientArrays();
-            if (DEBUG_DRAW_LOGS) {
-                GLSMDebug.logDrawElements("short-buffer", mode, indices.remaining(), GL11.GL_UNSIGNED_SHORT, -1L);
-            }
-            recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, indices.remaining());
-            if (mode == GL11.GL_QUADS) {
-                QuadConverter.drawQuadElementsAsTriangles(indices);
-            } else {
-                RENDER_BACKEND.drawElements(mode, indices);
-            }
-        } finally {
-            if (savedRecorder != null) {
-                DisplayListManager.resumeRecording(savedRecorder);
-            }
-        }
-    }
+    public static void glDrawElements(int mode, ShortBuffer indices) { GLSMDraws.glDrawElements(mode, indices); }
 
-    public static void glDrawElements(int mode, int count, int type, ByteBuffer indices) {
-        CommandRecorder savedRecorder = null;
-        final RecordMode recordMode = DisplayListManager.getRecordMode();
-        if (recordMode != RecordMode.NONE) {
-            final IndexedDrawCapture capture = IndexedDrawCapture.createFromClientIndices(mode, count, type, MemoryUtilities.memAddress(indices), indices.remaining());
-            if (capture != null) {
-                DisplayListManager.recordIndexedDrawCapture(capture);
-            }
-            if (recordMode == RecordMode.COMPILE) {
-                return;
-            }
-            savedRecorder = DisplayListManager.pauseRecording();
-        } else if (FeedbackManager.isFeedbackMode()) {
-            FeedbackManager.processDrawElements(mode, count, type, indices);
-            return;
-        }
-        try {
-            prepareWideLineEmulation(mode);
-            preDrawFFP();
-            prepareClientArrays();
-            if (DEBUG_DRAW_LOGS) {
-                GLSMDebug.logDrawElements("typed-byte-buffer", mode, count, type, -1L);
-            }
-            recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, count);
-            if (mode == GL11.GL_QUADS) {
-                QuadConverter.drawQuadElementsAsTriangles(count, type, indices);
-            } else {
-                RENDER_BACKEND.drawElements(mode, count, type, indices);
-            }
-        } finally {
-            if (savedRecorder != null) {
-                DisplayListManager.resumeRecording(savedRecorder);
-            }
-        }
-    }
+    public static void glDrawElements(int mode, int count, int type, ByteBuffer indices) { GLSMDraws.glDrawElements(mode, count, type, indices); }
 
-    public static void glDrawElements(int mode, int count, ByteBuffer indices) {
-        glDrawElements(mode, count, GL11.GL_UNSIGNED_BYTE, indices);
-    }
+    public static void glDrawElements(int mode, int count, ByteBuffer indices) { GLSMDraws.glDrawElements(mode, count, indices); }
 
-    public static void glDrawElements(int mode, int indices_count, int type, long indices_buffer_offset) {
-        CommandRecorder savedRecorder = null;
-        final RecordMode recordMode = DisplayListManager.getRecordMode();
-        if (recordMode != RecordMode.NONE) {
-            // A VAO is always bound post-init (glBindVertexArray(0) redirects to the default
-            // VAO), so EBO-backed draws are baked via IndexedDrawCapture. When baking is not
-            // possible fall back to Actinium's immediate-mode VBO tessellation.
-            final IndexedDrawCapture capture = IndexedDrawCapture.create(mode, indices_count, type, indices_buffer_offset, ctx().vaos.boundEBO);
-            if (capture != null) {
-                DisplayListManager.recordIndexedDrawCapture(capture);
-            } else if (isVBOBound() || ctx().vaos.hasVBOBoundAttrib()) {
-                final DirectTessellator result = ImmediateModeRecorder.processDrawElementsFromVBO(mode, indices_count, type, indices_buffer_offset, ctx().vaos.boundEBO);
-                if (result != null) {
-                    DisplayListManager.addImmediateModeDraw(result);
-                }
-            }
-            if (recordMode == RecordMode.COMPILE) {
-                return;
-            }
-            savedRecorder = DisplayListManager.pauseRecording();
-        } else if (FeedbackManager.isFeedbackMode()) {
-            FeedbackManager.processDrawElements(mode, indices_count, type, indices_buffer_offset);
-            return;
-        }
-        try {
-            prepareWideLineEmulation(mode);
-            preDrawFFP();
-            prepareClientArrays();
-            if (DEBUG_DRAW_LOGS) {
-                GLSMDebug.logDrawElements("ebo-offset", mode, indices_count, type, indices_buffer_offset);
-            }
-            recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, indices_count);
-            if (mode == GL11.GL_QUADS) {
-                QuadConverter.drawQuadElementsAsTriangles(indices_count, type, indices_buffer_offset);
-            } else {
-                RENDER_BACKEND.drawElements(mode, indices_count, type, indices_buffer_offset);
-            }
-        } finally {
-            if (savedRecorder != null) {
-                DisplayListManager.resumeRecording(savedRecorder);
-            }
-        }
-    }
+    public static void glDrawElements(int mode, int indices_count, int type, long indices_buffer_offset) { GLSMDraws.glDrawElements(mode, indices_count, type, indices_buffer_offset); }
 
     public static void glDrawBuffer(int mode) {
         final RecordMode recordMode = DisplayListManager.getRecordMode();
@@ -3399,7 +3124,7 @@ public class GLStateManager {
         }
     }
 
-    private static void preDrawFFP() {
+    static void preDrawFFP() {
         final VAOManager vaos = ctx().vaos;
         final ShaderManager ffp = ctx().ffp;
         if (vaos.hasAnyClientSideEnabledAttrib()) {
@@ -3409,11 +3134,11 @@ public class GLStateManager {
         }
     }
 
-    private static void prepareClientArrays() {
+    static void prepareClientArrays() {
         prepareClientArrays(0, -1);
     }
 
-    private static void prepareClientArrays(int first, int count) {
+    static void prepareClientArrays(int first, int count) {
         final boolean perfDebugEnabled = GLSMPerfDebug.isEnabled();
         final long perfStart = perfDebugEnabled ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.GL_PREPARE_CLIENT_ARRAYS) : 0L;
         final VAOManager vaos = ctx().vaos;
@@ -3425,46 +3150,13 @@ public class GLStateManager {
         }
     }
 
-    public static void glDrawArrays(int mode, int first, int count) {
-        CommandRecorder savedRecorder = null;
-        final RecordMode recordMode = DisplayListManager.getRecordMode();
-        if (recordMode != RecordMode.NONE) {
-            final DirectTessellator result = ImmediateModeRecorder.processDrawArraysFromAttribs(mode, first, count);
-            if (result != null) {
-                DisplayListManager.addImmediateModeDraw(result);
-            }
-            if (recordMode == RecordMode.COMPILE) {
-                return;
-            }
-            savedRecorder = DisplayListManager.pauseRecording();
-        } else if (FeedbackManager.isFeedbackMode()) {
-            FeedbackManager.processDrawArrays(mode, first, count);
-            return;
-        }
-        prepareWideLineEmulation(mode);
-        preDrawFFP();
-        prepareClientArrays(first, count);
-        if (DEBUG_DRAW_LOGS) {
-            GLSMDebug.logDrawArrays("draw-arrays", mode, first, count);
-        }
-        recordGpuCommand(GpuCommandType.DRAW_ARRAYS, mode, count);
-        if (mode == GL11.GL_QUADS) {
-            QuadConverter.drawQuadsAsTriangles(first, count);
-        } else if (mode == GL11.GL_QUAD_STRIP) {
-            RENDER_BACKEND.drawArrays(GL11.GL_TRIANGLE_STRIP, first, count & ~1);
-        } else if (mode == GL11.GL_POLYGON) {
-            RENDER_BACKEND.drawArrays(GL11.GL_TRIANGLE_FAN, first, count);
-        } else {
-            RENDER_BACKEND.drawArrays(mode, first, count);
-        }
-        if (savedRecorder != null) DisplayListManager.resumeRecording(savedRecorder);
-    }
+    public static void glDrawArrays(int mode, int first, int count) { GLSMDraws.glDrawArrays(mode, first, count); }
 
     /**
      * The conventional texcoord slot of the current client active texture unit. {@link #glClientActiveTexture}
      * only accepts units {@code 0..MAX_TEXTURE_COORDS-1}, and every one of them has a conventional slot.
      */
-    private static int texCoordConventional() {
+    static int texCoordConventional() {
         return VAOManager.CONV_TEX0 + ctx().clientActiveTextureUnit;
     }
 
@@ -3477,7 +3169,7 @@ public class GLStateManager {
         return false;
     }
 
-    private static boolean isLegalVertexAttrib(int index, int size, int type, int stride, boolean integer) {
+    static boolean isLegalVertexAttrib(int index, int size, int type, int stride, boolean integer) {
         if (stride < 0) {
             warnOnce("vertex-attrib-stride-" + index, "Negative vertex attribute stride {} for location {}; the pointer keeps it, the driver rejects it", stride, index);
         }
@@ -3486,41 +3178,29 @@ public class GLStateManager {
         return false;
     }
 
-    private static void ffpClientArrayPointer(int conv, int size, int type, boolean normalized, int stride, long offset) {
+    static void ffpClientArrayPointer(int conv, int size, int type, boolean normalized, int stride, long offset) {
         if (!isLegalClientArray(conv, size, type, stride)) return;
         if (ctx().vaos.setConventional(conv, size, type, normalized, stride, offset, ctx().boundVBO)) {
             RENDER_BACKEND.vertexAttribPointer(VAOManager.conventionalLocation(conv), size, type, normalized, stride, offset);
         }
     }
 
-    private static void ffpClientArrayPointer(int conv, int size, int type, boolean normalized, int stride, ByteBuffer pointer) {
+    static void ffpClientArrayPointer(int conv, int size, int type, boolean normalized, int stride, ByteBuffer pointer) {
         if (!isLegalClientArray(conv, size, type, stride)) return;
         ctx().vaos.setConventional(conv, size, type, normalized, stride, pointer);
     }
 
-    public static void glVertexPointer(int size, int stride, IntBuffer pointer) {
-        glVertexPointer(size, GL11.GL_INT, stride, MemoryUtilities.memByteBuffer(pointer));
-    }
+    public static void glVertexPointer(int size, int stride, IntBuffer pointer) { GLSMVertexInput.glVertexPointer(size, stride, pointer); }
 
-    public static void glVertexPointer(int size, int stride, ShortBuffer pointer) {
-        glVertexPointer(size, GL11.GL_SHORT, stride, MemoryUtilities.memByteBuffer(pointer));
-    }
+    public static void glVertexPointer(int size, int stride, ShortBuffer pointer) { GLSMVertexInput.glVertexPointer(size, stride, pointer); }
 
-    public static void glVertexPointer(int size, int stride, FloatBuffer pointer) {
-        ffpClientArrayPointer(VAOManager.CONV_POSITION, size, GL11.GL_FLOAT, false, stride, MemoryUtilities.memByteBuffer(pointer));
-    }
+    public static void glVertexPointer(int size, int stride, FloatBuffer pointer) { GLSMVertexInput.glVertexPointer(size, stride, pointer); }
 
-    public static void glVertexPointer(int size, int stride, DoubleBuffer pointer) {
-        ffpClientArrayPointer(VAOManager.CONV_POSITION, size, GL11.GL_DOUBLE, false, stride, MemoryUtilities.memByteBuffer(pointer));
-    }
+    public static void glVertexPointer(int size, int stride, DoubleBuffer pointer) { GLSMVertexInput.glVertexPointer(size, stride, pointer); }
 
-    public static void glVertexPointer(int size, int type, int stride, ByteBuffer pointer) {
-        ffpClientArrayPointer(VAOManager.CONV_POSITION, size, type, false, stride, pointer);
-    }
+    public static void glVertexPointer(int size, int type, int stride, ByteBuffer pointer) { GLSMVertexInput.glVertexPointer(size, type, stride, pointer); }
 
-    public static void glVertexPointer(int size, int type, int stride, long pointer_buffer_offset) {
-        ffpClientArrayPointer(VAOManager.CONV_POSITION, size, type, false, stride, pointer_buffer_offset);
-    }
+    public static void glVertexPointer(int size, int type, int stride, long pointer_buffer_offset) { GLSMVertexInput.glVertexPointer(size, type, stride, pointer_buffer_offset); }
 
     public static void glColorPointer(int size, int stride, FloatBuffer pointer) {
         ffpClientArrayPointer(VAOManager.CONV_COLOR, size, GL11.GL_FLOAT, Usage.COLOR.isNormalized(), stride, MemoryUtilities.memByteBuffer(pointer));
@@ -3583,166 +3263,78 @@ public class GLStateManager {
         ffpClientArrayPointer(VAOManager.CONV_NORMAL, 3, type, Usage.NORMAL.isNormalized(), stride, pointer_buffer_offset);
     }
 
-    public static void glTexCoordPointer(int size, int type, int stride, ByteBuffer pointer) {
-        ffpClientArrayPointer(texCoordConventional(), size, type, false, stride, pointer);
-    }
+    public static void glTexCoordPointer(int size, int type, int stride, ByteBuffer pointer) { GLSMVertexInput.glTexCoordPointer(size, type, stride, pointer); }
 
-    public static void glTexCoordPointer(int size, int stride, FloatBuffer pointer) {
-        glTexCoordPointer(size, GL11.GL_FLOAT, stride, pointer);
-    }
+    public static void glTexCoordPointer(int size, int stride, FloatBuffer pointer) { GLSMVertexInput.glTexCoordPointer(size, stride, pointer); }
 
-    public static void glTexCoordPointer(int size, int stride, IntBuffer pointer) {
-        glTexCoordPointer(size, GL11.GL_INT, stride, pointer);
-    }
+    public static void glTexCoordPointer(int size, int stride, IntBuffer pointer) { GLSMVertexInput.glTexCoordPointer(size, stride, pointer); }
 
-    public static void glTexCoordPointer(int size, int stride, ShortBuffer pointer) {
-        glTexCoordPointer(size, GL11.GL_SHORT, stride, pointer);
-    }
+    public static void glTexCoordPointer(int size, int stride, ShortBuffer pointer) { GLSMVertexInput.glTexCoordPointer(size, stride, pointer); }
 
-    public static void glTexCoordPointer(int size, int stride, DoubleBuffer pointer) {
-        glTexCoordPointer(size, GL11.GL_DOUBLE, stride, pointer);
-    }
+    public static void glTexCoordPointer(int size, int stride, DoubleBuffer pointer) { GLSMVertexInput.glTexCoordPointer(size, stride, pointer); }
 
-    public static void glTexCoordPointer(int size, int type, int stride, FloatBuffer pointer) {
-        ffpClientArrayPointer(texCoordConventional(), size, GL11.GL_FLOAT, false, stride, MemoryUtilities.memByteBuffer(pointer));
-    }
+    public static void glTexCoordPointer(int size, int type, int stride, FloatBuffer pointer) { GLSMVertexInput.glTexCoordPointer(size, type, stride, pointer); }
 
-    public static void glTexCoordPointer(int size, int type, int stride, ShortBuffer pointer) {
-        ffpClientArrayPointer(texCoordConventional(), size, GL11.GL_SHORT, false, stride, MemoryUtilities.memByteBuffer(pointer));
-    }
+    public static void glTexCoordPointer(int size, int type, int stride, ShortBuffer pointer) { GLSMVertexInput.glTexCoordPointer(size, type, stride, pointer); }
 
-    public static void glTexCoordPointer(int size, int type, int stride, IntBuffer pointer) {
-        ffpClientArrayPointer(texCoordConventional(), size, GL11.GL_INT, false, stride, MemoryUtilities.memByteBuffer(pointer));
-    }
+    public static void glTexCoordPointer(int size, int type, int stride, IntBuffer pointer) { GLSMVertexInput.glTexCoordPointer(size, type, stride, pointer); }
 
-    public static void glTexCoordPointer(int size, int type, int stride, DoubleBuffer pointer) {
-        ffpClientArrayPointer(texCoordConventional(), size, GL11.GL_DOUBLE, false, stride, MemoryUtilities.memByteBuffer(pointer));
-    }
+    public static void glTexCoordPointer(int size, int type, int stride, DoubleBuffer pointer) { GLSMVertexInput.glTexCoordPointer(size, type, stride, pointer); }
 
-    public static void glTexCoordPointer(int size, int type, int stride, long pointer_buffer_offset) {
-        ffpClientArrayPointer(texCoordConventional(), size, type, false, stride, pointer_buffer_offset);
-    }
+    public static void glTexCoordPointer(int size, int type, int stride, long pointer_buffer_offset) { GLSMVertexInput.glTexCoordPointer(size, type, stride, pointer_buffer_offset); }
 
-    public static void glEdgeFlagPointer(int stride, ByteBuffer pointer) {
-        ffpClientArrayPointer(VAOManager.CONV_EDGE_FLAG, 1, GL11.GL_UNSIGNED_BYTE, false, stride, pointer);
-    }
+    public static void glEdgeFlagPointer(int stride, ByteBuffer pointer) { GLSMVertexInput.glEdgeFlagPointer(stride, pointer); }
 
-    public static void glEdgeFlagPointer(int stride, long pointer_buffer_offset) {
-        ffpClientArrayPointer(VAOManager.CONV_EDGE_FLAG, 1, GL11.GL_UNSIGNED_BYTE, false, stride, pointer_buffer_offset);
-    }
+    public static void glEdgeFlagPointer(int stride, long pointer_buffer_offset) { GLSMVertexInput.glEdgeFlagPointer(stride, pointer_buffer_offset); }
 
-    public static void glFogCoordPointer(int type, FloatBuffer data) {
-        ffpClientArrayPointer(VAOManager.CONV_FOG_COORD, 1, GL11.GL_FLOAT, false, 0, MemoryUtilities.memByteBuffer(data));
-    }
+    public static void glFogCoordPointer(int type, FloatBuffer data) { GLSMVertexInput.glFogCoordPointer(type, data); }
 
-    public static void glFogCoordPointer(int type, DoubleBuffer data) {
-        ffpClientArrayPointer(VAOManager.CONV_FOG_COORD, 1, GL11.GL_DOUBLE, false, 0, MemoryUtilities.memByteBuffer(data));
-    }
+    public static void glFogCoordPointer(int type, DoubleBuffer data) { GLSMVertexInput.glFogCoordPointer(type, data); }
 
-    public static void glFogCoordPointer(int type, int stride, long data_buffer_offset) {
-        ffpClientArrayPointer(VAOManager.CONV_FOG_COORD, 1, type, false, stride, data_buffer_offset);
-    }
+    public static void glFogCoordPointer(int type, int stride, long data_buffer_offset) { GLSMVertexInput.glFogCoordPointer(type, stride, data_buffer_offset); }
 
-    public static void glSecondaryColorPointer(int size, int stride, FloatBuffer data) {
-        ffpClientArrayPointer(VAOManager.CONV_SECONDARY_COLOR, size, GL11.GL_FLOAT, true, stride, MemoryUtilities.memByteBuffer(data));
-    }
+    public static void glSecondaryColorPointer(int size, int stride, FloatBuffer data) { GLSMVertexInput.glSecondaryColorPointer(size, stride, data); }
 
-    public static void glSecondaryColorPointer(int size, int stride, DoubleBuffer data) {
-        ffpClientArrayPointer(VAOManager.CONV_SECONDARY_COLOR, size, GL11.GL_DOUBLE, true, stride, MemoryUtilities.memByteBuffer(data));
-    }
+    public static void glSecondaryColorPointer(int size, int stride, DoubleBuffer data) { GLSMVertexInput.glSecondaryColorPointer(size, stride, data); }
 
-    public static void glSecondaryColorPointer(int size, boolean unsigned, int stride, ByteBuffer data) {
-        final int type = unsigned ? GL11.GL_UNSIGNED_BYTE : GL11.GL_BYTE;
-        ffpClientArrayPointer(VAOManager.CONV_SECONDARY_COLOR, size, type, true, stride, data);
-    }
+    public static void glSecondaryColorPointer(int size, boolean unsigned, int stride, ByteBuffer data) { GLSMVertexInput.glSecondaryColorPointer(size, unsigned, stride, data); }
 
-    public static void glSecondaryColorPointer(int size, int type, int stride, long data_buffer_offset) {
-        ffpClientArrayPointer(VAOManager.CONV_SECONDARY_COLOR, size, type, true, stride, data_buffer_offset);
-    }
+    public static void glSecondaryColorPointer(int size, int type, int stride, long data_buffer_offset) { GLSMVertexInput.glSecondaryColorPointer(size, type, stride, data_buffer_offset); }
 
     /**
      * Answers the pointer of a conventional client array. Client-side pointers report the address of the
      * memory GLSM captured for them, buffer-backed arrays report their offset, and an array that was never
      * specified reports {@code null}.
      */
-    public static ByteBuffer glGetPointer(int pname, long result_size) {
-        final int key = VAOManager.clientArrayField(pname, ctx().clientActiveTextureUnit);
-        if ((key & ~0xFF) != VAOManager.FIELD_POINTER) return null;
-        final VAOManager.Attrib a = ctx().vaos.conventional(key & 0xFF);
-        if (a == null) return null;
-        final long address = a.clientPointer != null ? MemoryUtilities.memAddress(a.clientPointer) : a.offset;
-        return address == 0 ? null : MemoryUtilities.memByteBuffer(address, (int) result_size);
-    }
+    public static ByteBuffer glGetPointer(int pname, long result_size) { return GLSMVertexInput.glGetPointer(pname, result_size); }
 
-    public static void glEnableClientState(int cap) {
-        final int conv = VAOManager.pnameToConventional(cap, ctx().clientActiveTextureUnit);
-        if (conv < 0) {
-            warnOnce("client-state-" + cap, "glEnableClientState(0x{}) is not a client array GLSM tracks; ignoring", Integer.toHexString(cap));
-            return;
-        }
-        ctx().vaos.applyConventionalEnabled(conv, true);
-        final int flag = clientStateToVertexFlag(cap);
-        if (flag != 0) ShaderManager.getInstance().enableClientVertexFlag(flag);
-    }
+    public static void glEnableClientState(int cap) { GLSMVertexInput.glEnableClientState(cap); }
 
-    public static void glDisableClientState(int cap) {
-        final int conv = VAOManager.pnameToConventional(cap, ctx().clientActiveTextureUnit);
-        if (conv < 0) {
-            warnOnce("client-state-" + cap, "glDisableClientState(0x{}) is not a client array GLSM tracks; ignoring", Integer.toHexString(cap));
-            return;
-        }
-        ctx().vaos.applyConventionalEnabled(conv, false);
-        final int flag = clientStateToVertexFlag(cap);
-        if (flag != 0) ShaderManager.getInstance().disableClientVertexFlag(flag);
-    }
+    public static void glDisableClientState(int cap) { GLSMVertexInput.glDisableClientState(cap); }
 
-    public static void glVertexAttrib2f(int index, float v0, float v1) {
-        RENDER_BACKEND.vertexAttrib2f(index, v0, v1);
-    }
+    public static void glVertexAttrib2f(int index, float v0, float v1) { GLSMCurrentAttribs.glVertexAttrib2f(index, v0, v1); }
 
-    public static void glVertexAttrib2s(int index, short v0, short v1) {
-        RENDER_BACKEND.vertexAttrib2f(index, v0, v1);
-    }
+    public static void glVertexAttrib2s(int index, short v0, short v1) { GLSMCurrentAttribs.glVertexAttrib2s(index, v0, v1); }
 
     public static void glVertexAttrib3f(int index, float v0, float v1, float v2) {
         RENDER_BACKEND.vertexAttrib3f(index, v0, v1, v2);
     }
 
-    public static void glVertexAttrib4f(int index, float v0, float v1, float v2, float v3) {
-        RENDER_BACKEND.vertexAttrib4f(index, v0, v1, v2, v3);
-    }
+    public static void glVertexAttrib4f(int index, float v0, float v1, float v2, float v3) { GLSMCurrentAttribs.glVertexAttrib4f(index, v0, v1, v2, v3); }
 
-    public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, long offset) {
-        if (!isLegalVertexAttrib(index, size, type, stride, false)) return;
-        if (ctx().vaos.setAttribute(index, size, type, normalized, stride, offset, ctx().boundVBO)) {
-            RENDER_BACKEND.vertexAttribPointer(index, size, type, normalized, stride, offset);
-        }
-    }
+    public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, long offset) { GLSMVertexInput.glVertexAttribPointer(index, size, type, normalized, stride, offset); }
 
-    public static void glVertexAttribPointer(int index, int size, boolean normalized, int stride, FloatBuffer pointer) {
-        glVertexAttribPointer(index, size, GL11.GL_FLOAT, normalized, stride, pointer);
-    }
+    public static void glVertexAttribPointer(int index, int size, boolean normalized, int stride, FloatBuffer pointer) { GLSMVertexInput.glVertexAttribPointer(index, size, normalized, stride, pointer); }
 
-    public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, FloatBuffer pointer) {
-        glVertexAttribPointer(index, size, type, normalized, stride, MemoryUtilities.memByteBuffer(pointer));
-    }
+    public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, FloatBuffer pointer) { GLSMVertexInput.glVertexAttribPointer(index, size, type, normalized, stride, pointer); }
 
-    public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, DoubleBuffer pointer) {
-        glVertexAttribPointer(index, size, type, normalized, stride, MemoryUtilities.memByteBuffer(pointer));
-    }
+    public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, DoubleBuffer pointer) { GLSMVertexInput.glVertexAttribPointer(index, size, type, normalized, stride, pointer); }
 
-    public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, IntBuffer pointer) {
-        glVertexAttribPointer(index, size, type, normalized, stride, MemoryUtilities.memByteBuffer(pointer));
-    }
+    public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, IntBuffer pointer) { GLSMVertexInput.glVertexAttribPointer(index, size, type, normalized, stride, pointer); }
 
-    public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, ShortBuffer pointer) {
-        glVertexAttribPointer(index, size, type, normalized, stride, MemoryUtilities.memByteBuffer(pointer));
-    }
+    public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, ShortBuffer pointer) { GLSMVertexInput.glVertexAttribPointer(index, size, type, normalized, stride, pointer); }
 
-    public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, ByteBuffer pointer) {
-        if (!isLegalVertexAttrib(index, size, type, stride, false)) return;
-        ctx().vaos.setAttribute(index, size, type, normalized, stride, pointer, 0);
-    }
+    public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, ByteBuffer pointer) { GLSMVertexInput.glVertexAttribPointer(index, size, type, normalized, stride, pointer); }
 
     public static void glVertexAttribIPointer(int index, int size, int type, int stride, long offset) {
         if (!isLegalVertexAttrib(index, size, type, stride, true)) return;
@@ -3778,17 +3370,11 @@ public class GLStateManager {
     public static void glVertexAttribIFormat(int attribindex, int size, int type, int relativeoffset) { RENDER_BACKEND.vertexAttribIFormat(attribindex, size, type, relativeoffset); }
     public static void glVertexAttribBinding(int attribindex, int bindingindex) { RENDER_BACKEND.vertexAttribBinding(attribindex, bindingindex); }
 
-    public static void glEnableVertexAttribArray(int index) {
-        if (ctx().vaos.enableAttribute(index)) ctx().vaos.repointAttrib(index);
-        RENDER_BACKEND.enableVertexAttribArray(index);
-    }
+    public static void glEnableVertexAttribArray(int index) { GLSMVertexInput.glEnableVertexAttribArray(index); }
 
-    public static void glDisableVertexAttribArray(int index) {
-        if (ctx().vaos.disableAttribute(index)) ctx().vaos.repointAttrib(index);
-        if (!ctx().vaos.isAttribEnabled(index)) RENDER_BACKEND.disableVertexAttribArray(index);
-    }
+    public static void glDisableVertexAttribArray(int index) { GLSMVertexInput.glDisableVertexAttribArray(index); }
 
-    private static int clientStateToVertexFlag(int cap) {
+    static int clientStateToVertexFlag(int cap) {
         return switch (cap) {
             case GL11.GL_COLOR_ARRAY -> VertexFlags.COLOR_BIT;
             case GL11.GL_NORMAL_ARRAY -> VertexFlags.NORMAL_BIT;
@@ -4477,13 +4063,9 @@ public class GLStateManager {
         markSplashComplete();
     }
 
-    public static void glNewList(int list, int mode) {
-        DisplayListManager.glNewList(list, mode);
-    }
+    public static void glNewList(int list, int mode) { GLSMDraws.glNewList(list, mode); }
 
-    public static void glEndList() {
-        DisplayListManager.glEndList();
-    }
+    public static void glEndList() { GLSMDraws.glEndList(); }
 
     /**
      * Check if we're currently recording a display list.
@@ -4505,11 +4087,9 @@ public class GLStateManager {
         return DisplayListManager.getRecordingListId();
     }
 
-    private static final DisplayListIDAllocator displayListIdAllocator = new DisplayListIDAllocator();
+    static final DisplayListIDAllocator displayListIdAllocator = new DisplayListIDAllocator();
 
-    public static int glGenLists(int range) {
-        return displayListIdAllocator.allocRange(range);
-    }
+    public static int glGenLists(int range) { return GLSMDraws.glGenLists(range); }
 
     public static boolean glIsList(int list) {
         return displayListIdAllocator.isAllocated(list);
@@ -4518,10 +4098,7 @@ public class GLStateManager {
     /**
      * Delete display lists and free their VBO resources.
      */
-    public static void glDeleteLists(int list, int range) {
-        displayListIdAllocator.freeRange(list, range);
-        DisplayListManager.glDeleteLists(list, range);
-    }
+    public static void glDeleteLists(int list, int range) { GLSMDraws.glDeleteLists(list, range); }
 
     /**
      * Get a compiled display list from the cache. Used for executing nested display lists.
@@ -4532,18 +4109,7 @@ public class GLStateManager {
         return DisplayListManager.getDisplayList(list);
     }
 
-    public static void glCallList(int list) {
-        if (!GLDebug.isActive()) {
-            DisplayListManager.glCallList(list);
-            return;
-        }
-        GLDebug.pushGroup("glCallList ", list);
-        try {
-            DisplayListManager.glCallList(list);
-        } finally {
-            GLDebug.popGroup();
-        }
-    }
+    public static void glCallList(int list) { GLSMDraws.glCallList(list); }
 
     public static void pushState(int mask) {
         pushStateLive(StateSet.forMask(mask));
@@ -7235,26 +6801,13 @@ public class GLStateManager {
         }
     }
 
-    public static void glDeleteBuffers(int buffer) {
-        if (buffer == 0) return;
-        invalidateDeletedBuffer(buffer);
-        RENDER_BACKEND.deleteBuffers(buffer);
-    }
+    public static void glDeleteBuffers(int buffer) { GLSMBuffers.glDeleteBuffers(buffer); }
 
-    public static void glDeleteBuffers(IntBuffer buffers) {
-        for (int i = buffers.position(); i < buffers.limit(); i++) {
-            invalidateDeletedBuffer(buffers.get(i));
-        }
-        RENDER_BACKEND.deleteBuffers(buffers);
-    }
+    public static void glDeleteBuffers(IntBuffer buffers) { GLSMBuffers.glDeleteBuffers(buffers); }
 
-    public static void glDeleteBuffers(int[] buffers) {
-        for (int buffer : buffers) {
-            glDeleteBuffers(buffer);
-        }
-    }
+    public static void glDeleteBuffers(int[] buffers) { GLSMBuffers.glDeleteBuffers(buffers); }
 
-    private static void invalidateDeletedBuffer(int buffer) {
+    static void invalidateDeletedBuffer(int buffer) {
         if (buffer == 0) return;
         final GLContextState glCtx = ctx();
         if (glCtx.boundVBO == buffer) {
@@ -7263,18 +6816,7 @@ public class GLStateManager {
         glCtx.vaos.onDeleteBuffer(buffer);
     }
 
-    public static void glBindBuffer(int target, int buffer) {
-        if (target == GL15.GL_ARRAY_BUFFER) {
-            ctx().boundVBO = buffer;
-        } else if (target == GL15.GL_ELEMENT_ARRAY_BUFFER) {
-            ctx().vaos.onBindEBO(buffer);
-        } else if (target == GL21.GL_PIXEL_UNPACK_BUFFER) {
-            ctx().boundPixelUnpackBuffer = buffer;
-        } else if (target == GL21.GL_PIXEL_PACK_BUFFER) {
-            ctx().boundPixelPackBuffer = buffer;
-        }
-        RENDER_BACKEND.bindBuffer(target, buffer);
-    }
+    public static void glBindBuffer(int target, int buffer) { GLSMBuffers.glBindBuffer(target, buffer); }
 
     static void suspendPixelUnpackBuffer() {
         if (ctx().boundPixelUnpackBuffer != 0) {
@@ -7300,17 +6842,11 @@ public class GLStateManager {
         }
     }
 
-    public static int glGenBuffers() {
-        return RENDER_BACKEND.genBuffers();
-    }
+    public static int glGenBuffers() { return GLSMBuffers.glGenBuffers(); }
 
-    public static void glGenBuffers(IntBuffer buffers) {
-        for (int i = buffers.position(); i < buffers.limit(); i++) buffers.put(i, RENDER_BACKEND.genBuffers());
-    }
+    public static void glGenBuffers(IntBuffer buffers) { GLSMBuffers.glGenBuffers(buffers); }
 
-    public static void glGenBuffers(int[] buffers) {
-        for (int i = 0; i < buffers.length; i++) buffers[i] = RENDER_BACKEND.genBuffers();
-    }
+    public static void glGenBuffers(int[] buffers) { GLSMBuffers.glGenBuffers(buffers); }
 
     public static int glCreateBuffers() {
         return RENDER_BACKEND.createBuffers();
@@ -7324,30 +6860,18 @@ public class GLStateManager {
         for (int i = 0; i < buffers.length; i++) buffers[i] = RENDER_BACKEND.createBuffers();
     }
 
-    public static void glBufferData(int target, long size, int usage) { RENDER_BACKEND.bufferData(target, size, usage); }
-    public static void glBufferData(int target, int[] data, int usage) { RENDER_BACKEND.bufferData(target, data, usage); }
-    public static void glBufferData(int target, float[] data, int usage) { RENDER_BACKEND.bufferData(target, data, usage); }
-    public static void glBufferData(int target, java.nio.ByteBuffer data, int usage) { RENDER_BACKEND.bufferData(target, data, usage); }
-    public static void glBufferData(int target, java.nio.ShortBuffer data, int usage) { RENDER_BACKEND.bufferData(target, data, usage); }
-    public static void glBufferData(int target, java.nio.IntBuffer data, int usage) { RENDER_BACKEND.bufferData(target, data, usage); }
-    public static void glBufferData(int target, java.nio.FloatBuffer data, int usage) { RENDER_BACKEND.bufferData(target, data, usage); }
-    public static void glBufferData(int target, java.nio.DoubleBuffer data, int usage) { RENDER_BACKEND.bufferData(target, data, usage); }
-    public static void glBufferData(int target, LongBuffer data, int usage) { glBufferData(target, MemoryUtilities.memByteBuffer(data), usage); }
-    public static void glBufferData(int target, short[] data, int usage) {
-        final ByteBuffer copy = copyOf(data);
-        glBufferData(target, copy, usage);
-        MemoryUtilities.memFree(copy);
-    }
-    public static void glBufferData(int target, long[] data, int usage) {
-        final ByteBuffer copy = copyOf(data);
-        glBufferData(target, copy, usage);
-        MemoryUtilities.memFree(copy);
-    }
-    public static void glBufferData(int target, double[] data, int usage) {
-        final ByteBuffer copy = copyOf(data);
-        glBufferData(target, copy, usage);
-        MemoryUtilities.memFree(copy);
-    }
+    public static void glBufferData(int target, long size, int usage) { GLSMBuffers.glBufferData(target, size, usage); }
+    public static void glBufferData(int target, int[] data, int usage) { GLSMBuffers.glBufferData(target, data, usage); }
+    public static void glBufferData(int target, float[] data, int usage) { GLSMBuffers.glBufferData(target, data, usage); }
+    public static void glBufferData(int target, java.nio.ByteBuffer data, int usage) { GLSMBuffers.glBufferData(target, data, usage); }
+    public static void glBufferData(int target, java.nio.ShortBuffer data, int usage) { GLSMBuffers.glBufferData(target, data, usage); }
+    public static void glBufferData(int target, java.nio.IntBuffer data, int usage) { GLSMBuffers.glBufferData(target, data, usage); }
+    public static void glBufferData(int target, java.nio.FloatBuffer data, int usage) { GLSMBuffers.glBufferData(target, data, usage); }
+    public static void glBufferData(int target, java.nio.DoubleBuffer data, int usage) { GLSMBuffers.glBufferData(target, data, usage); }
+    public static void glBufferData(int target, LongBuffer data, int usage) { GLSMBuffers.glBufferData(target, data, usage); }
+    public static void glBufferData(int target, short[] data, int usage) { GLSMBuffers.glBufferData(target, data, usage); }
+    public static void glBufferData(int target, long[] data, int usage) { GLSMBuffers.glBufferData(target, data, usage); }
+    public static void glBufferData(int target, double[] data, int usage) { GLSMBuffers.glBufferData(target, data, usage); }
     public static void nglBufferData(int target, long size, long data, int usage) {
         if (data == 0L) {
             glBufferData(target, size, usage);
@@ -7355,37 +6879,17 @@ public class GLStateManager {
         }
         glBufferData(target, MemoryUtilities.memByteBuffer(data, checkedSize(size)), usage);
     }
-    public static void glBufferSubData(int target, long offset, java.nio.ByteBuffer data) { RENDER_BACKEND.bufferSubData(target, offset, data); }
-    public static void glBufferSubData(int target, long offset, java.nio.ShortBuffer data) { RENDER_BACKEND.bufferSubData(target, offset, data); }
-    public static void glBufferSubData(int target, long offset, java.nio.IntBuffer data) { RENDER_BACKEND.bufferSubData(target, offset, data); }
-    public static void glBufferSubData(int target, long offset, java.nio.FloatBuffer data) { RENDER_BACKEND.bufferSubData(target, offset, data); }
-    public static void glBufferSubData(int target, long offset, java.nio.DoubleBuffer data) { RENDER_BACKEND.bufferSubData(target, offset, data); }
-    public static void glBufferSubData(int target, long offset, LongBuffer data) { glBufferSubData(target, offset, MemoryUtilities.memByteBuffer(data)); }
-    public static void glBufferSubData(int target, long offset, short[] data) {
-        final ByteBuffer copy = copyOf(data);
-        glBufferSubData(target, offset, copy);
-        MemoryUtilities.memFree(copy);
-    }
-    public static void glBufferSubData(int target, long offset, int[] data) {
-        final ByteBuffer copy = copyOf(data);
-        glBufferSubData(target, offset, copy);
-        MemoryUtilities.memFree(copy);
-    }
-    public static void glBufferSubData(int target, long offset, long[] data) {
-        final ByteBuffer copy = copyOf(data);
-        glBufferSubData(target, offset, copy);
-        MemoryUtilities.memFree(copy);
-    }
-    public static void glBufferSubData(int target, long offset, float[] data) {
-        final ByteBuffer copy = copyOf(data);
-        glBufferSubData(target, offset, copy);
-        MemoryUtilities.memFree(copy);
-    }
-    public static void glBufferSubData(int target, long offset, double[] data) {
-        final ByteBuffer copy = copyOf(data);
-        glBufferSubData(target, offset, copy);
-        MemoryUtilities.memFree(copy);
-    }
+    public static void glBufferSubData(int target, long offset, java.nio.ByteBuffer data) { GLSMBuffers.glBufferSubData(target, offset, data); }
+    public static void glBufferSubData(int target, long offset, java.nio.ShortBuffer data) { GLSMBuffers.glBufferSubData(target, offset, data); }
+    public static void glBufferSubData(int target, long offset, java.nio.IntBuffer data) { GLSMBuffers.glBufferSubData(target, offset, data); }
+    public static void glBufferSubData(int target, long offset, java.nio.FloatBuffer data) { GLSMBuffers.glBufferSubData(target, offset, data); }
+    public static void glBufferSubData(int target, long offset, java.nio.DoubleBuffer data) { GLSMBuffers.glBufferSubData(target, offset, data); }
+    public static void glBufferSubData(int target, long offset, LongBuffer data) { GLSMBuffers.glBufferSubData(target, offset, data); }
+    public static void glBufferSubData(int target, long offset, short[] data) { GLSMBuffers.glBufferSubData(target, offset, data); }
+    public static void glBufferSubData(int target, long offset, int[] data) { GLSMBuffers.glBufferSubData(target, offset, data); }
+    public static void glBufferSubData(int target, long offset, long[] data) { GLSMBuffers.glBufferSubData(target, offset, data); }
+    public static void glBufferSubData(int target, long offset, float[] data) { GLSMBuffers.glBufferSubData(target, offset, data); }
+    public static void glBufferSubData(int target, long offset, double[] data) { GLSMBuffers.glBufferSubData(target, offset, data); }
     public static void nglBufferSubData(int target, long offset, long size, long data) { glBufferSubData(target, offset, MemoryUtilities.memByteBuffer(data, checkedSize(size))); }
     public static ByteBuffer glMapBuffer(int target, int access) { return RENDER_BACKEND.mapBuffer(target, access); }
     public static ByteBuffer glMapBuffer(int target, int access, ByteBuffer old_buffer) { return glMapBuffer(target, access); }
@@ -7397,44 +6901,19 @@ public class GLStateManager {
         return buf == null ? 0L : MemoryUtilities.memAddress0(buf);
     }
     public static boolean glUnmapBuffer(int target) { return RENDER_BACKEND.unmapBuffer(target); }
-    public static void glGetBufferSubData(int target, long offset, java.nio.ByteBuffer data) { RENDER_BACKEND.getBufferSubData(target, offset, data); }
-    public static void glGetBufferSubData(int target, long offset, java.nio.ShortBuffer data) { RENDER_BACKEND.getBufferSubData(target, offset, data); }
-    public static void glGetBufferSubData(int target, long offset, java.nio.IntBuffer data) { RENDER_BACKEND.getBufferSubData(target, offset, data); }
-    public static void glGetBufferSubData(int target, long offset, java.nio.FloatBuffer data) { RENDER_BACKEND.getBufferSubData(target, offset, data); }
-    public static void glGetBufferSubData(int target, long offset, java.nio.DoubleBuffer data) { RENDER_BACKEND.getBufferSubData(target, offset, data); }
-    public static void glGetBufferSubData(int target, long offset, LongBuffer data) { glGetBufferSubData(target, offset, MemoryUtilities.memByteBuffer(data)); }
-    public static void glGetBufferSubData(int target, long offset, short[] data) {
-        final ByteBuffer copy = MemoryUtilities.memAlloc(data.length << 1);
-        glGetBufferSubData(target, offset, copy);
-        copy.asShortBuffer().get(data);
-        MemoryUtilities.memFree(copy);
-    }
-    public static void glGetBufferSubData(int target, long offset, int[] data) {
-        final ByteBuffer copy = MemoryUtilities.memAlloc(data.length << 2);
-        glGetBufferSubData(target, offset, copy);
-        copy.asIntBuffer().get(data);
-        MemoryUtilities.memFree(copy);
-    }
-    public static void glGetBufferSubData(int target, long offset, long[] data) {
-        final ByteBuffer copy = MemoryUtilities.memAlloc(data.length << 3);
-        glGetBufferSubData(target, offset, copy);
-        copy.asLongBuffer().get(data);
-        MemoryUtilities.memFree(copy);
-    }
-    public static void glGetBufferSubData(int target, long offset, float[] data) {
-        final ByteBuffer copy = MemoryUtilities.memAlloc(data.length << 2);
-        glGetBufferSubData(target, offset, copy);
-        copy.asFloatBuffer().get(data);
-        MemoryUtilities.memFree(copy);
-    }
-    public static void glGetBufferSubData(int target, long offset, double[] data) {
-        final ByteBuffer copy = MemoryUtilities.memAlloc(data.length << 3);
-        glGetBufferSubData(target, offset, copy);
-        copy.asDoubleBuffer().get(data);
-        MemoryUtilities.memFree(copy);
-    }
+    public static void glGetBufferSubData(int target, long offset, java.nio.ByteBuffer data) { GLSMBuffers.glGetBufferSubData(target, offset, data); }
+    public static void glGetBufferSubData(int target, long offset, java.nio.ShortBuffer data) { GLSMBuffers.glGetBufferSubData(target, offset, data); }
+    public static void glGetBufferSubData(int target, long offset, java.nio.IntBuffer data) { GLSMBuffers.glGetBufferSubData(target, offset, data); }
+    public static void glGetBufferSubData(int target, long offset, java.nio.FloatBuffer data) { GLSMBuffers.glGetBufferSubData(target, offset, data); }
+    public static void glGetBufferSubData(int target, long offset, java.nio.DoubleBuffer data) { GLSMBuffers.glGetBufferSubData(target, offset, data); }
+    public static void glGetBufferSubData(int target, long offset, LongBuffer data) { GLSMBuffers.glGetBufferSubData(target, offset, data); }
+    public static void glGetBufferSubData(int target, long offset, short[] data) { GLSMBuffers.glGetBufferSubData(target, offset, data); }
+    public static void glGetBufferSubData(int target, long offset, int[] data) { GLSMBuffers.glGetBufferSubData(target, offset, data); }
+    public static void glGetBufferSubData(int target, long offset, long[] data) { GLSMBuffers.glGetBufferSubData(target, offset, data); }
+    public static void glGetBufferSubData(int target, long offset, float[] data) { GLSMBuffers.glGetBufferSubData(target, offset, data); }
+    public static void glGetBufferSubData(int target, long offset, double[] data) { GLSMBuffers.glGetBufferSubData(target, offset, data); }
     public static void nglGetBufferSubData(int target, long offset, long size, long data) { glGetBufferSubData(target, offset, MemoryUtilities.memByteBuffer(data, checkedSize(size))); }
-    public static int glGetBufferParameteri(int target, int pname) { return RENDER_BACKEND.getBufferParameteri(target, pname); }
+    public static int glGetBufferParameteri(int target, int pname) { return GLSMBuffers.glGetBufferParameteri(target, pname); }
     public static int glGetBufferParameter(int target, int pname) { return glGetBufferParameteri(target, pname); }
     public static void glGetBufferParameter(int target, int pname, IntBuffer params) { params.put(params.position(), glGetBufferParameteri(target, pname)); }
     public static void glGetBufferParameteriv(int target, int pname, IntBuffer params) { params.put(params.position(), glGetBufferParameteri(target, pname)); }
@@ -7542,31 +7021,31 @@ public class GLStateManager {
         return (int) size;
     }
 
-    private static ByteBuffer copyOf(short[] data) {
+    static ByteBuffer copyOf(short[] data) {
         final ByteBuffer bb = MemoryUtilities.memAlloc(data.length << 1);
         bb.asShortBuffer().put(data);
         return bb;
     }
 
-    private static ByteBuffer copyOf(int[] data) {
+    static ByteBuffer copyOf(int[] data) {
         final ByteBuffer bb = MemoryUtilities.memAlloc(data.length << 2);
         bb.asIntBuffer().put(data);
         return bb;
     }
 
-    private static ByteBuffer copyOf(long[] data) {
+    static ByteBuffer copyOf(long[] data) {
         final ByteBuffer bb = MemoryUtilities.memAlloc(data.length << 3);
         bb.asLongBuffer().put(data);
         return bb;
     }
 
-    private static ByteBuffer copyOf(float[] data) {
+    static ByteBuffer copyOf(float[] data) {
         final ByteBuffer bb = MemoryUtilities.memAlloc(data.length << 2);
         bb.asFloatBuffer().put(data);
         return bb;
     }
 
-    private static ByteBuffer copyOf(double[] data) {
+    static ByteBuffer copyOf(double[] data) {
         final ByteBuffer bb = MemoryUtilities.memAlloc(data.length << 3);
         bb.asDoubleBuffer().put(data);
         return bb;
@@ -7575,55 +7054,19 @@ public class GLStateManager {
     public static boolean glIsBuffer(int buffer) { return RENDER_BACKEND.isBuffer(buffer); }
     public static void glCopyBufferSubData(int readTarget, int writeTarget, long readOffset, long writeOffset, long size) { RENDER_BACKEND.copyBufferSubData(readTarget, writeTarget, readOffset, writeOffset, size); }
 
-    public static void glBindVertexArray(int array) {
-        if (DisplayListManager.isRecording()) {
-            DisplayListManager.recordBindVAO(array);
-            // Since the vao needs to be bound to do stuff like state setup & data upload, it'll still execute the bind call.
-            // This is technically wrong, but I'm not sure if there's a better solution here.
-        }
-        final GLContextState glCtx = ctx();
-        if (array == 0) {
-            array = glCtx.defaultVAO;
-        }
-        RENDER_BACKEND.bindVertexArray(array);
-        if (glCtx.boundVAO != array) {
-            glCtx.boundVAO = array;
-            glCtx.vaos.onBindVertexArrayPre(array);
-        }
-    }
+    public static void glBindVertexArray(int array) { GLSMVertexInput.glBindVertexArray(array); }
 
-    public static void glDeleteVertexArrays(int array) {
-        final GLContextState glCtx = ctx();
-        glCtx.vaos.onDeleteVertexArray(array);
-        if (array == glCtx.boundVAO) {
-            glCtx.boundVAO = glCtx.defaultVAO;
-            glCtx.vaos.onBindVertexArrayPre(glCtx.defaultVAO);
-            RENDER_BACKEND.bindVertexArray(glCtx.defaultVAO);
-        }
-        RENDER_BACKEND.deleteVertexArrays(array);
-    }
+    public static void glDeleteVertexArrays(int array) { GLSMVertexInput.glDeleteVertexArrays(array); }
 
-    public static void glDeleteVertexArrays(IntBuffer arrays) {
-        for (int i = arrays.position(); i < arrays.limit(); i++) glDeleteVertexArrays(arrays.get(i));
-    }
+    public static void glDeleteVertexArrays(IntBuffer arrays) { GLSMVertexInput.glDeleteVertexArrays(arrays); }
 
-    public static void glDeleteVertexArrays(int[] arrays) {
-        for (int array : arrays) glDeleteVertexArrays(array);
-    }
+    public static void glDeleteVertexArrays(int[] arrays) { GLSMVertexInput.glDeleteVertexArrays(arrays); }
 
-    public static int glGenVertexArrays() {
-        final int array = RENDER_BACKEND.genVertexArrays();
-        ctx().vaos.onDeleteVertexArray(array);
-        return array;
-    }
+    public static int glGenVertexArrays() { return GLSMVertexInput.glGenVertexArrays(); }
 
-    public static void glGenVertexArrays(IntBuffer arrays) {
-        for (int i = arrays.position(); i < arrays.limit(); i++) arrays.put(i, glGenVertexArrays());
-    }
+    public static void glGenVertexArrays(IntBuffer arrays) { GLSMVertexInput.glGenVertexArrays(arrays); }
 
-    public static void glGenVertexArrays(int[] arrays) {
-        for (int i = 0; i < arrays.length; i++) arrays[i] = glGenVertexArrays();
-    }
+    public static void glGenVertexArrays(int[] arrays) { GLSMVertexInput.glGenVertexArrays(arrays); }
 
     public static boolean glIsVertexArray(int array) {
         return RENDER_BACKEND.isVertexArray(array);
@@ -7878,9 +7321,7 @@ public class GLStateManager {
         RENDER_BACKEND.debugMessageCallback(listener, userParam);
     }
 
-    public static void glDebugMessageCallback(KHRDebugCallback callback) {
-        RENDER_BACKEND.debugMessageCallback(GLDebug.adaptDebugCallback(callback), 0L);
-    }
+    public static void glDebugMessageCallback(KHRDebugCallback callback) { GLSMDraws.glDebugMessageCallback(callback); }
 
     /**
      * Redirect target for {@code org.lwjgl.opengl.GLUtil.setupDebugMessageCallback(PrintStream)}.
@@ -7922,30 +7363,7 @@ public class GLStateManager {
         glActiveTexture(textureUnit);
     }
 
-    public static void glMultiTexCoord2f(int target, float s, float t) {
-        if (target == GL13.GL_TEXTURE0) {
-            if (DisplayListManager.isRecording() || ImmediateModeRecorder.isDrawing()) {
-                ImmediateModeRecorder.setTexCoord(s, t);
-                return;
-            }
-            ShaderManager.setCurrentTexCoord(s, t, 0.0f, 1.0f);
-            ctx().dirtyTexCoordAttrib = true;
-        } else if (target == GL13.GL_TEXTURE1) {
-            if (DisplayListManager.isRecording() || ImmediateModeRecorder.isDrawing()) {
-                ImmediateModeRecorder.setLightmapCoord(s, t);
-                return;
-            }
-            setLightmapTextureCoords(target, s, t);
-        } else {
-            final int unit = target - GL13.GL_TEXTURE0;
-            if (unit >= 2 && unit < 4) {
-                if (DisplayListManager.isRecording() || ImmediateModeRecorder.isDrawing()) {
-                    ctx().unit23TexCoordSetDuringDraw = true;
-                }
-                ShaderManager.setCurrentTexCoord(unit, s, t, 0.0f, 1.0f);
-            }
-        }
-    }
+    public static void glMultiTexCoord2f(int target, float s, float t) { GLSMCurrentAttribs.glMultiTexCoord2f(target, s, t); }
 
     public static void glMultiTexCoord2d(int target, double s, double t) {
         glMultiTexCoord2f(target, (float) s, (float) t);
@@ -8393,9 +7811,7 @@ public class GLStateManager {
         FeedbackManager.glFeedbackBuffer(type, buffer);
     }
 
-    public static int glRenderMode(int mode) {
-        return FeedbackManager.glRenderMode(mode);
-    }
+    public static int glRenderMode(int mode) { return GLSMDraws.glRenderMode(mode); }
 
     public static void glPassThrough(float token) {
         FeedbackManager.glPassThrough(token);
@@ -9047,17 +8463,11 @@ public class GLStateManager {
         glMultMatrix(buffer);
     }
 
-    public static void glColor4f(float red, float green, float blue) {
-        glColor4f(red, green, blue, 1.0F);
-    }
+    public static void glColor4f(float red, float green, float blue) { GLSMCurrentAttribs.glColor4f(red, green, blue); }
 
-    public static void glTexCoordPointer(int size, int type, int stride, int pointer) {
-        glTexCoordPointer(size, type, stride, (long) pointer);
-    }
+    public static void glTexCoordPointer(int size, int type, int stride, int pointer) { GLSMVertexInput.glTexCoordPointer(size, type, stride, pointer); }
 
-    public static void glVertexPointer(int size, int type, int stride, int pointer) {
-        glVertexPointer(size, type, stride, (long) pointer);
-    }
+    public static void glVertexPointer(int size, int type, int stride, int pointer) { GLSMVertexInput.glVertexPointer(size, type, stride, pointer); }
 
     public static void glColorPointer(int size, int type, int stride, int pointer) {
         glColorPointer(size, type, stride, (long) pointer);
