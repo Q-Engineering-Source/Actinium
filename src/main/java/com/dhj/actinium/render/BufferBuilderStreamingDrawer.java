@@ -12,6 +12,7 @@ import net.minecraft.client.renderer.vertex.VertexFormat;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import dhj.embeddedt.embeddium.api.debug.RenderDebugHooksHolder;
+import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 
@@ -87,7 +88,9 @@ public final class BufferBuilderStreamingDrawer {
         try {
             if (persistentBuffer != null) {
                 final long uploadStart = perfDebugEnabled ? GLSMPerfDebug.now() : 0L;
-                firstVertex = persistentBuffer.upload(upload, stride);
+                // Quad conversion indexes the shared EBO from firstVertex / 4, so a QUADS upload must start
+                // on a quad boundary. Every other draw mode addresses vertices directly and needs no padding.
+                firstVertex = persistentBuffer.upload(upload, stride, drawMode == GL11.GL_QUADS ? 4 : 1);
                 if (perfDebugEnabled && firstVertex >= 0) {
                     GLSMPerfDebug.record(GLSMPerfDebug.Stage.BUFFERBUILDER_PERSISTENT_UPLOAD, uploadStart, GLSMPerfDebug.now());
                 }
