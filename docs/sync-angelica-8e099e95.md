@@ -229,7 +229,7 @@
 | 1 | `73d61d38` | `FenceQueue`、`GlStreamingRing`，`PersistentStreamingBuffer` 改薄包装，删除 `GlFence` 与 `StreamingBuffer` 接口 | PR #257 |
 | 2 | `1babfd96`、`8e180962`、`7bb5bfd4` | 点尺寸改静态缓存并保留惰性查询，`glReadPixels` 与 `glGetTexImage` 的 PBO 重载重定向测试 | PR #258；`1babfd96` 的 `GLDebug.resetGroupStack`、`RenderBackend.invalidateStateMirror`、`ShaderManager.invalidateBoundProgram` 三项在本地没有崩溃恢复宿主，落地后无调用方，等 `RenderRecovery` 一并做 |
 | 3 | `e84c8c8d` 阶段一 | `TextureTargets`、`RenderBackend` 纹理目标接口与 `Lwjgl3` 实现、`DSAUnsupported`/`DSAARB` 改经 `GLStateManager`、`GLSMRedirector` 表项 | PR #259；`RenderSystem` 的 stencil 与 texture storage 能力查询等第一个真实消费者，随阶段二 |
-| 4 | `2a8c8756`、`10922edc` | `GLVersionChoice` 与其测试，接到 `CoreProfileDisplayCreator` 的版本探测起点；`SystemProperties` 扩充 | 待做 |
+| 4 | `2a8c8756`、`10922edc` | `GLVersionChoice` 与其测试，接到 `CoreProfileDisplayCreator` 的版本探测起点；`SystemProperties.GL_PROFILE` 读 `angelica.glProfile` | 本 PR |
 | 5 | `2a8c8756`、`8e180962` | `BackendOptions`、`BackendStartGuard` 与测试，`AngelicaConfig` 增加后端选择项。单后端下 `tripped()` 恒为 false | 待做 |
 | 6 | `482dece0` 前置 | `3b4ebcf6`（上游范围外）的 `glsm/loading` 五件套与 `GLSMRedirector` 的四参 `transformClassNode`，之后才能落 `GlsmRedirectAgent` | 待做 |
 | 7 | `12857006` | `RenderBackend` 缓冲映射生命周期接口与 `GLStateManager` 委托；`onPersistentBufferWrite` 已在顺序 1 落地 | 待做 |

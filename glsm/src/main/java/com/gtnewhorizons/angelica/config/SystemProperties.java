@@ -14,4 +14,10 @@ public final class SystemProperties {
      * persistent ring out when diagnosing driver behaviour.
      */
     public static final boolean FORCE_ORPHAN_STREAMING = Boolean.getBoolean("angelica.debug.forceOrphanStreaming");
+
+    /**
+     * Core profile version to request, written as {@code major.minor} (for example {@code 4.5}).
+     * Empty or unparsable leaves the choice to the probe over the platform ceiling.
+     */
+    public static final String GL_PROFILE = System.getProperty("angelica.glProfile", "");
 }
