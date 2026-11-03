@@ -147,7 +147,7 @@
 | 111 | `67ca46a2` | why min 16 (#2278) | 2026-10-22 | 不适用 | — | 本地无 `mobSpawnerRenderDistance` 选项与 `SodiumGameOptionPages`，选项下限无同步基础 |
 | 112 | `98703a11` | Read only the mcmeta in the interpolated icon check (#2284) | 2026-10-22 | 待同步 | S02 | 交错图标检测只读 mcmeta；本地无 `jss/notfine` 包，也没有 `notfine_at.cfg`，该优化随 S02 的 interpolated texture 实现一并移植（实现时需同时补 `FallbackResourceManager` 的 access transformer 条目） |
 | 113 | `69124e3f` | Stop capping mailbox present mode to the refresh rate (#2279) | 2026-10-21 | 待同步 | F09 | 帧呈现模式上限；本地无 `PacerCore`、`FramePacer`，归入 F09 的帧节奏工作 |
-| 114 | `73d61d38` | initial commit for gl-fences (#2285) | 2026-10-21 | 待同步 | G05 | GL fence 设施，本地 `GlFence` 无环形队列与等待策略 |
+| 114 | `73d61d38` | initial commit for gl-fences (#2285) | 2026-10-21 | 已同步 | G05 | glsm 侧由 `feat/glsm-streaming-ring` 落地：新建 `FenceQueue` 与 `GlStreamingRing`，`PersistentStreamingBuffer` 改为薄包装，删除 `GlFence` 与 `StreamingBuffer` 接口，fence 时机、容量阈值、10ms 等待切片与 5s 总超时、`forcedReclaims` 计数与上游逐项一致。`Uniforms.invalidateBinding` 随 FFPUniformBlock+UBO ring 一并排除（本地逐 uniform 上传）；TESR/particle 侧的 `InstanceRing`、`ModelPartBatcher`、`TesrBatchRenderer`、`ParticleInstancer` 随 F03；Tracy 帧图与脚本排除 |
 | 115 | `e84c8c8d` | Stop stalls on some GPUs when closing the questbook (#2286) | 2026-10-22 | 分 hunk 同步 | G05 | 取 GLSM 延迟纹理删除、`FrameHooks`、`TextureTargets` 与 `DSAUnsupported`；SDL 采样器与 `Lwjgl2GLRenderBackend` 排除 |
 | 116 | `fc8d3e8b` | Keep armor and held-item glint materials separate (#2289) | 2026-10-22 | 待同步 | F02 | 盔甲与手持附魔材质分离，本地缺 `EntityMaterials`、`ItemGlint` |
 | 117 | `8af9340b` | Initial commit for shadow-pass-camera (#2291) | 2026-10-22 | 待同步 | P01 | 阴影 pass 相机同步；本地 `ShadowRenderer` 只保存与恢复 `renderManager.viewerPos*`，未设置 `cacheActiveRenderInfo` 与 `TileEntityRendererDispatcher.staticPlayer*` |
@@ -187,7 +187,7 @@
 | G02 | `a8c29fa3` |
 | G03 | `12fa08ab`、`7cd97d12`、`44c930f4`、`6dfb0312`、`3978be16`、`85892c0f`、`b6a4497f`、`e98c927a` |
 | G04 | `23aa0436` |
-| G05 | `e84c8c8d`、`73d61d38`、`1babfd96`、`482dece0`、`49db8e11`（非 SDL-only）、`7bb5bfd4`、`8e180962`、`2a8c8756`、`1587a12c`、`12857006`、`10922edc` |
+| G05 | `e84c8c8d`、`73d61d38`、`1babfd96`、`482dece0`、`49db8e11`（非 SDL-only）、`7bb5bfd4`、`8e180962`、`2a8c8756`、`1587a12c`、`12857006`、`10922edc`；SDL 侧部分见「SDL-GPU 后端引入顺序」 |
 | G06 | `91e67f8d` |
 | G07 | `102c6cad`、`2f1f380e`（recording/LineQuads + FFP/AttributeTransformer）、`ab3bf176`（streaming 与 `TessellatorEntityIds` + Iris/FFP）、`5ed1c925`、`8537835d` |
 | C01 | `48eb54f5`、`625b6f40`、`f33e50ce`、`c64f4225`、`98c1af33`、`fcf8ad06`、`cfc6e12e`、`c9d46e70`（`MixinShaderLoader`） |
@@ -219,6 +219,32 @@
 | F10 | `977db3d6`、`74ea5c47`（`Zoom`） |
 | F11 | `233c74e0`、`a8e95f70`、`fa8842a6`、`0cae2be1`、`1946c2ad`、`bfb66d84`、`cae4fea2`、`3d3d0f9e`、`23e36f2b`、`d29a8278`、`2f1f380e`（通用兼容） |
 | F12 | `com/prupe`、`jss/notfine` 相关提交（`38b1d9a0`、`85892c0f`、`cd0a9608`） |
+
+## G05 落地顺序
+
+按「无前置、有前置、随 SDL 引入」三层排定，每层单独一个 PR。
+
+| 顺序 | 上游范围 | 内容 |
+|---|---|---|
+| 1 | `73d61d38` | `FenceQueue`、`GlStreamingRing`，`PersistentStreamingBuffer` 改薄包装，删除 `GlFence` 与 `StreamingBuffer` 接口。已在 `feat/glsm-streaming-ring` 完成 |
+| 2 | `1babfd96`、`8e180962`、`7bb5bfd4` | GLSM 自洽改动：`GLDebug.resetGroupStack`、`RenderBackend.invalidateStateMirror`、`ShaderManager.invalidateBoundProgram`、点尺寸静态缓存（保留惰性查询以维持 `LegacyQueryIntegrationTest`）、`glReadPixels` 回读重定向测试 |
+| 3 | `e84c8c8d` 阶段一 | `TextureTargets`、`RenderBackend` 纹理目标接口与 `Lwjgl3` 实现、`DSAUnsupported`/`DSAARB` 改经 `GLStateManager`、`GLSMRedirector` 表项、`RenderSystem` 的 stencil 与 texture storage 能力查询 |
+| 4 | `2a8c8756`、`10922edc` | `GLVersionChoice` 与其测试，接到 `CoreProfileDisplayCreator` 的版本探测起点；`SystemProperties` 扩充 |
+| 5 | `2a8c8756`、`8e180962` | `BackendOptions`、`BackendStartGuard` 与测试，`AngelicaConfig` 增加后端选择项。单后端下 `tripped()` 恒为 false |
+| 6 | `482dece0` 前置 | `3b4ebcf6`（上游范围外）的 `glsm/loading` 五件套与 `GLSMRedirector` 的四参 `transformClassNode`，之后才能落 `GlsmRedirectAgent` |
+| 7 | `12857006` | `RenderBackend` 缓冲映射生命周期接口与 `GLStateManager` 委托；`onPersistentBufferWrite` 已在顺序 1 落地 |
+| 8 | `e84c8c8d` 阶段二 | 延迟纹理删除状态机，前置是 G02 的 draw lock 与帧结束钩子 |
+
+## SDL-GPU 后端引入顺序
+
+SDL-GPU 后端确定后续引入，台账中标注为排除的 `sdl-gpu/`、`moltenvk/` 文件属于延后同步，引入时按下列顺序补齐。通用侧接口必须先就位，`RenderBackend` 的新方法一律给默认实现，SDL 后端接入时覆写。
+
+| 顺序 | 范围 |
+|---|---|
+| 1 | `moltenvk/` 子项目与 `RendererOptionPages`、`SdlGpuDriver`、`RenderBackendChoice`（`2a8c8756`） |
+| 2 | `Device`、`SDLGPURenderBackend`、`SDLGPUGate` 与 `sdl-gpu/build.gradle.kts` |
+| 3 | 缓冲映射生命周期的 17 个文件（`12857006`）、`MainThreadPump` 的 present 三态（`1587a12c`） |
+| 4 | 采样器搬运与 `SamplerAliasDeduplicator` 的 SDL 接线（`49db8e11`）、`glsmSdlAgent`（`482dece0`） |
 
 ## 多目标提交的归属拆解
 
