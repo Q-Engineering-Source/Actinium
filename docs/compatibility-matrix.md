@@ -1,6 +1,6 @@
 # Actinium 兼容性矩阵
 
-最后更新：2026-10-19。
+最后更新：2026-11-02。
 
 状态定义：`已验证` 表示在记录的版本和场景中通过；`部分` 表示能运行但存在已知缺口；
 `无法启用` 表示光影包不能成功开启；`未验证` 不代表不兼容。更新记录时必须填写 Actinium commit、
@@ -34,6 +34,18 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 > `./gradlew check build --no-daemon` 通过：791 项测试，0 失败、4 跳过；新增 4 项直接使用
 > `BufferBuilder` 验证原版斜向连接段、完整及非完整方块的 12 条独立边、颜色和透明度。
 > 测试用 `ClippingHelperImpl` 同步恢复原版继承关系和构造入口，保证可直接加载 `RenderGlobal`。
+
+> 2026-11-02 追加：Complementary Unbound r5.9.3 + Cleanroom 0.6.13-alpha 下，手持 `minecraft:piston`
+> 开启光影后首帧崩溃（[issue #251](https://github.com/Q-Engineering-Source/Actinium/issues/251)）已修复，
+> 用户实机确认。崩溃发生在 `beginLevelRendering` 的帧监听器：`IdMapUniforms.HeldItemSupplier` 每帧调用
+> `IrisItemLightProvider.getLightEmission`，旧默认实现用 `ItemBlock.getMetadata` 的返回值反推方块状态；
+> 活塞的物品 `ItemPiston` 恒返回 `7`，`BlockPistonBase.getStateFromMeta(7)` 中的 `getFacing` 返回 null，
+> `withProperty(FACING, null)` 抛 `IllegalArgumentException`，粘性活塞同样受影响。`Item.getMetadata` 的语义
+> 是放置到世界时写入的 metadata，不能当作状态索引。修复改为读取 `block.getDefaultState().getLightValue()`，
+> 与 Iris 对 block item 的处理一致；火把 14、萤石 15、红石火把 7、未点亮的红石灯与熔炉 0 等手持发光值
+> 保持不变。新增回归测试复现旧实现的原异常文本，覆盖活塞与粘性活塞返回 0、火把发光大于 0、非方块物品
+> 返回 0；`./gradlew check --no-daemon` 通过，用户确认手持活塞与粘性活塞不再崩溃、火把动态光照仍在。
+> 修复 commit `1e3b7270`。
 
 > 2026-10-18 追加：Actinium 0.0.12 alpha + Cleanroom 0.6.13-alpha 下，Complementary Reimagined r5.9.3
 > 与 Derivative Main d24.4.14 手持火把完全没有动态光照。根因是 `ItemIrisMixin` 只把
