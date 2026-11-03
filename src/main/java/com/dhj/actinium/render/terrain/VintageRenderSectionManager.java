@@ -14,9 +14,9 @@ import dhj.embeddedt.embeddium.impl.render.chunk.compile.ChunkBuildOutput;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.tasks.ChunkBuilderTask;
 import dhj.embeddedt.embeddium.impl.render.chunk.data.BuiltRenderSectionData;
 import dhj.embeddedt.embeddium.impl.render.chunk.data.MinecraftBuiltRenderSectionData;
+import dhj.embeddedt.embeddium.impl.render.chunk.fog.FogService;
 import dhj.embeddedt.embeddium.impl.render.chunk.lists.SectionTicker;
 import dhj.embeddedt.embeddium.impl.render.chunk.occlusion.AsyncOcclusionMode;
-import dhj.embeddedt.embeddium.impl.render.chunk.shader.ChunkShaderFogComponent;
 import dhj.embeddedt.embeddium.impl.render.chunk.shader.ChunkShaderInterface;
 import dhj.embeddedt.embeddium.impl.render.chunk.shader.ChunkShaderTextureSlot;
 import dhj.embeddedt.embeddium.impl.render.chunk.shader.ChunkFogMode;
@@ -38,6 +38,7 @@ import com.dhj.actinium.world.cloned.ClonedChunkSectionCache;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.render.terrain.compile.VintageChunkBuildContext;
 import com.dhj.actinium.render.terrain.compile.task.ChunkBuilderMeshingTask;
+import com.dhj.actinium.render.terrain.fog.GLStateManagerFogService;
 import com.dhj.actinium.render.terrain.sprite.SpriteUtil;
 
 import java.util.List;
@@ -57,6 +58,11 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         int minSection = DepthsUpdateCompat.getMinSection(world);
         int maxSection = DepthsUpdateCompat.getMaxSection(world);
         return new VintageRenderSectionManager(VintageRenderPassConfigurationBuilder.build(vertexType), world, renderDistance, commandList, minSection, maxSection);
+    }
+
+    @Override
+    public FogService getFogService() {
+        return GLStateManagerFogService.INSTANCE;
     }
 
     @Override
@@ -91,7 +97,7 @@ public class VintageRenderSectionManager extends RenderSectionManager {
             return true;
         }
 
-        return ChunkShaderFogComponent.FOG_SERVICE.getFogMode() != ChunkFogMode.NONE;
+        return GLStateManagerFogService.INSTANCE.getFogMode() != ChunkFogMode.NONE;
     }
 
     @Override
@@ -206,7 +212,7 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         private boolean usingActiniumProgram;
 
         public ChunkRenderer(RenderDevice device, RenderPassConfiguration<?> renderPassConfiguration) {
-            super(device, renderPassConfiguration);
+            super(device, renderPassConfiguration, GLStateManagerFogService.INSTANCE);
 
             ShaderProvider provider = ShaderProviderHolder.getProvider();
             if (provider != null) {
