@@ -269,6 +269,12 @@ fence。环绕刷新按实际复制字节数计算，避免满环时起止位置
 通用 `BufferBuilderStreamingDrawer` 仅在确实使用 orphan 路径时分配备用 VBO/VAO，
 bounded ByteBuffer 视图由 drawRaw 统一创建。此改动已通过自动化检查，实机渲染回归待完成。
 
+外部 shader 渲染器通过 `StreamingDrawOptions.preserveExternalProgram()` 建立线程作用域后，
+可以保留当前 shader program，同时复用 `BufferBuilderStreamingDrawer` 或
+`TessellatorStreamingDrawer` 的上传、VAO 和 draw 路径。作用域只跳过 FFP `preDraw`，
+不改变顶点格式、buffer 上传或 quad 转换；调用方必须在对应的 `Tessellator.draw()` 完成后
+关闭作用域。
+
 几乎不 import Minecraft 类（仅 2 处），是脱离 Minecraft 的纯 GL 渲染引擎
 （JOML 20 处、LWJGL 3 处 import）。
 

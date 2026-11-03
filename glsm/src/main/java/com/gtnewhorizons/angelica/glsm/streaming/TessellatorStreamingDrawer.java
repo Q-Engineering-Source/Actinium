@@ -308,7 +308,9 @@ public class TessellatorStreamingDrawer {
             }
         }
         final long preDrawStart = perfSampled ? GLSMPerfDebug.now() : 0L;
-        ShaderManager.getInstance().preDraw(flags);
+        if (!StreamingDrawOptions.isExternalProgramPreserved()) {
+            ShaderManager.getInstance().preDraw(flags);
+        }
         if (perfSampled) {
             GLSMPerfDebug.record(GLSMPerfDebug.Stage.STREAM_SHADER_PREDRAW, preDrawStart, GLSMPerfDebug.now());
         }
