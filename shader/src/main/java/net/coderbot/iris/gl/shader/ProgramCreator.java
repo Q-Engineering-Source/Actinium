@@ -10,6 +10,7 @@ import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.KHRDebug;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
 
 public class ProgramCreator {
 
@@ -21,7 +22,7 @@ public class ProgramCreator {
 	public static final int AT_MIDBLOCK = 14;
 
 	public static int create(String name, GlShader... shaders) {
-		int program = GLStateManager.glCreateProgram();
+		int program = GLSMPrograms.glCreateProgram();
 
 		// TODO: This is *really* hardcoded, we need to refactor this to support external calls to glBindAttribLocation
 		RenderSystem.bindAttributeLocation(program, MC_ENTITY, "mc_Entity");
@@ -30,10 +31,10 @@ public class ProgramCreator {
 		RenderSystem.bindAttributeLocation(program, AT_MIDBLOCK, "at_midBlock");
 
 		for (GlShader shader : shaders) {
-            GLStateManager.glAttachShader(program, shader.getHandle());
+            GLSMPrograms.glAttachShader(program, shader.getHandle());
 		}
 
-        GLStateManager.glLinkProgram(program);
+        GLSMPrograms.glLinkProgram(program);
 
 		GLDebug.nameObject(KHRDebug.GL_PROGRAM, program, name);
 
@@ -48,7 +49,7 @@ public class ProgramCreator {
 			LOGGER.warn("Program link log for " + name + ": " + log);
 		}
 
-		int result = GLStateManager.glGetProgrami(program, GL20.GL_LINK_STATUS);
+		int result = GLSMPrograms.glGetProgrami(program, GL20.GL_LINK_STATUS);
 
 		if (result != GL11.GL_TRUE) {
 			throw new RuntimeException("Shader program linking failed, see log for details");

@@ -13,12 +13,15 @@ import org.lwjgl.opengl.GL31;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
+import com.gtnewhorizons.angelica.glsm.GLSMFramebuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 public class DSAUnsupported implements DSAAccess {
 
     @Override
     public void generateMipmaps(int texture, int target) {
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, texture);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, texture);
         RENDER_BACKEND.generateMipmap(target);
     }
 
@@ -57,40 +60,40 @@ public class DSAUnsupported implements DSAAccess {
     @Override
     public void texParameteri(int texture, int target, int pname, int param) {
         final int previous = bindForEdit(target, texture);
-        GLStateManager.glTexParameteri(target, pname, param);
+        GLSMTextures.glTexParameteri(target, pname, param);
         restoreBinding(target, previous);
     }
 
     @Override
     public void texParameterf(int texture, int target, int pname, float param) {
         final int previous = bindForEdit(target, texture);
-        GLStateManager.glTexParameterf(target, pname, param);
+        GLSMTextures.glTexParameterf(target, pname, param);
         restoreBinding(target, previous);
     }
 
     @Override
     public void texParameteriv(int texture, int target, int pname, IntBuffer params) {
         final int previous = bindForEdit(target, texture);
-        GLStateManager.glTexParameter(target, pname, params);
+        GLSMTextures.glTexParameter(target, pname, params);
         restoreBinding(target, previous);
     }
 
     @Override
     public void readBuffer(int framebuffer, int buffer) {
-        GLStateManager.glBindFramebuffer(GL30.GL_FRAMEBUFFER, framebuffer);
+        GLSMFramebuffer.glBindFramebuffer(GL30.GL_FRAMEBUFFER, framebuffer);
         RENDER_BACKEND.readBuffer(buffer);
     }
 
     @Override
     public void drawBuffers(int framebuffer, IntBuffer buffers) {
-        GLStateManager.glBindFramebuffer(GL30.GL_FRAMEBUFFER, framebuffer);
+        GLSMFramebuffer.glBindFramebuffer(GL30.GL_FRAMEBUFFER, framebuffer);
         RENDER_BACKEND.drawBuffers(buffers);
     }
 
     @Override
     public int getTexParameteri(int texture, int target, int pname) {
         final int previous = bindForEdit(target, texture);
-        final int result = GLStateManager.glGetTexParameteri(target, pname);
+        final int result = GLSMTextures.glGetTexParameteri(target, pname);
         restoreBinding(target, previous);
         return result;
     }
@@ -107,29 +110,29 @@ public class DSAUnsupported implements DSAAccess {
     @Override
     public void copyTexSubImage2D(int destTexture, int target, int i, int i1, int i2, int i3, int i4, int width, int height) {
         final int previous = previous2D();
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, destTexture);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, destTexture);
         RENDER_BACKEND.copyTexSubImage2D(target, i, i1, i2, i3, i4, width, height);
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, previous);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, previous);
     }
 
     @Override
     public void bindTextureToUnit(int unit, int texture) {
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0 + unit);
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, texture);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0 + unit);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, texture);
     }
 
     @Override
     public void bindTextureToUnit(int target, int unit, int texture) {
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0 + unit);
-        GLStateManager.glBindTexture(target, texture);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0 + unit);
+        GLSMTextures.glBindTexture(target, texture);
     }
 
     @Override
     public int bufferStorage(int target, FloatBuffer data, int usage) {
         final int buffer = RENDER_BACKEND.genBuffers();
-        GLStateManager.glBindBuffer(target, buffer);
+        GLSMBuffers.glBindBuffer(target, buffer);
         RENDER_BACKEND.bufferData(target, data, usage);
-        GLStateManager.glBindBuffer(target, 0);
+        GLSMBuffers.glBindBuffer(target, 0);
 
         return buffer;
     }
@@ -137,28 +140,28 @@ public class DSAUnsupported implements DSAAccess {
     @Override
     public void blitFramebuffer(int source, int dest, int offsetX, int offsetY, int width, int height, int offsetX2, int offsetY2, int width2, int height2,
         int bufferChoice, int filter) {
-        GLStateManager.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, source);
-        GLStateManager.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, dest);
+        GLSMFramebuffer.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, source);
+        GLSMFramebuffer.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, dest);
         RENDER_BACKEND.blitFramebuffer(offsetX, offsetY, width, height, offsetX2, offsetY2, width2, height2, bufferChoice, filter);
     }
 
     @Override
     public void framebufferTexture2D(int fb, int fbtarget, int attachment, int target, int texture, int levels) {
-        GLStateManager.glBindFramebuffer(fbtarget, fb);
+        GLSMFramebuffer.glBindFramebuffer(fbtarget, fb);
         RENDER_BACKEND.framebufferTexture2D(fbtarget, attachment, target, texture, levels);
     }
 
     @Override
     public int createFramebuffer() {
-        final int framebuffer = GLStateManager.glGenFramebuffers();
-        GLStateManager.glBindFramebuffer(GL30.GL_FRAMEBUFFER, framebuffer);
+        final int framebuffer = GLSMFramebuffer.glGenFramebuffers();
+        GLSMFramebuffer.glBindFramebuffer(GL30.GL_FRAMEBUFFER, framebuffer);
         return framebuffer;
     }
 
     @Override
     public int createTexture(int target) {
         final int texture = RENDER_BACKEND.genTextures();
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, texture);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, texture);
         return texture;
     }
 
@@ -217,7 +220,7 @@ public class DSAUnsupported implements DSAAccess {
     private static int bindForEdit(int target, int texture) {
         final int previous = previousBinding(target);
         if (target == GL11.GL_TEXTURE_2D) {
-            GLStateManager.glBindTexture(target, texture);
+            GLSMTextures.glBindTexture(target, texture);
         } else {
             RENDER_BACKEND.bindTexture(target, texture);
         }
@@ -226,7 +229,7 @@ public class DSAUnsupported implements DSAAccess {
 
     private static void restoreBinding(int target, int previous) {
         if (target == GL11.GL_TEXTURE_2D) {
-            GLStateManager.glBindTexture(target, previous);
+            GLSMTextures.glBindTexture(target, previous);
         } else {
             RENDER_BACKEND.bindTexture(target, previous);
         }

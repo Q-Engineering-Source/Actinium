@@ -13,6 +13,7 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memFree;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 /**
  * Command: glTexSubImage2D(target, level, xoffset, yoffset, width, height, format, type, pixels)
@@ -59,12 +60,12 @@ public record TexSubImage2DCmd(
     @Override
     public void execute() {
         if (pixels == null) {
-            GLStateManager.glTexSubImage2D(target, level, xoffset, yoffset, width, height, format, type, (ByteBuffer) null);
+            GLSMTextures.glTexSubImage2D(target, level, xoffset, yoffset, width, height, format, type, (ByteBuffer) null);
             return;
         }
         GLStateManager.forcePixelUnpackState(unpack);
         try {
-            GLStateManager.glTexSubImage2D(target, level, xoffset, yoffset, width, height, format, type, pixels);
+            GLSMTextures.glTexSubImage2D(target, level, xoffset, yoffset, width, height, format, type, pixels);
         } finally {
             GLStateManager.restorePixelUnpackState(unpack);
         }

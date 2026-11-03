@@ -36,12 +36,12 @@ class DisplayListContextBindIntegrationTest extends GLStateManagerIntegrationFix
         final Object drawableToken = new Object();
         activateContext(DISPLAY_TOKEN, context, true);
 
-        final int bound = GLStateManager.glGenVertexArrays();
-        final int local = GLStateManager.glGenVertexArrays();
-        final int localList = GLStateManager.glGenLists(1);
-        GLStateManager.glNewList(localList, GL11.GL_COMPILE);
-        GLStateManager.glBindVertexArray(local);
-        GLStateManager.glEndList();
+        final int bound = GLSMVertexInput.glGenVertexArrays();
+        final int local = GLSMVertexInput.glGenVertexArrays();
+        final int localList = GLSMDraws.glGenLists(1);
+        GLSMDraws.glNewList(localList, GL11.GL_COMPILE);
+        GLSMVertexInput.glBindVertexArray(local);
+        GLSMDraws.glEndList();
 
         final long drawable = SDL_GL_CreateContext(window);
         assertNotEquals(MemoryUtil.NULL, drawable);
@@ -50,32 +50,32 @@ class DisplayListContextBindIntegrationTest extends GLStateManagerIntegrationFix
             activateContext(drawableToken, drawable, false);
             int foreign;
             do {
-                foreign = GLStateManager.glGenVertexArrays();
+                foreign = GLSMVertexInput.glGenVertexArrays();
             } while (foreign == bound);
-            foreignList[0] = GLStateManager.glGenLists(1);
-            GLStateManager.glNewList(foreignList[0], GL11.GL_COMPILE);
-            GLStateManager.glBindVertexArray(foreign);
-            GLStateManager.glEndList();
+            foreignList[0] = GLSMDraws.glGenLists(1);
+            GLSMDraws.glNewList(foreignList[0], GL11.GL_COMPILE);
+            GLSMVertexInput.glBindVertexArray(foreign);
+            GLSMDraws.glEndList();
         } finally {
             releaseNativeContext();
             activateContext(DISPLAY_TOKEN, context, true);
         }
 
         try {
-            GLStateManager.glBindVertexArray(bound);
-            GLStateManager.glCallList(foreignList[0]);
+            GLSMVertexInput.glBindVertexArray(bound);
+            GLSMDraws.glCallList(foreignList[0]);
             assertEquals(bound, GLStateManager.getBoundVAO());
-            GLStateManager.glCallList(localList);
+            GLSMDraws.glCallList(localList);
             assertEquals(local, GLStateManager.getBoundVAO());
         } finally {
             releaseNativeContext();
             assertTrue(SDL_GL_DestroyContext(drawable));
             activateContext(DISPLAY_TOKEN, context, true);
-            GLStateManager.glBindVertexArray(0);
-            GLStateManager.glDeleteLists(localList, 1);
-            GLStateManager.glDeleteLists(foreignList[0], 1);
-            GLStateManager.glDeleteVertexArrays(bound);
-            GLStateManager.glDeleteVertexArrays(local);
+            GLSMVertexInput.glBindVertexArray(0);
+            GLSMDraws.glDeleteLists(localList, 1);
+            GLSMDraws.glDeleteLists(foreignList[0], 1);
+            GLSMVertexInput.glDeleteVertexArrays(bound);
+            GLSMVertexInput.glDeleteVertexArrays(local);
         }
     }
 
@@ -88,17 +88,17 @@ class DisplayListContextBindIntegrationTest extends GLStateManagerIntegrationFix
         final FloatBuffer vertices = BufferUtils.createFloatBuffer(9);
         vertices.put(new float[] {-0.5f, -0.5f, 0f, 0.5f, -0.5f, 0f, 0f, 0.5f, 0f});
         vertices.flip();
-        final int vbo = GLStateManager.glGenBuffers();
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
-        GLStateManager.glBufferData(GL15.GL_ARRAY_BUFFER, vertices, GL15.GL_STATIC_DRAW);
+        final int vbo = GLSMBuffers.glGenBuffers();
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+        GLSMBuffers.glBufferData(GL15.GL_ARRAY_BUFFER, vertices, GL15.GL_STATIC_DRAW);
 
         final ByteBuffer indices = BufferUtils.createByteBuffer(3 * Integer.BYTES);
         indices.putInt(0).putInt(1).putInt(2);
         indices.flip();
-        final int ebo = GLStateManager.glGenBuffers();
-        GLStateManager.glBindVertexArray(GLStateManager.glGenVertexArrays());
-        GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, ebo);
-        GLStateManager.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, indices, GL15.GL_STATIC_DRAW);
+        final int ebo = GLSMBuffers.glGenBuffers();
+        GLSMVertexInput.glBindVertexArray(GLSMVertexInput.glGenVertexArrays());
+        GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, ebo);
+        GLSMBuffers.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, indices, GL15.GL_STATIC_DRAW);
 
         final AttribLayoutKey layout = new AttribLayoutKey(
             new int[] {0}, new int[] {3}, new int[] {GL11.GL_FLOAT}, new boolean[] {false});
@@ -123,9 +123,9 @@ class DisplayListContextBindIntegrationTest extends GLStateManagerIntegrationFix
             assertTrue(SDL_GL_DestroyContext(drawable));
             activateContext(DISPLAY_TOKEN, context, true);
             batch.delete();
-            GLStateManager.glBindVertexArray(0);
-            GLStateManager.glDeleteBuffers(vbo);
-            GLStateManager.glDeleteBuffers(ebo);
+            GLSMVertexInput.glBindVertexArray(0);
+            GLSMBuffers.glDeleteBuffers(vbo);
+            GLSMBuffers.glDeleteBuffers(ebo);
         }
     }
 

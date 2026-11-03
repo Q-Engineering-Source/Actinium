@@ -8,6 +8,7 @@ import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 
 import java.nio.ByteBuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 public class SingleColorTexture extends GlResource {
 	public SingleColorTexture(int red, int green, int blue, int alpha) {
@@ -36,6 +37,6 @@ public class SingleColorTexture extends GlResource {
 
 	@Override
 	protected void destroyInternal() {
-		GLStateManager.glDeleteTextures(getGlId());
+		GLSMTextures.glDeleteTextures(getGlId());
 	}
 }

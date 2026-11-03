@@ -7,6 +7,9 @@ import net.minecraft.client.gui.ScaledResolution;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11;
+import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
+import com.gtnewhorizons.angelica.glsm.GLSMEnable;
+import com.gtnewhorizons.angelica.glsm.GLSMQueries;
 
 /**
  * Transfers Revo's requested screen gradient to the next safe pre-HUD render boundary.
@@ -47,11 +50,11 @@ public final class RevoScreenEffectsGradient {
         }
 
         GuiGlStateBoundary.restoreHudBaseline();
-        boolean depthTest = GLStateManager.glIsEnabled(GL11.GL_DEPTH_TEST);
-        boolean depthMask = GLStateManager.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
+        boolean depthTest = GLSMEnable.glIsEnabled(GL11.GL_DEPTH_TEST);
+        boolean depthMask = GLSMQueries.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
         try {
             GLStateManager.disableDepthTest();
-            GLStateManager.glDepthMask(false);
+            GLSMDepthStencilAlpha.glDepthMask(false);
             ScreenEffectsRendererInvoker.actinium$drawGradient(
                 gradient.width,
                 gradient.height,
@@ -61,7 +64,7 @@ public final class RevoScreenEffectsGradient {
             LOGGER.error("Revo UI gradient draw failed; dropping the deferred gradient", throwable);
         } finally {
             restoreDepthTest(depthTest);
-            GLStateManager.glDepthMask(depthMask);
+            GLSMDepthStencilAlpha.glDepthMask(depthMask);
             GuiGlStateBoundary.restoreHudBaseline();
         }
     }

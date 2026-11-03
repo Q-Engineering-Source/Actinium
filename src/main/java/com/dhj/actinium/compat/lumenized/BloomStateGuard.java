@@ -7,6 +7,12 @@ import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL30;
+import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
+import com.gtnewhorizons.angelica.glsm.GLSMEnable;
+import com.gtnewhorizons.angelica.glsm.GLSMFramebuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
+import com.gtnewhorizons.angelica.glsm.GLSMQueries;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 /**
  * Save/restore of the GLSM-tracked GL state around the GTCEu/Lumenized bloom pass.
@@ -35,7 +41,7 @@ public final class BloomStateGuard {
         if (occupied) {
             LOGGER.warn("Bloom GL state push while a snapshot is already held; discarding the older one");
         }
-        SAVED.framebuffer = GLStateManager.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
+        SAVED.framebuffer = GLSMQueries.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
         SAVED.activeUnit = GLStateManager.getActiveTextureUnit();
         for (int unit = 0; unit < GLStateManager.MAX_TEXTURE_UNITS; unit++) {
             SAVED.bindings[unit] = GLStateManager.getBoundTextureForServerState(unit);
@@ -63,12 +69,12 @@ public final class BloomStateGuard {
         logDivergenceOnce();
         // The bloom pass must run with program 0 afterwards; CCL releases its programs
         // but force it in case an early return skipped a release.
-        GLStateManager.glUseProgram(0);
-        GLStateManager.glBindFramebuffer(GL30.GL_FRAMEBUFFER, SAVED.framebuffer);
+        GLSMPrograms.glUseProgram(0);
+        GLSMFramebuffer.glBindFramebuffer(GL30.GL_FRAMEBUFFER, SAVED.framebuffer);
         for (int unit = GLStateManager.MAX_TEXTURE_UNITS - 1; unit >= 0; unit--) {
             restoreUnit(unit, SAVED.bindings[unit], SAVED.textures[unit]);
         }
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0 + SAVED.activeUnit);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0 + SAVED.activeUnit);
         if (SAVED.blend) {
             GLStateManager.enableBlend();
         } else {
@@ -80,7 +86,7 @@ public final class BloomStateGuard {
         } else {
             GLStateManager.disableDepthTest();
         }
-        GLStateManager.glDepthMask(SAVED.depthMask);
+        GLSMDepthStencilAlpha.glDepthMask(SAVED.depthMask);
         if (SAVED.cull) {
             GLStateManager.enableCull();
         } else {
@@ -90,14 +96,14 @@ public final class BloomStateGuard {
 
     private static boolean textureEnabled(int unit) {
         final int previous = GLStateManager.getActiveTextureUnit();
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0 + unit);
-        final boolean enabled = GLStateManager.glIsEnabled(GL11.GL_TEXTURE_2D);
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0 + previous);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0 + unit);
+        final boolean enabled = GLSMEnable.glIsEnabled(GL11.GL_TEXTURE_2D);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0 + previous);
         return enabled;
     }
 
     private static void restoreUnit(int unit, int binding, boolean enabled) {
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0 + unit);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0 + unit);
         GLStateManager.bindTexture(binding);
         if (enabled) {
             GLStateManager.enableTexture();
@@ -113,7 +119,7 @@ public final class BloomStateGuard {
         }
         divergenceLogged = true;
         final StringBuilder report = new StringBuilder("Bloom pass GL state divergence on first frame:");
-        appendDiff(report, "framebuffer", SAVED.framebuffer, GLStateManager.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING));
+        appendDiff(report, "framebuffer", SAVED.framebuffer, GLSMQueries.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING));
         appendDiff(report, "activeTextureUnit", SAVED.activeUnit, GLStateManager.getActiveTextureUnit());
         for (int unit = 0; unit < GLStateManager.MAX_TEXTURE_UNITS; unit++) {
             appendDiff(report, "textureBinding[" + unit + "]", SAVED.bindings[unit], GLStateManager.getBoundTextureForServerState(unit));

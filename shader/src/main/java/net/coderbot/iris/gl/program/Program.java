@@ -6,6 +6,7 @@ import net.coderbot.iris.gl.blending.DepthColorStorage;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import org.lwjgl.opengl.GL42;
 import org.lwjgl.opengl.GL43;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
 
 public final class Program extends GlResource {
 	private final ProgramUniforms uniforms;
@@ -24,7 +25,7 @@ public final class Program extends GlResource {
 
 	public void use() {
 		RenderSystem.memoryBarrier(GL42.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL42.GL_TEXTURE_FETCH_BARRIER_BIT | GL43.GL_SHADER_STORAGE_BARRIER_BIT);
-		GLStateManager.glUseProgram(getGlId());
+		GLSMPrograms.glUseProgram(getGlId());
 
 		uniforms.update();
 		samplers.update();
@@ -34,13 +35,13 @@ public final class Program extends GlResource {
 	public static void unbind() {
 		ProgramUniforms.clearActiveUniforms();
 		ProgramSamplers.clearActiveSamplers();
-		GLStateManager.glUseProgram(0);
+		GLSMPrograms.glUseProgram(0);
 	}
 
 	@Override
     public void destroyInternal() {
 		DepthColorStorage.unregisterOwnedProgram(getGlId());
-		GLStateManager.glDeleteProgram(getGlId());
+		GLSMPrograms.glDeleteProgram(getGlId());
 	}
 
 	/**

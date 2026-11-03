@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 public final class IrisGlDebug {
     private static final Logger LOGGER = LogManager.getLogger("ActiniumGLDebug");
@@ -2033,7 +2034,7 @@ public final class IrisGlDebug {
         GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousReadFramebuffer);
         GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer);
         GL11.glReadBuffer(previousReadBuffer);
-        GLStateManager.glActiveTexture(previousActiveTexture);
+        GLSMTextures.glActiveTexture(previousActiveTexture);
     }
 
     public static void logCompositeDepthPixels(String stage, String subject, RenderTargets renderTargets, int dhDepthTex, int dhDepthTex1) {
@@ -2070,7 +2071,7 @@ public final class IrisGlDebug {
         GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousReadFramebuffer);
         GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer);
         GL11.glReadBuffer(previousReadBuffer);
-        GLStateManager.glActiveTexture(previousActiveTexture);
+        GLSMTextures.glActiveTexture(previousActiveTexture);
     }
 
     public static void logCloudTerrainChainPixels(
@@ -2161,7 +2162,7 @@ public final class IrisGlDebug {
         GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousReadFramebuffer);
         GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer);
         GL11.glReadBuffer(previousReadBuffer);
-        GLStateManager.glActiveTexture(previousActiveTexture);
+        GLSMTextures.glActiveTexture(previousActiveTexture);
     }
 
     public static void logCloudControlPixels(String stage, String subject, RenderTargets renderTargets) {
@@ -2212,7 +2213,7 @@ public final class IrisGlDebug {
         GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousReadFramebuffer);
         GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer);
         GL11.glReadBuffer(previousReadBuffer);
-        GLStateManager.glActiveTexture(previousActiveTexture);
+        GLSMTextures.glActiveTexture(previousActiveTexture);
     }
 
     private static void appendUpperScreenTargetPixels(StringBuilder builder, String name, int texture, int width, int height) {
@@ -2448,7 +2449,7 @@ public final class IrisGlDebug {
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + unit);
         int texture = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
         GL13.glActiveTexture(previous);
-        GLStateManager.glActiveTexture(previous);
+        GLSMTextures.glActiveTexture(previous);
         return texture;
     }
 
@@ -2487,19 +2488,19 @@ public final class IrisGlDebug {
         int previousDrawFramebuffer = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
         int previousReadBuffer = GL11.glGetInteger(GL11.GL_READ_BUFFER);
 
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
         int previousTexture0 = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, texture);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, texture);
         int width = GL11.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, 0, GL11.GL_TEXTURE_WIDTH);
         int height = GL11.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, 0, GL11.GL_TEXTURE_HEIGHT);
         if (width <= 0 || height <= 0) {
             builder.append(",size=").append(width).append("x").append(height);
-            GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture0);
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture0);
             GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, previousFramebuffer);
             GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousReadFramebuffer);
             GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer);
             GL11.glReadBuffer(previousReadBuffer);
-            GLStateManager.glActiveTexture(previousActiveTexture);
+            GLSMTextures.glActiveTexture(previousActiveTexture);
             return;
         }
 
@@ -2529,12 +2530,12 @@ public final class IrisGlDebug {
         }
 
         GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, 0, 0);
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture0);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture0);
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, previousFramebuffer);
         GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousReadFramebuffer);
         GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer);
         GL11.glReadBuffer(previousReadBuffer);
-        GLStateManager.glActiveTexture(previousActiveTexture);
+        GLSMTextures.glActiveTexture(previousActiveTexture);
     }
 
     private static void appendTargetPixel(StringBuilder builder, String name, int texture, int x, int y) {
@@ -2568,9 +2569,9 @@ public final class IrisGlDebug {
         int previousDrawFramebuffer = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
         int previousReadBuffer = GL11.glGetInteger(GL11.GL_READ_BUFFER);
 
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
         int previousTexture0 = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, texture);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, texture);
 
         int width = GL11.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, 0, GL11.GL_TEXTURE_WIDTH);
         int height = GL11.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, 0, GL11.GL_TEXTURE_HEIGHT);
@@ -2580,12 +2581,12 @@ public final class IrisGlDebug {
             result = new DepthPixels(texture, width, height, internalFormat);
         }
 
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture0);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture0);
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, previousFramebuffer);
         GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousReadFramebuffer);
         GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer);
         GL11.glReadBuffer(previousReadBuffer);
-        GLStateManager.glActiveTexture(previousActiveTexture);
+        GLSMTextures.glActiveTexture(previousActiveTexture);
         return result;
     }
 
@@ -2676,18 +2677,18 @@ public final class IrisGlDebug {
         int previousDrawFramebuffer = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
         int previousReadBuffer = GL11.glGetInteger(GL11.GL_READ_BUFFER);
 
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
         int previousTexture0 = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, texture);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, texture);
         int width = GL11.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, 0, GL11.GL_TEXTURE_WIDTH);
         int height = GL11.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, 0, GL11.GL_TEXTURE_HEIGHT);
         if (width <= 0 || height <= 0) {
-            GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture0);
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture0);
             GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, previousFramebuffer);
             GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousReadFramebuffer);
             GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer);
             GL11.glReadBuffer(previousReadBuffer);
-            GLStateManager.glActiveTexture(previousActiveTexture);
+            GLSMTextures.glActiveTexture(previousActiveTexture);
             return null;
         }
 
@@ -2706,12 +2707,12 @@ public final class IrisGlDebug {
         }
 
         GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, 0, 0);
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture0);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture0);
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, previousFramebuffer);
         GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousReadFramebuffer);
         GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer);
         GL11.glReadBuffer(previousReadBuffer);
-        GLStateManager.glActiveTexture(previousActiveTexture);
+        GLSMTextures.glActiveTexture(previousActiveTexture);
         return pixel;
     }
 

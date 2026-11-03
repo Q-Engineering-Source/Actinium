@@ -41,6 +41,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
+import com.gtnewhorizons.angelica.glsm.GLSMAttribStack;
 
 public class ShaderPackScreen extends GuiScreen implements HudHideable {
     /**
@@ -102,7 +103,7 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
     }
     @Override
     public void drawScreen(int mouseX, int mouseY, float delta) {
-        GLStateManager.glPushAttrib(GL11.GL_COLOR_BUFFER_BIT);
+        GLSMAttribStack.glPushAttrib(GL11.GL_COLOR_BUFFER_BIT);
 
         if(dirty) {
             dirty = false;
@@ -181,7 +182,7 @@ public class ShaderPackScreen extends GuiScreen implements HudHideable {
             this.fontRenderer.drawStringWithShadow(irisTextComponent, 2, this.height - 10, 0xFFFFFF);
         }
 
-        GLStateManager.glPopAttrib();
+        GLSMAttribStack.glPopAttrib();
     }
 
     @Override

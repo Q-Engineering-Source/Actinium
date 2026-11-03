@@ -17,7 +17,7 @@ class ErrorCheckIntegrationTest extends GLStateManagerIntegrationFixture {
         GLStateManager.applyInitConfig(GLSMInitConfig.builder().noErrorChecks(true).build());
 
         GL11C.glEnable(-1);
-        assertEquals(GL11C.GL_NO_ERROR, GLStateManager.glGetError());
+        assertEquals(GL11C.GL_NO_ERROR, GLSMQueries.glGetError());
         assertDoesNotThrow(GLStateManager::checkGLError);
         assertNotEquals(GL11C.GL_NO_ERROR, GL11C.glGetError());
     }

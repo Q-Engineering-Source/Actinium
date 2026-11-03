@@ -114,6 +114,13 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
+import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
+import com.gtnewhorizons.angelica.glsm.GLSMEnable;
+import com.gtnewhorizons.angelica.glsm.GLSMFramebuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMQueries;
+import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 /**
  * Encapsulates the compiled shader program objects for the currently loaded shaderpack.
@@ -326,7 +333,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		);
 
 		// Don't clobber anything in texture unit 0. It probably won't cause issues, but we're just being cautious here.
-		GLStateManager.glActiveTexture(GL13.GL_TEXTURE2);
+		GLSMTextures.glActiveTexture(GL13.GL_TEXTURE2);
 
 		customTextureManager = new CustomTextureManager(programs.getPackDirectives(), programs.getPack().getCustomTextureDataMap(), programs.getPack().getIrisCustomTextureDataMap(), programs.getPack().getCustomNoiseTexture());
 
@@ -362,7 +369,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			this.ssboHolder = null;
 		}
 
-		GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+		GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
 
 		BufferFlipper flipper = new BufferFlipper();
 
@@ -1281,10 +1288,10 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			}
 
 			if (shadowViewport) {
-				GLStateManager.glViewport(0, 0, shadowMapResolution, shadowMapResolution);
+				GLSMRasterizer.glViewport(0, 0, shadowMapResolution, shadowMapResolution);
 			} else {
                 final Framebuffer main = Minecraft.getMinecraft().getFramebuffer();
-				GLStateManager.glViewport(0, 0, main.framebufferWidth, main.framebufferHeight);
+				GLSMRasterizer.glViewport(0, 0, main.framebufferWidth, main.framebufferHeight);
 			}
 
 			// Apply state overrides before program.use() so that uniforms (e.g. iris_currentAlphaTest)
@@ -1387,9 +1394,9 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		horizonRenderer.destroy();
 
 		// Make sure that any custom framebuffers are not bound before destroying render targets
-		GLStateManager.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
-		GLStateManager.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, 0);
-		GLStateManager.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
+		GLSMFramebuffer.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
+		GLSMFramebuffer.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, 0);
+		GLSMFramebuffer.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
 
 		// Destroy our render targets
 		// While it's possible to just clear them instead and reuse them, we'd need to investigate whether or not this
@@ -1438,7 +1445,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 	private void prepareRenderTargets() {
 		// Make sure we're using texture unit 0 for this.
-		GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+		GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
 		final Vector4f emptyClearColor = new Vector4f(1.0F);
 
 		if (shadowRenderTargets != null) {
@@ -1452,9 +1459,9 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			} else {
 				// Clear depth first, regardless of any color clearing.
 				shadowRenderTargets.getDepthSourceFb().bind();
-                GLStateManager.glClear(GL11.GL_DEPTH_BUFFER_BIT);
+                GLSMFramebuffer.glClear(GL11.GL_DEPTH_BUFFER_BIT);
                 if (Minecraft.IS_RUNNING_ON_MAC) {
-                    GLStateManager.glGetError();
+                    GLSMQueries.glGetError();
                 }
 
 
@@ -1820,16 +1827,16 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		// A lot of dimension mods touch sky rendering, FabricSkyboxes injects at HEAD and cancels, etc.
 
 		if (true/*skyType == DimensionSpecialEffects.SkyType.NORMAL*/) {
-            GLStateManager.glDisable(GL11.GL_TEXTURE_2D);
-			GLStateManager.glDepthMask(false);
+            GLSMEnable.glDisable(GL11.GL_TEXTURE_2D);
+			GLSMDepthStencilAlpha.glDepthMask(false);
 
 			final Vector3d fogColor = GLStateManager.getFogColor();
-            GLStateManager.glColor4f((float) fogColor.x, (float) fogColor.y, (float) fogColor.z, 1.0F);
+            GLSMCurrentAttribs.glColor4f((float) fogColor.x, (float) fogColor.y, (float) fogColor.z, 1.0F);
 
 			horizonRenderer.renderHorizon(RenderingState.INSTANCE.getModelViewBuffer());
 
-			GLStateManager.glDepthMask(true);
-            GLStateManager.glEnable(GL11.GL_TEXTURE_2D);
+			GLSMDepthStencilAlpha.glDepthMask(true);
+            GLSMEnable.glEnable(GL11.GL_TEXTURE_2D);
 		}
 	}
 

@@ -6,6 +6,7 @@ import net.coderbot.iris.gl.uniform.UniformUpdateFrequency;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 
 import java.util.function.BooleanSupplier;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
 
 public class BooleanCachedUniform extends CachedUniform {
 
@@ -26,7 +27,7 @@ public class BooleanCachedUniform extends CachedUniform {
 
 	@Override
 	public void push(int location) {
-		GLStateManager.glUniform1i(location, this.cached ? 1 : 0);
+		GLSMPrograms.glUniform1i(location, this.cached ? 1 : 0);
 	}
 
 	@Override

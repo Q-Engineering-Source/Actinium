@@ -6,6 +6,9 @@ import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
+import com.gtnewhorizons.angelica.glsm.GLSMQueries;
+import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
 
 /**
  * Replacement save/restore logic for CodeChickenLib's {@code GlStateTracker}.
@@ -44,7 +47,7 @@ public final class GlStateTrackerSnapshot {
         state.depthFunc = GLStateManager.getDepthState().getFunc();
         state.depthMask = GLStateManager.getDepthState().isMaskEnabled();
         state.cull = GLStateManager.getCullState().isEnabled();
-        state.cullMode = GLStateManager.glGetInteger(GL11.GL_CULL_FACE_MODE);
+        state.cullMode = GLSMQueries.glGetInteger(GL11.GL_CULL_FACE_MODE);
         state.rescaleNormal = GLStateManager.getRescaleNormalState().isEnabled();
         STATE_STACK.push(state);
     }
@@ -59,7 +62,7 @@ public final class GlStateTrackerSnapshot {
         } else {
             GLStateManager.disableAlphaTest();
         }
-        GLStateManager.glAlphaFunc(state.alphaFunc, state.alphaRef);
+        GLSMDepthStencilAlpha.glAlphaFunc(state.alphaFunc, state.alphaRef);
         if (state.lighting) {
             GLStateManager.enableLighting();
         } else {
@@ -76,14 +79,14 @@ public final class GlStateTrackerSnapshot {
         } else {
             GLStateManager.disableDepthTest();
         }
-        GLStateManager.glDepthFunc(state.depthFunc);
-        GLStateManager.glDepthMask(state.depthMask);
+        GLSMDepthStencilAlpha.glDepthFunc(state.depthFunc);
+        GLSMDepthStencilAlpha.glDepthMask(state.depthMask);
         if (state.cull) {
             GLStateManager.enableCull();
         } else {
             GLStateManager.disableCull();
         }
-        GLStateManager.glCullFace(state.cullMode);
+        GLSMRasterizer.glCullFace(state.cullMode);
         if (state.rescaleNormal) {
             GLStateManager.enableRescaleNormal();
         } else {

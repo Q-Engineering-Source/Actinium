@@ -100,7 +100,7 @@ class RetainedStateIntegrationTest extends GLStateManagerIntegrationFixture {
 
         GLStateManager.applyRetainedState(retained);
         assertTrue(GL11.glIsEnabled(GL11.GL_BLEND));
-        assertTrue(GLStateManager.glIsEnabled(GL11.GL_CULL_FACE));
+        assertTrue(GLSMEnable.glIsEnabled(GL11.GL_CULL_FACE));
         assertTrue(GL11.glIsEnabled(GL11.GL_CULL_FACE));
     }
 
@@ -129,9 +129,9 @@ class RetainedStateIntegrationTest extends GLStateManagerIntegrationFixture {
     @Test
     void writesInOuterPushAreNotRetained() {
         final RetainedState retained = new RetainedState();
-        GLStateManager.glClearColor(0.25F, 0.5F, 0.75F, 1.0F);
+        GLSMBlend.glClearColor(0.25F, 0.5F, 0.75F, 1.0F);
         final int outer = GLStateManager.pushState(ALL);
-        GLStateManager.glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+        GLSMBlend.glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
         final int inner = GLStateManager.pushState(ALL);
         GLStateManager.enableBlend();
         GLStateManager.retainModifiedState(inner, retained);
@@ -189,11 +189,11 @@ class RetainedStateIntegrationTest extends GLStateManagerIntegrationFixture {
         final RetainedState retained = new RetainedState();
         final int program = linkTrivialProgram();
         final int depth = GLStateManager.pushState(ALL);
-        GLStateManager.glUseProgram(program);
+        GLSMPrograms.glUseProgram(program);
         GLStateManager.retainModifiedState(depth, retained);
         GLStateManager.popStateTo(depth);
-        GLStateManager.glUseProgram(0);
-        GLStateManager.glDeleteProgram(program);
+        GLSMPrograms.glUseProgram(0);
+        GLSMPrograms.glDeleteProgram(program);
         while (GL11.glGetError() != GL11.GL_NO_ERROR) {
         }
 
@@ -238,53 +238,53 @@ class RetainedStateIntegrationTest extends GLStateManagerIntegrationFixture {
         GLStateManager.disableBlend();
         GLStateManager.tryBlendFuncSeparate(
             GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO);
-        GLStateManager.glDepthMask(true);
-        GLStateManager.glDepthFunc(GL11.GL_LEQUAL);
-        GLStateManager.glAlphaFunc(GL11.GL_GREATER, 0.1F);
-        GLStateManager.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-        GLStateManager.glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+        GLSMDepthStencilAlpha.glDepthMask(true);
+        GLSMDepthStencilAlpha.glDepthFunc(GL11.GL_LEQUAL);
+        GLSMDepthStencilAlpha.glAlphaFunc(GL11.GL_GREATER, 0.1F);
+        GLSMCurrentAttribs.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+        GLSMBlend.glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, 0);
     }
 
     private static void mutate(int texture) {
         GLStateManager.disableCull();
         GLStateManager.enableBlend();
         GLStateManager.tryBlendFuncSeparate(GL11.GL_DST_COLOR, GL11.GL_ZERO, GL11.GL_ONE, GL11.GL_ONE);
-        GLStateManager.glDepthMask(false);
-        GLStateManager.glDepthFunc(GL11.GL_ALWAYS);
-        GLStateManager.glAlphaFunc(GL11.GL_GEQUAL, 0.5F);
-        GLStateManager.glColor4f(0.25F, 0.5F, 0.75F, 0.5F);
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, texture);
+        GLSMDepthStencilAlpha.glDepthMask(false);
+        GLSMDepthStencilAlpha.glDepthFunc(GL11.GL_ALWAYS);
+        GLSMDepthStencilAlpha.glAlphaFunc(GL11.GL_GEQUAL, 0.5F);
+        GLSMCurrentAttribs.glColor4f(0.25F, 0.5F, 0.75F, 0.5F);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, texture);
     }
 
     private static void assertBaseline() {
-        assertTrue(GLStateManager.glIsEnabled(GL11.GL_CULL_FACE));
+        assertTrue(GLSMEnable.glIsEnabled(GL11.GL_CULL_FACE));
         assertTrue(GL11.glIsEnabled(GL11.GL_CULL_FACE));
-        assertFalse(GLStateManager.glIsEnabled(GL11.GL_BLEND));
+        assertFalse(GLSMEnable.glIsEnabled(GL11.GL_BLEND));
         assertFalse(GL11.glIsEnabled(GL11.GL_BLEND));
         assertEquals(GL11.GL_SRC_ALPHA, GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB));
         assertEquals(GL11.GL_ZERO, GL11.glGetInteger(GL14.GL_BLEND_DST_ALPHA));
         assertTrue(GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK));
         assertEquals(GL11.GL_LEQUAL, GL11.glGetInteger(GL11.GL_DEPTH_FUNC));
-        assertEquals(GL11.GL_GREATER, GLStateManager.glGetInteger(GL11.GL_ALPHA_TEST_FUNC));
+        assertEquals(GL11.GL_GREATER, GLSMQueries.glGetInteger(GL11.GL_ALPHA_TEST_FUNC));
         assertEquals(1.0F, GLStateManager.getColor().getRed(), 0.0F);
         assertEquals(0, driverTextureBinding(0));
     }
 
     private static void assertMutated(int texture) {
-        assertFalse(GLStateManager.glIsEnabled(GL11.GL_CULL_FACE));
+        assertFalse(GLSMEnable.glIsEnabled(GL11.GL_CULL_FACE));
         assertFalse(GL11.glIsEnabled(GL11.GL_CULL_FACE));
-        assertTrue(GLStateManager.glIsEnabled(GL11.GL_BLEND));
+        assertTrue(GLSMEnable.glIsEnabled(GL11.GL_BLEND));
         assertTrue(GL11.glIsEnabled(GL11.GL_BLEND));
         assertEquals(GL11.GL_DST_COLOR, GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB));
         assertEquals(GL11.GL_ZERO, GL11.glGetInteger(GL14.GL_BLEND_DST_RGB));
         assertEquals(GL11.GL_ONE, GL11.glGetInteger(GL14.GL_BLEND_SRC_ALPHA));
         assertEquals(GL11.GL_ONE, GL11.glGetInteger(GL14.GL_BLEND_DST_ALPHA));
-        assertEquals(GL11.GL_DST_COLOR, GLStateManager.glGetInteger(GL14.GL_BLEND_SRC_RGB));
+        assertEquals(GL11.GL_DST_COLOR, GLSMQueries.glGetInteger(GL14.GL_BLEND_SRC_RGB));
         assertFalse(GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK));
         assertEquals(GL11.GL_ALWAYS, GL11.glGetInteger(GL11.GL_DEPTH_FUNC));
-        assertEquals(GL11.GL_GEQUAL, GLStateManager.glGetInteger(GL11.GL_ALPHA_TEST_FUNC));
+        assertEquals(GL11.GL_GEQUAL, GLSMQueries.glGetInteger(GL11.GL_ALPHA_TEST_FUNC));
         assertEquals(0.25F, GLStateManager.getColor().getRed(), 0.0F);
         assertEquals(0.5F, GLStateManager.getColor().getAlpha(), 0.0F);
         assertEquals(texture, driverTextureBinding(0));
@@ -300,21 +300,21 @@ class RetainedStateIntegrationTest extends GLStateManagerIntegrationFixture {
     }
 
     private static int linkTrivialProgram() {
-        final int vertex = GLStateManager.glCreateShader(GL20.GL_VERTEX_SHADER);
-        GLStateManager.glShaderSource(vertex, "#version 330 core\nvoid main() { gl_Position = vec4(0.0); }\n");
-        GLStateManager.glCompileShader(vertex);
+        final int vertex = GLSMPrograms.glCreateShader(GL20.GL_VERTEX_SHADER);
+        GLSMPrograms.glShaderSource(vertex, "#version 330 core\nvoid main() { gl_Position = vec4(0.0); }\n");
+        GLSMPrograms.glCompileShader(vertex);
         assertEquals(GL11.GL_TRUE, GL20.glGetShaderi(vertex, GL20.GL_COMPILE_STATUS));
-        final int fragment = GLStateManager.glCreateShader(GL20.GL_FRAGMENT_SHADER);
-        GLStateManager.glShaderSource(fragment, "#version 330 core\nout vec4 color; void main() { color = vec4(1.0); }\n");
-        GLStateManager.glCompileShader(fragment);
+        final int fragment = GLSMPrograms.glCreateShader(GL20.GL_FRAGMENT_SHADER);
+        GLSMPrograms.glShaderSource(fragment, "#version 330 core\nout vec4 color; void main() { color = vec4(1.0); }\n");
+        GLSMPrograms.glCompileShader(fragment);
         assertEquals(GL11.GL_TRUE, GL20.glGetShaderi(fragment, GL20.GL_COMPILE_STATUS));
 
-        final int program = GLStateManager.glCreateProgram();
-        GLStateManager.glAttachShader(program, vertex);
-        GLStateManager.glAttachShader(program, fragment);
-        GLStateManager.glLinkProgram(program);
-        GLStateManager.glDeleteShader(vertex);
-        GLStateManager.glDeleteShader(fragment);
+        final int program = GLSMPrograms.glCreateProgram();
+        GLSMPrograms.glAttachShader(program, vertex);
+        GLSMPrograms.glAttachShader(program, fragment);
+        GLSMPrograms.glLinkProgram(program);
+        GLSMPrograms.glDeleteShader(vertex);
+        GLSMPrograms.glDeleteShader(fragment);
         assertEquals(GL11.GL_TRUE, GL20.glGetProgrami(program, GL20.GL_LINK_STATUS));
         return program;
     }

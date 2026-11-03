@@ -32,7 +32,7 @@ class SplashContextMigrationIntegrationTest extends GLStateManagerIntegrationFix
         bindDisplay(initialDisplayToken, context);
         GLStateManager.recreateDefaultVertexArray();
         GLStateManager.enableBlend();
-        GLStateManager.glDepthMask(false);
+        GLSMDepthStencilAlpha.glDepthMask(false);
         final GLContextState mainState = GLStateManager.ctx();
         assertTrue(GL30.glIsVertexArray(GLStateManager.getDefaultVAO()));
 
@@ -75,9 +75,9 @@ class SplashContextMigrationIntegrationTest extends GLStateManagerIntegrationFix
         bindDisplay(initialDisplayToken, context);
         GLStateManager.recreateDefaultVertexArray();
         ShaderManager.getInstance().enable();
-        final int initialEbo = GLStateManager.glGenBuffers();
-        GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, initialEbo);
-        GLStateManager.glEnableVertexAttribArray(0);
+        final int initialEbo = GLSMBuffers.glGenBuffers();
+        GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, initialEbo);
+        GLSMVertexInput.glEnableVertexAttribArray(0);
         drawTriangle();
 
         final long replacement = SDL_GL_CreateContext(window);
@@ -97,23 +97,23 @@ class SplashContextMigrationIntegrationTest extends GLStateManagerIntegrationFix
             GLStateManager.releaseBoundContext();
             assertTrue(SDL_GL_DestroyContext(replacement));
             bindDisplay(initialDisplayToken, context);
-            GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
-            GLStateManager.glDeleteBuffers(initialEbo);
+            GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
+            GLSMBuffers.glDeleteBuffers(initialEbo);
         }
     }
 
     private static void drawTriangle() {
-        final int vbo = GLStateManager.glGenBuffers();
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+        final int vbo = GLSMBuffers.glGenBuffers();
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
         final FloatBuffer vertices = BufferUtils.createFloatBuffer(9);
         vertices.put(new float[] { 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f }).flip();
-        GLStateManager.glBufferData(GL15.GL_ARRAY_BUFFER, vertices, GL15.GL_STATIC_DRAW);
-        GLStateManager.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 12, 0L);
-        GLStateManager.glEnableVertexAttribArray(0);
+        GLSMBuffers.glBufferData(GL15.GL_ARRAY_BUFFER, vertices, GL15.GL_STATIC_DRAW);
+        GLSMVertexInput.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 12, 0L);
+        GLSMVertexInput.glEnableVertexAttribArray(0);
         ShaderManager.getInstance().setCurrentVertexFlags(0);
-        GLStateManager.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
-        GLStateManager.glDeleteBuffers(vbo);
+        GLSMDraws.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        GLSMBuffers.glDeleteBuffers(vbo);
     }
 
     private static void bindDisplay(Object token, long nativeHandle) {

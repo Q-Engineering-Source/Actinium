@@ -7,6 +7,7 @@ import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.util.ResourceLocation;
+import com.gtnewhorizons.angelica.glsm.GLSMBlend;
 
 /**
  * Class serving as abstraction and
@@ -54,7 +55,7 @@ public final class GuiUtil {
 		// V offset for which button texture to use
         final int vOffset = disabled ? 46 : hovered ? 86 : 66;
 
-		GLStateManager.glBlendColor(1.0f, 1.0f, 1.0f, 1.0f);
+		GLSMBlend.glBlendColor(1.0f, 1.0f, 1.0f, 1.0f);
 		GLStateManager.enableBlend();
 
         GLStateManager.enableTexture();
@@ -174,7 +175,7 @@ public final class GuiUtil {
 		 * Draws this icon to the screen at the specified coordinates.
 		 */
 		public void draw(int x, int y) {
-            GLStateManager.glBlendColor(1.0f, 1.0f, 1.0f, 1.0f);
+            GLSMBlend.glBlendColor(1.0f, 1.0f, 1.0f, 1.0f);
             GLStateManager.enableBlend();
 
             GLStateManager.enableTexture();

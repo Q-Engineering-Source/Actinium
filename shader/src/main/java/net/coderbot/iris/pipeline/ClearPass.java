@@ -8,6 +8,10 @@ import org.lwjgl.opengl.GL11;
 
 import java.util.Objects;
 import java.util.function.IntSupplier;
+import com.gtnewhorizons.angelica.glsm.GLSMBlend;
+import com.gtnewhorizons.angelica.glsm.GLSMFramebuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMQueries;
+import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
 
 public class ClearPass {
 	private final Vector4f color;
@@ -25,7 +29,7 @@ public class ClearPass {
 	}
 
 	public void execute(Vector4f defaultClearColor) {
-		GLStateManager.glViewport(0, 0, viewportX.getAsInt(), viewportY.getAsInt());
+		GLSMRasterizer.glViewport(0, 0, viewportX.getAsInt(), viewportY.getAsInt());
 		framebuffer.bind();
 
 		Vector4f color = Objects.requireNonNull(defaultClearColor);
@@ -34,10 +38,10 @@ public class ClearPass {
 			color = this.color;
 		}
 
-		GLStateManager.glClearColor(color.x, color.y, color.z, color.w);
-        GLStateManager.glClear(clearFlags);
+		GLSMBlend.glClearColor(color.x, color.y, color.z, color.w);
+        GLSMFramebuffer.glClear(clearFlags);
         if (Minecraft.IS_RUNNING_ON_MAC) {
-            GLStateManager.glGetError();
+            GLSMQueries.glGetError();
         }
 	}
 

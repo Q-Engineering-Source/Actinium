@@ -27,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.gtnewhorizons.angelica.glsm.GLSMDraws;
 
 public final class FastLitItemDisplayListCache {
     private static final int MAX_ENTRIES = Integer.getInteger("actinium.fastLitItemDisplayListCacheSize", 256);
@@ -160,13 +161,13 @@ public final class FastLitItemDisplayListCache {
     }
 
     private static CachedDisplayList compile(RenderItem renderItem, List<BakedQuad> quads, int color, ItemStack stack) {
-        int list = GLStateManager.glGenLists(1);
+        int list = GLSMDraws.glGenLists(1);
         if (list == 0) {
             return null;
         }
 
         List<TextureAtlasSprite> sprites = collectSprites(quads);
-        GLStateManager.glNewList(list, GL11.GL_COMPILE);
+        GLSMDraws.glNewList(list, GL11.GL_COMPILE);
         try {
             Tessellator tessellator = Tessellator.getInstance();
             BufferBuilder buffer = tessellator.getBuffer();
@@ -174,7 +175,7 @@ public final class FastLitItemDisplayListCache {
             renderItem.renderQuads(buffer, quads, color, stack);
             tessellator.draw();
         } finally {
-            GLStateManager.glEndList();
+            GLSMDraws.glEndList();
         }
 
         return new CachedDisplayList(list, sprites);
@@ -346,11 +347,11 @@ public final class FastLitItemDisplayListCache {
             for (TextureAtlasSprite sprite : this.sprites) {
                 SpriteUtil.markSpriteActive(sprite);
             }
-            GLStateManager.glCallList(this.list);
+            GLSMDraws.glCallList(this.list);
         }
 
         private void delete() {
-            GLStateManager.glDeleteLists(this.list, 1);
+            GLSMDraws.glDeleteLists(this.list, 1);
         }
     }
 }

@@ -51,7 +51,7 @@ class StateSetIntegrationTest extends GLStateManagerIntegrationFixture {
         int entryDepth = GLStateManager.getAttribDepth();
         GLStateManager.disableBlend();
         GLStateManager.tryBlendFuncSeparate(GL11.GL_ONE, GL11.GL_ZERO, GL11.GL_ONE, GL11.GL_ZERO);
-        GLStateManager.glDisable(GL11.GL_CULL_FACE);
+        GLSMEnable.glDisable(GL11.GL_CULL_FACE);
         try {
             int outer = GLStateManager.pushState(StateSet.BLEND);
             GLStateManager.enableBlend();
@@ -60,7 +60,7 @@ class StateSetIntegrationTest extends GLStateManagerIntegrationFixture {
 
             int inner = GLStateManager.pushState(StateSet.CULL);
             GLStateManager.tryBlendFuncSeparate(GL11.GL_DST_COLOR, GL11.GL_ZERO, GL11.GL_DST_COLOR, GL11.GL_ZERO);
-            GLStateManager.glEnable(GL11.GL_CULL_FACE);
+            GLSMEnable.glEnable(GL11.GL_CULL_FACE);
             GLStateManager.popStateTo(inner);
 
             assertFalse(GLStateManager.getCullState().isEnabled());
@@ -80,7 +80,7 @@ class StateSetIntegrationTest extends GLStateManagerIntegrationFixture {
             }
             GLStateManager.disableBlend();
             GLStateManager.tryBlendFuncSeparate(GL11.GL_ONE, GL11.GL_ZERO, GL11.GL_ONE, GL11.GL_ZERO);
-            GLStateManager.glDisable(GL11.GL_CULL_FACE);
+            GLSMEnable.glDisable(GL11.GL_CULL_FACE);
         }
     }
 }

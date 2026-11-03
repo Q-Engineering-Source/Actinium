@@ -6,6 +6,7 @@ import net.coderbot.iris.gl.uniform.UniformUpdateFrequency;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 
 import java.util.function.IntSupplier;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
 
 public class IntCachedUniform extends CachedUniform {
 
@@ -26,7 +27,7 @@ public class IntCachedUniform extends CachedUniform {
 
 	@Override
 	public void push(int location) {
-		GLStateManager.glUniform1i(location, this.cached);
+		GLSMPrograms.glUniform1i(location, this.cached);
 	}
 
 	@Override

@@ -24,6 +24,15 @@ import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
+import com.gtnewhorizons.angelica.glsm.GLSMBlend;
+import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
+import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
+import com.gtnewhorizons.angelica.glsm.GLSMDraws;
+import com.gtnewhorizons.angelica.glsm.GLSMFramebuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
+import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
+import com.gtnewhorizons.angelica.glsm.GLSMVertexInput;
 
 public class PanoramaRenderer {
     private static final int FBO_SIZE = 256;
@@ -79,7 +88,7 @@ public class PanoramaRenderer {
         this.fboA = createFbo(this.texA);
         this.fboB = createFbo(this.texB);
         this.buildCubeGeometry();
-        this.emptyVao = GLStateManager.glGenVertexArrays();
+        this.emptyVao = GLSMVertexInput.glGenVertexArrays();
         this.initShaders();
     }
 
@@ -104,7 +113,7 @@ public class PanoramaRenderer {
         try {
             final GlProgram<T> program = GlProgram.builder(name).attachShader(vert).attachShader(frag).link(factory);
             program.bind();
-            GLStateManager.glUniform1i(GLStateManager.glGetUniformLocation(program.handle(), "u_Texture"), 0);
+            GLSMPrograms.glUniform1i(GLSMPrograms.glGetUniformLocation(program.handle(), "u_Texture"), 0);
             program.unbind();
             return program;
         } finally {
@@ -140,50 +149,50 @@ public class PanoramaRenderer {
 
         ibuf.flip();
 
-        this.cubeVao = GLStateManager.glGenVertexArrays();
-        GLStateManager.glBindVertexArray(this.cubeVao);
+        this.cubeVao = GLSMVertexInput.glGenVertexArrays();
+        GLSMVertexInput.glBindVertexArray(this.cubeVao);
 
-        this.cubeVbo = GLStateManager.glGenBuffers();
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, this.cubeVbo);
-        GLStateManager.glBufferData(GL15.GL_ARRAY_BUFFER, vbuf, GL15.GL_STATIC_DRAW);
+        this.cubeVbo = GLSMBuffers.glGenBuffers();
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, this.cubeVbo);
+        GLSMBuffers.glBufferData(GL15.GL_ARRAY_BUFFER, vbuf, GL15.GL_STATIC_DRAW);
 
-        GLStateManager.glEnableVertexAttribArray(0);
-        GLStateManager.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, VERTEX_STRIDE, 0L);
-        GLStateManager.glEnableVertexAttribArray(1);
-        GLStateManager.glVertexAttribPointer(1, 2, GL11.GL_FLOAT, false, VERTEX_STRIDE, 12L);
-        GLStateManager.glEnableVertexAttribArray(2);
-        GLStateManager.glVertexAttribPointer(2, 1, GL11.GL_FLOAT, false, VERTEX_STRIDE, 20L);
+        GLSMVertexInput.glEnableVertexAttribArray(0);
+        GLSMVertexInput.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, VERTEX_STRIDE, 0L);
+        GLSMVertexInput.glEnableVertexAttribArray(1);
+        GLSMVertexInput.glVertexAttribPointer(1, 2, GL11.GL_FLOAT, false, VERTEX_STRIDE, 12L);
+        GLSMVertexInput.glEnableVertexAttribArray(2);
+        GLSMVertexInput.glVertexAttribPointer(2, 1, GL11.GL_FLOAT, false, VERTEX_STRIDE, 20L);
 
-        this.cubeIbo = GLStateManager.glGenBuffers();
-        GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, this.cubeIbo);
-        GLStateManager.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, ibuf, GL15.GL_STATIC_DRAW);
+        this.cubeIbo = GLSMBuffers.glGenBuffers();
+        GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, this.cubeIbo);
+        GLSMBuffers.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, ibuf, GL15.GL_STATIC_DRAW);
 
-        GLStateManager.glBindVertexArray(0);
+        GLSMVertexInput.glBindVertexArray(0);
     }
 
     private static int createTexture() {
-        final int tex = GLStateManager.glGenTextures();
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, tex);
-        GLStateManager.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, FBO_SIZE, FBO_SIZE, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
-        GLStateManager.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
-        GLStateManager.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
-        GLStateManager.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-        GLStateManager.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+        final int tex = GLSMTextures.glGenTextures();
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, tex);
+        GLSMTextures.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, FBO_SIZE, FBO_SIZE, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
+        GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+        GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+        GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+        GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, 0);
         return tex;
     }
 
     private static int createFbo(int colorTex) {
-        final int fbo = GLStateManager.glGenFramebuffers();
-        GLStateManager.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
-        GLStateManager.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, colorTex, 0);
-        final int status = GLStateManager.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
+        final int fbo = GLSMFramebuffer.glGenFramebuffers();
+        GLSMFramebuffer.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
+        GLSMFramebuffer.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, colorTex, 0);
+        final int status = GLSMFramebuffer.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
 
         if (status != GL30.GL_FRAMEBUFFER_COMPLETE) {
             throw new RuntimeException("Panorama FBO incomplete: 0x" + Integer.toHexString(status));
         }
 
-        GLStateManager.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
+        GLSMFramebuffer.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
         return fbo;
     }
 
@@ -198,48 +207,48 @@ public class PanoramaRenderer {
     ) {
         this.init();
 
-        GLStateManager.glColorMask(true, true, true, true);
+        GLSMBlend.glColorMask(true, true, true, true);
         GLStateManager.disableCull();
         GLStateManager.disableScissorTest();
         GLStateManager.disableDepthTest();
 
         mc.getFramebuffer().unbindFramebuffer();
-        GLStateManager.glViewport(0, 0, FBO_SIZE, FBO_SIZE);
-        GLStateManager.glBindFramebuffer(GL30.GL_FRAMEBUFFER, this.fboA);
-        GLStateManager.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        GLStateManager.glClear(GL11.GL_COLOR_BUFFER_BIT);
+        GLSMRasterizer.glViewport(0, 0, FBO_SIZE, FBO_SIZE);
+        GLSMFramebuffer.glBindFramebuffer(GL30.GL_FRAMEBUFFER, this.fboA);
+        GLSMBlend.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        GLSMFramebuffer.glClear(GL11.GL_COLOR_BUFFER_BIT);
 
         this.drawCubeFaces(panoramaTimer, partialTicks, panoramaPaths, mc);
 
         GLStateManager.disableBlend();
         this.blurProgram.bind();
-        GLStateManager.glBindVertexArray(this.emptyVao);
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+        GLSMVertexInput.glBindVertexArray(this.emptyVao);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
 
         final BlurUniforms blurUniforms = this.blurProgram.getInterface();
 
-        GLStateManager.glBindFramebuffer(GL30.GL_FRAMEBUFFER, this.fboB);
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, this.texA);
+        GLSMFramebuffer.glBindFramebuffer(GL30.GL_FRAMEBUFFER, this.fboB);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, this.texA);
         blurUniforms.direction.set(1.0f / FBO_SIZE, 0.0f);
-        GLStateManager.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
+        GLSMDraws.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
 
-        GLStateManager.glBindFramebuffer(GL30.GL_FRAMEBUFFER, this.fboA);
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, this.texB);
+        GLSMFramebuffer.glBindFramebuffer(GL30.GL_FRAMEBUFFER, this.fboA);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, this.texB);
         blurUniforms.direction.set(0.0f, 1.0f / FBO_SIZE);
-        GLStateManager.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
+        GLSMDraws.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
 
         mc.getFramebuffer().bindFramebuffer(true);
-        GLStateManager.glViewport(0, 0, mc.displayWidth, mc.displayHeight);
+        GLSMRasterizer.glViewport(0, 0, mc.displayWidth, mc.displayHeight);
 
         this.blitProgram.bind();
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, this.texA);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, this.texA);
 
         final float scale = screenWidth > screenHeight ? 120.0F / screenWidth : 120.0F / screenHeight;
         this.blitProgram.getInterface().scaleV.setFloat(screenHeight * scale / 256.0F);
         this.blitProgram.getInterface().scaleU.setFloat(screenWidth * scale / 256.0F);
-        GLStateManager.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
+        GLSMDraws.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
 
-        GLStateManager.glBindVertexArray(0);
+        GLSMVertexInput.glBindVertexArray(0);
         this.blitProgram.unbind();
 
         GLStateManager.enableDepthTest();
@@ -260,11 +269,11 @@ public class PanoramaRenderer {
 
         GLStateManager.enableBlend();
         GLStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO);
-        GLStateManager.glDepthMask(false);
+        GLSMDepthStencilAlpha.glDepthMask(false);
 
         this.cubeProgram.bind();
-        GLStateManager.glBindVertexArray(this.cubeVao);
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+        GLSMVertexInput.glBindVertexArray(this.cubeVao);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
 
         final CubeUniforms cubeUniforms = this.cubeProgram.getInterface();
 
@@ -272,12 +281,12 @@ public class PanoramaRenderer {
             proj.mul(base, this.mvpScratch).mul(FACE_ROTATIONS[face]);
             cubeUniforms.mvp.set(this.mvpScratch);
             mc.getTextureManager().bindTexture(panoramaPaths[face]);
-            GLStateManager.glDrawElements(GL11.GL_TRIANGLES, INDICES_PER_FACE, GL11.GL_UNSIGNED_SHORT, 0L);
+            GLSMDraws.glDrawElements(GL11.GL_TRIANGLES, INDICES_PER_FACE, GL11.GL_UNSIGNED_SHORT, 0L);
         }
 
-        GLStateManager.glBindVertexArray(0);
+        GLSMVertexInput.glBindVertexArray(0);
         this.cubeProgram.unbind();
-        GLStateManager.glDepthMask(true);
+        GLSMDepthStencilAlpha.glDepthMask(true);
     }
 
     private static class CubeUniforms {

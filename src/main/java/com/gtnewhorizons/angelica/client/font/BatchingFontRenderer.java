@@ -37,6 +37,15 @@ import java.util.Objects;
 
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryStack.stackPush;
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.*;
+import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
+import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
+import com.gtnewhorizons.angelica.glsm.GLSMDraws;
+import com.gtnewhorizons.angelica.glsm.GLSMEnable;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
+import com.gtnewhorizons.angelica.glsm.GLSMQueries;
+import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
+import com.gtnewhorizons.angelica.glsm.GLSMVertexInput;
 
 /**
  * A batching replacement for {@code FontRenderer}
@@ -185,14 +194,14 @@ public class BatchingFontRenderer {
         final Program fontShader = ProgramBuilder.begin("fontFilter", vsh, null, fsh, ImmutableSet.of(0)).build();
         //noinspection deprecation
         final int fontShaderId = fontShader.getProgramId();
-        final int samplerLocation = GLStateManager.glGetUniformLocation(fontShaderId, "sampler");
-        final int aaModeLocation = GLStateManager.glGetUniformLocation(fontShaderId, "aaMode");
-        final int aaStrengthLocation = GLStateManager.glGetUniformLocation(fontShaderId, "strength");
-        final int alphaTestRefLocation = GLStateManager.glGetUniformLocation(fontShaderId, "alphaTestRef");
-        final int mvpMatrixLocation = GLStateManager.glGetUniformLocation(fontShaderId, "u_MVPMatrix");
+        final int samplerLocation = GLSMPrograms.glGetUniformLocation(fontShaderId, "sampler");
+        final int aaModeLocation = GLSMPrograms.glGetUniformLocation(fontShaderId, "aaMode");
+        final int aaStrengthLocation = GLSMPrograms.glGetUniformLocation(fontShaderId, "strength");
+        final int alphaTestRefLocation = GLSMPrograms.glGetUniformLocation(fontShaderId, "alphaTestRef");
+        final int mvpMatrixLocation = GLSMPrograms.glGetUniformLocation(fontShaderId, "u_MVPMatrix");
         final IndexBuffer ebo = new IndexBuffer();
-        final int vbo = GLStateManager.glGenBuffers();
-        final int fontVao = GLStateManager.glGenVertexArrays();
+        final int vbo = GLSMBuffers.glGenBuffers();
+        final int fontVao = GLSMVertexInput.glGenVertexArrays();
         final SharedGlResources resources = new SharedGlResources(
             fontShader,
             fontShaderId,
@@ -434,21 +443,21 @@ public class BatchingFontRenderer {
             populateEBO(resources, requiredEboCapacity);
         }
 
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, resources.vbo);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, resources.vbo);
         vertexData.limit(vertexDataPos);
         vboCapacity = StreamingUploader.upload(vertexData, vboCapacity);
 
-        final int prevProgram = GLStateManager.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+        final int prevProgram = GLSMQueries.glGetInteger(GL20.GL_CURRENT_PROGRAM);
 
         batchCommands.sort(FontDrawCmd.DRAW_ORDER_COMPARATOR);
 
-        final boolean isAlphaTestEnabledBefore = GLStateManager.glIsEnabled(GL11.GL_ALPHA_TEST);
-        final boolean isBlendEnabledBefore = GLStateManager.glIsEnabled(GL11.GL_BLEND);
+        final boolean isAlphaTestEnabledBefore = GLSMEnable.glIsEnabled(GL11.GL_ALPHA_TEST);
+        final boolean isBlendEnabledBefore = GLSMEnable.glIsEnabled(GL11.GL_BLEND);
         final Color4 colorBefore = GLStateManager.getColor().copy();
         final int activeTextureBefore = GLStateManager.getActiveTextureUnit();
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
-        final boolean isTextureEnabledBefore = GLStateManager.glIsEnabled(GL11.GL_TEXTURE_2D);
-        final int boundTextureBefore = GLStateManager.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
+        final boolean isTextureEnabledBefore = GLSMEnable.glIsEnabled(GL11.GL_TEXTURE_2D);
+        final int boundTextureBefore = GLSMQueries.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
         boolean textureChanged = false;
         final boolean logFlush = shouldLogFontDebugFlush(this.isSplash);
         if (logFlush) {
@@ -478,33 +487,33 @@ public class BatchingFontRenderer {
         GLStateManager.enableAlphaTest();
         GLStateManager.enableBlend();
         GLStateManager.tryBlendFuncSeparate(blendSrcRGB, blendDstRGB, GL11.GL_ONE, GL11.GL_ZERO);
-        GLStateManager.glShadeModel(GL11.GL_FLAT);
+        GLSMRasterizer.glShadeModel(GL11.GL_FLAT);
 
-        GLStateManager.glUseProgram(resources.fontShaderId);
-        GLStateManager.glUniform1i(resources.samplerLocation, 0);
+        GLSMPrograms.glUseProgram(resources.fontShaderId);
+        GLSMPrograms.glUniform1i(resources.samplerLocation, 0);
         if (FontConfig.fontAAMode != fontAAModeLast) {
             fontAAModeLast = FontConfig.fontAAMode;
-            GLStateManager.glUniform1i(resources.aaModeLocation, FontConfig.fontAAMode);
+            GLSMPrograms.glUniform1i(resources.aaModeLocation, FontConfig.fontAAMode);
         }
         if (FontConfig.fontAAStrength != fontAAStrengthLast) {
             fontAAStrengthLast = FontConfig.fontAAStrength;
-            GLStateManager.glUniform1f(resources.aaStrengthLocation, FontConfig.fontAAStrength / 120.f);
+            GLSMPrograms.glUniform1f(resources.aaStrengthLocation, FontConfig.fontAAStrength / 120.f);
         }
-        GLStateManager.glUniform1f(resources.alphaTestRefLocation, GLStateManager.getAlphaState().getReference());
+        GLSMPrograms.glUniform1f(resources.alphaTestRefLocation, GLStateManager.getAlphaState().getReference());
         try (MemoryStack stack = stackPush()) {
             final FloatBuffer mvpBuf = stack.mallocFloat(16);
             GLStateManager.getProjectionMatrix().mul(GLStateManager.getModelViewMatrix(), scratchMvp);
             scratchMvp.get(mvpBuf);
-            GLStateManager.glUniformMatrix4(resources.mvpMatrixLocation, false, mvpBuf);
+            GLSMPrograms.glUniformMatrix4(resources.mvpMatrixLocation, false, mvpBuf);
         }
 
-        GLStateManager.glBindVertexArray(resources.fontVao);
+        GLSMVertexInput.glBindVertexArray(resources.fontVao);
         setupFontVertexArray(resources);
         if (logFlush) {
             LOGGER.info(
                 "font-shader-ready shader={} activeProgram={} samplerLoc={} samplerUnit={} aaMode={} aaStrength={} alphaRef={}",
                 resources.fontShaderId,
-                GLStateManager.glGetInteger(GL20.GL_CURRENT_PROGRAM),
+                GLSMQueries.glGetInteger(GL20.GL_CURRENT_PROGRAM),
                 resources.samplerLocation,
                 0,
                 FontConfig.fontAAMode,
@@ -520,9 +529,9 @@ public class BatchingFontRenderer {
             final FontDrawCmd cmd = cmdsData[i];
             if (!Objects.equals(lastTexture, cmd.texture)) {
                 if (lastTexture == null) {
-                    GLStateManager.glEnable(GL11.GL_TEXTURE_2D);
+                    GLSMEnable.glEnable(GL11.GL_TEXTURE_2D);
                 } else if (cmd.texture == null) {
-                    GLStateManager.glDisable(GL11.GL_TEXTURE_2D);
+                    GLSMEnable.glDisable(GL11.GL_TEXTURE_2D);
                 }
                 if (cmd.texture != null) {
                     final int textureId = bindFontTexture(cmd.texture);
@@ -531,19 +540,19 @@ public class BatchingFontRenderer {
                 }
                 lastTexture = cmd.texture;
             }
-            GLStateManager.glDrawElements(GL11.GL_TRIANGLES, cmd.idxCount, GL11.GL_UNSIGNED_SHORT, (long) cmd.startVtx * 2L);
+            GLSMDraws.glDrawElements(GL11.GL_TRIANGLES, cmd.idxCount, GL11.GL_UNSIGNED_SHORT, (long) cmd.startVtx * 2L);
         }
 
 
-        GLStateManager.glUseProgram(prevProgram);
+        GLSMPrograms.glUseProgram(prevProgram);
 
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
-        GLStateManager.glBindVertexArray(0);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        GLSMVertexInput.glBindVertexArray(0);
 
         if (isTextureEnabledBefore) {
-            GLStateManager.glEnable(GL11.GL_TEXTURE_2D);
+            GLSMEnable.glEnable(GL11.GL_TEXTURE_2D);
         } else {
-            GLStateManager.glDisable(GL11.GL_TEXTURE_2D);
+            GLSMEnable.glDisable(GL11.GL_TEXTURE_2D);
         }
         // The alpha test is deliberately left enabled instead of being restored to isAlphaTestEnabledBefore.
         // Vanilla's FontRenderer.drawString opens with GlStateManager.enableAlpha() and the class contains no
@@ -559,7 +568,7 @@ public class BatchingFontRenderer {
         if (textureChanged) {
             net.minecraft.client.renderer.GlStateManager.bindTexture(boundTextureBefore);
         }
-        GLStateManager.glColor4f(colorBefore.getRed(), colorBefore.getGreen(), colorBefore.getBlue(), colorBefore.getAlpha());
+        GLSMCurrentAttribs.glColor4f(colorBefore.getRed(), colorBefore.getGreen(), colorBefore.getBlue(), colorBefore.getAlpha());
         if (logFlush) {
             LOGGER.info(
                 "font-flush-end shader={} restoredProgram={} tex0Now={} activeBeforeRestore={} restoreTex={} textureChanged={} restoreColor=[{},{},{},{}]",
@@ -575,7 +584,7 @@ public class BatchingFontRenderer {
                 colorBefore.getAlpha()
             );
         }
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0 + activeTextureBefore);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0 + activeTextureBefore);
 
         clearBatch();
     }
@@ -588,26 +597,26 @@ public class BatchingFontRenderer {
     }
 
     private static void setupFontVertexArray(SharedGlResources resources) {
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, resources.vbo);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, resources.vbo);
         resources.ebo.bind();
 
         // position
-        GLStateManager.glVertexAttribPointer(0, 2, GL11.GL_FLOAT, false, VERTEX_SIZE, 0);
-        GLStateManager.glEnableVertexAttribArray(0);
+        GLSMVertexInput.glVertexAttribPointer(0, 2, GL11.GL_FLOAT, false, VERTEX_SIZE, 0);
+        GLSMVertexInput.glEnableVertexAttribArray(0);
 
         // color
-        GLStateManager.glVertexAttribPointer(1, 4, GL11.GL_UNSIGNED_BYTE, true, VERTEX_SIZE, 16);
-        GLStateManager.glEnableVertexAttribArray(1);
+        GLSMVertexInput.glVertexAttribPointer(1, 4, GL11.GL_UNSIGNED_BYTE, true, VERTEX_SIZE, 16);
+        GLSMVertexInput.glEnableVertexAttribArray(1);
 
         // texcoords
-        GLStateManager.glVertexAttribPointer(2, 2, GL11.GL_FLOAT, false, VERTEX_SIZE, 8);
-        GLStateManager.glEnableVertexAttribArray(2);
+        GLSMVertexInput.glVertexAttribPointer(2, 2, GL11.GL_FLOAT, false, VERTEX_SIZE, 8);
+        GLSMVertexInput.glEnableVertexAttribArray(2);
 
         // tex bounds
-        GLStateManager.glVertexAttribPointer(3, 4, GL11.GL_FLOAT, false, VERTEX_SIZE, 20);
-        GLStateManager.glEnableVertexAttribArray(3);
+        GLSMVertexInput.glVertexAttribPointer(3, 4, GL11.GL_FLOAT, false, VERTEX_SIZE, 20);
+        GLSMVertexInput.glEnableVertexAttribArray(3);
 
-        GLStateManager.glDisableVertexAttribArray(4);
+        GLSMVertexInput.glDisableVertexAttribArray(4);
 
     }
 

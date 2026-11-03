@@ -20,6 +20,8 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 
 import java.util.function.IntSupplier;
+import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 public class CenterDepthSampler {
 	private static final double LN2 = Math.log(2);
@@ -32,15 +34,15 @@ public class CenterDepthSampler {
 	private boolean destroyed;
 
 	public CenterDepthSampler(IntSupplier depthSupplier, float halfLife) {
-		this.texture = GLStateManager.glGenTextures();
-		this.altTexture = GLStateManager.glGenTextures();
+		this.texture = GLSMTextures.glGenTextures();
+		this.altTexture = GLSMTextures.glGenTextures();
 		this.framebuffer = new GlFramebuffer();
 
 		// Fall back to a less precise format if the system doesn't support OpenGL 3
 		InternalTextureFormat format = GLStateManager.capabilities.OpenGL32 ? InternalTextureFormat.R32F : InternalTextureFormat.RGB16;
 		setupColorTexture(texture, format);
 		setupColorTexture(altTexture, format);
-		GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+		GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, 0);
 
 		this.framebuffer.addColorAttachment(0, texture);
 		String vsh = ShaderLoader.getShaderSource("angelica:centerDepth.vsh");
@@ -69,7 +71,7 @@ public class CenterDepthSampler {
 		this.program.use();
         IrisGlDebug.check("center-depth:use-program");
 
-		GLStateManager.glViewport(0, 0, 1, 1);
+		GLSMRasterizer.glViewport(0, 0, 1, 1);
 
 		FullScreenQuadRenderer.INSTANCE.render();
         IrisGlDebug.check("center-depth:render");
@@ -104,8 +106,8 @@ public class CenterDepthSampler {
 	}
 
 	public void destroy() {
-		GLStateManager.glDeleteTextures(texture);
-		GLStateManager.glDeleteTextures(altTexture);
+		GLSMTextures.glDeleteTextures(texture);
+		GLSMTextures.glDeleteTextures(altTexture);
 		framebuffer.destroy();
 		program.destroy();
 		destroyed = true;

@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
 
 /**
  * Verifies that every {@code glGetActiveUniform} signature the GL redirector can
@@ -22,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>HammerLib calls {@code GL20.glGetActiveUniform(int, int, int)} returning
  * {@code String} (issue #40); the redirector rewrites that to
- * {@code GLStateManager.glGetActiveUniform(III)Ljava/lang/String;}, which was
+ * {@code GLSMPrograms.glGetActiveUniform(III)Ljava/lang/String;}, which was
  * missing and failed on mod init with {@code NoSuchMethodError}. A unit test
  * cannot load {@code GLStateManager} because its static initializer requires a
  * live GL context, so the contract is asserted against the compiled class bytes

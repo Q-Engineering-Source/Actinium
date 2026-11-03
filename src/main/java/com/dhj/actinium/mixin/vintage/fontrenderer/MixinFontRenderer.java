@@ -20,6 +20,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
 
 @Mixin(FontRenderer.class)
 public abstract class MixinFontRenderer implements FontRendererAccessor, IFontParameters {
@@ -111,7 +112,7 @@ public abstract class MixinFontRenderer implements FontRendererAccessor, IFontPa
         this.blue = (argb >> 8 & 255) / 255.0F;
         this.green = (argb & 255) / 255.0F;
         this.alpha = (argb >> 24 & 255) / 255.0F;
-        GLStateManager.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+        GLSMCurrentAttribs.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
         this.posX = x;
         this.posY = y;
         final float ret = angelica$getBatcher().drawString(x, y, argb, dropShadow, unicodeFlag, text, 0, text.length());

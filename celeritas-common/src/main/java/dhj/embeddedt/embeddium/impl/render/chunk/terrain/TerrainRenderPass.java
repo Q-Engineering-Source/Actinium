@@ -11,6 +11,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
 
 /**
  * A terrain render pass corresponds to a draw call to render some subset of terrain geometry. Passes are generally
@@ -207,14 +208,14 @@ public class TerrainRenderPass {
     public void startDrawing() {
         this.previousDepthMaskEnabled = GLStateManager.getDepthState().isMaskEnabled();
         this.pipelineState.setup();
-        GLStateManager.glDepthMask(this.writesDepth);
+        GLSMDepthStencilAlpha.glDepthMask(this.writesDepth);
     }
 
     public void endDrawing() {
         try {
             this.pipelineState.clear();
         } finally {
-            GLStateManager.glDepthMask(this.previousDepthMaskEnabled);
+            GLSMDepthStencilAlpha.glDepthMask(this.previousDepthMaskEnabled);
         }
     }
 

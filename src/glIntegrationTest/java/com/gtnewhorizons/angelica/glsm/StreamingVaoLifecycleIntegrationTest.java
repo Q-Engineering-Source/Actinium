@@ -23,7 +23,7 @@ class StreamingVaoLifecycleIntegrationTest extends GLStateManagerIntegrationFixt
         final Object replacementDisplayToken = new Object();
         bindDisplay(initialDisplayToken, context);
         GLStateManager.recreateDefaultVertexArray();
-        final int oldVaoName = GLStateManager.glGenVertexArrays();
+        final int oldVaoName = GLSMVertexInput.glGenVertexArrays();
         GLStateManager.getStreamingVaos().orphanVAOs[0] = oldVaoName;
 
         final long replacement = SDL_GL_CreateContext(window);
@@ -56,7 +56,7 @@ class StreamingVaoLifecycleIntegrationTest extends GLStateManagerIntegrationFixt
         WindowBackends.useSdl();
         bindDisplay(new Object(), context);
         GLStateManager.recreateDefaultVertexArray();
-        final int vaoName = GLStateManager.glGenVertexArrays();
+        final int vaoName = GLSMVertexInput.glGenVertexArrays();
         GLStateManager.getStreamingVaos().orphanVAOs[0] = vaoName;
 
         TessellatorStreamingDrawer.destroy();

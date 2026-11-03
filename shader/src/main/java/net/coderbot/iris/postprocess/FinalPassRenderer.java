@@ -58,6 +58,12 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.function.Supplier;
+import com.gtnewhorizons.angelica.glsm.GLSMBlend;
+import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
+import com.gtnewhorizons.angelica.glsm.GLSMFramebuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
+import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 public class FinalPassRenderer {
 	private final RenderTargets renderTargets;
@@ -157,7 +163,7 @@ public class FinalPassRenderer {
 
 		this.swapPasses = swapPasses.build();
 
-		GLStateManager.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
+		GLSMFramebuffer.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
 	}
 
 	private Map<PatchShaderType, String> getTransformed(ProgramSource source, CompletableFuture<Map<PatchShaderType, String>> precomputedTransformFuture, String stageName) {
@@ -237,7 +243,7 @@ public class FinalPassRenderer {
         IrisGlDebug.check("final:start");
         GLStateManager.disableBlend();
         GLStateManager.disableAlphaTest();
-        GLStateManager.glDepthMask(false);
+        GLSMDepthStencilAlpha.glDepthMask(false);
 
         final Framebuffer main = Minecraft.getMinecraft().getFramebuffer();
 		final int baseWidth = main.framebufferWidth;
@@ -268,7 +274,7 @@ public class FinalPassRenderer {
 
 			colorHolder.bind();
             IrisGlDebug.check("final:bind-color-holder");
-            GLStateManager.glViewport(0, 0, baseWidth, baseHeight);
+            GLSMRasterizer.glViewport(0, 0, baseWidth, baseHeight);
 
 			FullScreenQuadRenderer.INSTANCE.begin();
             IrisGlDebug.check("final:quad-begin");
@@ -293,7 +299,7 @@ public class FinalPassRenderer {
             IrisGlDebug.check("final:memory-barrier");
 
 			if (!finalPass.mipmappedBuffers.isEmpty()) {
-				GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+				GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
 
 				for (int index : finalPass.mipmappedBuffers) {
 					setupMipmapping(renderTargets.get(index), finalPass.stageReadsFromAlt.contains(index));
@@ -345,7 +351,7 @@ public class FinalPassRenderer {
             IrisGlDebug.check("final:copy-main");
 		}
 
-		GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+		GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
 
 		for (int i = 0; i < renderTargets.getRenderTargetCount(); i++) {
 			resetRenderTarget(renderTargets.get(i));
@@ -364,8 +370,8 @@ public class FinalPassRenderer {
 			swapPass.from.bind();
             IrisGlDebug.check("final:swap-bind");
 
-			GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, swapPass.targetTexture);
-            GLStateManager.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, 0, 0, swapPass.width, swapPass.height);
+			GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, swapPass.targetTexture);
+            GLSMTextures.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, 0, 0, swapPass.width, swapPass.height);
             IrisGlDebug.check("final:swap-copy");
 		}
 
@@ -377,18 +383,18 @@ public class FinalPassRenderer {
 		ProgramUniforms.clearActiveUniforms();
 		ProgramSamplers.clearActiveSamplers();
 		BlendModeOverride.restore();
-		GLStateManager.glUseProgram(0);
+		GLSMPrograms.glUseProgram(0);
 
 		for (int i = 0; i < SamplerLimits.get().getMaxTextureUnits(); i++) {
 			// Unbind all textures that we may have used.
 			// NB: This is necessary for shader pack reloading to work properly
-			GLStateManager.glActiveTexture(GL13.GL_TEXTURE0 + i);
-			GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+			GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0 + i);
+			GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, 0);
 		}
 
-		GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
-        GLStateManager.glDepthMask(true);
-        GLStateManager.glColorMask(true, true, true, true);
+		GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
+        GLSMDepthStencilAlpha.glDepthMask(true);
+        GLSMBlend.glColorMask(true, true, true, true);
         IrisGlDebug.markStage("final:end");
 	}
 
@@ -440,7 +446,7 @@ public class FinalPassRenderer {
 		RenderSystem.texParameteri(target.getMainTexture(), GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, filter);
 		RenderSystem.texParameteri(target.getAltTexture(), GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, filter);
 
-		GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+		GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, 0);
 	}
 
 	// TODO: Don't just copy this from DeferredWorldRenderingPipeline

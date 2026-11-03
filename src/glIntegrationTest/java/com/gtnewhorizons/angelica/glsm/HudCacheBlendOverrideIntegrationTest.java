@@ -21,7 +21,7 @@ class HudCacheBlendOverrideIntegrationTest extends GLStateManagerIntegrationFixt
         assertCachedFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO);
         assertDriverFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
 
-        GLStateManager.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
+        GLSMBlend.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
         assertCachedFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE, GL11.GL_SRC_ALPHA, GL11.GL_ONE);
         assertDriverFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
 
@@ -37,7 +37,7 @@ class HudCacheBlendOverrideIntegrationTest extends GLStateManagerIntegrationFixt
     void popUnderOverrideRestoresRequestedFactorsAndReappliesOverride() {
         final int depth = GLStateManager.pushState(StateSet.BLEND);
         GLStateManager.setHudCacheOverride(true);
-        GLStateManager.glBlendFunc(GL11.GL_ONE, GL11.GL_ONE);
+        GLSMBlend.glBlendFunc(GL11.GL_ONE, GL11.GL_ONE);
         GLStateManager.popStateTo(depth);
 
         assertCachedFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO);
@@ -65,9 +65,9 @@ class HudCacheBlendOverrideIntegrationTest extends GLStateManagerIntegrationFixt
     }
 
     private static void assertCachedFunc(int srcRgb, int dstRgb, int srcAlpha, int dstAlpha) {
-        assertEquals(srcRgb, GLStateManager.glGetInteger(GL14.GL_BLEND_SRC_RGB));
-        assertEquals(dstRgb, GLStateManager.glGetInteger(GL14.GL_BLEND_DST_RGB));
-        assertEquals(srcAlpha, GLStateManager.glGetInteger(GL14.GL_BLEND_SRC_ALPHA));
-        assertEquals(dstAlpha, GLStateManager.glGetInteger(GL14.GL_BLEND_DST_ALPHA));
+        assertEquals(srcRgb, GLSMQueries.glGetInteger(GL14.GL_BLEND_SRC_RGB));
+        assertEquals(dstRgb, GLSMQueries.glGetInteger(GL14.GL_BLEND_DST_RGB));
+        assertEquals(srcAlpha, GLSMQueries.glGetInteger(GL14.GL_BLEND_SRC_ALPHA));
+        assertEquals(dstAlpha, GLSMQueries.glGetInteger(GL14.GL_BLEND_DST_ALPHA));
     }
 }

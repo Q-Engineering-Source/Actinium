@@ -6,6 +6,7 @@ import net.minecraft.client.gui.Gui;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.function.Consumer;
+import com.gtnewhorizons.angelica.glsm.GLSMBlend;
 
 public class IrisImageButton extends IrisButton {
     private final ResourceLocation textureLocation;
@@ -35,7 +36,7 @@ public class IrisImageButton extends IrisButton {
             yTex += this.yDiffTex;
         }
 
-        GLStateManager.glBlendColor(1.0f, 1.0f, 1.0f, 1.0f);
+        GLSMBlend.glBlendColor(1.0f, 1.0f, 1.0f, 1.0f);
         GLStateManager.enableBlend();
 
         GLStateManager.enableTexture();

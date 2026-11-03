@@ -34,6 +34,7 @@ import net.coderbot.iris.uniforms.CapturedRenderingState;
 import net.irisshaders.iris.api.v0.IrisApi;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
+import com.gtnewhorizons.angelica.glsm.GLSMFramebuffer;
 
 public class LodRendererEvents {
     // TODO: Query actual world min height for Cubic Chunks compatibility
@@ -209,7 +210,7 @@ public class LodRendererEvents {
                     if (ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
                         event.cancelEvent();
                     } else if (getInstance().shouldOverride) {
-                        GLStateManager.glClear(GL11.GL_DEPTH_BUFFER_BIT);
+                        GLSMFramebuffer.glClear(GL11.GL_DEPTH_BUFFER_BIT);
                         event.cancelEvent();
                     }
                 }

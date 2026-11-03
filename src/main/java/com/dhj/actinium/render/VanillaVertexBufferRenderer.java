@@ -23,6 +23,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
+import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
+import com.gtnewhorizons.angelica.glsm.GLSMVertexInput;
 
 public final class VanillaVertexBufferRenderer {
     private static final Logger LOGGER = LogManager.getLogger("VanillaVertexBufferRenderer");
@@ -40,9 +42,9 @@ public final class VanillaVertexBufferRenderer {
     public static void uploadVertexBuffer(VertexFormat format, int vbo, ByteBuffer data, int usage) {
         int savedVbo = GLStateManager.getBoundVBO();
         ByteBuffer upload = data.duplicate();
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
-        GLStateManager.glBufferData(GL15.GL_ARRAY_BUFFER, upload, usage);
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVbo);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+        GLSMBuffers.glBufferData(GL15.GL_ARRAY_BUFFER, upload, usage);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVbo);
         ensureVertexArray(vbo, format);
 
         if (GLSMDebug.shouldLogDrawDiagnostics()) {
@@ -61,8 +63,8 @@ public final class VanillaVertexBufferRenderer {
         int savedVao = GLStateManager.getBoundVAO();
         int savedVbo = GLStateManager.getBoundVBO();
 
-        GLStateManager.glBindVertexArray(vao);
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+        GLSMVertexInput.glBindVertexArray(vao);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
         GLStateManager.prepareWideLineEmulation(mode);
         ShaderManager.getInstance().preDraw(flags);
 
@@ -80,8 +82,8 @@ public final class VanillaVertexBufferRenderer {
             RenderDebugHooksHolder.checkDrawError("vertexbuffer:after-draw", "VertexBuffer", mode, flags, format.getSize(), count, formatDescription, vao, vbo);
         }
 
-        GLStateManager.glBindVertexArray(savedVao);
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVbo);
+        GLSMVertexInput.glBindVertexArray(savedVao);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVbo);
         if (checkDrawErrors) {
             RenderDebugHooksHolder.checkDrawError("vertexbuffer:after-restore", "VertexBuffer", mode, flags, format.getSize(), count, formatDescription, vao, vbo);
         }
@@ -92,9 +94,9 @@ public final class VanillaVertexBufferRenderer {
         FLAGS_BY_VBO.remove(vbo);
         if (vao != null) {
             VAO_CONTEXTS.remove(vao);
-            GLStateManager.glDeleteVertexArrays(vao);
+            GLSMVertexInput.glDeleteVertexArrays(vao);
         }
-        GLStateManager.glDeleteBuffers(vbo);
+        GLSMBuffers.glDeleteBuffers(vbo);
     }
 
     /**
@@ -125,10 +127,10 @@ public final class VanillaVertexBufferRenderer {
     public static int createStreamingVertexArray(VertexFormat format, int vbo) {
         int savedVao = GLStateManager.getBoundVAO();
         int savedVbo = GLStateManager.getBoundVBO();
-        int vao = GLStateManager.glGenVertexArrays();
+        int vao = GLSMVertexInput.glGenVertexArrays();
         VAO_CONTEXTS.put(vao, RENDER_BACKEND.getContextHandle());
-        GLStateManager.glBindVertexArray(vao);
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+        GLSMVertexInput.glBindVertexArray(vao);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
         setupVertexFormatAttributes(format);
         QuadConverter.attachSharedEboToCurrentVao();
         if (DRAW_STATE_DEBUG) {
@@ -140,8 +142,8 @@ public final class VanillaVertexBufferRenderer {
                 + " actualVbo=" + actualVbo
                 + " format=" + format);
         }
-        GLStateManager.glBindVertexArray(savedVao);
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVbo);
+        GLSMVertexInput.glBindVertexArray(savedVao);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVbo);
         return vao;
     }
 
@@ -206,8 +208,8 @@ public final class VanillaVertexBufferRenderer {
                 continue;
             }
 
-            GLStateManager.glEnableVertexAttribArray(location);
-            GLStateManager.glVertexAttribPointer(
+            GLSMVertexInput.glEnableVertexAttribArray(location);
+            GLSMVertexInput.glVertexAttribPointer(
                     location,
                     element.getElementCount(),
                     element.getType().getGlConstant(),

@@ -27,6 +27,9 @@ import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memGetInt;
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memPutByte;
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memPutFloat;
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memPutInt;
+import com.gtnewhorizons.angelica.glsm.GLSMBlend;
+import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 /**
  * 1.12 BufferBuilder port of Angelica's deferred particle batching path.
@@ -486,14 +489,14 @@ public final class DeferredDrawBatcher {
         // bypassing the event silently desyncs Iris pipeline input tracking (issue #41).
         GLStateManager.setTexture2DEnabled(0, tex0Enabled);
         GLStateManager.setTexture2DEnabled(1, tex1Enabled);
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
-        GLStateManager.glBlendFunc(srcRgb, dstRgb);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
+        GLSMBlend.glBlendFunc(srcRgb, dstRgb);
         if (blendEnabled) {
             GLStateManager.enableBlend();
         } else {
             GLStateManager.disableBlend();
         }
-        GLStateManager.glDepthMask(depthMask);
+        GLSMDepthStencilAlpha.glDepthMask(depthMask);
         // FindMe and other custom particles temporarily disable testing to render through blocks.
         applyDepthTest(depthTestEnabled);
     }

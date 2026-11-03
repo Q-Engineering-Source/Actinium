@@ -23,6 +23,8 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
+import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
+import com.gtnewhorizons.angelica.glsm.GLSMVertexInput;
 
 /**
  * Tracks the vertex array object bound to the current context and the vertex array pointers stored in it.
@@ -629,13 +631,13 @@ public final class VAOManager {
         RENDER_BACKEND.vertexAttribDivisor(index, a.divisor);
         if (a.size == 0 || a.vboId == 0 || !isBufferLive(a)) return;
         final int savedVBO = GLStateManager.getBoundVBO();
-        if (savedVBO != a.vboId) GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, a.vboId);
+        if (savedVBO != a.vboId) GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, a.vboId);
         if (a.integer) {
             RENDER_BACKEND.vertexAttribIPointer(index, a.size, a.type, a.stride, a.offset);
         } else {
             RENDER_BACKEND.vertexAttribPointer(index, a.size, a.type, a.normalized, a.stride, a.offset);
         }
-        if (GLStateManager.getBoundVBO() != savedVBO) GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVBO);
+        if (GLStateManager.getBoundVBO() != savedVBO) GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVBO);
     }
 
     /** Drives the vertex attribute array enable of a location from its tracked state. */
@@ -758,7 +760,7 @@ public final class VAOManager {
             LOGGER.debug("Client array restore skipped: vertex array {} was deleted after the push", saved.boundVAO);
             return false;
         }
-        GLStateManager.glBindVertexArray(saved.boundVAO);
+        GLSMVertexInput.glBindVertexArray(saved.boundVAO);
         if (isSavedVboLive(saved)) {
             final int changed = restoreClientArrays(saved);
             for (int pointers = changed & 0xFFFF; pointers != 0; pointers &= pointers - 1) {
@@ -767,9 +769,9 @@ public final class VAOManager {
             for (int enables = changed >>> 16; enables != 0; enables &= enables - 1) {
                 syncAttribEnable(Integer.numberOfTrailingZeros(enables));
             }
-            if (GLStateManager.getBoundVBO() != saved.boundVBO) GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, saved.boundVBO);
+            if (GLStateManager.getBoundVBO() != saved.boundVBO) GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, saved.boundVBO);
         }
-        if (boundEBO != saved.boundEBO && isSavedEboLive(saved)) GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, saved.boundEBO);
+        if (boundEBO != saved.boundEBO && isSavedEboLive(saved)) GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, saved.boundEBO);
         return true;
     }
 
@@ -905,7 +907,7 @@ public final class VAOManager {
 
         if (clientArraysVBO == 0) clientArraysVBO = RENDER_BACKEND.genBuffers();
         final int savedVBO = GLStateManager.getBoundVBO();
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, clientArraysVBO);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, clientArraysVBO);
 
         if (totalBytes > clientArraysVBOCapacity) {
             int newCapacity = Math.max(4096, clientArraysVBOCapacity);
@@ -930,7 +932,7 @@ public final class VAOManager {
             }
         }
 
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVBO);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVBO);
         if (perfDebugEnabled) {
             GLSMPerfDebug.end(GLSMPerfDebug.Stage.GL_CLIENT_ARRAY_UPLOAD, perfStart);
             GLSMPerfDebug.countClientArrayUpload(totalBytes);

@@ -2,6 +2,7 @@ package com.dhj.actinium.render;
 
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import org.lwjgl.opengl.GL11;
+import com.gtnewhorizons.angelica.glsm.GLSMAttribStack;
 
 /**
  * Isolates item renderers that execute arbitrary fixed-function GL code from the shader pipeline.
@@ -14,7 +15,7 @@ public final class ItemRenderStateBoundary {
      * Saves the tracked GL state and defers shader-pipeline synchronization for a built-in renderer.
      */
     public static void begin() {
-        GLStateManager.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+        GLSMAttribStack.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
         GLStateManager.beginForeignDraw();
     }
 
@@ -23,7 +24,7 @@ public final class ItemRenderStateBoundary {
      */
     public static void end() {
         try {
-            GLStateManager.glPopAttrib();
+            GLSMAttribStack.glPopAttrib();
         } finally {
             GLStateManager.endForeignDraw();
         }

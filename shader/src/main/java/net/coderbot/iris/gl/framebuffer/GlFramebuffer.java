@@ -14,6 +14,8 @@ import net.coderbot.iris.gl.texture.DepthBufferFormat;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
+import com.gtnewhorizons.angelica.glsm.GLSMFramebuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMQueries;
 
 public class GlFramebuffer extends GlResource {
 	private final Int2IntMap attachments;
@@ -26,8 +28,8 @@ public class GlFramebuffer extends GlResource {
 		super(RenderSystem.createFramebuffer());
 
 		this.attachments = new Int2IntArrayMap();
-		this.maxDrawBuffers = GLStateManager.glGetInteger(GL20.GL_MAX_DRAW_BUFFERS);
-		this.maxColorAttachments = GLStateManager.glGetInteger(GL30.GL_MAX_COLOR_ATTACHMENTS);
+		this.maxDrawBuffers = GLSMQueries.glGetInteger(GL20.GL_MAX_DRAW_BUFFERS);
+		this.maxColorAttachments = GLSMQueries.glGetInteger(GL30.GL_MAX_COLOR_ATTACHMENTS);
 		this.hasDepthAttachment = false;
 	}
 
@@ -106,32 +108,32 @@ public class GlFramebuffer extends GlResource {
 	}
 
 	public void bind() {
-		GLStateManager.glBindFramebuffer(GL30.GL_FRAMEBUFFER, getGlId());
+		GLSMFramebuffer.glBindFramebuffer(GL30.GL_FRAMEBUFFER, getGlId());
 	}
 
 	public void bindAsReadBuffer() {
-		GLStateManager.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, getGlId());
+		GLSMFramebuffer.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, getGlId());
 	}
 
 	public void bindAsDrawBuffer() {
-		GLStateManager.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, getGlId());
+		GLSMFramebuffer.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, getGlId());
 	}
 
 	@Override
     protected void destroyInternal() {
-		GLStateManager.glDeleteFramebuffers(getGlId());
+		GLSMFramebuffer.glDeleteFramebuffers(getGlId());
 	}
 
 	public int checkStatus() {
 		bind();
 
-		return GLStateManager.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
+		return GLSMFramebuffer.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
 	}
 
 	public int getAttachmentParameter(int attachmentIndex, int pname) {
 		bind();
 
-		return GLStateManager.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0 + attachmentIndex, pname);
+		return GLSMFramebuffer.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0 + attachmentIndex, pname);
 	}
 
 	public boolean isComplete() {

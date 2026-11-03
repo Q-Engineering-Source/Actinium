@@ -31,6 +31,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import com.gtnewhorizons.angelica.glsm.GLSMQueries;
 
 public class StandardMacros {
 	private static final Pattern SEMVER_PATTERN = Pattern.compile("(?<major>\\d+)\\.(?<minor>\\d+)\\.*(?<bugfix>\\d*)(.*)");
@@ -204,7 +205,7 @@ public class StandardMacros {
 	 * @see <a href="https://github.com/sp614x/optifine/blob/9c6a5b5326558ccc57c6490b66b3be3b2dc8cbef/OptiFineDoc/doc/shaders.txt#L705-L707">Optifine Doc for GLSL Version</a>
 	 */
 	public static String getGlVersion(int name) {
-		final String info = GLStateManager.glGetString(name);
+		final String info = GLSMQueries.glGetString(name);
 
 		Matcher matcher = SEMVER_PATTERN.matcher(Objects.requireNonNull(info));
 
@@ -266,7 +267,7 @@ public class StandardMacros {
 	 * @see <a href="https://github.com/sp614x/optifine/blob/9c6a5b5326558ccc57c6490b66b3be3b2dc8cbef/OptiFineDoc/doc/shaders.txt#L716-L723">Optifine Doc</a>
 	 */
 	public static String getVendor() {
-		String vendor = Objects.requireNonNull(GLStateManager.glGetString(GL11.GL_VENDOR)).toLowerCase(Locale.ROOT);
+		String vendor = Objects.requireNonNull(GLSMQueries.glGetString(GL11.GL_VENDOR)).toLowerCase(Locale.ROOT);
 		if (vendor.startsWith("ati")) {
 			return "MC_GL_VENDOR_ATI";
 		} else if (vendor.startsWith("intel")) {
@@ -288,7 +289,7 @@ public class StandardMacros {
 	 * @see <a href="https://github.com/sp614x/optifine/blob/9c6a5b5326558ccc57c6490b66b3be3b2dc8cbef/OptiFineDoc/doc/shaders.txt#L725-L733">Optifine Doc</a>
 	 */
 	public static String getRenderer() {
-		String renderer = Objects.requireNonNull(GLStateManager.glGetString(GL11.GL_RENDERER)).toLowerCase(Locale.ROOT);
+		String renderer = Objects.requireNonNull(GLSMQueries.glGetString(GL11.GL_RENDERER)).toLowerCase(Locale.ROOT);
 		if (renderer.startsWith("amd")) {
 			return "MC_GL_RENDERER_RADEON";
 		} else if (renderer.startsWith("ati")) {
@@ -321,10 +322,10 @@ public class StandardMacros {
 	 * @see <a href="https://github.com/sp614x/optifine/blob/9c6a5b5326558ccc57c6490b66b3be3b2dc8cbef/OptiFineDoc/doc/shaders.txt#L735-L738">Optifine Doc</a>
 	 */
 	public static Set<String> getGlExtensions() {
-		int numExtensions = GLStateManager.glGetInteger(GL30.GL_NUM_EXTENSIONS);
+		int numExtensions = GLSMQueries.glGetInteger(GL30.GL_NUM_EXTENSIONS);
 		String[] extensions = new String[numExtensions];
 		for (int i = 0; i < numExtensions; i++) {
-			extensions[i] = GLStateManager.glGetStringi(GL11.GL_EXTENSIONS, i);
+			extensions[i] = GLSMQueries.glGetStringi(GL11.GL_EXTENSIONS, i);
 		}
 
 		// TODO note that we do not add extensions based on if the shader uses them and if they are supported

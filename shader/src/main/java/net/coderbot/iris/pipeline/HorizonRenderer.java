@@ -8,6 +8,7 @@ import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import org.lwjgl.opengl.GL11;
 
 import java.nio.FloatBuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
 
 /**
  * Renders the sky horizon. Vanilla Minecraft simply uses the "clear color" for its horizon, and then draws a plane
@@ -144,9 +145,9 @@ public class HorizonRenderer {
 			rebuildBuffer();
 		}
 
-        GLStateManager.glPushMatrix();
-        GLStateManager.glLoadIdentity();
-        GLStateManager.glMultMatrix(matrix);
+        GLSMMatrices.glPushMatrix();
+        GLSMMatrices.glLoadIdentity();
+        GLSMMatrices.glMultMatrix(matrix);
 
 		Tessellator tessellator = Tessellator.getInstance();
 		BufferBuilder buffer = tessellator.getBuffer();
@@ -155,7 +156,7 @@ public class HorizonRenderer {
 		buildHorizon(SkyRenderDistance.effectiveBlocks(currentRenderDistance), buffer);
 		tessellator.draw();
 
-        GLStateManager.glPopMatrix();
+        GLSMMatrices.glPopMatrix();
 	}
 
 	public void destroy() {

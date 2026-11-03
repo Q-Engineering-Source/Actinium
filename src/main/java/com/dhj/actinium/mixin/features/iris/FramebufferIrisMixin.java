@@ -20,6 +20,11 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.nio.IntBuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMBlend;
+import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
+import com.gtnewhorizons.angelica.glsm.GLSMFramebuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMTexEnvGen;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 @Mixin(Framebuffer.class)
 public class FramebufferIrisMixin implements IRenderTargetExt {
@@ -58,18 +63,18 @@ public class FramebufferIrisMixin implements IRenderTargetExt {
 
     @Unique
     private void actinium$prepareFramebufferOutputState() {
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE3);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE3);
         GLStateManager.disableTexture();
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE2);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE2);
         GLStateManager.disableTexture();
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE1);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE1);
         GLStateManager.disableTexture();
-        GLStateManager.glActiveTexture(OpenGlHelper.defaultTexUnit);
+        GLSMTextures.glActiveTexture(OpenGlHelper.defaultTexUnit);
         GLStateManager.enableTexture();
-        GLStateManager.glTexEnvi(GL11.GL_TEXTURE_ENV, GL11.GL_TEXTURE_ENV_MODE, GL11.GL_MODULATE);
+        GLSMTexEnvGen.glTexEnvi(GL11.GL_TEXTURE_ENV, GL11.GL_TEXTURE_ENV_MODE, GL11.GL_MODULATE);
         GLStateManager.disableAlphaTest();
-        GLStateManager.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-        GLStateManager.glColorMask(true, true, true, true);
+        GLSMCurrentAttribs.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+        GLSMBlend.glColorMask(true, true, true, true);
     }
 
     @Inject(method = "deleteFramebuffer()V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/shader/Framebuffer;unbindFramebuffer()V", shift = At.Shift.AFTER))
@@ -187,8 +192,8 @@ public class FramebufferIrisMixin implements IRenderTargetExt {
     @Inject(method = "framebufferRenderExt(IIZ)V", at = @At("RETURN"))
     private void actinium$endFramebufferOutputDiagnostics(int width, int height, boolean disableBlend, CallbackInfo ci) {
         if (IrisApiV0Impl.INSTANCE.isShaderPackInUse()) {
-            GLStateManager.glActiveTexture(OpenGlHelper.defaultTexUnit);
-            GLStateManager.glColorMask(true, true, true, true);
+            GLSMTextures.glActiveTexture(OpenGlHelper.defaultTexUnit);
+            GLSMBlend.glColorMask(true, true, true, true);
         }
         IrisGlDebug.logFramebufferOutputState(
             "return",
@@ -209,7 +214,7 @@ public class FramebufferIrisMixin implements IRenderTargetExt {
     @Inject(method = "deleteFramebuffer()V", at = @At(value = "FIELD", target = "Lnet/minecraft/client/shader/Framebuffer;depthBuffer:I", shift = At.Shift.BEFORE, ordinal = 0))
     private void actinium$deleteDepthTexture(CallbackInfo ci) {
         if (this.actinium$depthTextureId > -1) {
-            GLStateManager.glDeleteTextures(this.actinium$depthTextureId);
+            GLSMTextures.glDeleteTextures(this.actinium$depthTextureId);
             this.actinium$depthTextureId = -1;
         }
     }
@@ -228,22 +233,22 @@ public class FramebufferIrisMixin implements IRenderTargetExt {
             return;
         }
 
-        this.actinium$depthTextureId = GLStateManager.glGenTextures();
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, this.actinium$depthTextureId);
+        this.actinium$depthTextureId = GLSMTextures.glGenTextures();
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, this.actinium$depthTextureId);
 
-        GLStateManager.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
-        GLStateManager.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
-        GLStateManager.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL11.GL_CLAMP);
-        GLStateManager.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL11.GL_CLAMP);
-        GLStateManager.glTexParameteri(GL11.GL_TEXTURE_2D, GL14.GL_TEXTURE_COMPARE_MODE, 0);
+        GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL11.GL_CLAMP);
+        GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL11.GL_CLAMP);
+        GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL14.GL_TEXTURE_COMPARE_MODE, 0);
 
         if (this.stencilEnabled) {
-            GLStateManager.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_DEPTH24_STENCIL8, width, height, 0, GL30.GL_DEPTH_STENCIL, GL30.GL_UNSIGNED_INT_24_8, (IntBuffer) null);
-            GLStateManager.glFramebufferTexture2D(OpenGlHelper.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, this.actinium$depthTextureId, 0);
-            GLStateManager.glFramebufferTexture2D(OpenGlHelper.GL_FRAMEBUFFER, GL30.GL_STENCIL_ATTACHMENT, GL11.GL_TEXTURE_2D, this.actinium$depthTextureId, 0);
+            GLSMTextures.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_DEPTH24_STENCIL8, width, height, 0, GL30.GL_DEPTH_STENCIL, GL30.GL_UNSIGNED_INT_24_8, (IntBuffer) null);
+            GLSMFramebuffer.glFramebufferTexture2D(OpenGlHelper.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, this.actinium$depthTextureId, 0);
+            GLSMFramebuffer.glFramebufferTexture2D(OpenGlHelper.GL_FRAMEBUFFER, GL30.GL_STENCIL_ATTACHMENT, GL11.GL_TEXTURE_2D, this.actinium$depthTextureId, 0);
         } else {
-            GLStateManager.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_DEPTH_COMPONENT, width, height, 0, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT, (IntBuffer) null);
-            GLStateManager.glFramebufferTexture2D(OpenGlHelper.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, this.actinium$depthTextureId, 0);
+            GLSMTextures.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_DEPTH_COMPONENT, width, height, 0, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT, (IntBuffer) null);
+            GLSMFramebuffer.glFramebufferTexture2D(OpenGlHelper.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, this.actinium$depthTextureId, 0);
         }
 
         this.actinium$depthBufferVersion++;

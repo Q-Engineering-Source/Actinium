@@ -16,6 +16,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
+import com.gtnewhorizons.angelica.glsm.GLSMVertexInput;
 
 @SuppressWarnings("deprecation")
 @Mixin(targets = "net/minecraftforge/fml/client/SplashProgress")
@@ -54,9 +56,9 @@ public class MixinSplashProgress {
         }
         VanillaVertexBufferRenderer.recreateVertexArrays();
         BufferBuilderStreamingDrawer.recreateVertexArrays();
-        GLStateManager.glBindVertexArray(0);
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
-        GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
+        GLSMVertexInput.glBindVertexArray(0);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
         // If ModernSplash's @Mod class was defined before the redirector was installed
         // (issue #200), its fade overlay still holds raw FFP calls; clear the logo
         // texture so that overlay sticks to safe vanilla paths. No-op otherwise.

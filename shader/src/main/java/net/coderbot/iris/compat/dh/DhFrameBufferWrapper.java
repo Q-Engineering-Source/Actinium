@@ -4,6 +4,7 @@ import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.seibel.distanthorizons.api.interfaces.override.rendering.IDhApiFramebuffer;
 import net.coderbot.iris.gl.framebuffer.GlFramebuffer;
 import org.lwjgl.opengl.GL30;
+import com.gtnewhorizons.angelica.glsm.GLSMFramebuffer;
 
 public class DhFrameBufferWrapper implements IDhApiFramebuffer {
     private final GlFramebuffer framebuffer;
@@ -37,7 +38,7 @@ public class DhFrameBufferWrapper implements IDhApiFramebuffer {
     @Override
     public int getStatus() {
         this.bind();
-        int status = GLStateManager.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
+        int status = GLSMFramebuffer.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
         return status;
     }
 

@@ -87,25 +87,25 @@ class FfpContextResourceIntegrationTest extends GLStateManagerIntegrationFixture
     }
 
     private static void drawTriangle(int vertexFlags) {
-        final int vbo = GLStateManager.glGenBuffers();
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+        final int vbo = GLSMBuffers.glGenBuffers();
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
         final FloatBuffer vertices = BufferUtils.createFloatBuffer(12);
         vertices.put(new float[] { 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f }).flip();
-        GLStateManager.glBufferData(GL15.GL_ARRAY_BUFFER, vertices, GL15.GL_STATIC_DRAW);
-        GLStateManager.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 12, 0L);
-        GLStateManager.glEnableVertexAttribArray(0);
+        GLSMBuffers.glBufferData(GL15.GL_ARRAY_BUFFER, vertices, GL15.GL_STATIC_DRAW);
+        GLSMVertexInput.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 12, 0L);
+        GLSMVertexInput.glEnableVertexAttribArray(0);
         if ((vertexFlags & VertexFlags.COLOR_BIT) != 0) {
-            GLStateManager.glVertexAttribPointer(1, 4, GL11.GL_FLOAT, false, 0, 0L);
-            GLStateManager.glEnableVertexAttribArray(1);
+            GLSMVertexInput.glVertexAttribPointer(1, 4, GL11.GL_FLOAT, false, 0, 0L);
+            GLSMVertexInput.glEnableVertexAttribArray(1);
             ShaderManager.getInstance().setCurrentVertexFlags(VertexFlags.COLOR_BIT);
         } else {
             ShaderManager.getInstance().setCurrentVertexFlags(0);
         }
-        GLStateManager.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
-        GLStateManager.glDisableVertexAttribArray(0);
-        GLStateManager.glDisableVertexAttribArray(1);
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
-        GLStateManager.glDeleteBuffers(vbo);
+        GLSMDraws.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
+        GLSMVertexInput.glDisableVertexAttribArray(0);
+        GLSMVertexInput.glDisableVertexAttribArray(1);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        GLSMBuffers.glDeleteBuffers(vbo);
     }
 
     private static void activateContext(Object token, long nativeHandle, boolean display) {

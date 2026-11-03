@@ -5,6 +5,7 @@ import gkappa.modernsplash.ModernSplash;
 import net.minecraft.launchwrapper.Launch;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 /**
  * Crash guard for Modern Splash (modid {@code modernsplash}, issue #200).
@@ -60,7 +61,7 @@ public final class ModernSplashOverlayCompat {
         }
         int logo = ModernSplash.logoGlTextureName;
         if (logo != 0) {
-            GLStateManager.glDeleteTextures(logo);
+            GLSMTextures.glDeleteTextures(logo);
             ModernSplash.logoGlTextureName = 0;
             LOGGER.info("Skipped ModernSplash logo fade overlay (logo texture cleared).");
         }

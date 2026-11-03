@@ -5,6 +5,7 @@ import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.tileentity.TileEntity;
 import org.lwjgl.opengl.GL11;
+import com.gtnewhorizons.angelica.glsm.GLSMAttribStack;
 
 /**
  * Adapts HBM's private attribute-mask format to the GLSM state model.
@@ -45,12 +46,12 @@ public final class HbmRenderStateCompat {
 
     /** Pushes the equivalent GLSM state for an HBM attribute scope. */
     public static void pushAttrib(int hbmMask) {
-        GLStateManager.glPushAttrib(toGlMask(hbmMask));
+        GLSMAttribStack.glPushAttrib(toGlMask(hbmMask));
     }
 
     /** Pops the GLSM state saved for an HBM attribute scope. */
     public static void popAttrib() {
-        GLStateManager.glPopAttrib();
+        GLSMAttribStack.glPopAttrib();
     }
 
     /** Returns whether the tile entity belongs to HBM's renderer family. */

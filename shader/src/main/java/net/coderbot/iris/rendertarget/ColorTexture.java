@@ -9,6 +9,8 @@ import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL30;
 
 import java.nio.ByteBuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMFramebuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 public class ColorTexture extends GlResource {
 	public ColorTexture(int width, int height) {
@@ -23,7 +25,7 @@ public class ColorTexture extends GlResource {
 		TextureUploadHelper.resetTextureUploadState();
 		RenderSystem.texImage2D(texture, GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, width, height, 0, GL11.GL_RGBA, GL12.GL_UNSIGNED_INT_8_8_8_8_REV, (ByteBuffer) null);
 
-        GLStateManager.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, texture, 0);
+        GLSMFramebuffer.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, texture, 0);
 	}
 
 	public int getTextureId() {
@@ -32,6 +34,6 @@ public class ColorTexture extends GlResource {
 
 	@Override
 	protected void destroyInternal() {
-		GLStateManager.glDeleteTextures(getGlId());
+		GLSMTextures.glDeleteTextures(getGlId());
 	}
 }

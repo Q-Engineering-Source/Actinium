@@ -12,6 +12,7 @@ import org.lwjgl.opengl.GL43;
 
 import java.nio.IntBuffer;
 import java.util.Locale;
+import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
 
 /**
  * Owns the optional GPU counters used to measure adaptive shadow bounds checks.
@@ -46,17 +47,17 @@ public final class AdaptiveShadowBoundsStats {
         if (enabled) {
             this.readback = BufferUtils.createIntBuffer(COUNTER_COUNT);
             this.zeroes = BufferUtils.createIntBuffer(COUNTER_COUNT);
-            this.bufferId = GLStateManager.glGenBuffers();
+            this.bufferId = GLSMBuffers.glGenBuffers();
             if (this.bufferId == 0) {
                 throw new IllegalStateException("Failed to allocate adaptive shadow bounds statistics SSBO");
             }
             GLDebug.nameObject(GL43.GL_BUFFER, this.bufferId, "Actinium adaptive shadow bounds stats");
-            GLStateManager.glBindBuffer(GL43.GL_SHADER_STORAGE_BUFFER, this.bufferId);
-            GLStateManager.glBufferData(GL43.GL_SHADER_STORAGE_BUFFER,
+            GLSMBuffers.glBindBuffer(GL43.GL_SHADER_STORAGE_BUFFER, this.bufferId);
+            GLSMBuffers.glBufferData(GL43.GL_SHADER_STORAGE_BUFFER,
                 (long) COUNTER_COUNT * Integer.BYTES, GL15.GL_DYNAMIC_READ);
-            GLStateManager.glBufferSubData(GL43.GL_SHADER_STORAGE_BUFFER, 0L, this.zeroes.duplicate());
+            GLSMBuffers.glBufferSubData(GL43.GL_SHADER_STORAGE_BUFFER, 0L, this.zeroes.duplicate());
             RenderSystem.bindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, binding, this.bufferId);
-            GLStateManager.glBindBuffer(GL43.GL_SHADER_STORAGE_BUFFER, 0);
+            GLSMBuffers.glBindBuffer(GL43.GL_SHADER_STORAGE_BUFFER, 0);
         } else {
             this.readback = null;
             this.zeroes = null;
@@ -179,10 +180,10 @@ public final class AdaptiveShadowBoundsStats {
         }
 
         RenderSystem.memoryBarrier(GL43.GL_SHADER_STORAGE_BARRIER_BIT);
-        GLStateManager.glBindBuffer(GL43.GL_SHADER_STORAGE_BUFFER, bufferId);
+        GLSMBuffers.glBindBuffer(GL43.GL_SHADER_STORAGE_BUFFER, bufferId);
         try {
             readback.clear();
-            GLStateManager.glGetBufferSubData(GL43.GL_SHADER_STORAGE_BUFFER, 0L, readback);
+            GLSMBuffers.glGetBufferSubData(GL43.GL_SHADER_STORAGE_BUFFER, 0L, readback);
 
             final long textureCalls = unsigned(readback.get(TEXTURE_CALLS));
             final long textureRejected = unsigned(readback.get(TEXTURE_REJECTED));
@@ -195,7 +196,7 @@ public final class AdaptiveShadowBoundsStats {
             final double passRate = calls == 0L ? 100.0 : (calls - rejected) * 100.0 / calls;
 
             zeroes.clear();
-            GLStateManager.glBufferSubData(GL43.GL_SHADER_STORAGE_BUFFER, 0L, zeroes);
+            GLSMBuffers.glBufferSubData(GL43.GL_SHADER_STORAGE_BUFFER, 0L, zeroes);
             return "adaptiveShadowBounds[calls=" + calls
                 + ",rejected=" + rejected
                 + ",passRate=" + String.format(Locale.ROOT, "%.1f%%", passRate)
@@ -209,7 +210,7 @@ public final class AdaptiveShadowBoundsStats {
             return "adaptiveShadowBounds[readbackError=true]";
         } finally {
             RenderSystem.bindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, binding, bufferId);
-            GLStateManager.glBindBuffer(GL43.GL_SHADER_STORAGE_BUFFER, 0);
+            GLSMBuffers.glBindBuffer(GL43.GL_SHADER_STORAGE_BUFFER, 0);
         }
     }
 
@@ -224,7 +225,7 @@ public final class AdaptiveShadowBoundsStats {
         }
         deactivate(this);
         RenderSystem.bindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, binding, 0);
-        GLStateManager.glDeleteBuffers(bufferId);
+        GLSMBuffers.glDeleteBuffers(bufferId);
         bufferId = 0;
         destroyed = true;
     }

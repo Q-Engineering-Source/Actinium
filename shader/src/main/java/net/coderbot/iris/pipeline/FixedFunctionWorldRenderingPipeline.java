@@ -22,6 +22,7 @@ import net.minecraft.client.renderer.EntityRenderer;
 
 import java.util.List;
 import java.util.OptionalInt;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
 
 public class FixedFunctionWorldRenderingPipeline implements WorldRenderingPipeline {
 	public FixedFunctionWorldRenderingPipeline() {
@@ -43,7 +44,7 @@ public class FixedFunctionWorldRenderingPipeline implements WorldRenderingPipeli
 	public void beginLevelRendering() {
 		// Use the default Minecraft framebuffer and ensure that no programs are in use
         MinecraftFramebufferHelper.bindMainFramebuffer(true);
-		GLStateManager.glUseProgram(0);
+		GLSMPrograms.glUseProgram(0);
 	}
 
 	@Override

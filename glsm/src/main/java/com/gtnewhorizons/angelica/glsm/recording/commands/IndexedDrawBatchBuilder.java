@@ -14,6 +14,7 @@ import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memAddress0;
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memCopy;
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memGetInt;
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memPutInt;
+import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
 
 /**
  * Groups a display list's {@link IndexedDrawCapture}s by {@link AttribLayoutKey} and
@@ -63,8 +64,8 @@ public final class IndexedDrawBatchBuilder {
             if (!success) {
                 for (GroupResult r : results) r.batch.delete();
             }
-            GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, prevEBO);
-            GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevVBO);
+            GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, prevEBO);
+            GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevVBO);
         }
 
         return out;
@@ -101,12 +102,12 @@ public final class IndexedDrawBatchBuilder {
         final long[] indexOffsets = new long[n];
 
         try {
-            sharedVBO = GLStateManager.glGenBuffers();
-            sharedEBO = GLStateManager.glGenBuffers();
+            sharedVBO = GLSMBuffers.glGenBuffers();
+            sharedEBO = GLSMBuffers.glGenBuffers();
             eboData = MemoryUtilities.memAlloc((int) totalIndexBytes);
 
-            GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, sharedVBO);
-            GLStateManager.glBufferData(GL15.GL_ARRAY_BUFFER, totalVertexBytes, GL15.GL_STATIC_DRAW);
+            GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, sharedVBO);
+            GLSMBuffers.glBufferData(GL15.GL_ARRAY_BUFFER, totalVertexBytes, GL15.GL_STATIC_DRAW);
 
             int vboBytePos = 0;
             int eboBytePos = 0;
@@ -116,7 +117,7 @@ public final class IndexedDrawBatchBuilder {
             for (int g = 0; g < n; g++) {
                 final IndexedDrawCapture c = group.get(g);
                 final int vBytes = c.vertexCount * c.layoutKey.stride();
-                GLStateManager.glBufferSubData(GL15.GL_ARRAY_BUFFER, vboBytePos, c.vertexData);
+                GLSMBuffers.glBufferSubData(GL15.GL_ARRAY_BUFFER, vboBytePos, c.vertexData);
 
                 final long srcIdxAddr = memAddress0(c.indexData);
                 final int idxBytes = c.indexCount * 4;
@@ -143,8 +144,8 @@ public final class IndexedDrawBatchBuilder {
 
             eboData.position(0).limit((int) totalIndexBytes);
 
-            GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, sharedEBO);
-            GLStateManager.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, eboData, GL15.GL_STATIC_DRAW);
+            GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, sharedEBO);
+            GLSMBuffers.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, eboData, GL15.GL_STATIC_DRAW);
 
             success = true;
             return new GroupResult(new IndexedDrawBatch(group.get(0).layoutKey, sharedVBO, sharedEBO),
@@ -152,8 +153,8 @@ public final class IndexedDrawBatchBuilder {
         } finally {
             if (eboData != null) MemoryUtilities.memFree(eboData);
             if (!success) {
-                if (sharedVBO != 0) GLStateManager.glDeleteBuffers(sharedVBO);
-                if (sharedEBO != 0) GLStateManager.glDeleteBuffers(sharedEBO);
+                if (sharedVBO != 0) GLSMBuffers.glDeleteBuffers(sharedVBO);
+                if (sharedEBO != 0) GLSMBuffers.glDeleteBuffers(sharedEBO);
             }
         }
     }

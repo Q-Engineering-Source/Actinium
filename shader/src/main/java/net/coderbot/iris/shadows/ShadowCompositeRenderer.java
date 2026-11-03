@@ -48,6 +48,9 @@ import org.lwjgl.opengl.GL43;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import com.gtnewhorizons.angelica.glsm.GLSMFramebuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 public class ShadowCompositeRenderer {
 
@@ -148,7 +151,7 @@ public class ShadowCompositeRenderer {
         this.passes = passes.build();
         this.flippedAtLeastOnceFinal = flippedAtLeastOnce.build();
 
-        GLStateManager.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
+        GLSMFramebuffer.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
     }
 
     private static void setupMipmapping(RenderTarget target, boolean readFromAlt) {
@@ -219,7 +222,7 @@ public class ShadowCompositeRenderer {
             }
 
             if (!renderPass.mipmappedBuffers.isEmpty()) {
-                GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+                GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
 
                 for (int index : renderPass.mipmappedBuffers) {
                     setupMipmapping(renderTargets.get(index), renderPass.stageReadsFromAlt.contains(index));
@@ -230,7 +233,7 @@ public class ShadowCompositeRenderer {
             float scaledHeight = renderTargets.getResolution() * renderPass.viewportScale.scale();
             int beginWidth = (int) (renderTargets.getResolution() * renderPass.viewportScale.viewportX());
             int beginHeight = (int) (renderTargets.getResolution() * renderPass.viewportScale.viewportY());
-            GLStateManager.glViewport(beginWidth, beginHeight, (int) scaledWidth, (int) scaledHeight);
+            GLSMRasterizer.glViewport(beginWidth, beginHeight, (int) scaledWidth, (int) scaledHeight);
 
             renderPass.framebuffer.bind();
             renderPass.program.use();
@@ -252,7 +255,7 @@ public class ShadowCompositeRenderer {
             }
         }
 
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
     }
 
     // TODO: Don't just copy this from DeferredWorldRenderingPipeline

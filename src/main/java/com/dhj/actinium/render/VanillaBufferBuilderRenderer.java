@@ -12,6 +12,8 @@ import org.lwjgl.opengl.GL15;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
+import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
+import com.gtnewhorizons.angelica.glsm.GLSMVertexInput;
 
 public final class VanillaBufferBuilderRenderer {
     private static final Map<VertexFormat, Integer> VAOS = new HashMap<>();
@@ -78,9 +80,9 @@ public final class VanillaBufferBuilderRenderer {
         upload.limit(byteCount);
 
         int savedVbo = GLStateManager.getBoundVBO();
-        GLStateManager.glBindVertexArray(vao);
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
-        GLStateManager.glBufferData(GL15.GL_ARRAY_BUFFER, upload, GL15.GL_STREAM_DRAW);
+        GLSMVertexInput.glBindVertexArray(vao);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+        GLSMBuffers.glBufferData(GL15.GL_ARRAY_BUFFER, upload, GL15.GL_STREAM_DRAW);
 
         boolean logDrawDiagnostics = GLSMDebug.shouldLogDrawDiagnostics();
         boolean checkDrawErrors = RenderDebugHooksHolder.shouldCaptureGlState();
@@ -99,8 +101,8 @@ public final class VanillaBufferBuilderRenderer {
             RenderDebugHooksHolder.checkDrawError("bufferbuilder:after-draw", debugSource, drawMode, vertexFlags, stride, vertexCount, formatDescription, vao, vbo);
         }
 
-        GLStateManager.glBindVertexArray(0);
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVbo);
+        GLSMVertexInput.glBindVertexArray(0);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVbo);
         if (checkDrawErrors) {
             RenderDebugHooksHolder.checkDrawError("bufferbuilder:after-restore", debugSource, drawMode, vertexFlags, stride, vertexCount, formatDescription, vao, vbo);
         }
@@ -108,7 +110,7 @@ public final class VanillaBufferBuilderRenderer {
 
     private static void ensureDrawState(VertexFormat format) {
         if (!VAOS.containsKey(format)) {
-            int vbo = GLStateManager.glGenBuffers();
+            int vbo = GLSMBuffers.glGenBuffers();
             int vertexFlags = VanillaVertexBufferRenderer.vertexFlags(format);
             int vao = VanillaVertexBufferRenderer.createStreamingVertexArray(format, vbo);
             VAOS.put(format, vao);

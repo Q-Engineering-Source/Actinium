@@ -6,6 +6,8 @@ import com.gtnewhorizons.angelica.glsm.hooks.VanillaStateLayer;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import lombok.Getter;
+import com.gtnewhorizons.angelica.glsm.GLSMBlend;
+import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
 
 public class DepthColorStorage {
 	private static boolean originalDepthEnable;
@@ -43,8 +45,8 @@ public class DepthColorStorage {
 		overrideHeld = true;
 		depthColorLocked = false;
 		try {
-			GLStateManager.glDepthMask(false);
-			GLStateManager.glColorMask(false, false, false, false);
+			GLSMDepthStencilAlpha.glDepthMask(false);
+			GLSMBlend.glColorMask(false, false, false, false);
 		} finally {
 			depthColorLocked = true;
 		}
@@ -65,9 +67,9 @@ public class DepthColorStorage {
 
 		depthColorLocked = false;
 
-        GLStateManager.glDepthMask(originalDepthEnable);
+        GLSMDepthStencilAlpha.glDepthMask(originalDepthEnable);
 
-        GLStateManager.glColorMask(originalColor.red, originalColor.green, originalColor.blue, originalColor.alpha);
+        GLSMBlend.glColorMask(originalColor.red, originalColor.green, originalColor.blue, originalColor.alpha);
 		overrideHeld = false;
 	}
 

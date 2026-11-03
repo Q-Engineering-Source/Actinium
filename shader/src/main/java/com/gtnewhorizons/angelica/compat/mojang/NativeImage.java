@@ -14,6 +14,7 @@ import net.coderbot.iris.Iris;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 // TBD
 public class NativeImage extends BufferedImage {
@@ -54,12 +55,12 @@ public class NativeImage extends BufferedImage {
     }
 
     public void downloadTexture(int level, boolean bl) {
-        GLStateManager.glPixelStorei(GL11.GL_PACK_ALIGNMENT, format.components);
+        GLSMTextures.glPixelStorei(GL11.GL_PACK_ALIGNMENT, format.components);
 
         final IntBuffer buffer = BufferUtils.createIntBuffer(size);
 
         try {
-            GLStateManager.glGetTexImage(GL11.GL_TEXTURE_2D, level, format.glFormat, GL12.GL_UNSIGNED_INT_8_8_8_8_REV, buffer);
+            GLSMTextures.glGetTexImage(GL11.GL_TEXTURE_2D, level, format.glFormat, GL12.GL_UNSIGNED_INT_8_8_8_8_REV, buffer);
 
             int[] data = new int[size];
             buffer.get(data);

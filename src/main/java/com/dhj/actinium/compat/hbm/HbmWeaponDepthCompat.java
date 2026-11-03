@@ -3,6 +3,7 @@ package com.dhj.actinium.compat.hbm;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import net.coderbot.iris.apiimpl.IrisApiV0Impl;
 import net.coderbot.iris.pipeline.HandRenderer;
+import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
 
 /**
  * Keeps HBM's first-person weapon depth handling out of Actinium's shader-pipeline hand pass.
@@ -34,6 +35,6 @@ public final class HbmWeaponDepthCompat {
      * multiplies into the weapon projection exactly as it does under OptiFine.
      */
     public static void applyShaderHandDepth() {
-        GLStateManager.glScalef(1.0F, 1.0F, HandRenderer.DEPTH);
+        GLSMMatrices.glScalef(1.0F, 1.0F, HandRenderer.DEPTH);
     }
 }

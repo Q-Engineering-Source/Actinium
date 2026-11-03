@@ -12,6 +12,7 @@ import org.objectweb.asm.tree.MethodNode;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
 
 /**
  * Verifies that the GLSM redirector rewrites vanilla
@@ -128,7 +129,7 @@ class GLSMRedirectorTest {
                 break;
             }
         }
-        assertTrue(redirected, "GlStateManager.rotate(DFFF) must be redirected to GLSM GLStateManager.glRotatef(DFFF)");
+        assertTrue(redirected, "GlStateManager.rotate(DFFF) must be redirected to GLSM GLSMMatrices.glRotatef(DFFF)");
     }
 
     @Test

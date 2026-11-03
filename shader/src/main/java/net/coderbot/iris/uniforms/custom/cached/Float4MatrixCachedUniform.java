@@ -10,6 +10,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.function.Supplier;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
 
 public class Float4MatrixCachedUniform extends VectorCachedUniform<Matrix4fc> {
 	final private FloatBuffer buffer = ByteBuffer.allocateDirect(16 << 2).order(ByteOrder.nativeOrder()).asFloatBuffer();
@@ -27,7 +28,7 @@ public class Float4MatrixCachedUniform extends VectorCachedUniform<Matrix4fc> {
 	public void push(int location) {
 		// `gets` the values from the matrix and put's them into a buffer
 		this.cached.get(buffer);
-		GLStateManager.glUniformMatrix4(location, false, buffer);
+		GLSMPrograms.glUniformMatrix4(location, false, buffer);
 	}
 
 	@Override

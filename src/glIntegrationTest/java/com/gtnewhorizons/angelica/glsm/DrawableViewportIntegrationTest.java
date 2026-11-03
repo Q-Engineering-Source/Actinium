@@ -25,9 +25,9 @@ class DrawableViewportIntegrationTest extends GLStateManagerIntegrationFixture {
         final Object displayToken = new Object();
         final Object drawableToken = new Object();
         activateContext(displayToken, context, true);
-        GLStateManager.glViewport(1, 2, 3, 4);
-        GLStateManager.glPushAttrib(GL11.GL_VIEWPORT_BIT);
-        GLStateManager.glViewport(5, 6, 7, 8);
+        GLSMRasterizer.glViewport(1, 2, 3, 4);
+        GLSMAttribStack.glPushAttrib(GL11.GL_VIEWPORT_BIT);
+        GLSMRasterizer.glViewport(5, 6, 7, 8);
 
         final long drawable = SDL_GL_CreateContext(window);
         assertNotEquals(MemoryUtil.NULL, drawable);
@@ -35,20 +35,20 @@ class DrawableViewportIntegrationTest extends GLStateManagerIntegrationFixture {
             activateContext(drawableToken, drawable, false);
             assertViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 
-            GLStateManager.glPushAttrib(GL11.GL_VIEWPORT_BIT);
-            GLStateManager.glViewport(10, 20, 30, 40);
-            GLStateManager.glPopAttrib();
+            GLSMAttribStack.glPushAttrib(GL11.GL_VIEWPORT_BIT);
+            GLSMRasterizer.glViewport(10, 20, 30, 40);
+            GLSMAttribStack.glPopAttrib();
             assertViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 
             activateContext(displayToken, context, true);
-            GLStateManager.glPopAttrib();
+            GLSMAttribStack.glPopAttrib();
             assertViewport(1, 2, 3, 4);
         } finally {
             releaseNativeContext();
             assertTrue(SDL_GL_DestroyContext(drawable));
             activateContext(displayToken, context, true);
-            while (GLStateManager.getAttribDepth() > 0) GLStateManager.glPopAttrib();
-            GLStateManager.glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+            while (GLStateManager.getAttribDepth() > 0) GLSMAttribStack.glPopAttrib();
+            GLSMRasterizer.glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
         }
     }
 

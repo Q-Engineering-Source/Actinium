@@ -21,30 +21,30 @@ class ScissorStateIntegrationTest extends GLStateManagerIntegrationFixture {
     @BeforeEach
     void resetScissor() {
         GLStateManager.disableScissorTest();
-        GLStateManager.glScissor(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+        GLSMRasterizer.glScissor(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
     }
 
     @Test
     void scissorBitRestoresBoxAndEnableBitOnlyRestoresEnable() {
         final int[] initial = {10, 20, 30, 40};
         final int[] changed = {5, 6, 7, 8};
-        GLStateManager.glScissor(initial[0], initial[1], initial[2], initial[3]);
-        GLStateManager.glPushAttrib(GL11.GL_SCISSOR_BIT);
+        GLSMRasterizer.glScissor(initial[0], initial[1], initial[2], initial[3]);
+        GLSMAttribStack.glPushAttrib(GL11.GL_SCISSOR_BIT);
         GLStateManager.enableScissorTest();
-        GLStateManager.glScissor(changed[0], changed[1], changed[2], changed[3]);
-        GLStateManager.glPopAttrib();
+        GLSMRasterizer.glScissor(changed[0], changed[1], changed[2], changed[3]);
+        GLSMAttribStack.glPopAttrib();
 
         assertScissorBox(initial);
-        assertFalse(GLStateManager.glIsEnabled(GL11.GL_SCISSOR_TEST));
+        assertFalse(GLSMEnable.glIsEnabled(GL11.GL_SCISSOR_TEST));
         assertFalse(GL11.glIsEnabled(GL11.GL_SCISSOR_TEST));
 
-        GLStateManager.glPushAttrib(GL11.GL_ENABLE_BIT);
+        GLSMAttribStack.glPushAttrib(GL11.GL_ENABLE_BIT);
         GLStateManager.enableScissorTest();
-        GLStateManager.glScissor(changed[0], changed[1], changed[2], changed[3]);
-        GLStateManager.glPopAttrib();
+        GLSMRasterizer.glScissor(changed[0], changed[1], changed[2], changed[3]);
+        GLSMAttribStack.glPopAttrib();
 
         assertScissorBox(changed);
-        assertFalse(GLStateManager.glIsEnabled(GL11.GL_SCISSOR_TEST));
+        assertFalse(GLSMEnable.glIsEnabled(GL11.GL_SCISSOR_TEST));
         assertFalse(GL11.glIsEnabled(GL11.GL_SCISSOR_TEST));
     }
 
@@ -54,14 +54,14 @@ class ScissorStateIntegrationTest extends GLStateManagerIntegrationFixture {
         activateContext(DISPLAY_TOKEN, context, true);
         final int[] mainBox = {1, 2, 30, 40};
         final int[] drawableBox = {3, 4, 20, 50};
-        GLStateManager.glScissor(mainBox[0], mainBox[1], mainBox[2], mainBox[3]);
+        GLSMRasterizer.glScissor(mainBox[0], mainBox[1], mainBox[2], mainBox[3]);
 
         final long drawable = SDL_GL_CreateContext(window);
         assertNotEquals(MemoryUtil.NULL, drawable);
         final Object drawableToken = new Object();
         try {
             activateContext(drawableToken, drawable, false);
-            GLStateManager.glScissor(drawableBox[0], drawableBox[1], drawableBox[2], drawableBox[3]);
+            GLSMRasterizer.glScissor(drawableBox[0], drawableBox[1], drawableBox[2], drawableBox[3]);
             assertScissorBox(drawableBox);
 
             activateContext(DISPLAY_TOKEN, context, true);
@@ -81,7 +81,7 @@ class ScissorStateIntegrationTest extends GLStateManagerIntegrationFixture {
     private static void assertScissorBox(int[] expected) {
         final int[] cached = new int[4];
         final int[] driver = new int[4];
-        GLStateManager.glGetInteger(GL11.GL_SCISSOR_BOX, cached);
+        GLSMQueries.glGetInteger(GL11.GL_SCISSOR_BOX, cached);
         GL11.glGetIntegerv(GL11.GL_SCISSOR_BOX, driver);
         assertArrayEquals(expected, cached);
         assertArrayEquals(expected, driver);

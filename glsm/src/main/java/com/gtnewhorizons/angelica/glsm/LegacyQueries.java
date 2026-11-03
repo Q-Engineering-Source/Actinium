@@ -96,7 +96,7 @@ final class LegacyQueries {
     private static FloatBuffer fillScratch(GLContextState glCtx, int pname) {
         final FloatBuffer scratch = glCtx.queryScratch;
         scratch.clear();
-        GLStateManager.glGetFloat(pname, scratch);
+        GLSMQueries.glGetFloat(pname, scratch);
         return scratch;
     }
 
@@ -110,9 +110,9 @@ final class LegacyQueries {
             return toInt(type, fillScratch(glCtx, pname).get(0));
         }
         return switch (type) {
-            case BOOL -> GLStateManager.glGetBoolean(pname) ? GL11.GL_TRUE : GL11.GL_FALSE;
-            case FLOAT -> lround(GLStateManager.glGetFloat(pname));
-            case FLOATN -> floatToInt(GLStateManager.glGetFloat(pname));
+            case BOOL -> GLSMQueries.glGetBoolean(pname) ? GL11.GL_TRUE : GL11.GL_FALSE;
+            case FLOAT -> lround(GLSMQueries.glGetFloat(pname));
+            case FLOATN -> floatToInt(GLSMQueries.glGetFloat(pname));
             default -> throw untracked(pname);
         };
     }
@@ -122,8 +122,8 @@ final class LegacyQueries {
             return fillScratch(glCtx, pname).get(0);
         }
         return switch (type(desc)) {
-            case BOOL -> GLStateManager.glGetBoolean(pname) ? 1.0f : 0.0f;
-            case INT -> (float) GLStateManager.glGetInteger(pname);
+            case BOOL -> GLSMQueries.glGetBoolean(pname) ? 1.0f : 0.0f;
+            case INT -> (float) GLSMQueries.glGetInteger(pname);
             default -> throw untracked(pname);
         };
     }
@@ -133,8 +133,8 @@ final class LegacyQueries {
             return fillScratch(glCtx, pname).get(0) != 0.0f;
         }
         return switch (type(desc)) {
-            case INT -> GLStateManager.glGetInteger(pname) != 0;
-            case FLOAT, FLOATN -> GLStateManager.glGetFloat(pname) != 0.0f;
+            case INT -> GLSMQueries.glGetInteger(pname) != 0;
+            case FLOAT, FLOATN -> GLSMQueries.glGetFloat(pname) != 0.0f;
             default -> throw untracked(pname);
         };
     }

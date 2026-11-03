@@ -15,6 +15,21 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.*;
+import com.gtnewhorizons.angelica.glsm.GLSMAttribStack;
+import com.gtnewhorizons.angelica.glsm.GLSMBlend;
+import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
+import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
+import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
+import com.gtnewhorizons.angelica.glsm.GLSMDraws;
+import com.gtnewhorizons.angelica.glsm.GLSMEnable;
+import com.gtnewhorizons.angelica.glsm.GLSMFog;
+import com.gtnewhorizons.angelica.glsm.GLSMFramebuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMLighting;
+import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
+import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
+import com.gtnewhorizons.angelica.glsm.GLSMVertexInput;
 
 /**
  * Executes commands from a CommandBuffer
@@ -47,76 +62,76 @@ public final class CommandBufferExecutor {
 
             switch (cmd) {
                 case GLCommand.ENABLE -> {
-                    GLStateManager.glEnable(memGetInt(ptr));
+                    GLSMEnable.glEnable(memGetInt(ptr));
                     ptr += 4;
                 }
                 case GLCommand.DISABLE -> {
-                    GLStateManager.glDisable(memGetInt(ptr));
+                    GLSMEnable.glDisable(memGetInt(ptr));
                     ptr += 4;
                 }
                 case GLCommand.CLEAR -> {
-                    GLStateManager.glClear(memGetInt(ptr));
+                    GLSMFramebuffer.glClear(memGetInt(ptr));
                     ptr += 4;
                 }
                 case GLCommand.CLEAR_STENCIL -> {
-                    GLStateManager.glClearStencil(memGetInt(ptr));
+                    GLSMDepthStencilAlpha.glClearStencil(memGetInt(ptr));
                     ptr += 4;
                 }
                 case GLCommand.CULL_FACE -> {
-                    GLStateManager.glCullFace(memGetInt(ptr));
+                    GLSMRasterizer.glCullFace(memGetInt(ptr));
                     ptr += 4;
                 }
                 case GLCommand.DEPTH_FUNC -> {
-                    GLStateManager.glDepthFunc(memGetInt(ptr));
+                    GLSMDepthStencilAlpha.glDepthFunc(memGetInt(ptr));
                     ptr += 4;
                 }
                 case GLCommand.SHADE_MODEL -> {
-                    GLStateManager.glShadeModel(memGetInt(ptr));
+                    GLSMRasterizer.glShadeModel(memGetInt(ptr));
                     ptr += 4;
                 }
                 case GLCommand.LOGIC_OP -> {
-                    GLStateManager.glLogicOp(memGetInt(ptr));
+                    GLSMBlend.glLogicOp(memGetInt(ptr));
                     ptr += 4;
                 }
                 case GLCommand.MATRIX_MODE -> {
-                    GLStateManager.glMatrixMode(memGetInt(ptr));
+                    GLSMMatrices.glMatrixMode(memGetInt(ptr));
                     ptr += 4;
                 }
                 case GLCommand.ACTIVE_TEXTURE -> {
-                    GLStateManager.glActiveTexture(memGetInt(ptr));
+                    GLSMTextures.glActiveTexture(memGetInt(ptr));
                     ptr += 4;
                 }
                 case GLCommand.USE_PROGRAM -> {
-                    GLStateManager.glUseProgram(memGetInt(ptr));
+                    GLSMPrograms.glUseProgram(memGetInt(ptr));
                     ptr += 4;
                 }
                 case GLCommand.PUSH_ATTRIB -> {
-                    GLStateManager.glPushAttrib(memGetInt(ptr));
+                    GLSMAttribStack.glPushAttrib(memGetInt(ptr));
                     ptr += 4;
                 }
                 case GLCommand.POP_ATTRIB -> {
-                    GLStateManager.glPopAttrib();
+                    GLSMAttribStack.glPopAttrib();
                     ptr += 4; // Skip unused padding
                 }
                 case GLCommand.LOAD_IDENTITY -> {
-                    GLStateManager.glLoadIdentity();
+                    GLSMMatrices.glLoadIdentity();
                 }
                 case GLCommand.PUSH_MATRIX -> {
-                    GLStateManager.glPushMatrix();
+                    GLSMMatrices.glPushMatrix();
                 }
                 case GLCommand.POP_MATRIX -> {
-                    GLStateManager.glPopMatrix();
+                    GLSMMatrices.glPopMatrix();
                 }
                 case GLCommand.STENCIL_MASK -> {
-                    GLStateManager.glStencilMask(memGetInt(ptr));
+                    GLSMDepthStencilAlpha.glStencilMask(memGetInt(ptr));
                     ptr += 4;
                 }
                 case GLCommand.DEPTH_MASK -> {
-                    GLStateManager.glDepthMask(memGetInt(ptr) != 0);
+                    GLSMDepthStencilAlpha.glDepthMask(memGetInt(ptr) != 0);
                     ptr += 4;
                 }
                 case GLCommand.FRONT_FACE -> {
-                    GLStateManager.glFrontFace(memGetInt(ptr));
+                    GLSMRasterizer.glFrontFace(memGetInt(ptr));
                     ptr += 4;
                 }
 
@@ -124,43 +139,43 @@ public final class CommandBufferExecutor {
                     final int target = memGetInt(ptr);
                     final int texture = memGetInt(ptr + 4);
                     ptr += 8;
-                    GLStateManager.glBindTexture(target, texture);
+                    GLSMTextures.glBindTexture(target, texture);
                 }
                 case GLCommand.POLYGON_MODE -> {
                     final int face = memGetInt(ptr);
                     final int mode = memGetInt(ptr + 4);
                     ptr += 8;
-                    GLStateManager.glPolygonMode(face, mode);
+                    GLSMRasterizer.glPolygonMode(face, mode);
                 }
                 case GLCommand.COLOR_MATERIAL -> {
                     final int face = memGetInt(ptr);
                     final int mode = memGetInt(ptr + 4);
                     ptr += 8;
-                    GLStateManager.glColorMaterial(face, mode);
+                    GLSMLighting.glColorMaterial(face, mode);
                 }
                 case GLCommand.LINE_STIPPLE -> {
                     final int factor = memGetInt(ptr);
                     final int pattern = memGetInt(ptr + 4);
                     ptr += 8;
-                    GLStateManager.glLineStipple(factor, (short) pattern);
+                    GLSMRasterizer.glLineStipple(factor, (short) pattern);
                 }
                 case GLCommand.STENCIL_MASK_SEPARATE -> {
                     final int face = memGetInt(ptr);
                     final int mask = memGetInt(ptr + 4);
                     ptr += 8;
-                    GLStateManager.glStencilMaskSeparate(face, mask);
+                    GLSMDepthStencilAlpha.glStencilMaskSeparate(face, mask);
                 }
                 case GLCommand.FOGI -> {
                     final int pname = memGetInt(ptr);
                     final int param = memGetInt(ptr + 4);
                     ptr += 8;
-                    GLStateManager.glFogi(pname, param);
+                    GLSMFog.glFogi(pname, param);
                 }
                 case GLCommand.HINT -> {
                     final int target = memGetInt(ptr);
                     final int mode = memGetInt(ptr + 4);
                     ptr += 8;
-                    GLStateManager.glHint(target, mode);
+                    GLSMRasterizer.glHint(target, mode);
                 }
 
                 case GLCommand.STENCIL_FUNC -> {
@@ -168,21 +183,21 @@ public final class CommandBufferExecutor {
                     final int ref = memGetInt(ptr + 4);
                     final int mask = memGetInt(ptr + 8);
                     ptr += 12;
-                    GLStateManager.glStencilFunc(func, ref, mask);
+                    GLSMDepthStencilAlpha.glStencilFunc(func, ref, mask);
                 }
                 case GLCommand.STENCIL_OP -> {
                     final int fail = memGetInt(ptr);
                     final int zfail = memGetInt(ptr + 4);
                     final int zpass = memGetInt(ptr + 8);
                     ptr += 12;
-                    GLStateManager.glStencilOp(fail, zfail, zpass);
+                    GLSMDepthStencilAlpha.glStencilOp(fail, zfail, zpass);
                 }
                 case GLCommand.TEX_PARAMETERI -> {
                     final int target = memGetInt(ptr);
                     final int pname = memGetInt(ptr + 4);
                     final int param = memGetInt(ptr + 8);
                     ptr += 12;
-                    GLStateManager.glTexParameteri(target, pname, param);
+                    GLSMTextures.glTexParameteri(target, pname, param);
                 }
 
                 case GLCommand.VIEWPORT -> {
@@ -191,7 +206,7 @@ public final class CommandBufferExecutor {
                     final int width = memGetInt(ptr + 8);
                     final int height = memGetInt(ptr + 12);
                     ptr += 16;
-                    GLStateManager.glViewport(x, y, width, height);
+                    GLSMRasterizer.glViewport(x, y, width, height);
                 }
                 case GLCommand.SCISSOR -> {
                     final int x = memGetInt(ptr);
@@ -199,7 +214,7 @@ public final class CommandBufferExecutor {
                     final int width = memGetInt(ptr + 8);
                     final int height = memGetInt(ptr + 12);
                     ptr += 16;
-                    GLStateManager.glScissor(x, y, width, height);
+                    GLSMRasterizer.glScissor(x, y, width, height);
                 }
                 case GLCommand.BLEND_FUNC -> {
                     final int srcRgb = memGetInt(ptr);
@@ -208,7 +223,7 @@ public final class CommandBufferExecutor {
                     final int dstAlpha = memGetInt(ptr + 12);
                     ptr += 16;
                     if (srcRgb == srcAlpha && dstRgb == dstAlpha) {
-                        GLStateManager.glBlendFunc(srcRgb, dstRgb);
+                        GLSMBlend.glBlendFunc(srcRgb, dstRgb);
                     } else {
                         GLStateManager.tryBlendFuncSeparate(srcRgb, dstRgb, srcAlpha, dstAlpha);
                     }
@@ -219,7 +234,7 @@ public final class CommandBufferExecutor {
                     final boolean b = memGetInt(ptr + 8) != 0;
                     final boolean a = memGetInt(ptr + 12) != 0;
                     ptr += 16;
-                    GLStateManager.glColorMask(r, g, b, a);
+                    GLSMBlend.glColorMask(r, g, b, a);
                 }
                 case GLCommand.STENCIL_FUNC_SEPARATE -> {
                     final int face = memGetInt(ptr);
@@ -227,7 +242,7 @@ public final class CommandBufferExecutor {
                     final int ref = memGetInt(ptr + 8);
                     final int mask = memGetInt(ptr + 12);
                     ptr += 16;
-                    GLStateManager.glStencilFuncSeparate(face, func, ref, mask);
+                    GLSMDepthStencilAlpha.glStencilFuncSeparate(face, func, ref, mask);
                 }
                 case GLCommand.STENCIL_OP_SEPARATE -> {
                     final int face = memGetInt(ptr);
@@ -235,22 +250,22 @@ public final class CommandBufferExecutor {
                     final int dpfail = memGetInt(ptr + 8);
                     final int dppass = memGetInt(ptr + 12);
                     ptr += 16;
-                    GLStateManager.glStencilOpSeparate(face, sfail, dpfail, dppass);
+                    GLSMDepthStencilAlpha.glStencilOpSeparate(face, sfail, dpfail, dppass);
                 }
 
                 case GLCommand.POINT_SIZE -> {
-                    GLStateManager.glPointSize(memGetFloat(ptr));
+                    GLSMRasterizer.glPointSize(memGetFloat(ptr));
                     ptr += 4;
                 }
                 case GLCommand.LINE_WIDTH -> {
-                    GLStateManager.glLineWidth(memGetFloat(ptr));
+                    GLSMRasterizer.glLineWidth(memGetFloat(ptr));
                     ptr += 4;
                 }
                 case GLCommand.POLYGON_OFFSET -> {
                     final float factor = memGetFloat(ptr);
                     final float units = memGetFloat(ptr + 4);
                     ptr += 8;
-                    GLStateManager.glPolygonOffset(factor, units);
+                    GLSMRasterizer.glPolygonOffset(factor, units);
                 }
                 case GLCommand.COLOR -> {
                     final float r = memGetFloat(ptr);
@@ -258,14 +273,14 @@ public final class CommandBufferExecutor {
                     final float b = memGetFloat(ptr + 8);
                     final float a = memGetFloat(ptr + 12);
                     ptr += 16;
-                    GLStateManager.glColor4f(r, g, b, a);
+                    GLSMCurrentAttribs.glColor4f(r, g, b, a);
                 }
                 case GLCommand.SECONDARY_COLOR -> {
                     final float r = memGetFloat(ptr);
                     final float g = memGetFloat(ptr + 4);
                     final float b = memGetFloat(ptr + 8);
                     ptr += 12;
-                    GLStateManager.glSecondaryColor3f(r, g, b);
+                    GLSMCurrentAttribs.glSecondaryColor3f(r, g, b);
                 }
                 case GLCommand.CLEAR_COLOR -> {
                     final float r = memGetFloat(ptr);
@@ -273,12 +288,12 @@ public final class CommandBufferExecutor {
                     final float b = memGetFloat(ptr + 8);
                     final float a = memGetFloat(ptr + 12);
                     ptr += 16;
-                    GLStateManager.glClearColor(r, g, b, a);
+                    GLSMBlend.glClearColor(r, g, b, a);
                 }
                 case GLCommand.CLEAR_DEPTH -> {
                     final double depth = memGetDouble(ptr);
                     ptr += 8;
-                    GLStateManager.glClearDepth(depth);
+                    GLSMDepthStencilAlpha.glClearDepth(depth);
                 }
                 case GLCommand.BLEND_COLOR -> {
                     final float r = memGetFloat(ptr);
@@ -286,60 +301,60 @@ public final class CommandBufferExecutor {
                     final float b = memGetFloat(ptr + 8);
                     final float a = memGetFloat(ptr + 12);
                     ptr += 16;
-                    GLStateManager.glBlendColor(r, g, b, a);
+                    GLSMBlend.glBlendColor(r, g, b, a);
                 }
 
                 case GLCommand.ALPHA_FUNC -> {
                     final int func = memGetInt(ptr);
                     final float ref = memGetFloat(ptr + 4);
                     ptr += 8;
-                    GLStateManager.glAlphaFunc(func, ref);
+                    GLSMDepthStencilAlpha.glAlphaFunc(func, ref);
                 }
                 case GLCommand.FOGF -> {
                     final int pname = memGetInt(ptr);
                     final float param = memGetFloat(ptr + 4);
                     ptr += 8;
-                    GLStateManager.glFogf(pname, param);
+                    GLSMFog.glFogf(pname, param);
                 }
                 case GLCommand.LIGHTF -> {
                     final int light = memGetInt(ptr);
                     final int pname = memGetInt(ptr + 4);
                     final float param = memGetFloat(ptr + 8);
                     ptr += 12;
-                    GLStateManager.glLightf(light, pname, param);
+                    GLSMLighting.glLightf(light, pname, param);
                 }
                 case GLCommand.LIGHT_MODELF -> {
                     final int pname = memGetInt(ptr);
                     final float param = memGetFloat(ptr + 4);
                     ptr += 8;
-                    GLStateManager.glLightModelf(pname, param);
+                    GLSMLighting.glLightModelf(pname, param);
                 }
                 case GLCommand.LIGHTI -> {
                     final int light = memGetInt(ptr);
                     final int pname = memGetInt(ptr + 4);
                     final int param = memGetInt(ptr + 8);
                     ptr += 12;
-                    GLStateManager.glLighti(light, pname, param);
+                    GLSMLighting.glLighti(light, pname, param);
                 }
                 case GLCommand.LIGHT_MODELI -> {
                     final int pname = memGetInt(ptr);
                     final int param = memGetInt(ptr + 4);
                     ptr += 8;
-                    GLStateManager.glLightModeli(pname, param);
+                    GLSMLighting.glLightModeli(pname, param);
                 }
                 case GLCommand.MATERIALF -> {
                     final int face = memGetInt(ptr);
                     final int pname = memGetInt(ptr + 4);
                     final float param = memGetFloat(ptr + 8);
                     ptr += 12;
-                    GLStateManager.glMaterialf(face, pname, param);
+                    GLSMLighting.glMaterialf(face, pname, param);
                 }
                 case GLCommand.TEX_PARAMETERF -> {
                     final int target = memGetInt(ptr);
                     final int pname = memGetInt(ptr + 4);
                     final float param = memGetFloat(ptr + 8);
                     ptr += 12;
-                    GLStateManager.glTexParameterf(target, pname, param);
+                    GLSMTextures.glTexParameterf(target, pname, param);
                 }
 
                 case GLCommand.TRANSLATE -> {
@@ -347,7 +362,7 @@ public final class CommandBufferExecutor {
                     final double y = memGetDouble(ptr + 8);
                     final double z = memGetDouble(ptr + 16);
                     ptr += 24;
-                    GLStateManager.glTranslated(x, y, z);
+                    GLSMMatrices.glTranslated(x, y, z);
                 }
                 case GLCommand.ROTATE -> {
                     final double angle = memGetDouble(ptr);
@@ -355,14 +370,14 @@ public final class CommandBufferExecutor {
                     final double y = memGetDouble(ptr + 16);
                     final double z = memGetDouble(ptr + 24);
                     ptr += 32;
-                    GLStateManager.glRotated(angle, x, y, z);
+                    GLSMMatrices.glRotated(angle, x, y, z);
                 }
                 case GLCommand.SCALE -> {
                     final double x = memGetDouble(ptr);
                     final double y = memGetDouble(ptr + 8);
                     final double z = memGetDouble(ptr + 16);
                     ptr += 24;
-                    GLStateManager.glScaled(x, y, z);
+                    GLSMMatrices.glScaled(x, y, z);
                 }
                 case GLCommand.ORTHO -> {
                     final double left = memGetDouble(ptr);
@@ -372,7 +387,7 @@ public final class CommandBufferExecutor {
                     final double zNear = memGetDouble(ptr + 32);
                     final double zFar = memGetDouble(ptr + 40);
                     ptr += 48;
-                    GLStateManager.glOrtho(left, right, bottom, top, zNear, zFar);
+                    GLSMMatrices.glOrtho(left, right, bottom, top, zNear, zFar);
                 }
                 case GLCommand.FRUSTUM -> {
                     final double left = memGetDouble(ptr);
@@ -382,7 +397,7 @@ public final class CommandBufferExecutor {
                     final double zNear = memGetDouble(ptr + 32);
                     final double zFar = memGetDouble(ptr + 40);
                     ptr += 48;
-                    GLStateManager.glFrustum(left, right, bottom, top, zNear, zFar);
+                    GLSMMatrices.glFrustum(left, right, bottom, top, zNear, zFar);
                 }
 
                 case GLCommand.MULT_MATRIX -> {
@@ -393,7 +408,7 @@ public final class CommandBufferExecutor {
                         ptr += 4;
                     }
                     MATRIX_BUFFER.flip();
-                    GLStateManager.glMultMatrix(MATRIX_BUFFER);
+                    GLSMMatrices.glMultMatrix(MATRIX_BUFFER);
                 }
                 case GLCommand.LOAD_MATRIX -> {
                     MATRIX_BUFFER.clear();
@@ -402,7 +417,7 @@ public final class CommandBufferExecutor {
                         ptr += 4;
                     }
                     MATRIX_BUFFER.flip();
-                    GLStateManager.glLoadMatrix(MATRIX_BUFFER);
+                    GLSMMatrices.glLoadMatrix(MATRIX_BUFFER);
                 }
 
                 case GLCommand.FOG -> {
@@ -415,7 +430,7 @@ public final class CommandBufferExecutor {
                         ptr += 4;
                     }
                     PARAMS_BUFFER.flip();
-                    GLStateManager.glFog(pname, PARAMS_BUFFER);
+                    GLSMFog.glFog(pname, PARAMS_BUFFER);
                 }
                 case GLCommand.LIGHT -> {
                     final int light = memGetInt(ptr);
@@ -428,7 +443,7 @@ public final class CommandBufferExecutor {
                         ptr += 4;
                     }
                     PARAMS_BUFFER.flip();
-                    GLStateManager.glLight(light, pname, PARAMS_BUFFER);
+                    GLSMLighting.glLight(light, pname, PARAMS_BUFFER);
                 }
                 case GLCommand.LIGHT_MODEL -> {
                     final int pname = memGetInt(ptr);
@@ -440,7 +455,7 @@ public final class CommandBufferExecutor {
                         ptr += 4;
                     }
                     PARAMS_BUFFER.flip();
-                    GLStateManager.glLightModel(pname, PARAMS_BUFFER);
+                    GLSMLighting.glLightModel(pname, PARAMS_BUFFER);
                 }
                 case GLCommand.MATERIAL -> {
                     final int face = memGetInt(ptr);
@@ -453,7 +468,7 @@ public final class CommandBufferExecutor {
                         ptr += 4;
                     }
                     PARAMS_BUFFER.flip();
-                    GLStateManager.glMaterial(face, pname, PARAMS_BUFFER);
+                    GLSMLighting.glMaterial(face, pname, PARAMS_BUFFER);
                 }
 
                 case GLCommand.CLIP_PLANE -> {
@@ -466,7 +481,7 @@ public final class CommandBufferExecutor {
                     PARAMS_DOUBLE_BUFFER.clear();
                     PARAMS_DOUBLE_BUFFER.put(a).put(b).put(c).put(d);
                     PARAMS_DOUBLE_BUFFER.flip();
-                    GLStateManager.glClipPlane(plane, PARAMS_DOUBLE_BUFFER);
+                    GLSMRasterizer.glClipPlane(plane, PARAMS_DOUBLE_BUFFER);
                 }
 
                 case GLCommand.DRAW_RANGE -> {
@@ -487,19 +502,19 @@ public final class CommandBufferExecutor {
                         final byte b = (byte) ((color >> 16) & 0xFF);
                         final byte g = (byte) ((color >> 8) & 0xFF);
                         final byte r = (byte) ((color & 0xFF));
-                        GLStateManager.glColor4ub(r, g, b, a);
+                        GLSMCurrentAttribs.glColor4ub(r, g, b, a);
                     }
                     if ((flags & VertexFlags.NORMAL_BIT) != 0) {
                         final int normal = memGetInt(ptr + 12);
                         float nx = (byte)(normal)       / 127.0f;
                         float ny = (byte)(normal >> 8)  / 127.0f;
                         float nz = (byte)(normal >> 16) / 127.0f;
-                        GLStateManager.glNormal3f(nx, ny, nz);
+                        GLSMCurrentAttribs.glNormal3f(nx, ny, nz);
                     }
                     if ((flags & VertexFlags.TEXTURE_BIT) != 0) {
                         final float s = memGetFloat(ptr + 16);
                         final float t = memGetFloat(ptr + 20);
-                        GLStateManager.glTexCoord2f(s, t);
+                        GLSMCurrentAttribs.glTexCoord2f(s, t);
                     }
                     ptr += 24;  // Skip full command size (28 - 4 for cmd already read)
                 }
@@ -509,7 +524,7 @@ public final class CommandBufferExecutor {
                     DisplayListManager.glCallList(listId);
                 }
                 case GLCommand.DRAW_BUFFER -> {
-                    GLStateManager.glDrawBuffer(memGetInt(ptr));
+                    GLSMFramebuffer.glDrawBuffer(memGetInt(ptr));
                     ptr += 4;
                 }
                 case GLCommand.DRAW_BUFFERS -> {
@@ -521,20 +536,20 @@ public final class CommandBufferExecutor {
                     }
                     DRAW_BUFFERS_BUFFER.flip();
                     ptr += 4 * MAX_DRAW_BUFFERS;
-                    GLStateManager.glDrawBuffers(DRAW_BUFFERS_BUFFER);
+                    GLSMFramebuffer.glDrawBuffers(DRAW_BUFFERS_BUFFER);
                 }
                 case GLCommand.DRAW_ARRAYS -> {
-                    GLStateManager.glDrawArrays(memGetInt(ptr), memGetInt(ptr + 4), memGetInt(ptr + 8));
+                    GLSMDraws.glDrawArrays(memGetInt(ptr), memGetInt(ptr + 4), memGetInt(ptr + 8));
                     ptr += 12;
                 }
                 case GLCommand.BIND_VBO -> {
-                    GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, memGetInt(ptr));
+                    GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, memGetInt(ptr));
                     ptr += 4;
                 }
                 case GLCommand.BIND_VAO -> {
                     final int vao = memGetInt(ptr);
                     ptr += 4;
-                    if (compiledDisplayList.replaysVertexArrayBind(vao)) GLStateManager.glBindVertexArray(vao);
+                    if (compiledDisplayList.replaysVertexArrayBind(vao)) GLSMVertexInput.glBindVertexArray(vao);
                 }
 
                 case GLCommand.COMPLEX_REF -> {

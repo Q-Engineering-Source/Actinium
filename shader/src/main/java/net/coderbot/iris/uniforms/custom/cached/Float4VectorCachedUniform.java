@@ -7,6 +7,7 @@ import org.joml.Vector4fc;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 
 import java.util.function.Supplier;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
 
 public class Float4VectorCachedUniform extends VectorCachedUniform<Vector4f> {
 
@@ -29,7 +30,7 @@ public class Float4VectorCachedUniform extends VectorCachedUniform<Vector4f> {
 
 	@Override
 	public void push(int location) {
-		GLStateManager.glUniform4f(location, this.cached.x, this.cached.y, this.cached.z, this.cached.w);
+		GLSMPrograms.glUniform4f(location, this.cached.x, this.cached.y, this.cached.z, this.cached.w);
 	}
 
 	@Override
