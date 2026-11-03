@@ -17,21 +17,21 @@ class TextureBindingRestoreIntegrationTest extends GLStateManagerIntegrationFixt
         int textureB = createInitializedTexture();
         int entryDepth = GLStateManager.getAttribDepth();
         try {
-            GLStateManager.glBindTextureUnit(1, textureA);
-            GLStateManager.glPushAttrib(GL11.GL_TEXTURE_BIT);
-            GLStateManager.glBindTextureUnit(1, textureB);
+            GLSMTextures.glBindTextureUnit(1, textureA);
+            GLSMAttribStack.glPushAttrib(GL11.GL_TEXTURE_BIT);
+            GLSMTextures.glBindTextureUnit(1, textureB);
             assertEquals(textureB, driverTextureBinding(1));
 
-            GLStateManager.glPopAttrib();
+            GLSMAttribStack.glPopAttrib();
             assertEquals(textureA, GLStateManager.getTextures().getTextureUnitBindings(1).getBinding());
             assertEquals(textureA, driverTextureBinding(1));
         } finally {
             while (GLStateManager.getAttribDepth() > entryDepth) {
-                GLStateManager.glPopAttrib();
+                GLSMAttribStack.glPopAttrib();
             }
-            GLStateManager.glBindTextureUnit(1, 0);
-            GLStateManager.glDeleteTextures(textureA);
-            GLStateManager.glDeleteTextures(textureB);
+            GLSMTextures.glBindTextureUnit(1, 0);
+            GLSMTextures.glDeleteTextures(textureA);
+            GLSMTextures.glDeleteTextures(textureB);
         }
     }
 
@@ -44,26 +44,26 @@ class TextureBindingRestoreIntegrationTest extends GLStateManagerIntegrationFixt
         int entryDepth = GLStateManager.getAttribDepth();
         try {
             dsa.bindTextureToUnit(1, textureA);
-            GLStateManager.glPushAttrib(GL11.GL_TEXTURE_BIT);
+            GLSMAttribStack.glPushAttrib(GL11.GL_TEXTURE_BIT);
             dsa.bindTextureToUnit(1, textureB);
             assertEquals(textureB, driverTextureBinding(1));
 
-            GLStateManager.glPopAttrib();
+            GLSMAttribStack.glPopAttrib();
             assertEquals(textureA, GLStateManager.getTextures().getTextureUnitBindings(1).getBinding());
             assertEquals(textureA, driverTextureBinding(1));
         } finally {
             while (GLStateManager.getAttribDepth() > entryDepth) {
-                GLStateManager.glPopAttrib();
+                GLSMAttribStack.glPopAttrib();
             }
             dsa.bindTextureToUnit(1, 0);
-            GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
-            GLStateManager.glDeleteTextures(textureA);
-            GLStateManager.glDeleteTextures(textureB);
+            GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
+            GLSMTextures.glDeleteTextures(textureA);
+            GLSMTextures.glDeleteTextures(textureB);
         }
     }
 
     private static int createInitializedTexture() {
-        int texture = GLStateManager.glGenTextures();
+        int texture = GLSMTextures.glGenTextures();
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);

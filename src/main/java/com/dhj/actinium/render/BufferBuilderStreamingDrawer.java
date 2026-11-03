@@ -18,6 +18,8 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 
 import java.nio.ByteBuffer;
 import java.util.Map;
+import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
+import com.gtnewhorizons.angelica.glsm.GLSMVertexInput;
 
 public final class BufferBuilderStreamingDrawer {
     private static final Logger LOGGER = LogManager.getLogger("BufferBuilderStreamingDrawer");
@@ -106,7 +108,7 @@ public final class BufferBuilderStreamingDrawer {
             final long initialVaoBindStart = perfDebugEnabled
                 ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.BUFFERBUILDER_INITIAL_VAO_BIND) : 0L;
             try {
-                GLStateManager.glBindVertexArray(vao);
+                GLSMVertexInput.glBindVertexArray(vao);
             } finally {
                 if (perfDebugEnabled) {
                     GLSMPerfDebug.end(GLSMPerfDebug.Stage.BUFFERBUILDER_INITIAL_VAO_BIND, initialVaoBindStart);
@@ -114,7 +116,7 @@ public final class BufferBuilderStreamingDrawer {
             }
             if (drawPath.changesArrayBufferBinding()) {
                 restoreArrayBuffer = true;
-                GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+                GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
                 final long uploadStart = perfDebugEnabled ? GLSMPerfDebug.now() : 0L;
                 state.orphanBuffer.upload(upload);
                 if (perfDebugEnabled) {
@@ -168,9 +170,9 @@ public final class BufferBuilderStreamingDrawer {
             final long restoreBindingsStart = perfDebugEnabled
                 ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.BUFFERBUILDER_RESTORE_BINDINGS) : 0L;
             try {
-                GLStateManager.glBindVertexArray(savedVao);
+                GLSMVertexInput.glBindVertexArray(savedVao);
                 if (restoreArrayBuffer) {
-                    GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVbo);
+                    GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVbo);
                 }
             } finally {
                 if (perfDebugEnabled) {
@@ -200,10 +202,10 @@ public final class BufferBuilderStreamingDrawer {
     public static void destroy() {
         for (DrawState state : DRAW_STATES.values()) {
             if (state.persistentVao != 0) {
-                GLStateManager.glDeleteVertexArrays(state.persistentVao);
+                GLSMVertexInput.glDeleteVertexArrays(state.persistentVao);
             }
             if (state.orphanVao != 0) {
-                GLStateManager.glDeleteVertexArrays(state.orphanVao);
+                GLSMVertexInput.glDeleteVertexArrays(state.orphanVao);
             }
             if (state.orphanBuffer != null) {
                 state.orphanBuffer.destroy();

@@ -650,7 +650,7 @@ public class DisplayListManager {
 
     /**
      * Add an immediate mode draw to the current display list compilation.
-     * Called by GLStateManager.glEnd() when immediate mode geometry is ready.
+     * Called by GLSMDraws.glEnd() when immediate mode geometry is ready.
      *
      * <p>This method captures the current transform and command position, creating
      * an AccumulatedDraw that will be interleaved correctly with other commands
@@ -696,7 +696,7 @@ public class DisplayListManager {
 
     /**
      * Update the relative transform with a matrix multiplication during display list compilation.
-     * Called by GLStateManager.glMultMatrix().
+     * Called by GLSMMatrices.glMultMatrix().
      *
      * <p>In normal mode: accumulates transforms, emits collapsed MultMatrix at barriers.
      * <p>In debug mode: emits MultMatrix immediately (no collapsing).
@@ -762,7 +762,7 @@ public class DisplayListManager {
     }
 
     /**
-     * Called by GLStateManager.glLoadMatrix() - after loading an absolute matrix,
+     * Called by GLSMMatrices.glLoadMatrix() - after loading an absolute matrix,
      * subsequent transforms are relative to that loaded matrix (i.e., start from identity).
      */
     public static void resetRelativeTransform() {

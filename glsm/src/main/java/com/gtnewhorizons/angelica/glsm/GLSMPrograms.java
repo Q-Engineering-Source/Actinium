@@ -356,7 +356,7 @@ public final class GLSMPrograms {
         }
 
     public static int glGetHandleARB(int pname) {
-            return pname == ARBShaderObjects.GL_PROGRAM_OBJECT_ARB ? GLStateManager.glGetInteger(GL20.GL_CURRENT_PROGRAM) : RENDER_BACKEND.getInteger(pname);
+            return pname == ARBShaderObjects.GL_PROGRAM_OBJECT_ARB ? GLSMQueries.glGetInteger(GL20.GL_CURRENT_PROGRAM) : RENDER_BACKEND.getInteger(pname);
         }
 
     public static void glGetObjectParameterARB(int obj, int pname, IntBuffer params) {

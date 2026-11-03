@@ -73,7 +73,7 @@ public final class QuadConverter {
 
         // EBO binds must update GLStateManager too; otherwise drawElements can treat a non-zero
         // index offset as a client pointer when the real EBO binding is stale.
-        GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, eboId);
+        GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, eboId);
         RENDER_BACKEND.bufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, indexData, GL15.GL_STATIC_DRAW);
 
         memFree(indexData);
@@ -86,7 +86,7 @@ public final class QuadConverter {
      */
     public static synchronized void attachSharedEboToCurrentVao() {
         ensureCapacity(1);
-        GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, eboId);
+        GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, eboId);
     }
 
     static boolean needsSharedEboBind(int currentEbo, int sharedEbo) {
@@ -110,7 +110,7 @@ public final class QuadConverter {
         ensureCapacity(first / 4 + quadCount);
         // External native GL code can detach the shared EBO without updating GLStateManager,
         // so rebind unconditionally before every indexed draw.
-        GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, eboId);
+        GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, eboId);
         // Index offset: first vertex / 4 quads * 6 indices * 4 bytes per int
         final long indexOffset = (long) (first / 4) * 6 * 4;
         if (DEBUG_DRAW_LOGS) {
@@ -118,7 +118,7 @@ public final class QuadConverter {
         }
         RENDER_BACKEND.drawElements(GL11.GL_TRIANGLES, quadCount * 6, INDEX_TYPE, indexOffset);
         if (prevEbo != eboId) {
-            GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, prevEbo);
+            GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, prevEbo);
         }
         if (perfDebugEnabled) {
             GLSMPerfDebug.end(GLSMPerfDebug.Stage.QUAD_ARRAYS, perfStart);
@@ -136,11 +136,11 @@ public final class QuadConverter {
         final int quadCount = vertexCount / 4;
         final int prevEbo = GLStateManager.getBoundEBO();
         ensureCapacity(first / 4 + quadCount);
-        GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, eboId);
+        GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, eboId);
         final long indexOffset = (long) (first / 4) * 6 * 4;
         RENDER_BACKEND.drawElementsInstanced(GL11.GL_TRIANGLES, quadCount * 6, INDEX_TYPE, indexOffset, primcount);
         if (prevEbo != eboId) {
-            GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, prevEbo);
+            GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, prevEbo);
         }
         if (perfDebugEnabled) {
             GLSMPerfDebug.end(GLSMPerfDebug.Stage.QUAD_ARRAYS, perfStart);
@@ -167,7 +167,7 @@ public final class QuadConverter {
             scratchEboId = RENDER_BACKEND.genBuffers();
         }
 
-        GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, scratchEboId);
+        GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, scratchEboId);
 
         if (needed > scratchEboCapacity) {
             // Power-of-2 growth — allocate full capacity, upload actual data
@@ -180,7 +180,7 @@ public final class QuadConverter {
 
         RENDER_BACKEND.drawElements(GL11.GL_TRIANGLES, triIndexCount, indexType, 0L);
 
-        GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, prevEbo);
+        GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, prevEbo);
         memFree(dst);
         if (perfDebugEnabled) {
             GLSMPerfDebug.end(GLSMPerfDebug.Stage.QUAD_SCRATCH_UPLOAD_DRAW, perfStart);
@@ -475,12 +475,12 @@ public final class QuadConverter {
      */
     public static synchronized void destroy() {
         if (eboId != 0) {
-            GLStateManager.glDeleteBuffers(eboId);
+            GLSMBuffers.glDeleteBuffers(eboId);
             eboId = 0;
             maxQuads = 0;
         }
         if (scratchEboId != 0) {
-            GLStateManager.glDeleteBuffers(scratchEboId);
+            GLSMBuffers.glDeleteBuffers(scratchEboId);
             scratchEboId = 0;
             scratchEboCapacity = 0;
         }

@@ -6,6 +6,7 @@ import org.joml.Matrix4f;
 import org.lwjgl.BufferUtils;
 
 import java.nio.FloatBuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
 
 /**
  * Command: glMultMatrix(matrix)
@@ -26,7 +27,7 @@ public record MultMatrixCmd(Matrix4f matrix, FloatBuffer buffer) implements Disp
     @Override
     public void execute() {
         buffer.rewind();
-        GLStateManager.glMultMatrix(buffer);
+        GLSMMatrices.glMultMatrix(buffer);
     }
 
     @Override

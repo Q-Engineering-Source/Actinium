@@ -12,6 +12,8 @@ import static org.lwjgl.util.glu.GLU.GLU_INSIDE;
 import static org.lwjgl.util.glu.GLU.GLU_LINE;
 import static org.lwjgl.util.glu.GLU.GLU_POINT;
 import static org.lwjgl.util.glu.GLU.GLU_SILHOUETTE;
+import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
+import com.gtnewhorizons.angelica.glsm.GLSMDraws;
 
 @SuppressWarnings("unused")
 public class AngelicaCylinder extends Cylinder {
@@ -25,12 +27,12 @@ public class AngelicaCylinder extends Cylinder {
             y /= mag;
             z /= mag;
         }
-        GLStateManager.glNormal3f(x, y, z);
+        GLSMCurrentAttribs.glNormal3f(x, y, z);
     }
 
     private void emitTexCoord(float x, float y) {
         if (super.textureFlag) {
-            GLStateManager.glTexCoord2f(x, y);
+            GLSMCurrentAttribs.glTexCoord2f(x, y);
         }
     }
 
@@ -53,7 +55,7 @@ public class AngelicaCylinder extends Cylinder {
         nz = (baseRadius - topRadius) / height;
 
         if (super.drawStyle == GLU_POINT) {
-            GLStateManager.glBegin(GL_POINTS);
+            GLSMDraws.glBegin(GL_POINTS);
             for (int i = 0; i < slices; i++) {
                 x = cos(i * da);
                 y = sin(i * da);
@@ -61,56 +63,56 @@ public class AngelicaCylinder extends Cylinder {
                 z = 0.0f;
                 r = baseRadius;
                 for (int j = 0; j <= stacks; j++) {
-                    GLStateManager.glVertex3f(x * r, y * r, z);
+                    GLSMDraws.glVertex3f(x * r, y * r, z);
                     z += dz;
                     r += dr;
                 }
             }
-            GLStateManager.glEnd();
+            GLSMDraws.glEnd();
         } else if (super.drawStyle == GLU_LINE || super.drawStyle == GLU_SILHOUETTE) {
             if (super.drawStyle == GLU_LINE) {
                 z = 0.0f;
                 r = baseRadius;
                 for (int j = 0; j <= stacks; j++) {
-                    GLStateManager.glBegin(GL_LINE_LOOP);
+                    GLSMDraws.glBegin(GL_LINE_LOOP);
                     for (int i = 0; i < slices; i++) {
                         x = cos(i * da);
                         y = sin(i * da);
                         emitNormal(x * nsign, y * nsign, nz * nsign);
-                        GLStateManager.glVertex3f(x * r, y * r, z);
+                        GLSMDraws.glVertex3f(x * r, y * r, z);
                     }
-                    GLStateManager.glEnd();
+                    GLSMDraws.glEnd();
                     z += dz;
                     r += dr;
                 }
             } else if (baseRadius != 0.0f) {
-                GLStateManager.glBegin(GL_LINE_LOOP);
+                GLSMDraws.glBegin(GL_LINE_LOOP);
                 for (int i = 0; i < slices; i++) {
                     x = cos(i * da);
                     y = sin(i * da);
                     emitNormal(x * nsign, y * nsign, nz * nsign);
-                    GLStateManager.glVertex3f(x * baseRadius, y * baseRadius, 0.0f);
+                    GLSMDraws.glVertex3f(x * baseRadius, y * baseRadius, 0.0f);
                 }
-                GLStateManager.glEnd();
-                GLStateManager.glBegin(GL_LINE_LOOP);
+                GLSMDraws.glEnd();
+                GLSMDraws.glBegin(GL_LINE_LOOP);
                 for (int i = 0; i < slices; i++) {
                     x = cos(i * da);
                     y = sin(i * da);
                     emitNormal(x * nsign, y * nsign, nz * nsign);
-                    GLStateManager.glVertex3f(x * topRadius, y * topRadius, height);
+                    GLSMDraws.glVertex3f(x * topRadius, y * topRadius, height);
                 }
-                GLStateManager.glEnd();
+                GLSMDraws.glEnd();
             }
 
-            GLStateManager.glBegin(GL_LINES);
+            GLSMDraws.glBegin(GL_LINES);
             for (int i = 0; i < slices; i++) {
                 x = cos(i * da);
                 y = sin(i * da);
                 emitNormal(x * nsign, y * nsign, nz * nsign);
-                GLStateManager.glVertex3f(x * baseRadius, y * baseRadius, 0.0f);
-                GLStateManager.glVertex3f(x * topRadius, y * topRadius, height);
+                GLSMDraws.glVertex3f(x * baseRadius, y * baseRadius, 0.0f);
+                GLSMDraws.glVertex3f(x * topRadius, y * topRadius, height);
             }
-            GLStateManager.glEnd();
+            GLSMDraws.glEnd();
         } else if (super.drawStyle == GLU_FILL) {
             float ds = 1.0f / slices;
             float dt = 1.0f / stacks;
@@ -119,20 +121,20 @@ public class AngelicaCylinder extends Cylinder {
             r = baseRadius;
             for (int j = 0; j < stacks; j++) {
                 float s = 0.0f;
-                GLStateManager.glBegin(GL_TRIANGLE_STRIP);
+                GLSMDraws.glBegin(GL_TRIANGLE_STRIP);
                 for (int i = 0; i <= slices; i++) {
                     float angle = i == slices ? 0.0f : i * da;
                     x = sin(angle);
                     y = cos(angle);
                     emitNormal(x * nsign, y * nsign, nz * nsign);
                     emitTexCoord(s, t);
-                    GLStateManager.glVertex3f(x * r, y * r, z);
+                    GLSMDraws.glVertex3f(x * r, y * r, z);
                     emitNormal(x * nsign, y * nsign, nz * nsign);
                     emitTexCoord(s, t + dt);
-                    GLStateManager.glVertex3f(x * (r + dr), y * (r + dr), z + dz);
+                    GLSMDraws.glVertex3f(x * (r + dr), y * (r + dr), z + dz);
                     s += ds;
                 }
-                GLStateManager.glEnd();
+                GLSMDraws.glEnd();
                 r += dr;
                 t += dt;
                 z += dz;

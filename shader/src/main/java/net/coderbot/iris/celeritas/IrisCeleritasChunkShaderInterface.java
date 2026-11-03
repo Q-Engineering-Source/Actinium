@@ -35,6 +35,11 @@ import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 
 import java.util.List;
+import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
+import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
+import com.gtnewhorizons.angelica.glsm.GLSMEnable;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
+import com.gtnewhorizons.angelica.glsm.GLSMVertexInput;
 
 public class IrisCeleritasChunkShaderInterface implements ChunkShaderInterface {
     @Nullable
@@ -105,7 +110,7 @@ public class IrisCeleritasChunkShaderInterface implements ChunkShaderInterface {
         bindFramebuffer(pass);
 
         if (!depthStateOverridden) {
-            previousDepthTestEnabled = GLStateManager.glIsEnabled(GL11.GL_DEPTH_TEST);
+            previousDepthTestEnabled = GLSMEnable.glIsEnabled(GL11.GL_DEPTH_TEST);
             previousDepthMaskEnabled = GLStateManager.getDepthState().isMaskEnabled();
             previousDepthFunc = GLStateManager.getDepthState().getFunc();
             depthStateOverridden = true;
@@ -113,19 +118,19 @@ public class IrisCeleritasChunkShaderInterface implements ChunkShaderInterface {
 
         // Hand and fullscreen passes can leave depth disabled or mask writes off before terrain draws.
         GLStateManager.enableDepthTest();
-        GLStateManager.glDepthFunc(GL11.GL_LEQUAL);
-        GLStateManager.glDepthMask(shouldWriteDepth(pass, ShadowRenderingState.areShadowsCurrentlyBeingRendered()));
+        GLSMDepthStencilAlpha.glDepthFunc(GL11.GL_LEQUAL);
+        GLSMDepthStencilAlpha.glDepthMask(shouldWriteDepth(pass, ShadowRenderingState.areShadowsCurrentlyBeingRendered()));
 
         if (ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
             GLStateManager.disableCull();
         }
 
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0 + IrisSamplers.ALBEDO_TEXTURE_UNIT);
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, Minecraft.getMinecraft().getTextureMapBlocks().getGlTextureId());
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0 + IrisSamplers.ALBEDO_TEXTURE_UNIT);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, Minecraft.getMinecraft().getTextureMapBlocks().getGlTextureId());
 
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0 + IrisSamplers.LIGHTMAP_TEXTURE_UNIT);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0 + IrisSamplers.LIGHTMAP_TEXTURE_UNIT);
         final DynamicTexture lightmapTexture = PostProcessingBridge.getLightmapTexture(Minecraft.getMinecraft().entityRenderer);
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, lightmapTexture.getGlTextureId());
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, lightmapTexture.getGlTextureId());
 
         if (blendModeOverride != null) {
             blendModeOverride.apply();
@@ -176,8 +181,8 @@ public class IrisCeleritasChunkShaderInterface implements ChunkShaderInterface {
             } else {
                 GLStateManager.disableDepthTest();
             }
-            GLStateManager.glDepthFunc(previousDepthFunc);
-            GLStateManager.glDepthMask(previousDepthMaskEnabled);
+            GLSMDepthStencilAlpha.glDepthFunc(previousDepthFunc);
+            GLSMDepthStencilAlpha.glDepthMask(previousDepthMaskEnabled);
             depthStateOverridden = false;
         }
 
@@ -195,10 +200,10 @@ public class IrisCeleritasChunkShaderInterface implements ChunkShaderInterface {
 
         if (this.shadowPass) {
             // Shadow entity rendering still uses fixed-function pointers on some drivers.
-            GLStateManager.glBindVertexArray(0);
-            GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
-            GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
-            GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+            GLSMVertexInput.glBindVertexArray(0);
+            GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+            GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
+            GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
 
             for (int attribute = 0; attribute <= 14; attribute++) {
                 GL20.glDisableVertexAttribArray(attribute);

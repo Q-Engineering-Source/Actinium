@@ -36,6 +36,7 @@ import org.joml.Matrix4fc;
 
 import java.util.*;
 import java.util.function.Consumer;
+import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
 
 /**
  * Provides an extension to vanilla's {@link net.minecraft.client.renderer.RenderGlobal}.
@@ -115,7 +116,7 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
         super.drawChunkLayer(renderLayer, x, y, z);
         RenderDebugHooksHolder.check("actinium:draw-chunk-layer:" + renderLayer + ":after-super");
 
-        GLStateManager.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+        GLSMCurrentAttribs.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
         RenderDebugHooksHolder.check("actinium:draw-chunk-layer:" + renderLayer + ":after-reset-color");
     }
 
@@ -142,7 +143,7 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
             }
         }
 
-        GLStateManager.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+        GLSMCurrentAttribs.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
     }
 
     public void setCurrentViewport(Viewport viewport) {

@@ -8,6 +8,15 @@ import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL20;
 
 import java.nio.ByteBuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMBlend;
+import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
+import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
+import com.gtnewhorizons.angelica.glsm.GLSMEnable;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
+import com.gtnewhorizons.angelica.glsm.GLSMQueries;
+import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
+import com.gtnewhorizons.angelica.glsm.GLSMTexEnvGen;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 /**
  * Defines the fixed-function state owned by GUI render boundaries and tracks whether entity
@@ -43,12 +52,12 @@ public final class GuiGlStateBoundary {
      * Restores the neutral state expected when Minecraft starts rendering the HUD.
      */
     public static void restoreHudBaseline() {
-        GLStateManager.glUseProgram(0);
+        GLSMPrograms.glUseProgram(0);
         GLStateManager.disableLighting();
         GLStateManager.disableFog();
         GLStateManager.enableAlphaTest();
-        GLStateManager.glAlphaFunc(GL11.GL_GREATER, 0.1F);
-        GLStateManager.glBlendFuncSeparate(
+        GLSMDepthStencilAlpha.glAlphaFunc(GL11.GL_GREATER, 0.1F);
+        GLSMBlend.glBlendFuncSeparate(
             GL11.GL_SRC_ALPHA,
             GL11.GL_ONE_MINUS_SRC_ALPHA,
             GL11.GL_ONE,
@@ -59,10 +68,10 @@ public final class GuiGlStateBoundary {
         disableTextureUnit(GL13.GL_TEXTURE3);
         disableTextureUnit(GL13.GL_TEXTURE2);
         disableTextureUnit(GL13.GL_TEXTURE1);
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
         GLStateManager.enableTexture();
-        GLStateManager.glTexEnvi(GL11.GL_TEXTURE_ENV, GL11.GL_TEXTURE_ENV_MODE, GL11.GL_MODULATE);
-        GLStateManager.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+        GLSMTexEnvGen.glTexEnvi(GL11.GL_TEXTURE_ENV, GL11.GL_TEXTURE_ENV_MODE, GL11.GL_MODULATE);
+        GLSMCurrentAttribs.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
     }
 
     /**
@@ -81,12 +90,12 @@ public final class GuiGlStateBoundary {
         CompositorSurfaceState previous = CompositorSurfaceState.capture();
         beginTranslucentLayer();
         GLStateManager.disableDepthTest();
-        GLStateManager.glDepthMask(false);
-        GLStateManager.glDepthFunc(GL11.GL_LEQUAL);
-        GLStateManager.glColorMask(true, true, true, true);
-        GLStateManager.glBlendEquationSeparate(GL14.GL_FUNC_ADD, GL14.GL_FUNC_ADD);
+        GLSMDepthStencilAlpha.glDepthMask(false);
+        GLSMDepthStencilAlpha.glDepthFunc(GL11.GL_LEQUAL);
+        GLSMBlend.glColorMask(true, true, true, true);
+        GLSMBlend.glBlendEquationSeparate(GL14.GL_FUNC_ADD, GL14.GL_FUNC_ADD);
         GLStateManager.disableCull();
-        GLStateManager.glShadeModel(GL11.GL_FLAT);
+        GLSMRasterizer.glShadeModel(GL11.GL_FLAT);
         return previous;
     }
 
@@ -94,7 +103,7 @@ public final class GuiGlStateBoundary {
      * Disables texturing on a secondary unit before returning ownership to unit zero.
      */
     private static void disableTextureUnit(int textureUnit) {
-        GLStateManager.glActiveTexture(textureUnit);
+        GLSMTextures.glActiveTexture(textureUnit);
         GLStateManager.disableTexture();
     }
 
@@ -142,19 +151,19 @@ public final class GuiGlStateBoundary {
 
         private static CompositorSurfaceState capture() {
             ByteBuffer colorMask = BufferUtils.createByteBuffer(4);
-            GLStateManager.glGetBoolean(GL11.GL_COLOR_WRITEMASK, colorMask);
+            GLSMQueries.glGetBoolean(GL11.GL_COLOR_WRITEMASK, colorMask);
             return new CompositorSurfaceState(
-                GLStateManager.glIsEnabled(GL11.GL_DEPTH_TEST),
-                GLStateManager.glGetBoolean(GL11.GL_DEPTH_WRITEMASK),
-                GLStateManager.glGetInteger(GL11.GL_DEPTH_FUNC),
+                GLSMEnable.glIsEnabled(GL11.GL_DEPTH_TEST),
+                GLSMQueries.glGetBoolean(GL11.GL_DEPTH_WRITEMASK),
+                GLSMQueries.glGetInteger(GL11.GL_DEPTH_FUNC),
                 colorMask.get(0) != 0,
                 colorMask.get(1) != 0,
                 colorMask.get(2) != 0,
                 colorMask.get(3) != 0,
-                GLStateManager.glGetInteger(GL20.GL_BLEND_EQUATION_RGB),
-                GLStateManager.glGetInteger(GL20.GL_BLEND_EQUATION_ALPHA),
-                GLStateManager.glIsEnabled(GL11.GL_CULL_FACE),
-                GLStateManager.glGetInteger(GL11.GL_SHADE_MODEL)
+                GLSMQueries.glGetInteger(GL20.GL_BLEND_EQUATION_RGB),
+                GLSMQueries.glGetInteger(GL20.GL_BLEND_EQUATION_ALPHA),
+                GLSMEnable.glIsEnabled(GL11.GL_CULL_FACE),
+                GLSMQueries.glGetInteger(GL11.GL_SHADE_MODEL)
             );
         }
 
@@ -163,19 +172,19 @@ public final class GuiGlStateBoundary {
          */
         public void restore() {
             restoreCapability(GL11.GL_DEPTH_TEST, this.depthTest);
-            GLStateManager.glDepthMask(this.depthMask);
-            GLStateManager.glDepthFunc(this.depthFunc);
-            GLStateManager.glColorMask(this.colorRed, this.colorGreen, this.colorBlue, this.colorAlpha);
-            GLStateManager.glBlendEquationSeparate(this.blendEquationRgb, this.blendEquationAlpha);
+            GLSMDepthStencilAlpha.glDepthMask(this.depthMask);
+            GLSMDepthStencilAlpha.glDepthFunc(this.depthFunc);
+            GLSMBlend.glColorMask(this.colorRed, this.colorGreen, this.colorBlue, this.colorAlpha);
+            GLSMBlend.glBlendEquationSeparate(this.blendEquationRgb, this.blendEquationAlpha);
             restoreCapability(GL11.GL_CULL_FACE, this.cull);
-            GLStateManager.glShadeModel(this.shadeModel);
+            GLSMRasterizer.glShadeModel(this.shadeModel);
         }
 
         private static void restoreCapability(int capability, boolean enabled) {
             if (enabled) {
-                GLStateManager.glEnable(capability);
+                GLSMEnable.glEnable(capability);
             } else {
-                GLStateManager.glDisable(capability);
+                GLSMEnable.glDisable(capability);
             }
         }
     }

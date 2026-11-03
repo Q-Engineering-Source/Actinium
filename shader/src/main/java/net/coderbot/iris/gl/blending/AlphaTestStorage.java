@@ -5,6 +5,7 @@ import com.gtnewhorizons.angelica.glsm.hooks.VanillaBooleanLayer;
 import com.gtnewhorizons.angelica.glsm.hooks.VanillaStateLayer;
 import com.gtnewhorizons.angelica.glsm.states.AlphaState;
 import lombok.Getter;
+import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
 
 public class AlphaTestStorage {
 	private static boolean originalAlphaTestEnable;
@@ -29,7 +30,7 @@ public class AlphaTestStorage {
 				GLStateManager.disableAlphaTest();
 			} else {
 				GLStateManager.enableAlphaTest();
-				GLStateManager.glAlphaFunc(override.getFunction().getGlId(), override.getReference());
+				GLSMDepthStencilAlpha.glAlphaFunc(override.getFunction().getGlId(), override.getReference());
 			}
 		} finally {
 			alphaTestLocked = true;
@@ -57,7 +58,7 @@ public class AlphaTestStorage {
             GLStateManager.disableAlphaTest();
 		}
 
-        GLStateManager.glAlphaFunc(originalAlphaTest.getFunction().getGlId(), originalAlphaTest.getReference());
+        GLSMDepthStencilAlpha.glAlphaFunc(originalAlphaTest.getFunction().getGlId(), originalAlphaTest.getReference());
 		overrideHeld = false;
 	}
 

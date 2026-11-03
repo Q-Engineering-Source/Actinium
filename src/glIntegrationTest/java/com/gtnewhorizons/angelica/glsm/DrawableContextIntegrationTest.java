@@ -45,7 +45,7 @@ class DrawableContextIntegrationTest extends GLStateManagerIntegrationFixture {
         final Object drawableToken = new Object();
         try {
             GLStateManager.disableBlend();
-            GLStateManager.glDepthMask(true);
+            GLSMDepthStencilAlpha.glDepthMask(true);
             final GLContextState mainState = GLStateManager.ctx();
 
             activateContext(drawableToken, drawable, false);
@@ -57,7 +57,7 @@ class DrawableContextIntegrationTest extends GLStateManagerIntegrationFixture {
             GLStateManager.enableBlend();
             GLStateManager.tryBlendFuncSeparate(
                 GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO);
-            GLStateManager.glDepthMask(false);
+            GLSMDepthStencilAlpha.glDepthMask(false);
             assertBlendAndDepthState(true, GL11.GL_SRC_ALPHA, false);
 
             activateContext(DISPLAY_TOKEN, context, true);
@@ -133,7 +133,7 @@ class DrawableContextIntegrationTest extends GLStateManagerIntegrationFixture {
                     GLStateManager.enableBlend();
                     GLStateManager.tryBlendFuncSeparate(
                         GL11.GL_DST_COLOR, GL11.GL_ZERO, GL11.GL_ONE, GL11.GL_ZERO);
-                    GLStateManager.glDepthMask(false);
+                    GLSMDepthStencilAlpha.glDepthMask(false);
                     assertBlendAndDepthState(true, GL11.GL_DST_COLOR, false);
                     workerModified.countDown();
                     if (!allowWorkerExit.await(10, TimeUnit.SECONDS)) {
@@ -190,7 +190,7 @@ class DrawableContextIntegrationTest extends GLStateManagerIntegrationFixture {
     private static void resetMainState() {
         GLStateManager.disableBlend();
         GLStateManager.tryBlendFuncSeparate(GL11.GL_ONE, GL11.GL_ZERO, GL11.GL_ONE, GL11.GL_ZERO);
-        GLStateManager.glDepthMask(true);
+        GLSMDepthStencilAlpha.glDepthMask(true);
     }
 
     private static void assertBlendAndDepthState(boolean blend, int sourceRgb, boolean depthMask) {

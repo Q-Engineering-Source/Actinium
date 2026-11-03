@@ -11,6 +11,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
 
 /**
  * Lumenized creates its bloom FBO without clearing it, so the first frames show whatever GPU
@@ -116,6 +117,6 @@ public abstract class MixinBloomEffectUtilClear {
             }
         }
         GLStateManager.enableDepthTest();
-        GLStateManager.glDepthMask(false);
+        GLSMDepthStencilAlpha.glDepthMask(false);
     }
 }

@@ -14,6 +14,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.opengl.GL11;
+import com.gtnewhorizons.angelica.glsm.GLSMQueries;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 public class PBRTextureManager {
 	public static final PBRTextureManager INSTANCE = new PBRTextureManager();
@@ -77,7 +79,7 @@ public class PBRTextureManager {
 			Class<? extends AbstractTexture> clazz = texture.getClass();
 			PBRTextureLoader loader = PBRTextureLoaderRegistry.INSTANCE.getLoader(clazz);
 			if (loader != null) {
-				int previousTextureBinding = GLStateManager.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+				int previousTextureBinding = GLSMQueries.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
 				consumer.clear();
 				try {
 					loader.load(texture, Minecraft.getMinecraft().getResourceManager(), consumer);
@@ -85,7 +87,7 @@ public class PBRTextureManager {
 				} catch (Exception e) {
 					Iris.logger.error("Failed to load PBR textures for texture " + id, e);
 				} finally {
-					GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, previousTextureBinding);
+					GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, previousTextureBinding);
 				}
 			}
 		}

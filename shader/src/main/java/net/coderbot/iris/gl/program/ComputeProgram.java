@@ -14,6 +14,7 @@ import org.lwjgl.opengl.GL42;
 import org.lwjgl.opengl.GL43;
 
 import java.nio.IntBuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
 
 public final class ComputeProgram extends GlResource {
 	private final ProgramUniforms uniforms;
@@ -65,7 +66,7 @@ public final class ComputeProgram extends GlResource {
 	}
 
     public void use() {
-        GLStateManager.glUseProgram(getGlId());
+        GLSMPrograms.glUseProgram(getGlId());
 
         uniforms.update();
         samplers.update();
@@ -87,13 +88,13 @@ public final class ComputeProgram extends GlResource {
 
 	public static void unbind() {
 		ProgramUniforms.clearActiveUniforms();
-		GLStateManager.glUseProgram(0);
+		GLSMPrograms.glUseProgram(0);
 	}
 
 	@Override
     public void destroyInternal() {
 		DepthColorStorage.unregisterOwnedProgram(getGlId());
-		GLStateManager.glDeleteProgram(getGlId());
+		GLSMPrograms.glDeleteProgram(getGlId());
 	}
 
 	/**

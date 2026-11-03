@@ -30,47 +30,47 @@ class CowStateStackIntegrationTest extends GLStateManagerIntegrationFixture {
     @Test
     void nestedMemberScopesRestoreValuesAtEachDepth() {
         int entryDepth = GLStateManager.getAttribDepth();
-        GLStateManager.glDepthFunc(GL11.GL_LESS);
+        GLSMDepthStencilAlpha.glDepthFunc(GL11.GL_LESS);
         try {
-            GLStateManager.glPushAttrib(GL11.GL_DEPTH_BUFFER_BIT);
-            GLStateManager.glDepthFunc(GL11.GL_ALWAYS);
-            GLStateManager.glPushAttrib(GL11.GL_DEPTH_BUFFER_BIT);
-            GLStateManager.glDepthFunc(GL11.GL_NEVER);
+            GLSMAttribStack.glPushAttrib(GL11.GL_DEPTH_BUFFER_BIT);
+            GLSMDepthStencilAlpha.glDepthFunc(GL11.GL_ALWAYS);
+            GLSMAttribStack.glPushAttrib(GL11.GL_DEPTH_BUFFER_BIT);
+            GLSMDepthStencilAlpha.glDepthFunc(GL11.GL_NEVER);
 
-            GLStateManager.glPopAttrib();
+            GLSMAttribStack.glPopAttrib();
             assertEquals(GL11.GL_ALWAYS, GLStateManager.getDepthState().getFunc());
             assertEquals(GL11.GL_ALWAYS, GL11.glGetInteger(GL11.GL_DEPTH_FUNC));
-            GLStateManager.glPopAttrib();
+            GLSMAttribStack.glPopAttrib();
             assertEquals(GL11.GL_LESS, GLStateManager.getDepthState().getFunc());
             assertEquals(GL11.GL_LESS, GL11.glGetInteger(GL11.GL_DEPTH_FUNC));
         } finally {
             while (GLStateManager.getAttribDepth() > entryDepth) {
-                GLStateManager.glPopAttrib();
+                GLSMAttribStack.glPopAttrib();
             }
-            GLStateManager.glDepthFunc(GL11.GL_LESS);
+            GLSMDepthStencilAlpha.glDepthFunc(GL11.GL_LESS);
         }
     }
 
     @Test
     void nonMemberChangeSurvivesNestedAttribPop() {
         int entryDepth = GLStateManager.getAttribDepth();
-        GLStateManager.glDisable(GL11.GL_CULL_FACE);
+        GLSMEnable.glDisable(GL11.GL_CULL_FACE);
         try {
-            GLStateManager.glPushAttrib(GL11.GL_ENABLE_BIT);
-            GLStateManager.glEnable(GL11.GL_CULL_FACE);
-            GLStateManager.glPushAttrib(GL11.GL_DEPTH_BUFFER_BIT);
-            GLStateManager.glDisable(GL11.GL_CULL_FACE);
+            GLSMAttribStack.glPushAttrib(GL11.GL_ENABLE_BIT);
+            GLSMEnable.glEnable(GL11.GL_CULL_FACE);
+            GLSMAttribStack.glPushAttrib(GL11.GL_DEPTH_BUFFER_BIT);
+            GLSMEnable.glDisable(GL11.GL_CULL_FACE);
 
-            GLStateManager.glPopAttrib();
+            GLSMAttribStack.glPopAttrib();
             assertFalse(GLStateManager.getCullState().isEnabled());
 
-            GLStateManager.glPopAttrib();
+            GLSMAttribStack.glPopAttrib();
             assertFalse(GLStateManager.getCullState().isEnabled());
         } finally {
             while (GLStateManager.getAttribDepth() > entryDepth) {
-                GLStateManager.glPopAttrib();
+                GLSMAttribStack.glPopAttrib();
             }
-            GLStateManager.glDisable(GL11.GL_CULL_FACE);
+            GLSMEnable.glDisable(GL11.GL_CULL_FACE);
         }
     }
 
@@ -79,32 +79,32 @@ class CowStateStackIntegrationTest extends GLStateManagerIntegrationFixture {
         assumeTrue(GLStateManager.MAX_TEXTURE_UNITS > 1);
         int entryDepth = GLStateManager.getAttribDepth();
         TextureUnitBooleanStateStack unit1 = GLStateManager.getTextures().getTextureUnitStates(1);
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE1);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE1);
         GLStateManager.disableTexture();
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
         try {
             unit1.push();
-            GLStateManager.glActiveTexture(GL13.GL_TEXTURE1);
+            GLSMTextures.glActiveTexture(GL13.GL_TEXTURE1);
             GLStateManager.enableTexture();
-            GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+            GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
             unit1.pop();
             assertFalse(unit1.isEnabled());
             assertEquals(0, GLStateManager.getActiveTextureUnit());
             assertEquals(GL13.GL_TEXTURE0, GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE));
 
-            GLStateManager.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_TEXTURE_BIT);
-            GLStateManager.glActiveTexture(GL13.GL_TEXTURE1);
+            GLSMAttribStack.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_TEXTURE_BIT);
+            GLSMTextures.glActiveTexture(GL13.GL_TEXTURE1);
             GLStateManager.enableTexture();
-            GLStateManager.glPopAttrib();
+            GLSMAttribStack.glPopAttrib();
             assertFalse(unit1.isEnabled());
             assertEquals(0, GLStateManager.getActiveTextureUnit());
         } finally {
             while (GLStateManager.getAttribDepth() > entryDepth) {
-                GLStateManager.glPopAttrib();
+                GLSMAttribStack.glPopAttrib();
             }
-            GLStateManager.glActiveTexture(GL13.GL_TEXTURE1);
+            GLSMTextures.glActiveTexture(GL13.GL_TEXTURE1);
             GLStateManager.disableTexture();
-            GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+            GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
         }
     }
 }

@@ -195,7 +195,7 @@ public class RenderSystem {
         internalformat = remap.internalFormat();
         format = remap.format();
         type = remap.type();
-        GLStateManager.glBindTexture(target, texture);
+        GLSMTextures.glBindTexture(target, texture);
         GLStateManager.suspendPixelUnpackBuffer();
         RENDER_BACKEND.texImage2D(target, level, internalformat, width, height, border, format, type, pixels);
         GLStateManager.restorePixelUnpackBuffer();
@@ -209,7 +209,7 @@ public class RenderSystem {
     }
 
     public static void copyTexImage2D(int target, int level, int internalFormat, int x, int y, int width, int height, int border) {
-        GLStateManager.glCopyTexImage2D(target, level, internalFormat, x, y, width, height, border);
+        GLSMTextures.glCopyTexImage2D(target, level, internalFormat, x, y, width, height, border);
     }
 
     public static void uniform1f(int location, float v0) {
@@ -375,9 +375,9 @@ public class RenderSystem {
     }
 
     private static boolean hasExtension(String name) {
-        final int count = GLStateManager.glGetInteger(GL30.GL_NUM_EXTENSIONS);
+        final int count = GLSMQueries.glGetInteger(GL30.GL_NUM_EXTENSIONS);
         for (int i = 0; i < count; i++) {
-            if (name.equals(GLStateManager.glGetStringi(GL11.GL_EXTENSIONS, i))) return true;
+            if (name.equals(GLSMQueries.glGetStringi(GL11.GL_EXTENSIONS, i))) return true;
         }
         return false;
     }
@@ -461,7 +461,7 @@ public class RenderSystem {
     }
 
     public static void bindBuffer(int target, int buffer) {
-        GLStateManager.glBindBuffer(target, buffer);
+        GLSMBuffers.glBindBuffer(target, buffer);
     }
 
     public static void memoryBarrier(int barriers) {
@@ -499,17 +499,17 @@ public class RenderSystem {
     public static final FloatBuffer PROJECTION_MATRIX_BUFFER = BufferUtils.createFloatBuffer(16);
 
     public static void setupProjectionMatrix(Matrix4f matrix) {
-        GLStateManager.glMatrixMode(GL11.GL_PROJECTION);
-        GLStateManager.glPushMatrix();
+        GLSMMatrices.glMatrixMode(GL11.GL_PROJECTION);
+        GLSMMatrices.glPushMatrix();
         matrix.get(0, PROJECTION_MATRIX_BUFFER);
-        GLStateManager.glLoadMatrix(PROJECTION_MATRIX_BUFFER);
-        GLStateManager.glMatrixMode(GL11.GL_MODELVIEW);
+        GLSMMatrices.glLoadMatrix(PROJECTION_MATRIX_BUFFER);
+        GLSMMatrices.glMatrixMode(GL11.GL_MODELVIEW);
     }
 
     public static void restoreProjectionMatrix() {
-        GLStateManager.glMatrixMode(GL11.GL_PROJECTION);
-        GLStateManager.glPopMatrix();
-        GLStateManager.glMatrixMode(GL11.GL_MODELVIEW);
+        GLSMMatrices.glMatrixMode(GL11.GL_PROJECTION);
+        GLSMMatrices.glPopMatrix();
+        GLSMMatrices.glMatrixMode(GL11.GL_MODELVIEW);
     }
 
     public static void blitFramebuffer(int source, int dest, int offsetX, int offsetY, int width, int height, int offsetX2, int offsetY2, int width2,

@@ -365,26 +365,26 @@ public final class GLSMMatrices {
     public static void gluPerspective(float fovy, float aspect, float zNear, float zFar) {
             gluMatrix.identity().perspective((float) Math.toRadians(fovy), aspect, zNear, zFar);
             gluMatrix.get(0, gluBuffer);
-            GLStateManager.glMultMatrix(gluBuffer);
+            GLSMMatrices.glMultMatrix(gluBuffer);
         }
 
     public static void gluLookAt(float eyex, float eyey, float eyez, float centerx, float centery, float centerz, float upx, float upy, float upz) {
             gluMatrix.identity().lookAt(eyex, eyey, eyez, centerx, centery, centerz, upx, upy, upz);
             gluMatrix.get(0, gluBuffer);
-            GLStateManager.glMultMatrix(gluBuffer);
+            GLSMMatrices.glMultMatrix(gluBuffer);
         }
 
     public static void gluOrtho2D(float left, float right, float bottom, float top) {
-            GLStateManager.glOrtho(left, right, bottom, top, -1.0, 1.0);
+            GLSMMatrices.glOrtho(left, right, bottom, top, -1.0, 1.0);
         }
 
     public static void gluPickMatrix(float x, float y, float deltaX, float deltaY, IntBuffer viewport) {
             if (deltaX <= 0 || deltaY <= 0) return;
-            GLStateManager.glTranslatef(
+            GLSMMatrices.glTranslatef(
                     (viewport.get(viewport.position() + 2) - 2 * (x - viewport.get(viewport.position() + 0))) / deltaX,
                     (viewport.get(viewport.position() + 3) - 2 * (y - viewport.get(viewport.position() + 1))) / deltaY,
                     0);
-            GLStateManager.glScalef(viewport.get(viewport.position() + 2) / deltaX, viewport.get(viewport.position() + 3) / deltaY, 1.0f);
+            GLSMMatrices.glScalef(viewport.get(viewport.position() + 2) / deltaX, viewport.get(viewport.position() + 3) / deltaY, 1.0f);
         }
 
     public static int gluBuild2DMipmaps(int target, int components, int width, int height, int format, int type, ByteBuffer data) {

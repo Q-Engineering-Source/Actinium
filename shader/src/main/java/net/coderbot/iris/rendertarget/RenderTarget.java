@@ -16,6 +16,7 @@ import org.lwjgl.opengl.GL12;
 
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 public class RenderTarget {
 	@Getter
@@ -45,7 +46,7 @@ public class RenderTarget {
 
         try (MemoryStack stack = stackPush()) {
             IntBuffer textures = stack.mallocInt(2);
-            GLStateManager.glGenTextures(textures);
+            GLSMTextures.glGenTextures(textures);
 
             this.mainTexture = textures.get(0);
             this.altTexture = textures.get(1);
@@ -57,7 +58,7 @@ public class RenderTarget {
 
 		// Clean up after ourselves
 		// This is strictly defensive to ensure that other buggy code doesn't tamper with our textures
-		GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+		GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, 0);
 	}
 
 	private void setupTexture(int texture, int width, int height, boolean allowsLinear) {
@@ -107,7 +108,7 @@ public class RenderTarget {
 		isValid = false;
         deleteBuffer.put(0, mainTexture);
         deleteBuffer.put(1, altTexture);
-        GLStateManager.glDeleteTextures(deleteBuffer);
+        GLSMTextures.glDeleteTextures(deleteBuffer);
 	}
 
 	private void requireValid() {

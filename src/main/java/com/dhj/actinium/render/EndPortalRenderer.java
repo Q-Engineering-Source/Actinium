@@ -22,6 +22,11 @@ import org.lwjgl.opengl.GL14;
 
 import java.nio.FloatBuffer;
 import java.util.List;
+import com.gtnewhorizons.angelica.glsm.GLSMBlend;
+import com.gtnewhorizons.angelica.glsm.GLSMEnable;
+import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
+import com.gtnewhorizons.angelica.glsm.GLSMQueries;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 /**
  * Draws the Core Profile replacement for the legacy projective end portal renderer.
@@ -100,17 +105,17 @@ public final class EndPortalRenderer {
         }
 
         int activeTexture = GLStateManager.getActiveTextureUnit();
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
-        int previousMatrixMode = GLStateManager.glGetInteger(GL11.GL_MATRIX_MODE);
-        GLStateManager.glMatrixMode(GL11.GL_TEXTURE);
-        GLStateManager.glPushMatrix();
-        GLStateManager.glLoadIdentity();
-        GLStateManager.glMatrixMode(previousMatrixMode);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
+        int previousMatrixMode = GLSMQueries.glGetInteger(GL11.GL_MATRIX_MODE);
+        GLSMMatrices.glMatrixMode(GL11.GL_TEXTURE);
+        GLSMMatrices.glPushMatrix();
+        GLSMMatrices.glLoadIdentity();
+        GLSMMatrices.glMatrixMode(previousMatrixMode);
         int previousTexture = GLStateManager.getBoundTextureForServerState();
-        boolean textureEnabled = GLStateManager.glIsEnabled(GL11.GL_TEXTURE_2D);
+        boolean textureEnabled = GLSMEnable.glIsEnabled(GL11.GL_TEXTURE_2D);
         BlendState previousBlend = GLStateManager.getBlendState().copy();
         boolean blendEnabled = GLStateManager.getBlendMode().isEnabled();
-        boolean lightingEnabled = GLStateManager.glIsEnabled(GL11.GL_LIGHTING);
+        boolean lightingEnabled = GLSMEnable.glIsEnabled(GL11.GL_LIGHTING);
 
         try {
             GLStateManager.enableTexture();
@@ -120,7 +125,7 @@ public final class EndPortalRenderer {
             if (!fadeHook && EndPortalCompositeLogic.shouldPrecompose(shaderPackInUse, layers.size())) {
                 int compositeTexture = EndPortalCompositeRenderer.texture(layers);
                 if (compositeTexture != 0) {
-                    GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, compositeTexture);
+                    GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, compositeTexture);
                     GLStateManager.disableBlend();
                     EndPortalBlockEntityIdScope.run(() -> drawComposite(x, y, z, shaderTriangles));
                     precomposed = true;
@@ -142,7 +147,7 @@ public final class EndPortalRenderer {
             }
         } finally {
             BlendState blendToRestore = preHookBlend != null ? preHookBlend : previousBlend;
-            GLStateManager.glBlendFuncSeparate(
+            GLSMBlend.glBlendFuncSeparate(
                 blendToRestore.getSrcRgb(),
                 blendToRestore.getDstRgb(),
                 blendToRestore.getSrcAlpha(),
@@ -158,14 +163,14 @@ public final class EndPortalRenderer {
             } else {
                 GLStateManager.disableLighting();
             }
-            GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture);
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture);
             if (!textureEnabled) {
                 GLStateManager.disableTexture();
             }
-            GLStateManager.glMatrixMode(GL11.GL_TEXTURE);
-            GLStateManager.glPopMatrix();
-            GLStateManager.glMatrixMode(previousMatrixMode);
-            GLStateManager.glActiveTexture(GL13.GL_TEXTURE0 + activeTexture);
+            GLSMMatrices.glMatrixMode(GL11.GL_TEXTURE);
+            GLSMMatrices.glPopMatrix();
+            GLSMMatrices.glMatrixMode(previousMatrixMode);
+            GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0 + activeTexture);
         }
     }
 
@@ -191,11 +196,11 @@ public final class EndPortalRenderer {
         switch (blend) {
             case ALPHA -> {
                 GLStateManager.enableBlend();
-                GLStateManager.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+                GLSMBlend.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
             }
             case ADDITIVE -> {
                 GLStateManager.enableBlend();
-                GLStateManager.glBlendFunc(GL11.GL_ONE, GL11.GL_ONE);
+                GLSMBlend.glBlendFunc(GL11.GL_ONE, GL11.GL_ONE);
             }
         }
     }

@@ -48,6 +48,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
+import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
 
 @Mixin(EntityRenderer.class)
 public abstract class EntityRendererIrisMixin implements IResourceManagerReloadListener {
@@ -131,7 +133,7 @@ public abstract class EntityRendererIrisMixin implements IResourceManagerReloadL
 
         WorldRenderingPipeline pipeline = Iris.getPipelineManager().preparePipeline(Iris.getCurrentDimensionName());
         BlockRenderingSettings.INSTANCE.reloadRendererIfRequired();
-        GLStateManager.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+        GLSMCurrentAttribs.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
         pipeline.beginLevelRendering();
         IrisGlDebug.markStage("mixin:begin-world:done");
         pipeline.renderPreSkyPrepare();
@@ -587,7 +589,7 @@ public abstract class EntityRendererIrisMixin implements IResourceManagerReloadL
         pipeline.finalizeLevelRendering();
         IrisGlDebug.markStage("mixin:finalize:after-pipeline");
         Program.unbind();
-        GLStateManager.glDepthMask(true);
+        GLSMDepthStencilAlpha.glDepthMask(true);
         IrisGlDebug.markStage("mixin:finalize:done");
         IrisGlDebug.recordWorldPassStage("finalize-to-render-last");
     }
@@ -738,7 +740,7 @@ public abstract class EntityRendererIrisMixin implements IResourceManagerReloadL
 
         pipeline.setPhase(WorldRenderingPhase.RAIN_SNOW);
         if (pipeline.shouldWriteRainAndSnowToDepthBuffer()) {
-            GLStateManager.glDepthMask(true);
+            GLSMDepthStencilAlpha.glDepthMask(true);
         }
         if (pipeline.shouldRenderWeather()) {
             this.renderRainSnow(partialTicks);

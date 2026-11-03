@@ -8,6 +8,7 @@ import org.joml.Vector2ic;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 
 import java.util.function.Supplier;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
 
 public class Int2VectorCachedUniform extends VectorCachedUniform<Vector2i> {
 
@@ -30,7 +31,7 @@ public class Int2VectorCachedUniform extends VectorCachedUniform<Vector2i> {
 
 	@Override
 	public void push(int location) {
-		GLStateManager.glUniform2i(location, this.cached.x, this.cached.y);
+		GLSMPrograms.glUniform2i(location, this.cached.x, this.cached.y);
 	}
 
 	@Override

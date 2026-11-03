@@ -73,6 +73,11 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
+import com.gtnewhorizons.angelica.glsm.GLSMEnable;
+import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
+import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 public class ShadowRenderer {
 	public static final Matrix4f MODELVIEW = new Matrix4f();
@@ -243,7 +248,7 @@ public class ShadowRenderer {
 		final ImmutableList<PackShadowDirectives.SamplingSettings> colorSamplingSettings =
 			shadowDirectives.getColorSamplingSettings();
 
-		GLStateManager.glActiveTexture(GL13.GL_TEXTURE4);
+		GLSMTextures.glActiveTexture(GL13.GL_TEXTURE4);
 
 		configureDepthSampler(targets.getDepthTexture().getTextureId(), depthSamplingSettings.get(0));
 
@@ -256,7 +261,7 @@ public class ShadowRenderer {
 			configureSampler(glTextureId, colorSamplingSettings.get(i));
 		}
 
-		GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+		GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
 	}
 
     private final IntBuffer swizzleBuf = BufferUtils.createIntBuffer(4);
@@ -292,13 +297,13 @@ public class ShadowRenderer {
 	}
 
 	private void generateMipmaps() {
-		GLStateManager.glActiveTexture(GL13.GL_TEXTURE4);
+		GLSMTextures.glActiveTexture(GL13.GL_TEXTURE4);
 
 		for (MipmapPass mipmapPass : mipmapPasses) {
 			setupMipmappingForTexture(mipmapPass.getTexture(), mipmapPass.getTargetFilteringMode());
 		}
 
-		GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+		GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
 	}
 
 	private void setupMipmappingForTexture(int texture, int filteringMode) {
@@ -446,7 +451,7 @@ public class ShadowRenderer {
 
 	private void setupGlState(Matrix4f projMatrix) {
 		targets.getDepthSourceFb().bind();
-		GLStateManager.glViewport(0, 0, resolution, resolution);
+		GLSMRasterizer.glViewport(0, 0, resolution, resolution);
 
 		RenderSystem.setupProjectionMatrix(projMatrix);
 
@@ -466,7 +471,7 @@ public class ShadowRenderer {
 
 		Minecraft mc = Minecraft.getMinecraft();
 		MinecraftFramebufferHelper.restoreMainFramebuffer(false);
-		GLStateManager.glViewport(0, 0, mc.displayWidth, mc.displayHeight);
+		GLSMRasterizer.glViewport(0, 0, mc.displayWidth, mc.displayHeight);
 	}
 
 	private void copyPreTranslucentDepth() {
@@ -555,26 +560,26 @@ public class ShadowRenderer {
             renderedEntitiesList.size()
         );
 
-        GLStateManager.glEnable(GL11.GL_POLYGON_OFFSET_FILL);
-        GLStateManager.glPolygonOffset(1.0f, 1.0f);
+        GLSMEnable.glEnable(GL11.GL_POLYGON_OFFSET_FILL);
+        GLSMRasterizer.glPolygonOffset(1.0f, 1.0f);
 
         savedMatrixMode = GL11.glGetInteger(GL11.GL_MATRIX_MODE);
-        GLStateManager.glMatrixMode(GL11.GL_MODELVIEW);
-        GLStateManager.glPushMatrix();
+        GLSMMatrices.glMatrixMode(GL11.GL_MODELVIEW);
+        GLSMMatrices.glPushMatrix();
         MODELVIEW_BUFFER.clear().rewind();
         modelView.peek().getModel().get(MODELVIEW_BUFFER);
-        GLStateManager.glLoadMatrix(MODELVIEW_BUFFER);
+        GLSMMatrices.glLoadMatrix(MODELVIEW_BUFFER);
         pushShadowRenderingState(modelView);
     }
 
     private void teardownEntityShadowState() {
-        GLStateManager.glMatrixMode(GL11.GL_MODELVIEW);
-        GLStateManager.glPopMatrix();
-        GLStateManager.glMatrixMode(savedMatrixMode);
+        GLSMMatrices.glMatrixMode(GL11.GL_MODELVIEW);
+        GLSMMatrices.glPopMatrix();
+        GLSMMatrices.glMatrixMode(savedMatrixMode);
         popShadowRenderingState();
 
-        GLStateManager.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
-        GLStateManager.glPolygonOffset(0.0f, 0.0f);
+        GLSMEnable.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
+        GLSMRasterizer.glPolygonOffset(0.0f, 0.0f);
 
         RenderManager renderManager = Minecraft.getMinecraft().getRenderManager();
         renderManager.setRenderPosition(savedRenderPosX, savedRenderPosY, savedRenderPosZ);
@@ -667,7 +672,7 @@ public class ShadowRenderer {
         }
         int brightness = tile.getWorld().getCombinedLight(pos, 0);
         GLStateManager.setLightmapTextureCoords(GL13.GL_TEXTURE1, (float) brightness % 65536, (float) brightness / 65536);
-        GLStateManager.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+        GLSMCurrentAttribs.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
         TileEntityRendererDispatcher.instance.render(tile,
             (double)pos.getX() - cameraX,
             (double)pos.getY() - cameraY,
@@ -688,11 +693,11 @@ public class ShadowRenderer {
 		}
 
         int previousMatrixMode = GL11.glGetInteger(GL11.GL_MATRIX_MODE);
-        GLStateManager.glMatrixMode(GL11.GL_MODELVIEW);
-        GLStateManager.glPushMatrix();
+        GLSMMatrices.glMatrixMode(GL11.GL_MODELVIEW);
+        GLSMMatrices.glPushMatrix();
         MODELVIEW_BUFFER.clear().rewind();
         modelView.peek().getModel().get(MODELVIEW_BUFFER);
-        GLStateManager.glLoadMatrix(MODELVIEW_BUFFER);
+        GLSMMatrices.glLoadMatrix(MODELVIEW_BUFFER);
         pushShadowRenderingState(modelView);
 
         boolean beganBlockEntities = false;
@@ -725,9 +730,9 @@ public class ShadowRenderer {
             if (beganBlockEntities) {
                 GbufferPrograms.endBlockEntities();
             }
-            GLStateManager.glMatrixMode(GL11.GL_MODELVIEW);
-            GLStateManager.glPopMatrix();
-            GLStateManager.glMatrixMode(previousMatrixMode);
+            GLSMMatrices.glMatrixMode(GL11.GL_MODELVIEW);
+            GLSMMatrices.glPopMatrix();
+            GLSMMatrices.glMatrixMode(previousMatrixMode);
             popShadowRenderingState();
         }
 
@@ -887,7 +892,7 @@ public class ShadowRenderer {
 		}
 
 		// Reset viewport in case terrain rendering changed it
-		GLStateManager.glViewport(0, 0, resolution, resolution);
+		GLSMRasterizer.glViewport(0, 0, resolution, resolution);
 
 		profiler.endStartSection("entities");
 

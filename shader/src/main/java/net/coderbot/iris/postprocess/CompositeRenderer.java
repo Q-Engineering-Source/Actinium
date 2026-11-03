@@ -58,6 +58,10 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.function.Supplier;
+import com.gtnewhorizons.angelica.glsm.GLSMFramebuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
+import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 public class CompositeRenderer {
 	private final RenderTargets renderTargets;
@@ -180,7 +184,7 @@ public class CompositeRenderer {
 		this.passes = passes.build();
 		this.flippedAtLeastOnceFinal = flippedAtLeastOnce.build();
 
-		GLStateManager.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
+		GLSMFramebuffer.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
 	}
 
 	private Map<PatchShaderType, String> getTransformed(ProgramSource source, Map<Integer, CompletableFuture<Map<PatchShaderType, String>>> transformFutures, int index, String stageName) {
@@ -320,7 +324,7 @@ public class CompositeRenderer {
 
 			if (!renderPass.mipmappedBuffers.isEmpty()) {
                 IrisGlDebug.markStage("composite:mipmap");
-				GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+				GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
 
 				for (int index : renderPass.mipmappedBuffers) {
 					setupMipmapping(CompositeRenderer.this.renderTargets.get(index), renderPass.stageReadsFromAlt.contains(index));
@@ -331,7 +335,7 @@ public class CompositeRenderer {
 			final float scaledHeight = renderPass.viewHeight * renderPass.viewportScale.scale();
 			final float viewportX = renderPass.viewWidth * renderPass.viewportScale.viewportX();
 			final float viewportY = renderPass.viewHeight * renderPass.viewportScale.viewportY();
-			GLStateManager.glViewport((int) viewportX, (int) viewportY, (int) scaledWidth, (int) scaledHeight);
+			GLSMRasterizer.glViewport((int) viewportX, (int) viewportY, (int) scaledWidth, (int) scaledHeight);
 
             IrisGlDebug.markStage("composite:draw");
 			renderPass.framebuffer.bind();
@@ -372,17 +376,17 @@ public class CompositeRenderer {
 		ProgramUniforms.clearActiveUniforms();
 		ProgramSamplers.clearActiveSamplers();
 		BlendModeOverride.restore();
-		GLStateManager.glUseProgram(0);
+		GLSMPrograms.glUseProgram(0);
 
 		// NB: Unbinding all of these textures is necessary for proper shaderpack reloading.
 		for (int i = 0; i < SamplerLimits.get().getMaxTextureUnits(); i++) {
 			// Unbind all textures that we may have used.
 			// NB: This is necessary for shader pack reloading to work propely
-			GLStateManager.glActiveTexture(GL13.GL_TEXTURE0 + i);
-			GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+			GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0 + i);
+			GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, 0);
 		}
 
-		GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+		GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
 	}
 
 	private static void setupMipmapping(RenderTarget target, boolean readFromAlt) {

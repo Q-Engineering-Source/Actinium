@@ -11,6 +11,7 @@ import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntSupplier;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
 
 public class ProgramImages {
 	private final ImmutableList<ImageBinding> imageBindings;
@@ -60,12 +61,12 @@ public class ProgramImages {
 
 		@Override
 		public boolean hasImage(String name) {
-			return GLStateManager.glGetUniformLocation(program, name) != -1;
+			return GLSMPrograms.glGetUniformLocation(program, name) != -1;
 		}
 
 		@Override
 		public void addTextureImage(IntSupplier textureID, InternalTextureFormat internalFormat, String name) {
-			int location = GLStateManager.glGetUniformLocation(program, name);
+			int location = GLSMPrograms.glGetUniformLocation(program, name);
 
 			if (location == -1) {
 				return;

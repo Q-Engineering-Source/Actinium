@@ -21,6 +21,7 @@ import net.minecraft.client.Minecraft;
 import org.lwjgl.opengl.GL11;
 
 import java.io.IOException;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 public class DHCompatInternal {
     public static final DHCompatInternal SHADERLESS = new DHCompatInternal(null, false);
@@ -284,9 +285,9 @@ public class DHCompatInternal {
     public void copyTranslucents(int width, int height) {
         if (translucentDepthDirty) {
             translucentDepthDirty = false;
-            GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, depthTexNoTranslucent.getTextureId());
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, depthTexNoTranslucent.getTextureId());
             dhTerrainFramebuffer.bindAsReadBuffer();
-            GLStateManager.glCopyTexImage2D(GL11.GL_TEXTURE_2D, 0, DepthBufferFormat.DEPTH32F.getGlInternalFormat(), 0, 0, width, height, 0);
+            GLSMTextures.glCopyTexImage2D(GL11.GL_TEXTURE_2D, 0, DepthBufferFormat.DEPTH32F.getGlInternalFormat(), 0, 0, width, height, 0);
         } else {
             DepthCopyStrategy.fastest(false).copy(dhTerrainFramebuffer, storedDepthTex, null, depthTexNoTranslucent.getTextureId(), width, height);
         }

@@ -23,6 +23,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.List;
+import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
+import com.gtnewhorizons.angelica.glsm.GLSMDraws;
 
 @Mixin(ModelRenderer.class)
 public abstract class ModelRendererIrisMixin implements IModelRenderer, ActiniumModelRenderer, ModelRenderState {
@@ -206,9 +208,9 @@ public abstract class ModelRendererIrisMixin implements IModelRenderer, Actinium
         if (ActiniumRuntimeOptions.useModelRendererBatching()) {
             final var color = com.gtnewhorizons.angelica.glsm.GLStateManager.getColor();
             if (color.getRed() < 0.0F || color.getGreen() < 0.0F || color.getBlue() < 0.0F || color.getAlpha() < 0.0F) {
-                com.gtnewhorizons.angelica.glsm.GLStateManager.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+                com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
             } else {
-                com.gtnewhorizons.angelica.glsm.GLStateManager.glColor4f(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+                com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs.glColor4f(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
             }
         }
 
@@ -225,7 +227,7 @@ public abstract class ModelRendererIrisMixin implements IModelRenderer, Actinium
                 this.actinium$compileDisplayList(scale, scaleBits);
             }
 
-            com.gtnewhorizons.angelica.glsm.GLStateManager.glCallList(this.actinium$displayList);
+            com.gtnewhorizons.angelica.glsm.GLSMDraws.glCallList(this.actinium$displayList);
             return;
         } else if (allowDisplayLists) {
             this.actinium$resetDisplayList();
@@ -252,12 +254,12 @@ public abstract class ModelRendererIrisMixin implements IModelRenderer, Actinium
 
     @Unique
     private void actinium$compileDisplayList(float scale, int scaleBits) {
-        int list = com.gtnewhorizons.angelica.glsm.GLStateManager.glGenLists(1);
+        int list = com.gtnewhorizons.angelica.glsm.GLSMDraws.glGenLists(1);
         if (list == 0) {
             throw new IllegalStateException("glGenLists returned 0 while compiling a ModelRenderer display list");
         }
 
-        com.gtnewhorizons.angelica.glsm.GLStateManager.glNewList(list, GL11.GL_COMPILE);
+        com.gtnewhorizons.angelica.glsm.GLSMDraws.glNewList(list, GL11.GL_COMPILE);
 
         try {
             Tessellator tessellator = Tessellator.getInstance();
@@ -271,7 +273,7 @@ public abstract class ModelRendererIrisMixin implements IModelRenderer, Actinium
             }
             tessellator.draw();
         } finally {
-            com.gtnewhorizons.angelica.glsm.GLStateManager.glEndList();
+            com.gtnewhorizons.angelica.glsm.GLSMDraws.glEndList();
         }
 
         this.actinium$displayList = list;
@@ -281,7 +283,7 @@ public abstract class ModelRendererIrisMixin implements IModelRenderer, Actinium
     @Unique
     private void actinium$resetDisplayList() {
         if (this.actinium$displayList > 0) {
-            com.gtnewhorizons.angelica.glsm.GLStateManager.glDeleteLists(this.actinium$displayList, 1);
+            com.gtnewhorizons.angelica.glsm.GLSMDraws.glDeleteLists(this.actinium$displayList, 1);
         }
         this.actinium$displayList = 0;
         this.actinium$displayListScaleBits = 0;

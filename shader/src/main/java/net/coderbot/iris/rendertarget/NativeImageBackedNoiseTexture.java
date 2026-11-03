@@ -6,6 +6,7 @@ import net.minecraft.client.renderer.texture.DynamicTexture;
 import org.lwjgl.opengl.GL11;
 
 import java.util.Random;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 public class NativeImageBackedNoiseTexture extends DynamicTexture {
 	public NativeImageBackedNoiseTexture(int size) {
@@ -35,8 +36,8 @@ public class NativeImageBackedNoiseTexture extends DynamicTexture {
         // straight lines). Re-apply linear filtering after the upload so the noise
         // interpolates into smooth ripples.
         super.updateDynamicTexture();
-        GLStateManager.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
-        GLStateManager.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+        GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+        GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
     }
 
 }

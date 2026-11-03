@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
 
 /**
  * Compile-time snapshot of the enabled vertex attributes of the currently bound VAO,
@@ -137,8 +138,8 @@ public final class AttribSnapshot {
                     }
 
                     if (buf == null) {
-                        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, a.vboId);
-                        final int bufferSize = GLStateManager.glGetBufferParameteri(GL15.GL_ARRAY_BUFFER, GL15.GL_BUFFER_SIZE);
+                        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, a.vboId);
+                        final int bufferSize = GLSMBuffers.glGetBufferParameteri(GL15.GL_ARRAY_BUFFER, GL15.GL_BUFFER_SIZE);
                         if (bufferSize <= 0) {
                             warnOnce("vbo-orphaned", "[AttribSnapshot] GL_BUFFER_SIZE={} for VBO {} -- skipping capture", bufferSize, a.vboId);
                             return null;
@@ -166,7 +167,7 @@ public final class AttribSnapshot {
                         }
 
                         buf = MemoryUtilities.memAlloc(rs);
-                        GLStateManager.glGetBufferSubData(GL15.GL_ARRAY_BUFFER, ro, buf);
+                        GLSMBuffers.glGetBufferSubData(GL15.GL_ARRAY_BUFFER, ro, buf);
                         allocated.add(buf);
                         readOffset = ro;
 
@@ -194,7 +195,7 @@ public final class AttribSnapshot {
             success = true;
             return new AttribSnapshot(out, allocated);
         } finally {
-            GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevVBO);
+            GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevVBO);
             if (!success) {
                 for (ByteBuffer b : allocated) MemoryUtilities.memFree(b);
             }

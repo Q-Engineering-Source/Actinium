@@ -8,6 +8,8 @@ import net.minecraft.util.ResourceLocation;
 import org.lwjgl.opengl.GL11;
 
 import java.util.function.IntConsumer;
+import com.gtnewhorizons.angelica.glsm.GLSMQueries;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 /** Applies resource names to texture objects without taking ownership of their allocation. */
 public final class TextureDebugLabels {
@@ -22,13 +24,13 @@ public final class TextureDebugLabels {
             return;
         }
 
-        int currentTexture = GLStateManager.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+        int currentTexture = GLSMQueries.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
         nameTextureObject(texture, textureId -> {
-            GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
             try {
                 GLDebug.nameObject(GL11.GL_TEXTURE, textureId, resource.toString());
             } finally {
-                GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, currentTexture);
+                GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, currentTexture);
             }
         });
     }

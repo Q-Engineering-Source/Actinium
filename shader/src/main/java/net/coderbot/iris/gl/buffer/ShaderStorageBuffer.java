@@ -6,6 +6,7 @@ import dhj.embeddedt.embeddium.impl.gl.debug.GLDebug;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL43;
+import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
 
 public class ShaderStorageBuffer {
 	protected final int index;
@@ -40,8 +41,8 @@ public class ShaderStorageBuffer {
 		if (!info.relative()) return;
 
 		RenderSystem.deleteBuffers(id);
-		int newId = GLStateManager.glGenBuffers();
-		GLStateManager.glBindBuffer(GL43.GL_SHADER_STORAGE_BUFFER, newId);
+		int newId = GLSMBuffers.glGenBuffers();
+		GLSMBuffers.glBindBuffer(GL43.GL_SHADER_STORAGE_BUFFER, newId);
 
 		// Calculation time
 		int newWidth = (int) (width * info.scaleX());

@@ -12,12 +12,13 @@ import java.nio.ByteBuffer;
 import java.util.function.IntSupplier;
 
 import org.lwjgl.BufferUtils;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 public class GlTexture extends GlObject implements TextureAccess {
 	private final TextureType target;
 
 	public GlTexture(TextureType target, int sizeX, int sizeY, int sizeZ, int internalFormat, int format, int pixelType, byte[] pixels, TextureFilteringData filteringData) {
-		this.setHandle(GLStateManager.glGenTextures());
+		this.setHandle(GLSMTextures.glGenTextures());
 		bindTextureForSetup(target.getGlType(), handle());
 
 		TextureUploadHelper.resetTextureUploadState();
@@ -52,7 +53,7 @@ public class GlTexture extends GlObject implements TextureAccess {
 	}
 
 	public static void bindTextureForSetup(int glType, int glId) {
-		GLStateManager.glBindTexture(glType, glId);
+		GLSMTextures.glBindTexture(glType, glId);
 	}
 
 	public TextureType getTarget() {
@@ -75,6 +76,6 @@ public class GlTexture extends GlObject implements TextureAccess {
 
 	@Override
 	protected void destroyInternal() {
-		GLStateManager.glDeleteTextures(handle());
+		GLSMTextures.glDeleteTextures(handle());
 	}
 }

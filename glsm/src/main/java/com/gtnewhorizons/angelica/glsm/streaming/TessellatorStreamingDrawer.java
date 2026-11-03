@@ -24,6 +24,8 @@ import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memAddress0;
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memAlloc;
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memFree;
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
+import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
+import com.gtnewhorizons.angelica.glsm.GLSMVertexInput;
 
 /**
  * Replaces the vanilla Tessellator's FFP client-array draw path with a streaming VBO+VAO approach for GL 3.3 core profile compatibility.
@@ -274,11 +276,11 @@ public class TessellatorStreamingDrawer {
         if (persistentPath) {
             vao = vaos.persistentVAOs[flags];
             bufferId = persistentBuffer.getBufferId();
-            GLStateManager.glBindVertexArray(vao);
+            GLSMVertexInput.glBindVertexArray(vao);
         } else {
             vao = vaos.orphanVAOs[flags];
             bufferId = orphanBuffers[flags].getBufferId();
-            GLStateManager.glBindVertexArray(vao);
+            GLSMVertexInput.glBindVertexArray(vao);
             final long uploadStart = perfSampled ? GLSMPerfDebug.now() : 0L;
             orphanBuffers[flags].upload(packed);
             if (perfSampled) {
@@ -317,7 +319,7 @@ public class TessellatorStreamingDrawer {
         if (perfSampled) {
             GLSMPerfDebug.record(GLSMPerfDebug.Stage.STREAM_DRAW_CALL, drawStart, GLSMPerfDebug.now());
         }
-        GLStateManager.glBindVertexArray(0);
+        GLSMVertexInput.glBindVertexArray(0);
         ShaderManager.getInstance().clearClientVertexFlags();
         if (perfDebugEnabled) {
             GLSMPerfDebug.end(GLSMPerfDebug.Stage.STREAM_UPLOAD_AND_DRAW, perfStart);
@@ -459,23 +461,23 @@ public class TessellatorStreamingDrawer {
         if (orphanBuffers[flags] == null) orphanBuffers[flags] = new OrphanStreamingBuffer();
 
         if (vaos.orphanVAOs[flags] == 0) {
-            vaos.orphanVAOs[flags] = GLStateManager.glGenVertexArrays();
-            GLStateManager.glBindVertexArray(vaos.orphanVAOs[flags]);
-            GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, orphanBuffers[flags].getBufferId());
+            vaos.orphanVAOs[flags] = GLSMVertexInput.glGenVertexArrays();
+            GLSMVertexInput.glBindVertexArray(vaos.orphanVAOs[flags]);
+            GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, orphanBuffers[flags].getBufferId());
             format.setupBufferState(0L);
             QuadConverter.attachSharedEboToCurrentVao();
-            GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
-            GLStateManager.glBindVertexArray(0);
+            GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+            GLSMVertexInput.glBindVertexArray(0);
         }
 
         if (persistentBuffer != null && vaos.persistentVAOs[flags] == 0) {
-            vaos.persistentVAOs[flags] = GLStateManager.glGenVertexArrays();
-            GLStateManager.glBindVertexArray(vaos.persistentVAOs[flags]);
-            GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, persistentBuffer.getBufferId());
+            vaos.persistentVAOs[flags] = GLSMVertexInput.glGenVertexArrays();
+            GLSMVertexInput.glBindVertexArray(vaos.persistentVAOs[flags]);
+            GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, persistentBuffer.getBufferId());
             format.setupBufferState(0L);
             QuadConverter.attachSharedEboToCurrentVao();
-            GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
-            GLStateManager.glBindVertexArray(0);
+            GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+            GLSMVertexInput.glBindVertexArray(0);
         }
     }
 
@@ -488,11 +490,11 @@ public class TessellatorStreamingDrawer {
         }
         for (int i = 0; i < FORMAT_COUNT; i++) {
             if (vaos.persistentVAOs[i] != 0) {
-                GLStateManager.glDeleteVertexArrays(vaos.persistentVAOs[i]);
+                GLSMVertexInput.glDeleteVertexArrays(vaos.persistentVAOs[i]);
                 vaos.persistentVAOs[i] = 0;
             }
             if (vaos.orphanVAOs[i] != 0) {
-                GLStateManager.glDeleteVertexArrays(vaos.orphanVAOs[i]);
+                GLSMVertexInput.glDeleteVertexArrays(vaos.orphanVAOs[i]);
                 vaos.orphanVAOs[i] = 0;
             }
             if (orphanBuffers[i] != null) { orphanBuffers[i].destroy(); orphanBuffers[i] = null; }

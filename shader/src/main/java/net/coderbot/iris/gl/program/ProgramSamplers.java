@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.function.IntSupplier;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 public class ProgramSamplers {
 	private static ProgramSamplers active;
@@ -56,7 +57,7 @@ public class ProgramSamplers {
 			samplerBinding.update();
 		}
 
-		GLStateManager.glActiveTexture(GL13.GL_TEXTURE0 + activeTexture);
+		GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0 + activeTexture);
 	}
 
 	public void removeListeners() {

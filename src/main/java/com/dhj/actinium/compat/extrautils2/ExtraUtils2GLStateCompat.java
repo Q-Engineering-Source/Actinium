@@ -4,6 +4,8 @@ import com.gtnewhorizons.angelica.glsm.GLStateManager;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMEnable;
+import com.gtnewhorizons.angelica.glsm.GLSMQueries;
 
 /**
  * Live GL state queries for the Extra Utilities 2 GUI compatibility (issue #48).
@@ -20,22 +22,22 @@ public final class ExtraUtils2GLStateCompat {
     }
 
     public static int getInteger(int pname) {
-        return GLStateManager.glGetInteger(pname);
+        return GLSMQueries.glGetInteger(pname);
     }
 
     public static void getInteger(int pname, IntBuffer params) {
-        GLStateManager.glGetInteger(pname, params);
+        GLSMQueries.glGetInteger(pname, params);
     }
 
     public static float getFloat(int pname) {
-        return GLStateManager.glGetFloat(pname);
+        return GLSMQueries.glGetFloat(pname);
     }
 
     public static void getFloat(int pname, FloatBuffer params) {
-        GLStateManager.glGetFloat(pname, params);
+        GLSMQueries.glGetFloat(pname, params);
     }
 
     public static boolean isEnabled(int cap) {
-        return GLStateManager.glIsEnabled(cap);
+        return GLSMEnable.glIsEnabled(cap);
     }
 }

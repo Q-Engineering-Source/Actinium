@@ -13,6 +13,7 @@ import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.KHRDebug;
 
 import java.util.Locale;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
 
 /**
  * A compiled OpenGL shader object.
@@ -29,11 +30,11 @@ public class GlShader extends GlResource {
     }
 
     private static int createShader(ShaderType type, String name, String src) {
-		int handle = GLStateManager.glCreateShader(type.id);
+		int handle = GLSMPrograms.glCreateShader(type.id);
         // TODO: Iris
         // TODO: ShaderWorkaround
-        GLStateManager.glShaderSource(handle, src + '\0');
-		GLStateManager.glCompileShader(handle);
+        GLSMPrograms.glShaderSource(handle, src + '\0');
+		GLSMPrograms.glCompileShader(handle);
 
 		GLDebug.nameObject(KHRDebug.GL_SHADER, handle, name + "(" + type.name().toLowerCase(Locale.ROOT) + ")");
 
@@ -43,7 +44,7 @@ public class GlShader extends GlResource {
 			LOGGER.warn("Shader compilation log for " + name + ": " + log);
 		}
 
-		int result = GLStateManager.glGetShaderi(handle, GL20.GL_COMPILE_STATUS);
+		int result = GLSMPrograms.glGetShaderi(handle, GL20.GL_COMPILE_STATUS);
 
 		if (result != GL11.GL_TRUE) {
 			throw new RuntimeException("Shader compilation failed, see log for details");
@@ -62,6 +63,6 @@ public class GlShader extends GlResource {
 
     @Override
 	protected void destroyInternal() {
-        GLStateManager.glDeleteShader(this.getGlId());
+        GLSMPrograms.glDeleteShader(this.getGlId());
 	}
 }

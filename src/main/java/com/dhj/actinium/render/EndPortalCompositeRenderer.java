@@ -36,6 +36,17 @@ import java.nio.IntBuffer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.gtnewhorizons.angelica.glsm.GLSMBlend;
+import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
+import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
+import com.gtnewhorizons.angelica.glsm.GLSMDraws;
+import com.gtnewhorizons.angelica.glsm.GLSMEnable;
+import com.gtnewhorizons.angelica.glsm.GLSMFramebuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
+import com.gtnewhorizons.angelica.glsm.GLSMQueries;
+import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
+import com.gtnewhorizons.angelica.glsm.GLSMVertexInput;
 
 /**
  * Precomposes near-distance portal layers outside shader-pack programs.
@@ -92,12 +103,12 @@ public final class EndPortalCompositeRenderer {
     /** Releases compositor resources before the current OpenGL context is destroyed. */
     public static void destroy() {
         for (CacheEntry entry : CACHE.values()) {
-            GLStateManager.glDeleteFramebuffers(entry.framebuffer);
+            GLSMFramebuffer.glDeleteFramebuffers(entry.framebuffer);
             TextureUtil.deleteTexture(entry.texture);
         }
         CACHE.clear();
         if (emptyVao != 0) {
-            GLStateManager.glDeleteVertexArrays(emptyVao);
+            GLSMVertexInput.glDeleteVertexArrays(emptyVao);
             emptyVao = 0;
         }
         if (program != null) {
@@ -119,7 +130,7 @@ public final class EndPortalCompositeRenderer {
             return;
         }
 
-        int previousProgram = GLStateManager.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+        int previousProgram = GLSMQueries.glGetInteger(GL20.GL_CURRENT_PROGRAM);
         GlShader vertex = null;
         GlShader fragment = null;
         try {
@@ -141,7 +152,7 @@ public final class EndPortalCompositeRenderer {
             program.getInterface().endSky.setInt(0);
             program.getInterface().endPortal.setInt(1);
         } finally {
-            GLStateManager.glUseProgram(previousProgram);
+            GLSMPrograms.glUseProgram(previousProgram);
             if (vertex != null) {
                 vertex.delete();
             }
@@ -149,7 +160,7 @@ public final class EndPortalCompositeRenderer {
                 fragment.delete();
             }
         }
-        emptyVao = GLStateManager.glGenVertexArrays();
+        emptyVao = GLSMVertexInput.glGenVertexArrays();
     }
 
     private static CacheEntry createCacheEntry() {
@@ -158,10 +169,10 @@ public final class EndPortalCompositeRenderer {
         int framebuffer = 0;
         boolean complete = false;
         try {
-            GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
-            texture = GLStateManager.glGenTextures();
-            GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, texture);
-            GLStateManager.glTexImage2D(
+            GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
+            texture = GLSMTextures.glGenTextures();
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, texture);
+            GLSMTextures.glTexImage2D(
                 GL11.GL_TEXTURE_2D,
                 0,
                 GL30.GL_RGBA16F,
@@ -172,22 +183,22 @@ public final class EndPortalCompositeRenderer {
                 GL11.GL_FLOAT,
                 (ByteBuffer) null
             );
-            GLStateManager.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
-            GLStateManager.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
-            GLStateManager.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-            GLStateManager.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+            GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+            GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+            GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+            GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
 
-            framebuffer = GLStateManager.glGenFramebuffers();
-            GLStateManager.glBindFramebuffer(GL30.GL_FRAMEBUFFER, framebuffer);
-            GLStateManager.glFramebufferTexture2D(
+            framebuffer = GLSMFramebuffer.glGenFramebuffers();
+            GLSMFramebuffer.glBindFramebuffer(GL30.GL_FRAMEBUFFER, framebuffer);
+            GLSMFramebuffer.glFramebufferTexture2D(
                 GL30.GL_FRAMEBUFFER,
                 GL30.GL_COLOR_ATTACHMENT0,
                 GL11.GL_TEXTURE_2D,
                 texture,
                 0
             );
-            GLStateManager.glDrawBuffers(GL30.GL_COLOR_ATTACHMENT0);
-            int status = GLStateManager.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
+            GLSMFramebuffer.glDrawBuffers(GL30.GL_COLOR_ATTACHMENT0);
+            int status = GLSMFramebuffer.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
             if (status != GL30.GL_FRAMEBUFFER_COMPLETE) {
                 throw new IllegalStateException(
                     "End portal compositor FBO incomplete: 0x" + Integer.toHexString(status)
@@ -199,7 +210,7 @@ public final class EndPortalCompositeRenderer {
             saved.restore();
             if (!complete) {
                 if (framebuffer != 0) {
-                    GLStateManager.glDeleteFramebuffers(framebuffer);
+                    GLSMFramebuffer.glDeleteFramebuffers(framebuffer);
                 }
                 if (texture != 0) {
                     TextureUtil.deleteTexture(texture);
@@ -212,27 +223,27 @@ public final class EndPortalCompositeRenderer {
         SavedState saved = SavedState.capture();
         try {
             TextureManager textures = Minecraft.getMinecraft().getTextureManager();
-            GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+            GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
             textures.bindTexture(END_SKY_TEXTURE);
             int endSky = GLStateManager.getBoundTextureForServerState();
             textures.bindTexture(END_PORTAL_TEXTURE);
             int endPortal = GLStateManager.getBoundTextureForServerState();
 
-            GLStateManager.glBindFramebuffer(GL30.GL_FRAMEBUFFER, entry.framebuffer);
-            GLStateManager.glDrawBuffers(GL30.GL_COLOR_ATTACHMENT0);
-            GLStateManager.glViewport(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
-            GLStateManager.glColorMask(true, true, true, true);
-            GLStateManager.glDepthMask(false);
+            GLSMFramebuffer.glBindFramebuffer(GL30.GL_FRAMEBUFFER, entry.framebuffer);
+            GLSMFramebuffer.glDrawBuffers(GL30.GL_COLOR_ATTACHMENT0);
+            GLSMRasterizer.glViewport(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
+            GLSMBlend.glColorMask(true, true, true, true);
+            GLSMDepthStencilAlpha.glDepthMask(false);
             GLStateManager.disableDepthTest();
             GLStateManager.disableScissorTest();
             GLStateManager.disableCull();
-            GLStateManager.glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
-            GLStateManager.glClear(GL11.GL_COLOR_BUFFER_BIT);
+            GLSMBlend.glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+            GLSMFramebuffer.glClear(GL11.GL_COLOR_BUFFER_BIT);
 
-            GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
-            GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, endSky);
-            GLStateManager.glActiveTexture(GL13.GL_TEXTURE1);
-            GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, endPortal);
+            GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, endSky);
+            GLSMTextures.glActiveTexture(GL13.GL_TEXTURE1);
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, endPortal);
 
             RenderSystem.disableBufferBlend(0);
             program.bind();
@@ -250,8 +261,8 @@ public final class EndPortalCompositeRenderer {
                 uniforms.colors[index].set(layer.red(), layer.green(), layer.blue());
             }
 
-            GLStateManager.glBindVertexArray(emptyVao);
-            GLStateManager.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
+            GLSMVertexInput.glBindVertexArray(emptyVao);
+            GLSMDraws.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
         } finally {
             saved.restore();
         }
@@ -308,15 +319,15 @@ public final class EndPortalCompositeRenderer {
         Color4 clearColor
     ) {
         private static SavedState capture() {
-            int maxDrawBuffers = GLStateManager.glGetInteger(GL20.GL_MAX_DRAW_BUFFERS);
+            int maxDrawBuffers = GLSMQueries.glGetInteger(GL20.GL_MAX_DRAW_BUFFERS);
             int[] drawBuffers = new int[maxDrawBuffers];
             for (int index = 0; index < maxDrawBuffers; index++) {
-                drawBuffers[index] = GLStateManager.glGetInteger(GL30.GL_DRAW_BUFFER0 + index);
+                drawBuffers[index] = GLSMQueries.glGetInteger(GL30.GL_DRAW_BUFFER0 + index);
             }
             return new SavedState(
-                GLStateManager.glGetInteger(GL20.GL_CURRENT_PROGRAM),
-                GLStateManager.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING),
-                GLStateManager.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING),
+                GLSMQueries.glGetInteger(GL20.GL_CURRENT_PROGRAM),
+                GLSMQueries.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING),
+                GLSMQueries.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING),
                 drawBuffers,
                 GLStateManager.getViewportState().copy(),
                 GLStateManager.getBoundVAO(),
@@ -326,36 +337,36 @@ public final class EndPortalCompositeRenderer {
                 GLStateManager.getBoundTextureForServerState(1),
                 GLStateManager.getColorMask().copy(),
                 GLStateManager.getDepthState().isMaskEnabled(),
-                GLStateManager.glIsEnabled(GL11.GL_DEPTH_TEST),
-                GLStateManager.glIsEnabled(GL11.GL_SCISSOR_TEST),
-                GLStateManager.glIsEnabled(GL11.GL_CULL_FACE),
+                GLSMEnable.glIsEnabled(GL11.GL_DEPTH_TEST),
+                GLSMEnable.glIsEnabled(GL11.GL_SCISSOR_TEST),
+                GLSMEnable.glIsEnabled(GL11.GL_CULL_FACE),
                 GL30.glIsEnabledi(GL11.GL_BLEND, 0),
                 GLStateManager.getClearColor().copy()
             );
         }
 
         private void restore() {
-            GLStateManager.glUseProgram(this.program);
-            GLStateManager.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, this.readFramebuffer);
-            GLStateManager.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, this.drawFramebuffer);
+            GLSMPrograms.glUseProgram(this.program);
+            GLSMFramebuffer.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, this.readFramebuffer);
+            GLSMFramebuffer.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, this.drawFramebuffer);
             IntBuffer drawBufferValues = BufferUtils.createIntBuffer(this.drawBuffers.length);
             drawBufferValues.put(this.drawBuffers).flip();
-            GLStateManager.glDrawBuffers(drawBufferValues);
-            GLStateManager.glViewport(this.viewport.x, this.viewport.y, this.viewport.width, this.viewport.height);
-            GLStateManager.glBindVertexArray(this.vao);
-            GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, this.vbo);
-            GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
-            GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, this.texture0);
-            GLStateManager.glActiveTexture(GL13.GL_TEXTURE1);
-            GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, this.texture1);
-            GLStateManager.glActiveTexture(GL13.GL_TEXTURE0 + this.activeTexture);
-            GLStateManager.glColorMask(
+            GLSMFramebuffer.glDrawBuffers(drawBufferValues);
+            GLSMRasterizer.glViewport(this.viewport.x, this.viewport.y, this.viewport.width, this.viewport.height);
+            GLSMVertexInput.glBindVertexArray(this.vao);
+            GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, this.vbo);
+            GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, this.texture0);
+            GLSMTextures.glActiveTexture(GL13.GL_TEXTURE1);
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, this.texture1);
+            GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0 + this.activeTexture);
+            GLSMBlend.glColorMask(
                 this.colorMask.red,
                 this.colorMask.green,
                 this.colorMask.blue,
                 this.colorMask.alpha
             );
-            GLStateManager.glDepthMask(this.depthMask);
+            GLSMDepthStencilAlpha.glDepthMask(this.depthMask);
             restoreCapability(GL11.GL_DEPTH_TEST, this.depthTest);
             restoreCapability(GL11.GL_SCISSOR_TEST, this.scissorTest);
             restoreCapability(GL11.GL_CULL_FACE, this.cull);
@@ -364,7 +375,7 @@ public final class EndPortalCompositeRenderer {
             } else {
                 RenderSystem.disableBufferBlend(0);
             }
-            GLStateManager.glClearColor(
+            GLSMBlend.glClearColor(
                 this.clearColor.getRed(),
                 this.clearColor.getGreen(),
                 this.clearColor.getBlue(),
@@ -374,9 +385,9 @@ public final class EndPortalCompositeRenderer {
 
         private static void restoreCapability(int capability, boolean enabled) {
             if (enabled) {
-                GLStateManager.glEnable(capability);
+                GLSMEnable.glEnable(capability);
             } else {
-                GLStateManager.glDisable(capability);
+                GLSMEnable.glDisable(capability);
             }
         }
     }

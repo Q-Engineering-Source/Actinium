@@ -10,6 +10,8 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import com.gtnewhorizons.angelica.glsm.GLSMEnable;
+import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
 
 @Mixin(LayerEndermanEyes.class)
 public class LayerEndermanEyesIrisMixin {
@@ -25,8 +27,8 @@ public class LayerEndermanEyesIrisMixin {
         float scale,
         CallbackInfo ci
     ) {
-        GLStateManager.glEnable(GL11.GL_POLYGON_OFFSET_FILL);
-        GLStateManager.glPolygonOffset(-1.0F, -1.0F);
+        GLSMEnable.glEnable(GL11.GL_POLYGON_OFFSET_FILL);
+        GLSMRasterizer.glPolygonOffset(-1.0F, -1.0F);
         GbufferPrograms.setupSpecialRenderCondition(SpecialCondition.ENTITY_EYES);
     }
 
@@ -43,7 +45,7 @@ public class LayerEndermanEyesIrisMixin {
         CallbackInfo ci
     ) {
         GbufferPrograms.teardownSpecialRenderCondition();
-        GLStateManager.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
-        GLStateManager.glPolygonOffset(0.0F, 0.0F);
+        GLSMEnable.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
+        GLSMRasterizer.glPolygonOffset(0.0F, 0.0F);
     }
 }

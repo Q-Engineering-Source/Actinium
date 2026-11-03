@@ -3529,7 +3529,7 @@ public class GLStateManager {
             public static void setLightmapTextureCoords(int unit, float x, float y) { GLSMCurrentAttribs.setLightmapTextureCoords(unit, x, y); }
 
     private static void checkMismatch(int cap) {
-        final int cached = GLStateManager.glGetInteger(cap);
+        final int cached = GLSMQueries.glGetInteger(cap);
         final int actual = RENDER_BACKEND.getInteger(cap);
         if (actual != cached) {
             throw new IllegalStateException("GLSM Mismatch! cap=" + cap + " cached=" + cached + " actual=" + actual);

@@ -2,6 +2,7 @@ package com.dhj.actinium.render.terrain;
 
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import org.lwjgl.opengl.GL11;
+import com.gtnewhorizons.angelica.glsm.GLSMAttribStack;
 
 /**
  * Saves and restores the full GLSM-tracked GL state around tile-entity (TESR) batches.
@@ -22,14 +23,14 @@ public final class TileEntityGlStateGuard {
      * Saves all GLSM-tracked GL state before a tile-entity batch.
      */
     public static void push() {
-        GLStateManager.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+        GLSMAttribStack.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
     }
 
     /**
      * Restores the state captured by the matching {@link #push()}.
      */
     public static void pop() {
-        GLStateManager.glPopAttrib();
+        GLSMAttribStack.glPopAttrib();
     }
 
     /**

@@ -49,7 +49,7 @@ public final class GLSMFog {
                 }
             }
         } else {
-            GLStateManager.glFogf(pname, param.get(0));
+            GLSMFog.glFogf(pname, param.get(0));
         }
     }
 

@@ -1,6 +1,7 @@
 package com.gtnewhorizons.angelica.glsm.recording.commands;
 
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.GLSMDraws;
 
 /**
  * Placeholder command for one baked indexed draw. Recorded into the command stream as a
@@ -31,7 +32,7 @@ public final class BatchedIndexedDrawCmd implements DisplayListCommand {
     public void execute() {
         if (batch == null) return;
         batch.bind();
-        GLStateManager.glDrawElements(drawMode, indexCount, indexType, indexByteOffset);
+        GLSMDraws.glDrawElements(drawMode, indexCount, indexType, indexByteOffset);
     }
 
     @Override

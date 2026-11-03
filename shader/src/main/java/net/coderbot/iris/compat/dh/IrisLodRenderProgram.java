@@ -37,6 +37,8 @@ import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 public class IrisLodRenderProgram {
     // Uniforms
@@ -64,47 +66,47 @@ public class IrisLodRenderProgram {
 
     // This will bind  AbstractVertexAttribute
     private IrisLodRenderProgram(String name, boolean isShadowPass, boolean translucent, AlphaTestOverride alphaTestOverride, BlendModeOverride override, BufferBlendOverride[] bufferBlendOverrides, String vertex, String tessControl, String tessEval, String geometry, String fragment, CustomUniforms customUniforms, DeferredWorldRenderingPipeline pipeline, ProgramSource source) {
-        id = GLStateManager.glCreateProgram();
+        id = GLSMPrograms.glCreateProgram();
 
-        GLStateManager.glBindAttribLocation(this.id, 0, "vPosition");
-        GLStateManager.glBindAttribLocation(this.id, 1, "iris_color");
-        GLStateManager.glBindAttribLocation(this.id, 2, "irisExtra");
+        GLSMPrograms.glBindAttribLocation(this.id, 0, "vPosition");
+        GLSMPrograms.glBindAttribLocation(this.id, 1, "iris_color");
+        GLSMPrograms.glBindAttribLocation(this.id, 2, "irisExtra");
 
         this.bufferBlendOverrides = bufferBlendOverrides;
         this.alphaTestOverride = alphaTestOverride;
 
         GlShader vert = new GlShader(ShaderType.VERTEX, name + ".vsh", vertex);
-        GLStateManager.glAttachShader(id, vert.getHandle());
+        GLSMPrograms.glAttachShader(id, vert.getHandle());
 
         GlShader tessCont = null;
         if (tessControl != null) {
             tessCont = new GlShader(ShaderType.TESSELATION_CONTROL, name + ".tcs", tessControl);
-            GLStateManager.glAttachShader(id, tessCont.getHandle());
+            GLSMPrograms.glAttachShader(id, tessCont.getHandle());
         }
 
         GlShader tessE = null;
         if (tessEval != null) {
             tessE = new GlShader(ShaderType.TESSELATION_EVAL, name + ".tes", tessEval);
-            GLStateManager.glAttachShader(id, tessE.getHandle());
+            GLSMPrograms.glAttachShader(id, tessE.getHandle());
         }
 
         GlShader geom = null;
         if (geometry != null) {
             geom = new GlShader(ShaderType.GEOMETRY, name + ".gsh", geometry);
-            GLStateManager.glAttachShader(id, geom.getHandle());
+            GLSMPrograms.glAttachShader(id, geom.getHandle());
         }
 
         GlShader frag = new GlShader(ShaderType.FRAGMENT, name + ".fsh", fragment);
-        GLStateManager.glAttachShader(id, frag.getHandle());
+        GLSMPrograms.glAttachShader(id, frag.getHandle());
 
-        GLStateManager.glLinkProgram(this.id);
-        int status = GLStateManager.glGetProgrami(this.id, GL20.GL_LINK_STATUS);
+        GLSMPrograms.glLinkProgram(this.id);
+        int status = GLSMPrograms.glGetProgrami(this.id, GL20.GL_LINK_STATUS);
         if (status != 1) {
-            String message = "Shader link error in Iris DH program! Details: " + GLStateManager.glGetProgramInfoLog(this.id, 9999);
+            String message = "Shader link error in Iris DH program! Details: " + GLSMPrograms.glGetProgramInfoLog(this.id, 9999);
             this.free();
             throw new RuntimeException(message);
         } else {
-            GLStateManager.glUseProgram(this.id);
+            GLSMPrograms.glUseProgram(this.id);
         }
 
         vert.destroy();
@@ -179,7 +181,7 @@ public class IrisLodRenderProgram {
     // Noise Uniforms
 
     public int tryGetUniformLocation2(CharSequence name) {
-        return GLStateManager.glGetUniformLocation(this.id, name);
+        return GLSMPrograms.glGetUniformLocation(this.id, name);
     }
 
     public void setUniform(int index, Matrix4fc matrix) {
@@ -190,7 +192,7 @@ public class IrisLodRenderProgram {
             matrix.get(buffer);
             buffer.rewind();
 
-            GLStateManager.glUniformMatrix4(index, false, buffer);
+            GLSMPrograms.glUniformMatrix4(index, false, buffer);
         }
     }
 
@@ -202,13 +204,13 @@ public class IrisLodRenderProgram {
             matrix.get(buffer);
             buffer.rewind();
 
-            GLStateManager.glUniformMatrix3(index, false, buffer);
+            GLSMPrograms.glUniformMatrix3(index, false, buffer);
         }
     }
 
     // Override ShaderProgram.bind()
     public void bind() {
-        GLStateManager.glUseProgram(id);
+        GLSMPrograms.glUseProgram(id);
         if (alphaTestOverride != null) {
             alphaTestOverride.apply();
         }
@@ -220,7 +222,7 @@ public class IrisLodRenderProgram {
     }
 
     public void unbind() {
-        GLStateManager.glUseProgram(0);
+        GLSMPrograms.glUseProgram(0);
         AlphaTestOverride.restore();
         BlendModeOverride.restore();
         ProgramUniforms.clearActiveUniforms();
@@ -228,15 +230,15 @@ public class IrisLodRenderProgram {
     }
 
     public void free() {
-        GLStateManager.glDeleteProgram(id);
+        GLSMPrograms.glDeleteProgram(id);
     }
 
     public void fillUniformData(Matrix4fc projection, Matrix4fc modelView, int worldYOffset, float partialTicks) {
-        GLStateManager.glUseProgram(id);
+        GLSMPrograms.glUseProgram(id);
 
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0 + IrisSamplers.LIGHTMAP_TEXTURE_UNIT);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0 + IrisSamplers.LIGHTMAP_TEXTURE_UNIT);
         DynamicTexture lightmapTexture = PostProcessingBridge.getLightmapTexture(Minecraft.getMinecraft().entityRenderer);
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, lightmapTexture.getGlTextureId());
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, lightmapTexture.getGlTextureId());
         setUniform(modelViewUniform, modelView);
         setUniform(modelViewInverseUniform, modelView.invert(tempMat4a));
         setUniform(projectionUniform, projection);
@@ -260,7 +262,7 @@ public class IrisLodRenderProgram {
     }
 
     private void setUniform(int index, float value) {
-        GLStateManager.glUniform1f(index, value);
+        GLSMPrograms.glUniform1f(index, value);
     }
 
     public void setModelPos(DhApiVec3f modelPos) {
@@ -268,7 +270,7 @@ public class IrisLodRenderProgram {
     }
 
     private void setUniform(int index, DhApiVec3f pos) {
-        GLStateManager.glUniform3f(index, pos.x, pos.y, pos.z);
+        GLSMPrograms.glUniform3f(index, pos.x, pos.y, pos.z);
     }
 
 }

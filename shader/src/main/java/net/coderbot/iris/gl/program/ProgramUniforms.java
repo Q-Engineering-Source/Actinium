@@ -26,6 +26,7 @@ import org.lwjgl.opengl.ARBShaderImageLoadStore;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
 
 public class ProgramUniforms {
 	private static ProgramUniforms active;
@@ -194,7 +195,7 @@ public class ProgramUniforms {
 
 		public ProgramUniforms buildUniforms() {
 			// Check for any unsupported uniforms and warn about them so that we can easily figure out what uniforms we need to add.
-			final int activeUniforms = GLStateManager.glGetProgrami(program, GL20.GL_ACTIVE_UNIFORMS);
+			final int activeUniforms = GLSMPrograms.glGetProgrami(program, GL20.GL_ACTIVE_UNIFORMS);
 			IntBuffer sizeType = BufferUtils.createIntBuffer(2);
 
 			for (int index = 0; index < activeUniforms; index++) {

@@ -35,6 +35,8 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Optional;
+import com.gtnewhorizons.angelica.glsm.GLSMQueries;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 public class CustomTextureManager {
 	@Getter private final EnumMap<TextureStage, Object2ObjectMap<String, TextureAccess>> customTextureIdMap = new EnumMap<>(TextureStage.class);
@@ -173,10 +175,10 @@ public class CustomTextureManager {
 
 						final TextureFormat textureFormat = TextureFormatLoader.getFormat();
 						if (textureFormat != null) {
-							final int previousBinding = GLStateManager.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
-							GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, pbrTexture.getGlTextureId());
+							final int previousBinding = GLSMQueries.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+							GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, pbrTexture.getGlTextureId());
 							textureFormat.setupTextureParameters(pbrType, pbrTexture);
-							GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, previousBinding);
+							GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, previousBinding);
 						}
 
 						return pbrTexture.getGlTextureId();

@@ -7,6 +7,7 @@ import net.coderbot.iris.gl.shader.ProgramCreator;
 import net.coderbot.iris.gl.state.StateUpdateNotifiers;
 import net.coderbot.iris.pipeline.WorldRenderingPhase;
 import net.coderbot.iris.pipeline.WorldRenderingPipeline;
+import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
 
 public class GbufferPrograms {
 	private static boolean entities;
@@ -165,10 +166,10 @@ public class GbufferPrograms {
 	}
 
 	public static void setBlockEntityDefaults() {
-		GLStateManager.glVertexAttrib2s(ProgramCreator.MC_ENTITY, (short)-1, (short)-1);
-		GLStateManager.glVertexAttrib2f(ProgramCreator.MC_MID_TEX_COORD, 0.5f, 0.5f);
-		GLStateManager.glVertexAttrib4f(ProgramCreator.AT_TANGENT, 1.0f, 0.0f, 0.0f, 1.0f);
-		GLStateManager.glVertexAttrib4f(ProgramCreator.AT_MIDBLOCK, 0.0f, 0.0f, 0.0f, 0.0f);
+		GLSMCurrentAttribs.glVertexAttrib2s(ProgramCreator.MC_ENTITY, (short)-1, (short)-1);
+		GLSMCurrentAttribs.glVertexAttrib2f(ProgramCreator.MC_MID_TEX_COORD, 0.5f, 0.5f);
+		GLSMCurrentAttribs.glVertexAttrib4f(ProgramCreator.AT_TANGENT, 1.0f, 0.0f, 0.0f, 1.0f);
+		GLSMCurrentAttribs.glVertexAttrib4f(ProgramCreator.AT_MIDBLOCK, 0.0f, 0.0f, 0.0f, 0.0f);
 	}
 
 	public static WorldRenderingPhase getCurrentPhase() {

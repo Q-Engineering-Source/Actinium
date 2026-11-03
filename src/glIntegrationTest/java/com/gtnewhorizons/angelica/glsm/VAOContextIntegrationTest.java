@@ -34,9 +34,9 @@ class VAOContextIntegrationTest extends GLStateManagerIntegrationFixture {
 
     @Test
     void vaoAttributesAndEboRemainIndependentAcrossDrawables() {
-        final int mainVao = GLStateManager.glGenVertexArrays();
-        final int mainVbo = GLStateManager.glGenBuffers();
-        final int mainEbo = GLStateManager.glGenBuffers();
+        final int mainVao = GLSMVertexInput.glGenVertexArrays();
+        final int mainVbo = GLSMBuffers.glGenBuffers();
+        final int mainEbo = GLSMBuffers.glGenBuffers();
         configureVboVao(mainVao, mainVbo, mainEbo, 3, 12);
 
         final long drawable = SDL_GL_CreateContext(window);
@@ -48,35 +48,35 @@ class VAOContextIntegrationTest extends GLStateManagerIntegrationFixture {
         try {
             activateContext(drawableToken, drawable, false);
             GLStateManager.recreateDefaultVertexArray();
-            drawableVao = GLStateManager.glGenVertexArrays();
-            drawableVbo = GLStateManager.glGenBuffers();
-            drawableEbo = GLStateManager.glGenBuffers();
+            drawableVao = GLSMVertexInput.glGenVertexArrays();
+            drawableVbo = GLSMBuffers.glGenBuffers();
+            drawableEbo = GLSMBuffers.glGenBuffers();
             configureVboVao(drawableVao, drawableVbo, drawableEbo, 4, 16);
 
             activateContext(DISPLAY_TOKEN, context, true);
-            GLStateManager.glBindVertexArray(mainVao);
+            GLSMVertexInput.glBindVertexArray(mainVao);
             assertVboVaoState(mainVbo, mainEbo, 3, 12);
 
             activateContext(drawableToken, drawable, false);
-            GLStateManager.glBindVertexArray(drawableVao);
+            GLSMVertexInput.glBindVertexArray(drawableVao);
             assertVboVaoState(drawableVbo, drawableEbo, 4, 16);
         } finally {
             if (drawableVao != 0) {
                 activateContext(drawableToken, drawable, false);
-                GLStateManager.glBindVertexArray(0);
-                GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
-                GLStateManager.glDeleteVertexArrays(drawableVao);
-                GLStateManager.glDeleteBuffers(drawableVbo);
-                GLStateManager.glDeleteBuffers(drawableEbo);
+                GLSMVertexInput.glBindVertexArray(0);
+                GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+                GLSMVertexInput.glDeleteVertexArrays(drawableVao);
+                GLSMBuffers.glDeleteBuffers(drawableVbo);
+                GLSMBuffers.glDeleteBuffers(drawableEbo);
             }
             releaseNativeContext();
             assertTrue(SDL_GL_DestroyContext(drawable));
             activateContext(DISPLAY_TOKEN, context, true);
-            GLStateManager.glBindVertexArray(0);
-            GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
-            GLStateManager.glDeleteVertexArrays(mainVao);
-            GLStateManager.glDeleteBuffers(mainVbo);
-            GLStateManager.glDeleteBuffers(mainEbo);
+            GLSMVertexInput.glBindVertexArray(0);
+            GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+            GLSMVertexInput.glDeleteVertexArrays(mainVao);
+            GLSMBuffers.glDeleteBuffers(mainVbo);
+            GLSMBuffers.glDeleteBuffers(mainEbo);
         }
     }
 
@@ -84,15 +84,15 @@ class VAOContextIntegrationTest extends GLStateManagerIntegrationFixture {
     void clientArrayUploadKeepsDrawLengthAndVaoPointersAcrossDrawables() {
         final ByteBuffer mainPosition = positionBuffer(4_200_768);
         final ByteBuffer mainColor = BufferUtils.createByteBuffer(1024);
-        final int mainVao = GLStateManager.glGenVertexArrays();
-        GLStateManager.glBindVertexArray(mainVao);
-        GLStateManager.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 12, mainPosition);
-        GLStateManager.glVertexAttribPointer(1, 4, GL11.GL_UNSIGNED_BYTE, true, 4, mainColor);
-        GLStateManager.glEnableVertexAttribArray(0);
-        GLStateManager.glEnableVertexAttribArray(1);
-        GLStateManager.glDrawArrays(GL11.GL_TRIANGLES, 0, 4);
+        final int mainVao = GLSMVertexInput.glGenVertexArrays();
+        GLSMVertexInput.glBindVertexArray(mainVao);
+        GLSMVertexInput.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 12, mainPosition);
+        GLSMVertexInput.glVertexAttribPointer(1, 4, GL11.GL_UNSIGNED_BYTE, true, 4, mainColor);
+        GLSMVertexInput.glEnableVertexAttribArray(0);
+        GLSMVertexInput.glEnableVertexAttribArray(1);
+        GLSMDraws.glDrawArrays(GL11.GL_TRIANGLES, 0, 4);
         assertEquals(48L, GL20.glGetVertexAttribPointer(1, GL20.GL_VERTEX_ATTRIB_ARRAY_POINTER));
-        GLStateManager.glBindVertexArray(0);
+        GLSMVertexInput.glBindVertexArray(0);
 
         final long drawable = SDL_GL_CreateContext(window);
         assertNotEquals(MemoryUtil.NULL, drawable);
@@ -101,43 +101,43 @@ class VAOContextIntegrationTest extends GLStateManagerIntegrationFixture {
         try {
             activateContext(drawableToken, drawable, false);
             GLStateManager.recreateDefaultVertexArray();
-            drawableVao = GLStateManager.glGenVertexArrays();
-            GLStateManager.glBindVertexArray(drawableVao);
-            GLStateManager.glVertexAttribPointer(0, 2, GL11.GL_FLOAT, false, 8, positionBuffer(4096));
-            GLStateManager.glVertexAttribPointer(1, 4, GL11.GL_UNSIGNED_BYTE, true, 4, BufferUtils.createByteBuffer(128));
-            GLStateManager.glEnableVertexAttribArray(0);
-            GLStateManager.glEnableVertexAttribArray(1);
-            GLStateManager.glDrawArrays(GL11.GL_TRIANGLES, 0, 4);
+            drawableVao = GLSMVertexInput.glGenVertexArrays();
+            GLSMVertexInput.glBindVertexArray(drawableVao);
+            GLSMVertexInput.glVertexAttribPointer(0, 2, GL11.GL_FLOAT, false, 8, positionBuffer(4096));
+            GLSMVertexInput.glVertexAttribPointer(1, 4, GL11.GL_UNSIGNED_BYTE, true, 4, BufferUtils.createByteBuffer(128));
+            GLSMVertexInput.glEnableVertexAttribArray(0);
+            GLSMVertexInput.glEnableVertexAttribArray(1);
+            GLSMDraws.glDrawArrays(GL11.GL_TRIANGLES, 0, 4);
             assertEquals(32L, GL20.glGetVertexAttribPointer(1, GL20.GL_VERTEX_ATTRIB_ARRAY_POINTER));
-            GLStateManager.glBindVertexArray(0);
+            GLSMVertexInput.glBindVertexArray(0);
 
             activateContext(DISPLAY_TOKEN, context, true);
-            GLStateManager.glBindVertexArray(mainVao);
-            GLStateManager.glDrawArrays(GL11.GL_TRIANGLES, 0, 4);
+            GLSMVertexInput.glBindVertexArray(mainVao);
+            GLSMDraws.glDrawArrays(GL11.GL_TRIANGLES, 0, 4);
             assertEquals(48L, GL20.glGetVertexAttribPointer(1, GL20.GL_VERTEX_ATTRIB_ARRAY_POINTER));
         } finally {
             if (drawableVao != 0) {
                 activateContext(drawableToken, drawable, false);
-                GLStateManager.glBindVertexArray(0);
-                GLStateManager.glDeleteVertexArrays(drawableVao);
+                GLSMVertexInput.glBindVertexArray(0);
+                GLSMVertexInput.glDeleteVertexArrays(drawableVao);
             }
             releaseNativeContext();
             assertTrue(SDL_GL_DestroyContext(drawable));
             activateContext(DISPLAY_TOKEN, context, true);
-            GLStateManager.glBindVertexArray(0);
-            GLStateManager.glDeleteVertexArrays(mainVao);
+            GLSMVertexInput.glBindVertexArray(0);
+            GLSMVertexInput.glDeleteVertexArrays(mainVao);
         }
     }
 
     private static void configureVboVao(int vao, int vbo, int ebo, int size, int stride) {
-        GLStateManager.glBindVertexArray(vao);
-        GLStateManager.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
-        GLStateManager.glBufferData(GL15.GL_ARRAY_BUFFER, 256L, GL15.GL_STATIC_DRAW);
-        GLStateManager.glVertexAttribPointer(0, size, GL11.GL_FLOAT, false, stride, 0L);
-        GLStateManager.glEnableVertexAttribArray(0);
-        GLStateManager.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, ebo);
-        GLStateManager.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, 64L, GL15.GL_STATIC_DRAW);
-        GLStateManager.glBindVertexArray(0);
+        GLSMVertexInput.glBindVertexArray(vao);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+        GLSMBuffers.glBufferData(GL15.GL_ARRAY_BUFFER, 256L, GL15.GL_STATIC_DRAW);
+        GLSMVertexInput.glVertexAttribPointer(0, size, GL11.GL_FLOAT, false, stride, 0L);
+        GLSMVertexInput.glEnableVertexAttribArray(0);
+        GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, ebo);
+        GLSMBuffers.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, 64L, GL15.GL_STATIC_DRAW);
+        GLSMVertexInput.glBindVertexArray(0);
     }
 
     private static void assertVboVaoState(int vbo, int ebo, int size, int stride) {

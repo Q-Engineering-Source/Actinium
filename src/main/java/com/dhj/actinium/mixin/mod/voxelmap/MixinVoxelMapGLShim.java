@@ -10,6 +10,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyArgs;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
+import com.gtnewhorizons.angelica.glsm.GLSMEnable;
+import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
 
 /**
  * Keeps VoxelMap's GL state mutations inside the GLSM state cache.
@@ -52,7 +54,7 @@ public abstract class MixinVoxelMapGLShim {
     @Inject(method = "glEnable", at = @At("HEAD"), cancellable = true)
     private static void voxelmap$enableScissorTracked(int attrib, CallbackInfo ci) {
         if (attrib == GL_SCISSOR_TEST) {
-            GLStateManager.glEnable(attrib);
+            GLSMEnable.glEnable(attrib);
             ci.cancel();
         }
     }
@@ -60,14 +62,14 @@ public abstract class MixinVoxelMapGLShim {
     @Inject(method = "glDisable", at = @At("HEAD"), cancellable = true)
     private static void voxelmap$disableScissorTracked(int attrib, CallbackInfo ci) {
         if (attrib == GL_SCISSOR_TEST) {
-            GLStateManager.glDisable(attrib);
+            GLSMEnable.glDisable(attrib);
             ci.cancel();
         }
     }
 
     @Inject(method = "glScissor", at = @At("HEAD"), cancellable = true)
     private static void voxelmap$scissorTracked(int x, int y, int width, int height, CallbackInfo ci) {
-        GLStateManager.glScissor(x, y, width, height);
+        GLSMRasterizer.glScissor(x, y, width, height);
         ci.cancel();
     }
 

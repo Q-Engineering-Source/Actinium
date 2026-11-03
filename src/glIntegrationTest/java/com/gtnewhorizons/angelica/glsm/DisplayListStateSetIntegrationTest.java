@@ -16,10 +16,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DisplayListStateSetIntegrationTest extends GLStateManagerIntegrationFixture {
     @Test
     void compiledStateSetBracketRestoresMaskSubsetAndDriverState() {
-        final int list = GLStateManager.glGenLists(1);
+        final int list = GLSMDraws.glGenLists(1);
         final int entryDepth = GLStateManager.getAttribDepth();
         try {
-            GLStateManager.glNewList(list, GL11.GL_COMPILE);
+            GLSMDraws.glNewList(list, GL11.GL_COMPILE);
             try {
                 final int token = GLStateManager.pushState(StateSet.BLEND);
                 GLStateManager.enableBlend();
@@ -28,7 +28,7 @@ class DisplayListStateSetIntegrationTest extends GLStateManagerIntegrationFixtur
                 GLStateManager.popStateTo(token);
             } finally {
                 if (DisplayListManager.isRecording()) {
-                    GLStateManager.glEndList();
+                    GLSMDraws.glEndList();
                 }
             }
 
@@ -39,7 +39,7 @@ class DisplayListStateSetIntegrationTest extends GLStateManagerIntegrationFixtur
 
             GLStateManager.tryBlendFuncSeparate(GL11.GL_ONE, GL11.GL_ZERO, GL11.GL_ONE, GL11.GL_ZERO);
             GLStateManager.disableBlend();
-            GLStateManager.glCallList(list);
+            GLSMDraws.glCallList(list);
 
             assertFalse(GLStateManager.getBlendMode().isEnabled());
             assertEquals(GL11.GL_ONE, GLStateManager.getBlendState().getSrcRgb());
@@ -52,7 +52,7 @@ class DisplayListStateSetIntegrationTest extends GLStateManagerIntegrationFixtur
             while (GLStateManager.getAttribDepth() > entryDepth) {
                 GLStateManager.popState();
             }
-            GLStateManager.glDeleteLists(list, 1);
+            GLSMDraws.glDeleteLists(list, 1);
             GLStateManager.disableBlend();
             GLStateManager.tryBlendFuncSeparate(GL11.GL_ONE, GL11.GL_ZERO, GL11.GL_ONE, GL11.GL_ZERO);
         }
@@ -60,89 +60,89 @@ class DisplayListStateSetIntegrationTest extends GLStateManagerIntegrationFixtur
 
     @Test
     void nestedCompilationKeepsIndependentStateScopes() {
-        final int parent = GLStateManager.glGenLists(1);
-        final int child = GLStateManager.glGenLists(1);
+        final int parent = GLSMDraws.glGenLists(1);
+        final int child = GLSMDraws.glGenLists(1);
         final int entryDepth = GLStateManager.getAttribDepth();
         try {
             GLStateManager.enableBlend();
-            GLStateManager.glEnable(GL11.GL_CULL_FACE);
+            GLSMEnable.glEnable(GL11.GL_CULL_FACE);
 
-            GLStateManager.glNewList(parent, GL11.GL_COMPILE);
+            GLSMDraws.glNewList(parent, GL11.GL_COMPILE);
             final int parentToken = GLStateManager.pushState(StateSet.BLEND);
-            GLStateManager.glNewList(child, GL11.GL_COMPILE);
+            GLSMDraws.glNewList(child, GL11.GL_COMPILE);
             GLStateManager.pushState(StateSet.CULL);
-            GLStateManager.glDisable(GL11.GL_CULL_FACE);
-            GLStateManager.glEndList();
+            GLSMEnable.glDisable(GL11.GL_CULL_FACE);
+            GLSMDraws.glEndList();
 
             GLStateManager.disableBlend();
             GLStateManager.popStateTo(parentToken);
-            GLStateManager.glEndList();
+            GLSMDraws.glEndList();
 
             assertEquals(2, DisplayListManager.getDisplayList(parent).getCommandCounts().getOrDefault(GLCommand.COMPLEX_REF, 0));
             assertEquals(2, DisplayListManager.getDisplayList(child).getCommandCounts().getOrDefault(GLCommand.COMPLEX_REF, 0));
             assertEquals(entryDepth, GLStateManager.getAttribDepth());
 
-            GLStateManager.glCallList(parent);
+            GLSMDraws.glCallList(parent);
             assertTrue(GLStateManager.getBlendMode().isEnabled());
-            GLStateManager.glCallList(child);
+            GLSMDraws.glCallList(child);
             assertTrue(GLStateManager.getCullState().isEnabled());
         } finally {
             while (DisplayListManager.isRecording()) {
                 GLStateManager.popStateTo(entryDepth);
-                GLStateManager.glEndList();
+                GLSMDraws.glEndList();
             }
             while (GLStateManager.getAttribDepth() > entryDepth) {
                 GLStateManager.popState();
             }
-            GLStateManager.glDeleteLists(parent, 1);
-            GLStateManager.glDeleteLists(child, 1);
+            GLSMDraws.glDeleteLists(parent, 1);
+            GLSMDraws.glDeleteLists(child, 1);
             GLStateManager.disableBlend();
-            GLStateManager.glDisable(GL11.GL_CULL_FACE);
+            GLSMEnable.glDisable(GL11.GL_CULL_FACE);
         }
     }
 
     @Test
     void virtualDepthOverflowCleansUpSuccessfulPushes() {
-        final int list = GLStateManager.glGenLists(1);
-        final int other = GLStateManager.glGenLists(1);
+        final int list = GLSMDraws.glGenLists(1);
+        final int other = GLSMDraws.glGenLists(1);
         final int entryDepth = GLStateManager.getAttribDepth();
         try {
-            GLStateManager.glNewList(list, GL11.GL_COMPILE);
+            GLSMDraws.glNewList(list, GL11.GL_COMPILE);
             for (int i = 0; i < 32; i++) {
                 GLStateManager.pushState(StateSet.CUTOUT);
             }
             assertThrows(IllegalStateException.class, () -> GLStateManager.pushState(StateSet.CUTOUT));
-            GLStateManager.glEndList();
+            GLSMDraws.glEndList();
 
             assertEquals(64, DisplayListManager.getDisplayList(list).getCommandCounts().getOrDefault(GLCommand.COMPLEX_REF, 0));
             assertEquals(entryDepth, GLStateManager.getAttribDepth());
             assertDoesNotThrow(() -> {
-                GLStateManager.glNewList(other, GL11.GL_COMPILE);
-                GLStateManager.glEndList();
+                GLSMDraws.glNewList(other, GL11.GL_COMPILE);
+                GLSMDraws.glEndList();
             });
         } finally {
             while (DisplayListManager.isRecording()) {
                 GLStateManager.popStateTo(entryDepth);
-                GLStateManager.glEndList();
+                GLSMDraws.glEndList();
             }
             while (GLStateManager.getAttribDepth() > entryDepth) {
                 GLStateManager.popState();
             }
-            GLStateManager.glDeleteLists(list, 1);
-            GLStateManager.glDeleteLists(other, 1);
+            GLSMDraws.glDeleteLists(list, 1);
+            GLSMDraws.glDeleteLists(other, 1);
         }
     }
 
     @Test
     void compileAndExecuteAttribCommandsAreNotDuplicated() {
-        final int list = GLStateManager.glGenLists(1);
+        final int list = GLSMDraws.glGenLists(1);
         final int entryDepth = GLStateManager.getAttribDepth();
         try {
-            GLStateManager.glNewList(list, GL11.GL_COMPILE_AND_EXECUTE);
-            GLStateManager.glPushAttrib(GL11.GL_ENABLE_BIT);
+            GLSMDraws.glNewList(list, GL11.GL_COMPILE_AND_EXECUTE);
+            GLSMAttribStack.glPushAttrib(GL11.GL_ENABLE_BIT);
             GLStateManager.enableBlend();
-            GLStateManager.glPopAttrib();
-            GLStateManager.glEndList();
+            GLSMAttribStack.glPopAttrib();
+            GLSMDraws.glEndList();
 
             final CompiledDisplayList compiled = DisplayListManager.getDisplayList(list);
             assertNotNull(compiled);
@@ -153,32 +153,32 @@ class DisplayListStateSetIntegrationTest extends GLStateManagerIntegrationFixtur
         } finally {
             while (DisplayListManager.isRecording()) {
                 GLStateManager.popStateTo(entryDepth);
-                GLStateManager.glEndList();
+                GLSMDraws.glEndList();
             }
             while (GLStateManager.getAttribDepth() > entryDepth) {
                 GLStateManager.popState();
             }
-            GLStateManager.glDeleteLists(list, 1);
+            GLSMDraws.glDeleteLists(list, 1);
             GLStateManager.disableBlend();
         }
     }
 
     @Test
     void compileAndExecuteChildRestoresLiveStateInsideCompileParent() {
-        final int parent = GLStateManager.glGenLists(1);
-        final int child = GLStateManager.glGenLists(1);
+        final int parent = GLSMDraws.glGenLists(1);
+        final int child = GLSMDraws.glGenLists(1);
         final int entryDepth = GLStateManager.getAttribDepth();
         try {
             GLStateManager.enableBlend();
-            GLStateManager.glEnable(GL11.GL_CULL_FACE);
+            GLSMEnable.glEnable(GL11.GL_CULL_FACE);
 
-            GLStateManager.glNewList(parent, GL11.GL_COMPILE);
+            GLSMDraws.glNewList(parent, GL11.GL_COMPILE);
             final int parentToken = GLStateManager.pushState(StateSet.BLEND);
-            GLStateManager.glNewList(child, GL11.GL_COMPILE_AND_EXECUTE);
+            GLSMDraws.glNewList(child, GL11.GL_COMPILE_AND_EXECUTE);
             final int childToken = GLStateManager.pushState(StateSet.CULL);
-            GLStateManager.glDisable(GL11.GL_CULL_FACE);
+            GLSMEnable.glDisable(GL11.GL_CULL_FACE);
             GLStateManager.popStateTo(childToken);
-            GLStateManager.glEndList();
+            GLSMDraws.glEndList();
 
             assertTrue(GLStateManager.getCullState().isEnabled());
             assertTrue(GL11.glIsEnabled(GL11.GL_CULL_FACE));
@@ -186,41 +186,41 @@ class DisplayListStateSetIntegrationTest extends GLStateManagerIntegrationFixtur
 
             GLStateManager.disableBlend();
             GLStateManager.popStateTo(parentToken);
-            GLStateManager.glEndList();
+            GLSMDraws.glEndList();
 
             assertEquals(2, DisplayListManager.getDisplayList(parent).getCommandCounts().getOrDefault(GLCommand.COMPLEX_REF, 0));
             assertEquals(2, DisplayListManager.getDisplayList(child).getCommandCounts().getOrDefault(GLCommand.COMPLEX_REF, 0));
             assertEquals(entryDepth, GLStateManager.getAttribDepth());
 
-            GLStateManager.glCallList(child);
+            GLSMDraws.glCallList(child);
             assertTrue(GLStateManager.getCullState().isEnabled());
-            GLStateManager.glCallList(parent);
+            GLSMDraws.glCallList(parent);
             assertTrue(GLStateManager.getBlendMode().isEnabled());
         } finally {
             while (DisplayListManager.isRecording()) {
                 GLStateManager.popStateTo(entryDepth);
-                GLStateManager.glEndList();
+                GLSMDraws.glEndList();
             }
             while (GLStateManager.getAttribDepth() > entryDepth) {
                 GLStateManager.popState();
             }
-            GLStateManager.glDeleteLists(parent, 1);
-            GLStateManager.glDeleteLists(child, 1);
+            GLSMDraws.glDeleteLists(parent, 1);
+            GLSMDraws.glDeleteLists(child, 1);
             GLStateManager.disableBlend();
-            GLStateManager.glDisable(GL11.GL_CULL_FACE);
+            GLSMEnable.glDisable(GL11.GL_CULL_FACE);
         }
     }
 
     @Test
     void compileAndExecuteEndListClosesUnbalancedLiveScope() {
-        final int list = GLStateManager.glGenLists(1);
+        final int list = GLSMDraws.glGenLists(1);
         final int entryDepth = GLStateManager.getAttribDepth();
         try {
             GLStateManager.disableBlend();
-            GLStateManager.glNewList(list, GL11.GL_COMPILE_AND_EXECUTE);
+            GLSMDraws.glNewList(list, GL11.GL_COMPILE_AND_EXECUTE);
             GLStateManager.pushState(StateSet.BLEND);
             GLStateManager.enableBlend();
-            GLStateManager.glEndList();
+            GLSMDraws.glEndList();
 
             assertEquals(entryDepth, GLStateManager.getAttribDepth());
             assertFalse(GLStateManager.getBlendMode().isEnabled());
@@ -229,38 +229,38 @@ class DisplayListStateSetIntegrationTest extends GLStateManagerIntegrationFixtur
         } finally {
             while (DisplayListManager.isRecording()) {
                 GLStateManager.popStateTo(entryDepth);
-                GLStateManager.glEndList();
+                GLSMDraws.glEndList();
             }
             while (GLStateManager.getAttribDepth() > entryDepth) {
                 GLStateManager.popState();
             }
-            GLStateManager.glDeleteLists(list, 1);
+            GLSMDraws.glDeleteLists(list, 1);
             GLStateManager.disableBlend();
         }
     }
 
     @Test
     void nestedCompileAndExecuteEndListRestoresParentLiveScope() {
-        final int parent = GLStateManager.glGenLists(1);
-        final int child = GLStateManager.glGenLists(1);
+        final int parent = GLSMDraws.glGenLists(1);
+        final int child = GLSMDraws.glGenLists(1);
         final int entryDepth = GLStateManager.getAttribDepth();
         try {
             GLStateManager.disableBlend();
-            GLStateManager.glEnable(GL11.GL_CULL_FACE);
+            GLSMEnable.glEnable(GL11.GL_CULL_FACE);
 
-            GLStateManager.glNewList(parent, GL11.GL_COMPILE_AND_EXECUTE);
+            GLSMDraws.glNewList(parent, GL11.GL_COMPILE_AND_EXECUTE);
             GLStateManager.pushState(StateSet.BLEND);
             GLStateManager.enableBlend();
-            GLStateManager.glNewList(child, GL11.GL_COMPILE_AND_EXECUTE);
+            GLSMDraws.glNewList(child, GL11.GL_COMPILE_AND_EXECUTE);
             GLStateManager.pushState(StateSet.CULL);
-            GLStateManager.glDisable(GL11.GL_CULL_FACE);
-            GLStateManager.glEndList();
+            GLSMEnable.glDisable(GL11.GL_CULL_FACE);
+            GLSMDraws.glEndList();
 
             assertEquals(entryDepth + 1, GLStateManager.getAttribDepth());
             assertTrue(GLStateManager.getCullState().isEnabled());
             assertTrue(GL11.glIsEnabled(GL11.GL_CULL_FACE));
 
-            GLStateManager.glEndList();
+            GLSMDraws.glEndList();
             assertEquals(entryDepth, GLStateManager.getAttribDepth());
             assertFalse(GLStateManager.getBlendMode().isEnabled());
             assertFalse(GL11.glIsEnabled(GL11.GL_BLEND));
@@ -269,69 +269,69 @@ class DisplayListStateSetIntegrationTest extends GLStateManagerIntegrationFixtur
         } finally {
             while (DisplayListManager.isRecording()) {
                 GLStateManager.popStateTo(entryDepth);
-                GLStateManager.glEndList();
+                GLSMDraws.glEndList();
             }
             while (GLStateManager.getAttribDepth() > entryDepth) {
                 GLStateManager.popState();
             }
-            GLStateManager.glDeleteLists(parent, 1);
-            GLStateManager.glDeleteLists(child, 1);
+            GLSMDraws.glDeleteLists(parent, 1);
+            GLSMDraws.glDeleteLists(child, 1);
             GLStateManager.disableBlend();
-            GLStateManager.glDisable(GL11.GL_CULL_FACE);
+            GLSMEnable.glDisable(GL11.GL_CULL_FACE);
         }
     }
 
     @Test
     void compileAndExecuteOverflowRestoresEverySuccessfulLivePush() {
-        final int list = GLStateManager.glGenLists(1);
+        final int list = GLSMDraws.glGenLists(1);
         final int entryDepth = GLStateManager.getAttribDepth();
         try {
             GLStateManager.disableBlend();
-            GLStateManager.glNewList(list, GL11.GL_COMPILE_AND_EXECUTE);
+            GLSMDraws.glNewList(list, GL11.GL_COMPILE_AND_EXECUTE);
             for (int i = 0; i < 32; i++) {
                 GLStateManager.pushState(StateSet.BLEND);
                 if (i == 0) GLStateManager.enableBlend();
             }
             assertThrows(IllegalStateException.class, () -> GLStateManager.pushState(StateSet.BLEND));
-            GLStateManager.glEndList();
+            GLSMDraws.glEndList();
 
             assertEquals(entryDepth, GLStateManager.getAttribDepth());
             assertFalse(GLStateManager.getBlendMode().isEnabled());
             assertFalse(GL11.glIsEnabled(GL11.GL_BLEND));
             assertEquals(64, DisplayListManager.getDisplayList(list).getCommandCounts().getOrDefault(GLCommand.COMPLEX_REF, 0));
 
-            GLStateManager.glCallList(list);
+            GLSMDraws.glCallList(list);
             assertEquals(entryDepth, GLStateManager.getAttribDepth());
             assertFalse(GLStateManager.getBlendMode().isEnabled());
             assertFalse(GL11.glIsEnabled(GL11.GL_BLEND));
         } finally {
             while (DisplayListManager.isRecording()) {
                 GLStateManager.popStateTo(entryDepth);
-                GLStateManager.glEndList();
+                GLSMDraws.glEndList();
             }
             while (GLStateManager.getAttribDepth() > entryDepth) {
                 GLStateManager.popState();
             }
-            GLStateManager.glDeleteLists(list, 1);
+            GLSMDraws.glDeleteLists(list, 1);
             GLStateManager.disableBlend();
         }
     }
 
     @Test
     void compileChildPoppingParentScopeUpdatesOwner() {
-        final int parent = GLStateManager.glGenLists(1);
-        final int child = GLStateManager.glGenLists(1);
+        final int parent = GLSMDraws.glGenLists(1);
+        final int child = GLSMDraws.glGenLists(1);
         final int entryDepth = GLStateManager.getAttribDepth();
         try {
             GLStateManager.disableBlend();
-            GLStateManager.glDisable(GL11.GL_CULL_FACE);
+            GLSMEnable.glDisable(GL11.GL_CULL_FACE);
             GLStateManager.pushState(StateSet.CULL);
-            GLStateManager.glEnable(GL11.GL_CULL_FACE);
+            GLSMEnable.glEnable(GL11.GL_CULL_FACE);
 
-            GLStateManager.glNewList(parent, GL11.GL_COMPILE_AND_EXECUTE);
+            GLSMDraws.glNewList(parent, GL11.GL_COMPILE_AND_EXECUTE);
             final int parentToken = GLStateManager.pushState(StateSet.BLEND);
             GLStateManager.enableBlend();
-            GLStateManager.glNewList(child, GL11.GL_COMPILE);
+            GLSMDraws.glNewList(child, GL11.GL_COMPILE);
             GLStateManager.popStateTo(parentToken);
 
             assertEquals(entryDepth + 1, GLStateManager.getAttribDepth());
@@ -340,8 +340,8 @@ class DisplayListStateSetIntegrationTest extends GLStateManagerIntegrationFixtur
             assertTrue(GLStateManager.getCullState().isEnabled());
             assertTrue(GL11.glIsEnabled(GL11.GL_CULL_FACE));
 
-            GLStateManager.glEndList();
-            GLStateManager.glEndList();
+            GLSMDraws.glEndList();
+            GLSMDraws.glEndList();
 
             assertEquals(entryDepth + 1, GLStateManager.getAttribDepth());
             assertTrue(GLStateManager.getCullState().isEnabled());
@@ -349,7 +349,7 @@ class DisplayListStateSetIntegrationTest extends GLStateManagerIntegrationFixtur
             assertFalse(GLStateManager.getBlendMode().isEnabled());
             assertFalse(GL11.glIsEnabled(GL11.GL_BLEND));
 
-            GLStateManager.glCallList(parent);
+            GLSMDraws.glCallList(parent);
             assertEquals(entryDepth + 1, GLStateManager.getAttribDepth());
             assertTrue(GLStateManager.getCullState().isEnabled());
             assertTrue(GL11.glIsEnabled(GL11.GL_CULL_FACE));
@@ -358,15 +358,15 @@ class DisplayListStateSetIntegrationTest extends GLStateManagerIntegrationFixtur
         } finally {
             while (DisplayListManager.isRecording()) {
                 GLStateManager.popStateTo(entryDepth);
-                GLStateManager.glEndList();
+                GLSMDraws.glEndList();
             }
             while (GLStateManager.getAttribDepth() > entryDepth) {
                 GLStateManager.popState();
             }
-            GLStateManager.glDeleteLists(parent, 1);
-            GLStateManager.glDeleteLists(child, 1);
+            GLSMDraws.glDeleteLists(parent, 1);
+            GLSMDraws.glDeleteLists(child, 1);
             GLStateManager.disableBlend();
-            GLStateManager.glDisable(GL11.GL_CULL_FACE);
+            GLSMEnable.glDisable(GL11.GL_CULL_FACE);
         }
     }
 }

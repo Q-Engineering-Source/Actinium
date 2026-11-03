@@ -19,6 +19,8 @@ import org.lwjgl.opengl.GL30;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import com.gtnewhorizons.angelica.glsm.GLSMFramebuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 public class RenderTargets {
 	// When enabled, a failed framebuffer creation is retried once with fresh bindings (actinium.fbRetry)
@@ -201,7 +203,7 @@ public class RenderTargets {
 	public void copyPreTranslucentDepth() {
 		if (translucentDepthDirty) {
 			translucentDepthDirty = false;
-			GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, noTranslucents.getTextureId());
+			GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, noTranslucents.getTextureId());
 			depthSourceFb.bindAsReadBuffer();
 			RenderSystem.copyTexImage2D(GL11.GL_TEXTURE_2D, 0, currentDepthFormat.getGlInternalFormat(), 0, 0, cachedWidth, cachedHeight, 0);
 		} else {
@@ -212,7 +214,7 @@ public class RenderTargets {
 	public void copyPreHandDepth() {
 		if (handDepthDirty) {
 			handDepthDirty = false;
-			GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, noHand.getTextureId());
+			GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, noHand.getTextureId());
 			depthSourceFb.bindAsReadBuffer();
 			RenderSystem.copyTexImage2D(GL11.GL_TEXTURE_2D, 0, currentDepthFormat.getGlInternalFormat(), 0, 0, cachedWidth, cachedHeight, 0);
 		} else {
@@ -362,7 +364,7 @@ public class RenderTargets {
 
 		// Self-heal: unbind everything and rebuild the framebuffer from scratch. Works around GL
 		// translation layers (e.g. MobileGlues) leaving stale framebuffer bindings behind.
-		GLStateManager.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
+		GLSMFramebuffer.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
 
 		final GlFramebuffer retry = new GlFramebuffer();
 		setupColorAttachments(retry, stageWritesToMain, drawBuffers);

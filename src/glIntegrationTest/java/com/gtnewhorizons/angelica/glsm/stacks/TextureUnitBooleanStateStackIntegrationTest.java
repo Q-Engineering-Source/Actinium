@@ -10,13 +10,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 class TextureUnitBooleanStateStackIntegrationTest extends GLStateManagerIntegrationFixture {
     @Test
     void unitSwitchRestoresTargetStateAndOriginalActiveUnit() {
         assumeTrue(GLStateManager.MAX_TEXTURE_UNITS > 1);
         TextureUnitBooleanStateStack stack = new TextureUnitBooleanStateStack(GL11.GL_TEXTURE_2D, 1, false, false);
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
         assertFalse(driverTextureEnabled(1));
         stack.push();
         try {
@@ -33,7 +34,7 @@ class TextureUnitBooleanStateStackIntegrationTest extends GLStateManagerIntegrat
             assertEquals(GL13.GL_TEXTURE0, GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE));
         } finally {
             stack.setEnabled(false);
-            GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+            GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
         }
     }
 

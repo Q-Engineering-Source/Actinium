@@ -25,21 +25,21 @@ class ShaderManagerContextIntegrationTest extends GLStateManagerIntegrationFixtu
         try {
             ShaderManager.setCurrentNormal(0.0f, 0.0f, 1.0f);
             ShaderManager.setCurrentTexCoord(0.0f, 0.0f, 0.0f, 1.0f);
-            GLStateManager.glPushAttrib(GL11.GL_CURRENT_BIT);
+            GLSMAttribStack.glPushAttrib(GL11.GL_CURRENT_BIT);
             ShaderManager.setCurrentNormal(1.0f, 2.0f, 3.0f);
             ShaderManager.setCurrentTexCoord(1.0f, 2.0f, 3.0f, 4.0f);
 
             final Future<float[]> workerRestored = pool.submit(() -> {
                 GLStateManager.enterWorkerContext();
                 try {
-                    GLStateManager.glPushAttrib(GL11.GL_CURRENT_BIT);
+                    GLSMAttribStack.glPushAttrib(GL11.GL_CURRENT_BIT);
                     workerReady.countDown();
                     assertTrue(allowWorkerModify.await(10, TimeUnit.SECONDS));
                     ShaderManager.setCurrentNormal(4.0f, 5.0f, 6.0f);
                     ShaderManager.setCurrentTexCoord(5.0f, 6.0f, 7.0f, 8.0f);
                     workerModified.countDown();
                     assertTrue(allowWorkerPop.await(10, TimeUnit.SECONDS));
-                    GLStateManager.glPopAttrib();
+                    GLSMAttribStack.glPopAttrib();
                     return new float[] {
                         ShaderManager.getCurrentNormal().x,
                         ShaderManager.getCurrentNormal().y,
@@ -61,7 +61,7 @@ class ShaderManagerContextIntegrationTest extends GLStateManagerIntegrationFixtu
                 assertTrue(workerReady.await(10, TimeUnit.SECONDS));
                 allowWorkerModify.countDown();
                 assertTrue(workerModified.await(10, TimeUnit.SECONDS));
-                GLStateManager.glPopAttrib();
+                GLSMAttribStack.glPopAttrib();
                 assertEquals(0.0f, ShaderManager.getCurrentNormal().x, 0.0001f);
                 assertEquals(0.0f, ShaderManager.getCurrentNormal().y, 0.0001f);
                 assertEquals(1.0f, ShaderManager.getCurrentNormal().z, 0.0001f);

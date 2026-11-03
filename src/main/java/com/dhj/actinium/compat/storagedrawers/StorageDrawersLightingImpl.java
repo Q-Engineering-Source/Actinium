@@ -7,6 +7,7 @@ import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 
 import java.nio.FloatBuffer;
+import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
 
 /** Implements view-space item lighting for Storage Drawers' block-item render path. */
 public final class StorageDrawersLightingImpl implements StorageDrawersLighting {
@@ -30,15 +31,15 @@ public final class StorageDrawersLightingImpl implements StorageDrawersLighting 
         capturedModelView.get(rootMatrixBuffer);
         rootMatrixBuffer.flip();
 
-        GLStateManager.glMatrixMode(GL11.GL_MODELVIEW);
-        GLStateManager.glPushMatrix();
+        GLSMMatrices.glMatrixMode(GL11.GL_MODELVIEW);
+        GLSMMatrices.glPushMatrix();
         try {
             // glLight transforms directions at call time; drawer-local item transforms must not affect them.
-            GLStateManager.glLoadMatrix(rootMatrixBuffer);
+            GLSMMatrices.glLoadMatrix(rootMatrixBuffer);
             RenderHelper.enableStandardItemLighting();
         } finally {
-            GLStateManager.glPopMatrix();
-            GLStateManager.glMatrixMode(previousMatrixMode);
+            GLSMMatrices.glPopMatrix();
+            GLSMMatrices.glMatrixMode(previousMatrixMode);
         }
     }
 }

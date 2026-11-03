@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.lwjgl.sdl.SDLVideo.SDL_GL_MakeCurrent;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 class DSAUnsupportedBindingIntegrationTest extends GLStateManagerIntegrationFixture {
     private static final Object DISPLAY_TOKEN = new Object();
@@ -38,17 +39,17 @@ class DSAUnsupportedBindingIntegrationTest extends GLStateManagerIntegrationFixt
         GL11.glBindTexture(GL12.GL_TEXTURE_3D, 0);
         GL11.glBindTexture(GL13.GL_TEXTURE_CUBE_MAP, 0);
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, 0);
-        GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
     }
 
     @Test
     void nonTwoDParameterEditsRestoreTheTargetBinding() {
-        final int twoD = GLStateManager.glGenTextures();
+        final int twoD = GLSMTextures.glGenTextures();
         final int cube = GL11.glGenTextures();
         final int otherCube = GL11.glGenTextures();
         try {
-            GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, twoD);
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, twoD);
             for (int texture : new int[] { cube, otherCube }) {
                 GL11.glBindTexture(GL13.GL_TEXTURE_CUBE_MAP, texture);
                 for (int face = 0; face < 6; face++) {
@@ -69,16 +70,16 @@ class DSAUnsupportedBindingIntegrationTest extends GLStateManagerIntegrationFixt
             GL11.glBindTexture(GL13.GL_TEXTURE_CUBE_MAP, 0);
             GL11.glDeleteTextures(cube);
             GL11.glDeleteTextures(otherCube);
-            GLStateManager.glDeleteTextures(twoD);
+            GLSMTextures.glDeleteTextures(twoD);
         }
     }
 
     @Test
     void twoDParameterEditRestoresTheCachedBinding() {
-        final int bound = GLStateManager.glGenTextures();
-        final int edited = GLStateManager.glGenTextures();
+        final int bound = GLSMTextures.glGenTextures();
+        final int edited = GLSMTextures.glGenTextures();
         try {
-            GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, bound);
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, bound);
             dsa.texParameteri(edited, GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
 
             assertEquals(bound, GLStateManager.getBoundTextureForServerState());
@@ -88,22 +89,22 @@ class DSAUnsupportedBindingIntegrationTest extends GLStateManagerIntegrationFixt
             assertEquals(GL11.GL_NEAREST, GL11.glGetTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER));
             GL11.glBindTexture(GL11.GL_TEXTURE_2D, bound);
         } finally {
-            GLStateManager.glDeleteTextures(edited);
-            GLStateManager.glDeleteTextures(bound);
+            GLSMTextures.glDeleteTextures(edited);
+            GLSMTextures.glDeleteTextures(bound);
         }
     }
 
     @Test
     void twoDEditWithANonTwoDTextureBoundRestoresTheDriverTwoDBinding() {
         assumeTrue(GLStateManager.MAX_TEXTURE_UNITS > 3);
-        final int bound = GLStateManager.glGenTextures();
-        final int edited = GLStateManager.glGenTextures();
+        final int bound = GLSMTextures.glGenTextures();
+        final int edited = GLSMTextures.glGenTextures();
         final int volume = GL11.glGenTextures();
         try {
-            GLStateManager.glActiveTexture(GL13.GL_TEXTURE3);
-            GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, edited);
-            GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, bound);
-            GLStateManager.glBindTexture(GL12.GL_TEXTURE_3D, volume);
+            GLSMTextures.glActiveTexture(GL13.GL_TEXTURE3);
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, edited);
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, bound);
+            GLSMTextures.glBindTexture(GL12.GL_TEXTURE_3D, volume);
             while (GL11.glGetError() != GL11.GL_NO_ERROR) {
                 // Drain errors raised while staging the initial binding layout.
             }
@@ -120,10 +121,10 @@ class DSAUnsupportedBindingIntegrationTest extends GLStateManagerIntegrationFixt
             GL11.glBindTexture(GL11.GL_TEXTURE_2D, bound);
         } finally {
             GL11.glBindTexture(GL12.GL_TEXTURE_3D, 0);
-            GLStateManager.glBindTexture(GL11.GL_TEXTURE_2D, 0);
-            GLStateManager.glActiveTexture(GL13.GL_TEXTURE0);
-            GLStateManager.glDeleteTextures(bound);
-            GLStateManager.glDeleteTextures(edited);
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+            GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
+            GLSMTextures.glDeleteTextures(bound);
+            GLSMTextures.glDeleteTextures(edited);
             GL11.glDeleteTextures(volume);
         }
     }

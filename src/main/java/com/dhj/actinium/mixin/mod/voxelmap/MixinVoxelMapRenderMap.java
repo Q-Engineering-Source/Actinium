@@ -10,6 +10,8 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import com.gtnewhorizons.angelica.glsm.GLSMEnable;
+import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
 
 /**
  * Scopes VoxelMap's minimap alpha preparation to the minimap rectangle while StellarCore's HUD
@@ -40,8 +42,8 @@ public abstract class MixinVoxelMapRenderMap {
         // Mirror the scissor rectangle VoxelMap computes for the map draw (Map.renderMap), so the
         // alpha-only clear that prepares the circular mask only touches the minimap area.
         double guiScale = (double) Minecraft.getMinecraft().displayWidth / (double) this.scWidth;
-        GLStateManager.glEnable(GL_SCISSOR_TEST);
-        GLStateManager.glScissor(
+        GLSMEnable.glEnable(GL_SCISSOR_TEST);
+        GLSMRasterizer.glScissor(
             (int) (guiScale * (x - 32)),
             (int) (guiScale * ((this.scHeight - y) - 32)),
             (int) (guiScale * 64.0),

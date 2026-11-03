@@ -7,6 +7,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import org.lwjgl.opengl.GL13;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 
 /**
  * Pins the client texture unit to GL_TEXTURE0 while a scoped GVCLib first-person model draws.
@@ -25,11 +26,11 @@ public abstract class MixinGVCTessellatorClientUnitGuard {
         }
 
         int previousClientTextureUnit = GLStateManager.getClientActiveTextureUnit();
-        GLStateManager.glClientActiveTexture(GL13.GL_TEXTURE0);
+        GLSMTextures.glClientActiveTexture(GL13.GL_TEXTURE0);
         try {
             return original.call();
         } finally {
-            GLStateManager.glClientActiveTexture(GL13.GL_TEXTURE0 + previousClientTextureUnit);
+            GLSMTextures.glClientActiveTexture(GL13.GL_TEXTURE0 + previousClientTextureUnit);
         }
     }
 }
