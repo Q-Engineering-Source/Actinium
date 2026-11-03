@@ -152,6 +152,30 @@ public final class GLSMFramebuffer {
         RENDER_BACKEND.framebufferTexture2D(target, attachment, textarget, texture, level);
     }
 
+    public static void glFramebufferTexture1D(int target, int attachment, int textarget, int texture, int level) {
+        RENDER_BACKEND.framebufferTexture1D(target, attachment, textarget, texture, level);
+    }
+
+    public static void glFramebufferTexture3D(int target, int attachment, int textarget, int texture, int level, int zoffset) {
+        RENDER_BACKEND.framebufferTexture3D(target, attachment, textarget, texture, level, zoffset);
+    }
+
+    public static void glFramebufferTextureLayer(int target, int attachment, int texture, int level, int layer) {
+        RENDER_BACKEND.framebufferTextureLayer(target, attachment, texture, level, layer);
+    }
+
+    public static void glNamedFramebufferTexture(int framebuffer, int attachment, int texture, int level) {
+        RENDER_BACKEND.namedFramebufferTexture(framebuffer, attachment, texture, level);
+    }
+
+    public static void glNamedFramebufferTextureLayer(int framebuffer, int attachment, int texture, int level, int layer) {
+        RENDER_BACKEND.namedFramebufferTextureLayer(framebuffer, attachment, texture, level, layer);
+    }
+
+    public static void glNamedFramebufferRenderbuffer(int framebuffer, int attachment, int renderbuffertarget, int renderbuffer) {
+        RENDER_BACKEND.namedFramebufferRenderbuffer(framebuffer, attachment, renderbuffertarget, renderbuffer);
+    }
+
     public static int glGenRenderbuffers() { return RENDER_BACKEND.genRenderbuffers(); }
 
     public static void glGenRenderbuffers(IntBuffer renderbuffers) {

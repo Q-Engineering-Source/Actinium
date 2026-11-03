@@ -3383,6 +3383,18 @@ public class GLStateManager {
 
     public static void glFramebufferTexture2D(int target, int attachment, int textarget, int texture, int level) { GLSMFramebuffer.glFramebufferTexture2D(target, attachment, textarget, texture, level); }
 
+    public static void glFramebufferTexture1D(int target, int attachment, int textarget, int texture, int level) { GLSMFramebuffer.glFramebufferTexture1D(target, attachment, textarget, texture, level); }
+
+    public static void glFramebufferTexture3D(int target, int attachment, int textarget, int texture, int level, int zoffset) { GLSMFramebuffer.glFramebufferTexture3D(target, attachment, textarget, texture, level, zoffset); }
+
+    public static void glFramebufferTextureLayer(int target, int attachment, int texture, int level, int layer) { GLSMFramebuffer.glFramebufferTextureLayer(target, attachment, texture, level, layer); }
+
+    public static void glNamedFramebufferTexture(int framebuffer, int attachment, int texture, int level) { GLSMFramebuffer.glNamedFramebufferTexture(framebuffer, attachment, texture, level); }
+
+    public static void glNamedFramebufferTextureLayer(int framebuffer, int attachment, int texture, int level, int layer) { GLSMFramebuffer.glNamedFramebufferTextureLayer(framebuffer, attachment, texture, level, layer); }
+
+    public static void glNamedFramebufferRenderbuffer(int framebuffer, int attachment, int renderbuffertarget, int renderbuffer) { GLSMFramebuffer.glNamedFramebufferRenderbuffer(framebuffer, attachment, renderbuffertarget, renderbuffer); }
+
             public static void glFramebufferTexture(int target, int attachment, int texture, int level) { GLSMFramebuffer.glFramebufferTexture(target, attachment, texture, level); }
 
     public static int glGenRenderbuffers() { return GLSMFramebuffer.glGenRenderbuffers(); }
