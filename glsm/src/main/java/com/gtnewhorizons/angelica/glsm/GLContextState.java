@@ -120,6 +120,8 @@ public class GLContextState {
     public final IntegerStateStack shadeModelState = member(new IntegerStateStack(GL11.GL_SMOOTH, StackIdAllocator.nextId()));
     public final TextureUnitArray textures = new TextureUnitArray();
     public final ImageUnitArray imageUnits = new ImageUnitArray();
+    /** Highest image unit bound since the last reset, so cleanup loops stop early. */
+    public int maxBoundImageUnit = 0;
     public final BlendStateStack blendState = member(new BlendStateStack(StackIdAllocator.nextId()));
     public final BooleanStateStack blendMode = track(new BooleanStateStack(GL11.GL_BLEND));
     public final BlendState vanillaBlendBefore = new BlendState();

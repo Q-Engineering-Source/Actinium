@@ -1260,6 +1260,13 @@ public class GLStateManager {
             }
         }
 
+        for (int i = 0; i <= ctx().maxBoundImageUnit; i++) {
+            final ImageUnitBinding image = ctx().imageUnits.get(i);
+            if (image != null && image.getTexture() == id) {
+                RENDER_BACKEND.bindImageTexture(i, 0, 0, false, 0, GL15.GL_READ_ONLY, GL30.GL_R8);
+            }
+        }
+
         if (changedUnit) {
             RENDER_BACKEND.activeTexture(GL13.GL_TEXTURE0 + savedUnit);
         }
