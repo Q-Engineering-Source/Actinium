@@ -11,6 +11,7 @@ import org.lwjgl.opengl.ARBPolygonOffsetClamp;
 import org.lwjgl.opengl.EXTDirectStateAccess;
 import org.lwjgl.opengl.EXTPolygonOffsetClamp;
 import org.lwjgl.opengl.GL;
+import org.lwjgl.PointerBuffer;
 import org.lwjgl.opengl.GL11C;
 import org.lwjgl.opengl.GL12C;
 import org.lwjgl.opengl.GL13C;
@@ -30,6 +31,7 @@ import org.lwjgl.opengl.GL46C;
 import org.lwjgl.opengl.GLCapabilities;
 import org.lwjgl.opengl.GLDebugMessageCallback;
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.MemoryUtil;
 
 import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
@@ -38,6 +40,7 @@ import java.nio.IntBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.ShortBuffer;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * LWJGL3 GL implementation of {@link RenderBackend}.
@@ -49,10 +52,22 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
     private GLDebugMessageCallback debugCallback;
     private GLDebugMessageCallback appDebugCallback;
     private boolean debugOutputActive;
+    private boolean amdShaderSourceWorkaround;
 
     @Override
     public void init() {
         caps = GL.getCapabilities();
+        // The Windows AMD driver truncates the source string LWJGL passes as a CharSequence;
+        // handing it a null-terminated byte buffer through the raw entry point avoids that.
+        if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).startsWith("windows")) {
+            final String vendor = GL11C.glGetString(GL11C.GL_VENDOR);
+            if (vendor != null) {
+                final String normalizedVendor = vendor.toLowerCase(Locale.ROOT);
+                amdShaderSourceWorkaround = normalizedVendor.startsWith("amd")
+                    || normalizedVendor.startsWith("ati technologies")
+                    || normalizedVendor.startsWith("advanced micro devices");
+            }
+        }
     }
 
     @Override
@@ -753,7 +768,20 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
 
     @Override
     public void shaderSource(int shader, CharSequence source) {
-        GL20C.glShaderSource(shader, source);
+        if (!amdShaderSourceWorkaround) {
+            GL20C.glShaderSource(shader, source);
+            return;
+        }
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            final ByteBuffer encodedSource = MemoryUtil.memUTF8(source, true);
+            try {
+                final PointerBuffer pointers = stack.mallocPointer(1);
+                pointers.put(encodedSource);
+                GL20C.nglShaderSource(shader, 1, pointers.address0(), 0L);
+            } finally {
+                MemoryUtil.memFree(encodedSource);
+            }
+        }
     }
 
     @Override
