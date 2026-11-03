@@ -19,6 +19,7 @@ import com.gtnewhorizon.gtnhlib.compat.Mods;
 import net.coderbot.iris.debug.IrisDebugOptions;
 import com.gtnewhorizon.gtnhlib.client.renderer.RuntimeOptionsBridge;
 import com.gtnewhorizon.gtnhlib.client.renderer.postprocessing.PostProcessingBridge;
+import com.gtnewhorizons.angelica.glsm.backend.BackendOptions;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
 import com.gtnewhorizons.angelica.glsm.compat.FogDistanceModeBridge;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
@@ -61,6 +62,7 @@ public class Actinium {
 
     @EventHandler
     public void onConstruct(FMLConstructionEvent event) {
+        BackendOptions.latch(ActiniumConfig.renderBackendSdlGpu, ActiniumConfig.renderBackendDriver, ActiniumConfig.glVersion);
         GLRenderDevice.VANILLA_STATE_RESETTER = () -> OpenGlHelper.glBindBuffer(OpenGlHelper.GL_ARRAY_BUFFER, 0);
 
         var container = Loader.instance().getIndexedModList().get(MODID);

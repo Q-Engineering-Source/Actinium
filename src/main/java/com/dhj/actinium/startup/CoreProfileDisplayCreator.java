@@ -5,6 +5,7 @@ import com.dhj.actinium.debug.CoreProfileContextAttributes;
 import com.dhj.actinium.debug.OpenGlVersion;
 import com.gtnewhorizons.angelica.config.GLVersionChoice;
 import com.gtnewhorizons.angelica.config.SystemProperties;
+import com.gtnewhorizons.angelica.glsm.backend.BackendOptions;
 import net.minecraftforge.common.ForgeEarlyConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -47,7 +48,7 @@ public final class CoreProfileDisplayCreator {
 
     private static void createWithFallback(PixelFormat format, boolean lwjglDebug) throws LWJGLException {
         final boolean macos = LWJGLUtil.getPlatform() == LWJGLUtil.PLATFORM_MACOSX;
-        final GLVersionChoice requested = GLVersionChoice.of(parseGlProfile(), macos ? 41 : 46);
+        final GLVersionChoice requested = GLVersionChoice.of(requestedGlVersion(), macos ? 41 : 46);
         final int maxMajor = requested == GLVersionChoice.AUTO ? 4 : requested.version() / 10;
         final int maxMinor = requested == GLVersionChoice.AUTO ? (macos ? 1 : 6) : requested.version() % 10;
         Exception lastException = null;
@@ -153,14 +154,15 @@ public final class CoreProfileDisplayCreator {
     }
 
     /**
-     * Reads {@link SystemProperties#GL_PROFILE} as a {@code major.minor} version. Returns 0 for an
-     * empty or unparsable value, which {@link GLVersionChoice#of} resolves to
+     * Resolves the core profile version to request. {@link SystemProperties#GL_PROFILE} wins when it
+     * parses, otherwise the configuration value recorded by {@link BackendOptions} decides. Zero
+     * leaves the choice to the probe, which {@link GLVersionChoice#of} resolves to
      * {@link GLVersionChoice#AUTO}.
      */
-    private static int parseGlProfile() {
+    private static int requestedGlVersion() {
         final String raw = SystemProperties.GL_PROFILE.trim();
         if (raw.isEmpty()) {
-            return 0;
+            return BackendOptions.configGlVersion();
         }
         final int dot = raw.indexOf('.');
         try {
@@ -172,7 +174,7 @@ public final class CoreProfileDisplayCreator {
             return major * 10 + (minorPart.isEmpty() ? 0 : Integer.parseInt(minorPart));
         } catch (NumberFormatException e) {
             LOGGER.warn("Ignoring unparsable angelica.glProfile value '{}'", raw);
-            return 0;
+            return BackendOptions.configGlVersion();
         }
     }
 }

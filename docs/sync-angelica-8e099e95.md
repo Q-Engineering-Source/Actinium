@@ -230,10 +230,12 @@
 | 2 | `1babfd96`、`8e180962`、`7bb5bfd4` | 点尺寸改静态缓存并保留惰性查询，`glReadPixels` 与 `glGetTexImage` 的 PBO 重载重定向测试 | PR #258；`1babfd96` 的 `GLDebug.resetGroupStack`、`RenderBackend.invalidateStateMirror`、`ShaderManager.invalidateBoundProgram` 三项在本地没有崩溃恢复宿主，落地后无调用方，等 `RenderRecovery` 一并做 |
 | 3 | `e84c8c8d` 阶段一 | `TextureTargets`、`RenderBackend` 纹理目标接口与 `Lwjgl3` 实现、`DSAUnsupported`/`DSAARB` 改经 `GLStateManager`、`GLSMRedirector` 表项 | PR #259；`RenderSystem` 的 stencil 与 texture storage 能力查询等第一个真实消费者，随阶段二 |
 | 4 | `2a8c8756`、`10922edc` | `GLVersionChoice` 与其测试，接到 `CoreProfileDisplayCreator` 的版本探测起点；`SystemProperties.GL_PROFILE` 读 `angelica.glProfile` | 本 PR |
-| 5 | `2a8c8756`、`8e180962` | `BackendOptions`、`BackendStartGuard` 与测试，`AngelicaConfig` 增加后端选择项。单后端下 `tripped()` 恒为 false | 待做 |
-| 6 | `482dece0` 前置 | `3b4ebcf6`（上游范围外）的 `glsm/loading` 五件套与 `GLSMRedirector` 的四参 `transformClassNode`，之后才能落 `GlsmRedirectAgent` | 待做 |
-| 7 | `12857006` | `RenderBackend` 缓冲映射生命周期接口与 `GLStateManager` 委托；`onPersistentBufferWrite` 已在顺序 1 落地 | 待做 |
+| 5 | `2a8c8756`、`8e180962` | `BackendOptions`、`BackendStartGuard` 与测试，`ActiniumConfig` 增加后端选择项与 GL 版本请求，`Actinium.onConstruct` 记录选项 | 本 PR；`BackendStartGuard` 的 `arm` 与 `disarm` 等 SDL 后端接线，单后端下 `tripped()` 恒为 false |
+| 6 | `482dece0` 前置 | `3b4ebcf6`（上游范围外）的 `glsm/loading` 五件套与 `GLSMRedirector` 的四参 `transformClassNode`，之后才能落 `GlsmRedirectAgent` | 待做；本地 `glsm/loading` 结构与上游不同，需按 `AngelicaRedirector` 与 `AngelicaClassDump` 重写，并给 `glIntegrationTest` 加 `javaagent` 配置 |
+| 7 | `12857006` | `RenderBackend.isBufferImmutable`；`onPersistentBufferWrite` 已在顺序 1 落地 | 本 PR |
 | 8 | `e84c8c8d` 阶段二 | 延迟纹理删除状态机，前置是 G02 的 draw lock 与帧结束钩子 | 待做 |
+| — | `1587a12c` | `MainThreadPump` 与 `MainThreadPumpTest` | 待做；唯一驱动方是 SDL 的 presenter，且 `RenderBackend` 缺 `pumpDisplayMessages` 与 `parkNanos`，前置是 F09 的 `2845c9e0` |
+| — | `49db8e11` | `SamplerAliasDeduplicator` 与其测试 | 待做；该类由 `8da561d3` 引入，测试还依赖 `TransformTestSupport`，真正消费点在 SDL 采样器搬运，随 S05 的 `ShaderIndex` 一并做 |
 
 ## SDL-GPU 后端引入顺序
 

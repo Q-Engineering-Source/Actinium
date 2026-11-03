@@ -13,6 +13,13 @@ public final class ActiniumConfig {
     public static boolean defineIsIris = true;
     public static int itemRendererCacheSize = 512;
 
+    /** Requests the SDL GPU render backend. Read once at construction through {@code BackendOptions}. */
+    public static boolean renderBackendSdlGpu = false;
+    /** Driver the SDL GPU backend should pick; empty leaves the choice to the backend. */
+    public static String renderBackendDriver = "";
+    /** Core profile version to request, encoded as major * 10 + minor (45 means 4.5). Zero probes the ceiling. */
+    public static int glVersion = 0;
+
     private ActiniumConfig() {
     }
 }
