@@ -256,6 +256,8 @@ SDL 后端暂缓期间可推进的全部工作，共 38 个 PR，分三批。批
 
 ### 批次一：GLSM 收尾
 
+已在 PR #263 的集成分支上完成并合入同一个测试包（`alpha-0.0.14-g03batch`）：第 1、2、10、12、24 项。批量测试通过后一起合并。
+
 | # | 范围 | 覆盖上游 | 规模 | 前置 |
 |---|---|---|---|---|
 | 1 | `GLSMRedirector` 的 `Util.checkGLError` 表项与 `glGenerateMipmapEXT` 别名、`ImageUnitBinding` 的 `reset` 与默认值、`glBindImageTexture` 跟踪、`MultiListenerNotifier` | `b6a4497f`、`6dfb0312`、`e98c927a`、`85892c0f` | 5 改 1 新，约 200 行 | 无 |
