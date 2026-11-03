@@ -192,8 +192,12 @@ public final class GLSMBuffers {
     public static int glGetBufferParameteri(int target, int pname) { return RENDER_BACKEND.getBufferParameteri(target, pname); }
 
     public static void glDeleteSync(long sync) {
-            RENDER_BACKEND.deleteSync(sync);
-        }
+        RENDER_BACKEND.deleteSync(sync);
+    }
+
+    public static long glFenceSync(int condition, int flags) { return RENDER_BACKEND.fenceSync(condition, flags); }
+
+    public static int glClientWaitSync(long sync, int flags, long timeout) { return RENDER_BACKEND.clientWaitSync(sync, flags, timeout); }
 
     public static int glCreateBuffers() {
             return RENDER_BACKEND.createBuffers();
@@ -231,6 +235,8 @@ public final class GLSMBuffers {
     public static ByteBuffer glMapBufferRange(int target, long offset, long length, int access) { return RENDER_BACKEND.mapBufferRange(target, offset, length, access); }
 
     public static ByteBuffer glMapBufferRange(int target, long offset, long length, int access, ByteBuffer old_buffer) { return glMapBufferRange(target, offset, length, access); }
+
+    public static long glMapBufferRangeAddress(int target, long offset, long length, int access) { return RENDER_BACKEND.mapBufferRangeAddress(target, offset, length, access); }
 
     public static boolean glUnmapBuffer(int target) { return RENDER_BACKEND.unmapBuffer(target); }
 

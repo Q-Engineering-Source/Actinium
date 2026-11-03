@@ -2,7 +2,6 @@ package com.dhj.actinium.render;
 
 import com.dhj.actinium.config.ActiniumRuntimeOptions;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
-import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
@@ -195,7 +194,7 @@ public final class BufferBuilderStreamingDrawer {
 
     public static void endFrame() {
         if (persistentBuffer != null) {
-            persistentBuffer.postDraw();
+            persistentBuffer.endFrame();
         }
     }
 
@@ -247,16 +246,9 @@ public final class BufferBuilderStreamingDrawer {
         }
         initialized = true;
 
-        if (RenderSystem.supportsBufferStorage()
-            && !Boolean.getBoolean("angelica.forceOrphanStreaming")
-            && !Boolean.getBoolean("actinium.glsm.forceOrphanStreaming")) {
-            try {
-                persistentBuffer = new PersistentStreamingBuffer();
-                LOGGER.info("Persistent BufferBuilder streaming buffer created ({}MB)", PersistentStreamingBuffer.DEFAULT_CAPACITY / (1024 * 1024));
-            } catch (Exception e) {
-                LOGGER.warn("Failed to create persistent BufferBuilder streaming buffer, using orphan fallback", e);
-                persistentBuffer = null;
-            }
+        persistentBuffer = PersistentStreamingBuffer.createOrNull(PersistentStreamingBuffer.DEFAULT_CAPACITY);
+        if (persistentBuffer != null) {
+            LOGGER.info("Persistent BufferBuilder streaming buffer created ({}MB)", PersistentStreamingBuffer.DEFAULT_CAPACITY / (1024 * 1024));
         }
     }
 

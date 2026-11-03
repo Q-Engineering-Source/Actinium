@@ -56,6 +56,12 @@ public abstract class RenderBackend {
     /** False on backends where framebuffer completeness checks are unreliable (e.g. some GLES stacks). */
     public boolean framebufferCompletenessIsMeaningful() { return true; }
 
+    /**
+     * Reports a write into a persistently mapped buffer so a backend that tracks the mapping can
+     * keep its own view of the buffer coherent. Backends that map through the GL driver ignore it.
+     */
+    public void onPersistentBufferWrite(int glId, long offset, long size) {}
+
     public abstract void flush();
     public abstract void finish();
 
