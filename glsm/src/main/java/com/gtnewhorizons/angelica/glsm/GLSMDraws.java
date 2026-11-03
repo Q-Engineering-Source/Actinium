@@ -1,5 +1,11 @@
 package com.gtnewhorizons.angelica.glsm;
 
+import com.gtnewhorizons.angelica.glsm.DisplayListManager;
+import com.gtnewhorizons.angelica.glsm.FeedbackManager;
+import com.gtnewhorizons.angelica.glsm.QuadConverter;
+import com.gtnewhorizons.angelica.glsm.backend.GLDebugMessageListener;
+import com.gtnewhorizons.angelica.glsm.recording.CompiledDisplayList;
+import java.nio.FloatBuffer;
 import com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities;
 import com.gtnewhorizon.gtnhlib.client.renderer.DirectTessellator;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
@@ -25,6 +31,13 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.prepareClientArrays
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.prepareWideLineEmulation;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.recordGpuCommand;
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.FFP_WARN_ON_UNSUPPORTED;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.LOGGER;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.PIXELTRANSFER_MSG;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.selectWarned;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.setLineStippleActive;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.warnedFFPFunctions;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.wideLineEmulationActive;
 
 public final class GLSMDraws {
 
@@ -338,4 +351,246 @@ public final class GLSMDraws {
         return FeedbackManager.glRenderMode(mode);
     }
 
+    public static boolean displayListExists(int list) {
+            return DisplayListManager.displayListExists(list);
+        }
+
+    public static void glPixelTransferf(int pname, float param) {
+            guardUnsupportedFFP("glPixelTransfer", PIXELTRANSFER_MSG);
+        }
+
+    public static void glPixelTransferi(int pname, int param) {
+            guardUnsupportedFFP("glPixelTransfer", PIXELTRANSFER_MSG);
+        }
+
+    static boolean guardUnsupportedFFP(String function, String explanation) {
+            if (!FFP_WARN_ON_UNSUPPORTED) {
+                throw new UnsupportedOperationException(function + ": " + explanation);
+            }
+            if (warnedFFPFunctions.add(function)) {
+                LOGGER.warn("{}: {}", function, explanation, new Throwable("Stack trace"));
+            }
+            return true;
+        }
+
+    public static void glVertex2i(int x, int y) {
+            if (DisplayListManager.isRecording() || ImmediateModeRecorder.isDrawing()) {
+                ImmediateModeRecorder.vertex((float) x, (float) y, 0.0f);
+            }
+        }
+
+    public static void glVertex2d(double x, double y) {
+            if (DisplayListManager.isRecording() || ImmediateModeRecorder.isDrawing()) {
+                ImmediateModeRecorder.vertex((float) x, (float) y, 0.0f);
+            }
+        }
+
+    public static void glVertex3d(double x, double y, double z) {
+            if (DisplayListManager.isRecording() || ImmediateModeRecorder.isDrawing()) {
+                ImmediateModeRecorder.vertex((float) x, (float) y, (float) z);
+            }
+        }
+
+    public static void glVertex3i(int x, int y, int z) {
+            if (DisplayListManager.isRecording() || ImmediateModeRecorder.isDrawing()) {
+                ImmediateModeRecorder.vertex((float) x, (float) y, (float) z);
+            }
+        }
+
+    public static void preDraw(int drawMode) {
+            prepareWideLineEmulation(drawMode);
+            preDrawFFP();
+            prepareClientArrays();
+        }
+
+    public static void preDraw() {
+            wideLineEmulationActive = false;
+            setLineStippleActive(false);
+            preDrawFFP();
+            prepareClientArrays();
+        }
+
+    public static void glMultiDrawElementsIndirect(int mode, int type, long indirect, int drawcount, int stride) {
+            preDrawFFP();
+            prepareClientArrays();
+            recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, drawcount);
+            RENDER_BACKEND.multiDrawElementsIndirect(mode, type, indirect, drawcount, stride);
+        }
+
+    public static void glMultiDrawElementsBaseVertex(int mode, long pCount, int type, long pIndices, int drawcount, long pBaseVertex) {
+            preDrawFFP();
+            prepareClientArrays();
+            recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, drawcount);
+            RENDER_BACKEND.multiDrawElementsBaseVertex(mode, pCount, type, pIndices, drawcount, pBaseVertex);
+        }
+
+    public static void glDrawElementsBaseVertex(int mode, int count, int type, long indices, int basevertex) {
+            preDrawFFP();
+            prepareClientArrays();
+            recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, count);
+            RENDER_BACKEND.drawElementsBaseVertex(mode, count, type, indices, basevertex);
+        }
+
+    public static void glDrawElementsInstanced(int mode, int count, int type, long indices, int primcount) {
+            preDrawFFP();
+            prepareClientArrays();
+            recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, count);
+            RENDER_BACKEND.drawElementsInstanced(mode, count, type, indices, primcount);
+        }
+
+    public static void glDrawArraysInstanced(int mode, int first, int count, int primcount) {
+            prepareWideLineEmulation(mode);
+            preDrawFFP();
+            prepareClientArrays(first, count);
+            recordGpuCommand(GpuCommandType.DRAW_ARRAYS, mode, count);
+            if (mode == GL11.GL_QUADS) {
+                QuadConverter.drawQuadsAsTrianglesInstanced(first, count, primcount);
+            } else if (mode == GL11.GL_QUAD_STRIP) {
+                RENDER_BACKEND.drawArraysInstanced(GL11.GL_TRIANGLE_STRIP, first, count & ~1, primcount);
+            } else if (mode == GL11.GL_POLYGON) {
+                RENDER_BACKEND.drawArraysInstanced(GL11.GL_TRIANGLE_FAN, first, count, primcount);
+            } else {
+                RENDER_BACKEND.drawArraysInstanced(mode, first, count, primcount);
+            }
+        }
+
+    public static void glDrawRangeElements(int mode, int start, int end, int count, int type, long indices) {
+            preDrawFFP();
+            prepareClientArrays();
+            recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, count);
+            RENDER_BACKEND.drawRangeElements(mode, start, end, count, type, indices);
+        }
+
+    public static void glDrawRangeElementsBaseVertex(int mode, int start, int end, int count, int type, long indices, int baseVertex) {
+            preDrawFFP();
+            prepareClientArrays();
+            recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, count);
+            RENDER_BACKEND.drawRangeElementsBaseVertex(mode, start, end, count, type, indices, baseVertex);
+        }
+
+    public static void glMultiDrawArrays(int mode, IntBuffer firsts, IntBuffer counts) {
+            preDrawFFP();
+            prepareClientArrays();
+            recordGpuCommand(GpuCommandType.DRAW_ARRAYS, mode, counts.remaining());
+            RENDER_BACKEND.multiDrawArrays(mode, firsts, counts);
+        }
+
+    public static void glMultiDrawArrays(int mode, int[] firsts, int[] counts) {
+            preDrawFFP();
+            prepareClientArrays();
+            recordGpuCommand(GpuCommandType.DRAW_ARRAYS, mode, counts.length);
+            RENDER_BACKEND.multiDrawArrays(mode, firsts, counts);
+        }
+
+    public static void glPrimitiveRestartIndex(int index) {
+            RENDER_BACKEND.primitiveRestartIndex(index);
+        }
+
+    public static boolean glIsList(int list) {
+            return displayListIdAllocator.isAllocated(list);
+        }
+
+    public static CompiledDisplayList getDisplayList(int list) {
+            return DisplayListManager.getDisplayList(list);
+        }
+
+    public static int getListMode() {
+            return DisplayListManager.getListMode();
+        }
+
+    public static void glFlush() {
+            RENDER_BACKEND.flush();
+        }
+
+    public static void glFinish() {
+            RENDER_BACKEND.finish();
+        }
+
+    public static void glMultiDrawArraysIndirectCount(int mode, long indirect, long drawcount, int maxdrawcount, int stride) {
+            preDrawFFP();
+            prepareClientArrays();
+            recordGpuCommand(GpuCommandType.DRAW_ARRAYS, mode, maxdrawcount);
+            RENDER_BACKEND.multiDrawArraysIndirectCount(mode, indirect, drawcount, maxdrawcount, stride);
+        }
+
+    public static void glMultiDrawElementsIndirectCount(int mode, int type, long indirect, long drawcount, int maxdrawcount, int stride) {
+            preDrawFFP();
+            prepareClientArrays();
+            recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, maxdrawcount);
+            RENDER_BACKEND.multiDrawElementsIndirectCount(mode, type, indirect, drawcount, maxdrawcount, stride);
+        }
+
+    public static void glCallLists(IntBuffer lists) {
+            while (lists.hasRemaining()) {
+                final int listId = lists.get() + ctx().listBase;
+                glCallList(listId);
+            }
+        }
+
+    public static void glCallLists(ShortBuffer lists) {
+            while (lists.hasRemaining()) {
+                final int listId = (lists.get() & 0xFFFF) + ctx().listBase;
+                glCallList(listId);
+            }
+        }
+
+    public static void glCallLists(ByteBuffer lists) {
+            while (lists.hasRemaining()) {
+                final int listId = (lists.get() & 0xFF) + ctx().listBase;
+                glCallList(listId);
+            }
+        }
+
+    public static void glListBase(int base) {
+            ctx().listBase = base;
+        }
+
+    public static void nglMultiDrawElementsBaseVertex(int mode, long count, int type, long indices, int primcount, long basevertex) {
+            RENDER_BACKEND.multiDrawElementsBaseVertex(mode, count, type, indices, primcount, basevertex);
+        }
+
+    public static void glObjectLabel(int identifier, int name, CharSequence label) { RENDER_BACKEND.objectLabel(identifier, name, label); }
+
+    public static void glPushDebugGroup(int source, int id, CharSequence message) { RENDER_BACKEND.pushDebugGroup(source, id, message); }
+
+    public static void glPopDebugGroup() { RENDER_BACKEND.popDebugGroup(); }
+
+    public static void glDebugMessageInsert(int source, int type, int id, int severity, CharSequence buf) { RENDER_BACKEND.debugMessageInsert(source, type, id, severity, buf); }
+
+    public static void glDebugMessageControl(int source, int type, int severity, IntBuffer ids, boolean enabled) { RENDER_BACKEND.debugMessageControl(source, type, severity, ids, enabled); }
+
+    public static int glGetDebugMessageLog(int count, IntBuffer sources, IntBuffer types, IntBuffer ids, IntBuffer severities, IntBuffer lengths, ByteBuffer messageLog) {
+            return RENDER_BACKEND.getDebugMessageLog(count, sources, types, ids, severities, lengths, messageLog);
+        }
+
+    public static void registerDebugMessageListener(GLDebugMessageListener listener, long userParam) {
+            RENDER_BACKEND.debugMessageCallback(listener, userParam);
+        }
+
+    public static void glAccum(int op, float value) {
+            guardUnsupportedFFP("glAccum", "The accumulation buffer is not available in GL 3.3 core profile.");
+        }
+
+    public static void glFeedbackBuffer(int type, FloatBuffer buffer) {
+            FeedbackManager.glFeedbackBuffer(type, buffer);
+        }
+
+    public static void glPassThrough(float token) {
+            FeedbackManager.glPassThrough(token);
+        }
+
+    public static void glSelectBuffer(IntBuffer buffer) {
+            if (!selectWarned) {
+                LOGGER.warn("glSelectBuffer: selection mode not emulated");
+                selectWarned = true;
+            }
+        }
+
+    public static void glInitNames() { /* no-op: ignored outside GL_SELECT */ }
+
+    public static void glPushName(int name) { /* no-op */ }
+
+    public static void glPopName() { /* no-op */ }
+
+    public static void glLoadName(int name) { /* no-op */ }
 }

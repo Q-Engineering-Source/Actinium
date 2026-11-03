@@ -1,5 +1,14 @@
 package com.gtnewhorizons.angelica.glsm;
 
+import com.gtnewhorizons.angelica.glsm.DisplayListManager;
+import com.gtnewhorizons.angelica.glsm.stacks.BooleanStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.LineStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.PointStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.PolygonStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.ScissorStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.ViewPortStateStack;
+import com.gtnewhorizons.angelica.glsm.states.ClipPlaneState;
+import java.nio.ByteBuffer;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.stacks.IntegerStateStack;
 import net.minecraft.client.renderer.GlStateManager;
@@ -22,6 +31,7 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.lineWidthMin;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.mod;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.pointParameter;
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
+import static com.gtnewhorizons.angelica.glsm.GLSMDraws.guardUnsupportedFFP;
 
 public final class GLSMRasterizer {
 
@@ -261,4 +271,268 @@ public final class GLSMRasterizer {
     public static void glCullFace(GlStateManager.CullFace cullFace) {
         glCullFace(cullFace.mode);
     }
+
+    public static void glGetClipPlane(int plane, DoubleBuffer equation) {
+            final int index = plane - GL11.GL_CLIP_PLANE0;
+            if (index < 0 || index >= MAX_CLIP_PLANES) return;
+            ctx().clipPlaneState.getEyePlane(index, equation);
+        }
+
+    public static void enableScissorTest() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordEnable(GL11.GL_SCISSOR_TEST);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            ctx().scissorTest.enable();
+        }
+
+    public static void disableScissorTest() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordDisable(GL11.GL_SCISSOR_TEST);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            ctx().scissorTest.disable();
+        }
+
+    public static void enableCull() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordEnable(GL11.GL_CULL_FACE);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            ctx().cullState.enable();
+        }
+
+    public static void disableCull() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordDisable(GL11.GL_CULL_FACE);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            ctx().cullState.disable();
+        }
+
+    public static void glPolygonOffsetClamp(float factor, float units, float clamp) {
+            if (clamp == 0.0f) {
+                glPolygonOffset(factor, units);
+                return;
+            }
+            if (DisplayListManager.isRecording()) {
+                throw new UnsupportedOperationException("glPolygonOffsetClamp in display lists not yet implemented - if you see this, please report!");
+            }
+            final boolean caching = isCachingEnabled();
+            if (BYPASS_CACHE || !caching || ctx().polygonState.getOffsetFactor() != factor || ctx().polygonState.getOffsetUnits() != units || ctx().polygonState.getOffsetClamp() != clamp) {
+                if (caching) {
+                    mod(ctx().polygonState).setOffsetFactor(factor);
+                    mod(ctx().polygonState).setOffsetUnits(units);
+                    mod(ctx().polygonState).setOffsetClamp(clamp);
+                }
+                RENDER_BACKEND.polygonOffsetClamp(factor, units, clamp);
+            }
+        }
+
+    public static boolean anyClipPlaneEnabled() {
+            return ctx().clipPlaneEnabledMask != 0;
+        }
+
+    public static void glSampleCoverage(float value, boolean invert) {
+            if (DisplayListManager.isRecording()) {
+                throw new UnsupportedOperationException("glSampleCoverage in display lists not yet implemented - if you see this, please report!");
+            }
+            RENDER_BACKEND.sampleCoverage(value, invert);
+        }
+
+    public static void glPolygonStipple(ByteBuffer pattern) {
+            guardUnsupportedFFP("glPolygonStipple", "glPolygonStipple is not available in GL 3.3 core profile.");
+        }
+
+    public static IntegerStateStack getShadeModelState() {
+            return ctx().shadeModelState;
+        }
+
+    public static BooleanStateStack getScissorTest() {
+            return ctx().scissorTest;
+        }
+
+    public static BooleanStateStack getCullState() {
+            return ctx().cullState;
+        }
+
+    public static BooleanStateStack getDitherState() {
+            return ctx().ditherState;
+        }
+
+    public static BooleanStateStack getLineSmoothState() {
+            return ctx().lineSmoothState;
+        }
+
+    public static BooleanStateStack getLineStippleState() {
+            return ctx().lineStippleState;
+        }
+
+    public static BooleanStateStack getPointSmoothState() {
+            return ctx().pointSmoothState;
+        }
+
+    public static BooleanStateStack getPolygonSmoothState() {
+            return ctx().polygonSmoothState;
+        }
+
+    public static BooleanStateStack getPolygonStippleState() {
+            return ctx().polygonStippleState;
+        }
+
+    public static BooleanStateStack getMultisampleState() {
+            return ctx().multisampleState;
+        }
+
+    public static BooleanStateStack getSampleAlphaToCoverageState() {
+            return ctx().sampleAlphaToCoverageState;
+        }
+
+    public static BooleanStateStack getSampleAlphaToOneState() {
+            return ctx().sampleAlphaToOneState;
+        }
+
+    public static BooleanStateStack getSampleCoverageState() {
+            return ctx().sampleCoverageState;
+        }
+
+    public static BooleanStateStack getPolygonOffsetPointState() {
+            return ctx().polygonOffsetPointState;
+        }
+
+    public static BooleanStateStack getPolygonOffsetLineState() {
+            return ctx().polygonOffsetLineState;
+        }
+
+    public static BooleanStateStack getPolygonOffsetFillState() {
+            return ctx().polygonOffsetFillState;
+        }
+
+    public static LineStateStack getLineState() {
+            return ctx().lineState;
+        }
+
+    public static PointStateStack getPointState() {
+            return ctx().pointState;
+        }
+
+    public static IntegerStateStack getHintState() {
+            return ctx().hintState;
+        }
+
+    public static BooleanStateStack getPointSpriteState() {
+            return ctx().pointSpriteState;
+        }
+
+    public static BooleanStateStack getEdgeFlagState() {
+            return ctx().edgeFlagState;
+        }
+
+    public static PolygonStateStack getPolygonState() {
+            return ctx().polygonState;
+        }
+
+    public static BooleanStateStack getAutoNormalState() {
+            return ctx().autoNormalState;
+        }
+
+    public static BooleanStateStack getMap1Color4State() {
+            return ctx().map1Color4State;
+        }
+
+    public static BooleanStateStack getMap1IndexState() {
+            return ctx().map1IndexState;
+        }
+
+    public static BooleanStateStack getMap1NormalState() {
+            return ctx().map1NormalState;
+        }
+
+    public static BooleanStateStack getMap1TextureCoord1State() {
+            return ctx().map1TextureCoord1State;
+        }
+
+    public static BooleanStateStack getMap1TextureCoord2State() {
+            return ctx().map1TextureCoord2State;
+        }
+
+    public static BooleanStateStack getMap1TextureCoord3State() {
+            return ctx().map1TextureCoord3State;
+        }
+
+    public static BooleanStateStack getMap1TextureCoord4State() {
+            return ctx().map1TextureCoord4State;
+        }
+
+    public static BooleanStateStack getMap1Vertex3State() {
+            return ctx().map1Vertex3State;
+        }
+
+    public static BooleanStateStack getMap1Vertex4State() {
+            return ctx().map1Vertex4State;
+        }
+
+    public static BooleanStateStack getMap2Color4State() {
+            return ctx().map2Color4State;
+        }
+
+    public static BooleanStateStack getMap2IndexState() {
+            return ctx().map2IndexState;
+        }
+
+    public static BooleanStateStack getMap2NormalState() {
+            return ctx().map2NormalState;
+        }
+
+    public static BooleanStateStack getMap2TextureCoord1State() {
+            return ctx().map2TextureCoord1State;
+        }
+
+    public static BooleanStateStack getMap2TextureCoord2State() {
+            return ctx().map2TextureCoord2State;
+        }
+
+    public static BooleanStateStack getMap2TextureCoord3State() {
+            return ctx().map2TextureCoord3State;
+        }
+
+    public static BooleanStateStack getMap2TextureCoord4State() {
+            return ctx().map2TextureCoord4State;
+        }
+
+    public static BooleanStateStack getMap2Vertex3State() {
+            return ctx().map2Vertex3State;
+        }
+
+    public static BooleanStateStack getMap2Vertex4State() {
+            return ctx().map2Vertex4State;
+        }
+
+    public static BooleanStateStack[] getClipPlaneStates() {
+            return ctx().clipPlaneStates;
+        }
+
+    public static ClipPlaneState getClipPlaneState() {
+            return ctx().clipPlaneState;
+        }
+
+    public static ViewPortStateStack getViewportState() {
+            return ctx().viewportState;
+        }
+
+    public static ScissorStateStack getScissorState() {
+            return ctx().scissorState;
+        }
 }

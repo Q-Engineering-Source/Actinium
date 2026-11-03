@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.glsm;
 
+import org.lwjgl.opengl.OpenGLException;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import com.gtnewhorizons.angelica.glsm.ffp.VAOManager;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMInitConfig;
@@ -55,6 +56,7 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.queryDriverVector;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.shouldBypassCache;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.widenFromFloat;
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.requireContext;
 
 public final class GLSMQueries {
 
@@ -546,4 +548,51 @@ public final class GLSMQueries {
     public static void glGetBoolean(int pname, int index, ByteBuffer params) {
         glGetBooleani_v(pname, index, params);
     }
+
+    public static void checkGLError() {
+            final int error = glGetError();
+            if (error != GL11.GL_NO_ERROR) {
+                throw new OpenGLException(error);
+            }
+        }
+
+    public static void glGenQueries(IntBuffer ids) { RENDER_BACKEND.genQueries(ids); }
+
+    public static void glGenQueries(int[] ids) {
+            requireContext("glGenQueries");
+            for (int i = 0; i < ids.length; i++) ids[i] = RENDER_BACKEND.genQueries();
+        }
+
+    public static int glGenQueries() {
+            requireContext("glGenQueries");
+            return RENDER_BACKEND.genQueries();
+        }
+
+    public static int glGetIntegeri(int pname, int index) {
+            return imageBindingOrBackend(pname, index);
+        }
+
+    public static void glGetIntegeri(int pname, int index, IntBuffer params) {
+            glGetIntegeri_v(pname, index, params);
+        }
+
+    public static void glGetIntegeri_v(int pname, int index, IntBuffer params) {
+            params.put(params.position(), imageBindingOrBackend(pname, index));
+        }
+
+    public static void glGetIntegeri_v(int pname, int index, int[] params) {
+            params[0] = imageBindingOrBackend(pname, index);
+        }
+
+    public static void glGetBooleani_v(int pname, int index, ByteBuffer params) {
+            params.put(params.position(), (byte) (imageBindingOrBackend(pname, index) != 0 ? GL11.GL_TRUE : GL11.GL_FALSE));
+        }
+
+    public static boolean glGetBooleani(int pname, int index) {
+            return imageBindingOrBackend(pname, index) != 0;
+        }
+
+    public static void glGetBooleani(int pname, int index, ByteBuffer params) {
+            glGetBooleani_v(pname, index, params);
+        }
 }

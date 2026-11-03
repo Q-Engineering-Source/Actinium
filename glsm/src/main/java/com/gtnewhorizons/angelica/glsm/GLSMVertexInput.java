@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.glsm;
 
+import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormatElement.Usage;
 import com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import com.gtnewhorizons.angelica.glsm.ffp.VAOManager;
@@ -254,4 +255,218 @@ public final class GLSMVertexInput {
         GLSMVertexInput.glVertexPointer(size, type, stride, (long) pointer);
     }
 
+    public static int getBoundEBO() {
+            return ctx().vaos.boundEBO;
+        }
+
+    public static void glColorPointer(int size, int stride, FloatBuffer pointer) {
+            ffpClientArrayPointer(VAOManager.CONV_COLOR, size, GL11.GL_FLOAT, Usage.COLOR.isNormalized(), stride, MemoryUtilities.memByteBuffer(pointer));
+        }
+
+    public static void glColorPointer(int size, int stride, DoubleBuffer pointer) {
+            ffpClientArrayPointer(VAOManager.CONV_COLOR, size, GL11.GL_DOUBLE, Usage.COLOR.isNormalized(), stride, MemoryUtilities.memByteBuffer(pointer));
+        }
+
+    public static void glColorPointer(int size, int type, int stride, ByteBuffer pointer) {
+            ffpClientArrayPointer(VAOManager.CONV_COLOR, size, type, Usage.COLOR.isNormalized(), stride, pointer);
+        }
+
+    public static void glColorPointer(int size, boolean unsigned, int stride, ByteBuffer pointer) {
+            final int type = unsigned ? GL11.GL_UNSIGNED_BYTE : GL11.GL_BYTE;
+            ffpClientArrayPointer(VAOManager.CONV_COLOR, size, type, Usage.COLOR.isNormalized(), stride, pointer);
+        }
+
+    public static void glColorPointer(int size, int type, int stride, long pointer_buffer_offset) {
+            ffpClientArrayPointer(VAOManager.CONV_COLOR, size, type, Usage.COLOR.isNormalized(), stride, pointer_buffer_offset);
+        }
+
+    public static void glColorPointer(int size, int type, int stride, int pointer) {
+            glColorPointer(size, type, stride, (long) pointer);
+        }
+
+    public static void glNormalPointer(int stride, FloatBuffer pointer) {
+            glNormalPointer(GL11.GL_FLOAT, stride, pointer);
+        }
+
+    public static void glNormalPointer(int stride, ByteBuffer pointer) {
+            glNormalPointer(GL11.GL_BYTE, stride, pointer);
+        }
+
+    public static void glNormalPointer(int stride, IntBuffer pointer) {
+            glNormalPointer(GL11.GL_INT, stride, pointer);
+        }
+
+    public static void glNormalPointer(int stride, DoubleBuffer pointer) {
+            glNormalPointer(GL11.GL_DOUBLE, stride, pointer);
+        }
+
+    public static void glNormalPointer(int type, int stride, ByteBuffer pointer) {
+            ffpClientArrayPointer(VAOManager.CONV_NORMAL, 3, type, Usage.NORMAL.isNormalized(), stride, pointer);
+        }
+
+    public static void glNormalPointer(int type, int stride, FloatBuffer pointer) {
+            ffpClientArrayPointer(VAOManager.CONV_NORMAL, 3, GL11.GL_FLOAT, Usage.NORMAL.isNormalized(), stride, MemoryUtilities.memByteBuffer(pointer));
+        }
+
+    public static void glNormalPointer(int type, int stride, ShortBuffer pointer) {
+            ffpClientArrayPointer(VAOManager.CONV_NORMAL, 3, GL11.GL_SHORT, Usage.NORMAL.isNormalized(), stride, MemoryUtilities.memByteBuffer(pointer));
+        }
+
+    public static void glNormalPointer(int type, int stride, IntBuffer pointer) {
+            ffpClientArrayPointer(VAOManager.CONV_NORMAL, 3, GL11.GL_INT, Usage.NORMAL.isNormalized(), stride, MemoryUtilities.memByteBuffer(pointer));
+        }
+
+    public static void glNormalPointer(int type, int stride, DoubleBuffer pointer) {
+            ffpClientArrayPointer(VAOManager.CONV_NORMAL, 3, GL11.GL_DOUBLE, Usage.NORMAL.isNormalized(), stride, MemoryUtilities.memByteBuffer(pointer));
+        }
+
+    public static void glNormalPointer(int type, int stride, long pointer_buffer_offset) {
+            ffpClientArrayPointer(VAOManager.CONV_NORMAL, 3, type, Usage.NORMAL.isNormalized(), stride, pointer_buffer_offset);
+        }
+
+    public static void glVertexAttribIPointer(int index, int size, int type, int stride, long offset) {
+            if (!isLegalVertexAttrib(index, size, type, stride, true)) return;
+            if (ctx().vaos.setIntegerAttribute(index, size, type, stride, offset, ctx().boundVBO)) {
+                RENDER_BACKEND.vertexAttribIPointer(index, size, type, stride, offset);
+            }
+        }
+
+    public static void glVertexAttribIPointer(int index, int size, int type, int stride, ByteBuffer pointer) {
+            if (!isLegalVertexAttrib(index, size, type, stride, true)) return;
+            ctx().vaos.setIntegerAttribute(index, size, type, stride, pointer, 0);
+        }
+
+    public static void glVertexAttribIPointer(int index, int size, int type, int stride, IntBuffer pointer) {
+            glVertexAttribIPointer(index, size, type, stride, MemoryUtilities.memByteBuffer(pointer));
+        }
+
+    public static void glVertexAttribIPointer(int index, int size, int type, int stride, ShortBuffer pointer) {
+            glVertexAttribIPointer(index, size, type, stride, MemoryUtilities.memByteBuffer(pointer));
+        }
+
+    public static void glVertexAttribDivisor(int index, int divisor) {
+            if (ctx().vaos.setDivisor(index, divisor)) RENDER_BACKEND.vertexAttribDivisor(index, divisor);
+        }
+
+    public static void glInterleavedArrays(int format, int stride, long pointer) {
+            if (!ShaderManager.getInstance().isActive()) {
+                return;
+            }
+
+            // Mesa _mesa_get_interleaved_layout decomposition
+            final int f = 4; // sizeof(float)
+            final int c = f * ((4 + (f - 1)) / f); // 4 ubytes padded to float alignment = 4
+
+            boolean tflag = false, cflag = false, nflag = false;
+            int tcomps = 0, ccomps = 0, vcomps = 0;
+            int ctype = 0;
+            final int toffset = 0;
+            int coffset = 0;
+            int noffset = 0;
+            int voffset = 0;
+            final int defstride;
+
+            switch (format) {
+                case GL11.GL_V2F:
+                    vcomps = 2; defstride = 2 * f; break;
+                case GL11.GL_V3F:
+                    vcomps = 3; defstride = 3 * f; break;
+                case GL11.GL_C4UB_V2F:
+                    cflag = true; ccomps = 4; vcomps = 2;
+                    ctype = GL11.GL_UNSIGNED_BYTE; voffset = c; defstride = c + 2 * f; break;
+                case GL11.GL_C4UB_V3F:
+                    cflag = true; ccomps = 4; vcomps = 3;
+                    ctype = GL11.GL_UNSIGNED_BYTE; voffset = c; defstride = c + 3 * f; break;
+                case GL11.GL_C3F_V3F:
+                    cflag = true; ccomps = 3; vcomps = 3;
+                    ctype = GL11.GL_FLOAT; voffset = 3 * f; defstride = 6 * f; break;
+                case GL11.GL_N3F_V3F:
+                    nflag = true; vcomps = 3;
+                    voffset = 3 * f; defstride = 6 * f; break;
+                case GL11.GL_C4F_N3F_V3F:
+                    cflag = true; nflag = true; ccomps = 4; vcomps = 3;
+                    ctype = GL11.GL_FLOAT; noffset = 4 * f; voffset = 7 * f; defstride = 10 * f; break;
+                case GL11.GL_T2F_V3F:
+                    tflag = true; tcomps = 2; vcomps = 3;
+                    voffset = 2 * f; defstride = 5 * f; break;
+                case GL11.GL_T4F_V4F:
+                    tflag = true; tcomps = 4; vcomps = 4;
+                    voffset = 4 * f; defstride = 8 * f; break;
+                case GL11.GL_T2F_C4UB_V3F:
+                    tflag = true; cflag = true; tcomps = 2; ccomps = 4; vcomps = 3;
+                    ctype = GL11.GL_UNSIGNED_BYTE; coffset = 2 * f; voffset = c + 2 * f; defstride = c + 5 * f; break;
+                case GL11.GL_T2F_C3F_V3F:
+                    tflag = true; cflag = true; tcomps = 2; ccomps = 3; vcomps = 3;
+                    ctype = GL11.GL_FLOAT; coffset = 2 * f; voffset = 5 * f; defstride = 8 * f; break;
+                case GL11.GL_T2F_N3F_V3F:
+                    tflag = true; nflag = true; tcomps = 2; vcomps = 3;
+                    noffset = 2 * f; voffset = 5 * f; defstride = 8 * f; break;
+                case GL11.GL_T2F_C4F_N3F_V3F:
+                    tflag = true; cflag = true; nflag = true; tcomps = 2; ccomps = 4; vcomps = 3;
+                    ctype = GL11.GL_FLOAT; coffset = 2 * f; noffset = 6 * f; voffset = 9 * f; defstride = 12 * f; break;
+                case GL11.GL_T4F_C4F_N3F_V4F:
+                    tflag = true; cflag = true; nflag = true; tcomps = 4; ccomps = 4; vcomps = 4;
+                    ctype = GL11.GL_FLOAT; coffset = 4 * f; noffset = 8 * f; voffset = 11 * f; defstride = 15 * f; break;
+                default:
+                    return; // Invalid format
+            }
+
+            if (stride == 0) stride = defstride;
+
+            if (tflag) {
+                glEnableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
+                glTexCoordPointer(tcomps, GL11.GL_FLOAT, stride, pointer + toffset);
+            } else {
+                glDisableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
+            }
+
+            if (cflag) {
+                glEnableClientState(GL11.GL_COLOR_ARRAY);
+                glColorPointer(ccomps, ctype, stride, pointer + coffset);
+            } else {
+                glDisableClientState(GL11.GL_COLOR_ARRAY);
+            }
+
+            if (nflag) {
+                glEnableClientState(GL11.GL_NORMAL_ARRAY);
+                glNormalPointer(GL11.GL_FLOAT, stride, pointer + noffset);
+            } else {
+                glDisableClientState(GL11.GL_NORMAL_ARRAY);
+            }
+
+            glEnableClientState(GL11.GL_VERTEX_ARRAY);
+            glVertexPointer(vcomps, GL11.GL_FLOAT, stride, pointer + voffset);
+        }
+
+    public static void glInterleavedArrays(int format, int stride, ByteBuffer pointer) {
+            glInterleavedArrays(format, stride, MemoryUtilities.memAddress0(pointer));
+        }
+
+    public static void glInterleavedArrays(int format, int stride, FloatBuffer pointer) {
+            glInterleavedArrays(format, stride, MemoryUtilities.memAddress0(MemoryUtilities.memByteBuffer(pointer)));
+        }
+
+    public static void glInterleavedArrays(int format, int stride, DoubleBuffer pointer) {
+            glInterleavedArrays(format, stride, MemoryUtilities.memAddress0(MemoryUtilities.memByteBuffer(pointer)));
+        }
+
+    public static void glInterleavedArrays(int format, int stride, IntBuffer pointer) {
+            glInterleavedArrays(format, stride, MemoryUtilities.memAddress0(MemoryUtilities.memByteBuffer(pointer)));
+        }
+
+    public static void glInterleavedArrays(int format, int stride, ShortBuffer pointer) {
+            glInterleavedArrays(format, stride, MemoryUtilities.memAddress0(MemoryUtilities.memByteBuffer(pointer)));
+        }
+
+    public static boolean glIsVertexArray(int array) {
+            return RENDER_BACKEND.isVertexArray(array);
+        }
+
+    public static void glBindVertexArrayAPPLE(int array) {
+            glBindVertexArray(array);
+        }
+
+    public static int getBoundVAO() {
+            return ctx().boundVAO;
+        }
 }

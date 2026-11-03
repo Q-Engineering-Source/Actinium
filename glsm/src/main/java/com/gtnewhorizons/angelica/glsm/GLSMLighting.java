@@ -1,5 +1,9 @@
 package com.gtnewhorizons.angelica.glsm;
 
+import com.gtnewhorizons.angelica.glsm.DisplayListManager;
+import com.gtnewhorizons.angelica.glsm.stacks.BooleanStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.IntegerStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.LightModelStateStack;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.stacks.LightStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.MaterialStateStack;
@@ -16,6 +20,7 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.glMaterialFront;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.isCachingEnabled;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.mod;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.putLightingInts;
+import static com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs.getColor;
 
 public final class GLSMLighting {
 
@@ -363,4 +368,176 @@ public final class GLSMLighting {
             }
         }
     }
+
+    public static float i2f(int i) {return ((i - Integer.MIN_VALUE) & 0xFFFFFFFFL) / 4294967295.0F;}
+
+    public static void enableLighting() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordEnable(GL11.GL_LIGHTING);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            ctx().lightingState.enable();
+        }
+
+    public static void enableLight(int light) {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordEnable(GL11.GL_LIGHT0 + light);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            ctx().lightStates[light].enable();
+        }
+
+    public static void enableColorMaterial() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordEnable(GL11.GL_COLOR_MATERIAL);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            ctx().colorMaterial.enable();
+            final float r = getColor().getRed();
+            final float g = getColor().getGreen();
+            final float b = getColor().getBlue();
+            final float a = getColor().getAlpha();
+            if (ctx().colorMaterialFace.getValue() == GL11.GL_FRONT || ctx().colorMaterialFace.getValue() == GL11.GL_FRONT_AND_BACK) {
+                switch (ctx().colorMaterialParameter.getValue()) {
+                    case GL11.GL_AMBIENT_AND_DIFFUSE -> {
+                        ctx().frontMaterial.ambient.set(r, g, b, a);
+                        ctx().frontMaterial.diffuse.set(r, g, b, a);
+                    }
+                    case GL11.GL_AMBIENT -> ctx().frontMaterial.ambient.set(r, g, b, a);
+                    case GL11.GL_DIFFUSE -> ctx().frontMaterial.diffuse.set(r, g, b, a);
+                    case GL11.GL_SPECULAR -> ctx().frontMaterial.specular.set(r, g, b, a);
+                    case GL11.GL_EMISSION -> ctx().frontMaterial.emission.set(r, g, b, a);
+                }
+            }
+            if (ctx().colorMaterialFace.getValue() == GL11.GL_BACK || ctx().colorMaterialFace.getValue() == GL11.GL_FRONT_AND_BACK) {
+                switch (ctx().colorMaterialParameter.getValue()) {
+                    case GL11.GL_AMBIENT_AND_DIFFUSE -> {
+                        ctx().backMaterial.ambient.set(r, g, b, a);
+                        ctx().backMaterial.diffuse.set(r, g, b, a);
+                    }
+                    case GL11.GL_AMBIENT -> ctx().backMaterial.ambient.set(r, g, b, a);
+                    case GL11.GL_DIFFUSE -> ctx().backMaterial.diffuse.set(r, g, b, a);
+                    case GL11.GL_SPECULAR -> ctx().backMaterial.specular.set(r, g, b, a);
+                    case GL11.GL_EMISSION -> ctx().backMaterial.emission.set(r, g, b, a);
+                }
+            }
+        }
+
+    public static void disableColorMaterial() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordDisable(GL11.GL_COLOR_MATERIAL);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            ctx().colorMaterial.disable();
+        }
+
+    public static void disableLighting() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordDisable(GL11.GL_LIGHTING);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            ctx().lightingState.disable();
+        }
+
+    public static void disableLight(int light) {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordDisable(GL11.GL_LIGHT0 + light);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            ctx().lightStates[light].disable();
+        }
+
+    public static void enableRescaleNormal() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordEnable(GL12.GL_RESCALE_NORMAL);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            ctx().rescaleNormalState.enable();
+        }
+
+    public static void disableRescaleNormal() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordDisable(GL12.GL_RESCALE_NORMAL);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            ctx().rescaleNormalState.disable();
+        }
+
+    public static void glMateriali(int face, int pname, int val) {
+            // This will end up no-opping if pname != GL_SHININESS, it is invalid to call this with another pname
+            // Command recording happens in glMaterialf
+            glMaterialf(face, pname, (float) val);
+        }
+
+    public static int getLightingGeneration() {
+            return ctx().lightingGeneration;
+        }
+
+    public static BooleanStateStack getLightingState() {
+            return ctx().lightingState;
+        }
+
+    public static BooleanStateStack getRescaleNormalState() {
+            return ctx().rescaleNormalState;
+        }
+
+    public static BooleanStateStack getNormalizeState() {
+            return ctx().normalizeState;
+        }
+
+    public static BooleanStateStack[] getLightStates() {
+            return ctx().lightStates;
+        }
+
+    public static LightStateStack[] getLightDataStates() {
+            return ctx().lightDataStates;
+        }
+
+    public static BooleanStateStack getColorMaterial() {
+            return ctx().colorMaterial;
+        }
+
+    public static IntegerStateStack getColorMaterialFace() {
+            return ctx().colorMaterialFace;
+        }
+
+    public static IntegerStateStack getColorMaterialParameter() {
+            return ctx().colorMaterialParameter;
+        }
+
+    public static LightModelStateStack getLightModel() {
+            return ctx().lightModel;
+        }
+
+    public static MaterialStateStack getFrontMaterial() {
+            return ctx().frontMaterial;
+        }
+
+    public static MaterialStateStack getBackMaterial() {
+            return ctx().backMaterial;
+        }
 }

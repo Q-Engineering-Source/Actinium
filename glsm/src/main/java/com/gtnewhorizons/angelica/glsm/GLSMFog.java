@@ -1,5 +1,9 @@
 package com.gtnewhorizons.angelica.glsm;
 
+import com.gtnewhorizons.angelica.glsm.DisplayListManager;
+import com.gtnewhorizons.angelica.glsm.stacks.BooleanStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.FogStateStack;
+import org.joml.Vector3d;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import org.lwjgl.BufferUtils;
@@ -14,6 +18,7 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.getFogColor;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.getFogMode;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.isCachingEnabled;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.mod;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.BYPASS_CACHE;
 
 public final class GLSMFog {
 
@@ -120,4 +125,61 @@ public final class GLSMFog {
             }
         }
     }
+
+    public static void enableFog() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordEnable(GL11.GL_FOG);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            ctx().fogMode.enable();
+            if (GLSMHooks.FOG_STATE_CHANGE.hasListeners()) {
+                GLSMHooks.FOG_STATE_CHANGE.post(GLSMHooks.fogStateChangeEvent);
+            }
+        }
+
+    public static void disableFog() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordDisable(GL11.GL_FOG);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            ctx().fogMode.disable();
+            if (GLSMHooks.FOG_STATE_CHANGE.hasListeners()) {
+                GLSMHooks.FOG_STATE_CHANGE.post(GLSMHooks.fogStateChangeEvent);
+            }
+        }
+
+    public static Vector3d getFogColor() {
+            return ctx().fogState.getFogColor();
+        }
+
+    public static void fogColor(float red, float green, float blue, float alpha) {
+            final boolean caching = isCachingEnabled();
+            if (BYPASS_CACHE || !caching || red != ctx().fogState.getFogColor().x || green != ctx().fogState.getFogColor().y || blue != ctx().fogState.getFogColor().z || alpha != ctx().fogState.getFogAlpha()) {
+                if (caching) {
+                    mod(ctx().fogState);
+                    ctx().fogState.getFogColor().set(red, green, blue);
+                    ctx().fogState.setFogAlpha(alpha);
+                    ctx().fogState.getFogColorBuffer().clear();
+                    ctx().fogState.getFogColorBuffer().put(red).put(green).put(blue).put(alpha).flip();
+                    ctx().fragmentGeneration++;
+                    if (GLSMHooks.FOG_STATE_CHANGE.hasListeners()) {
+                        GLSMHooks.FOG_STATE_CHANGE.post(GLSMHooks.fogStateChangeEvent);
+                    }
+                }
+            }
+        }
+
+    public static FogStateStack getFogState() {
+            return ctx().fogState;
+        }
+
+    public static BooleanStateStack getFogMode() {
+            return ctx().fogMode;
+        }
 }

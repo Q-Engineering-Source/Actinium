@@ -1,5 +1,9 @@
 package com.gtnewhorizons.angelica.glsm;
 
+import com.gtnewhorizons.angelica.glsm.stacks.BooleanStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.IntegerStateStack;
+import org.lwjgl.opengl.ARBShaderObjects;
+import org.lwjgl.opengl.GL20;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
@@ -24,6 +28,8 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.isTextureBuffer;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.programLifetimeGeneration;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.recordGpuCommand;
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.decodeShaderSourceString;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.glGetInteger;
 
 public final class GLSMPrograms {
 
@@ -307,4 +313,206 @@ public final class GLSMPrograms {
         IntBuffer sizeType = BufferUtils.createIntBuffer(2);
         return RENDER_BACKEND.getActiveUniform(program, index, maxLength, sizeType);
     }
+
+    public static void nglShaderSource(int shader, int count, long strings, long lengths) {
+            if (count <= 0) return;
+            final CharSequence source;
+            if (count == 1) {
+                source = decodeShaderSourceString(strings, lengths, 0);
+            } else {
+                final StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < count; i++) sb.append(decodeShaderSourceString(strings, lengths, i));
+                source = sb.toString();
+            }
+            glShaderSource(shader, source);
+        }
+
+    public static void glSpecializeShader(int shader, CharSequence entryPoint, IntBuffer constantIndex, IntBuffer constantValue) {
+            RENDER_BACKEND.specializeShader(shader, entryPoint, constantIndex, constantValue);
+        }
+
+    public static void glDetachShader(int program, int shader) {
+            RENDER_BACKEND.detachShader(program, shader);
+        }
+
+    public static void glValidateProgram(int program) {
+            RENDER_BACKEND.validateProgram(program);
+        }
+
+    public static boolean glIsProgram(int obj) {
+            return RENDER_BACKEND.isProgram(obj);
+        }
+
+    public static boolean glIsShader(int obj) {
+            return RENDER_BACKEND.isShader(obj);
+        }
+
+    public static void glDeleteObjectARB(int obj) {
+            if (RENDER_BACKEND.isShader(obj)) {
+                RENDER_BACKEND.deleteShader(obj);
+            } else {
+                glDeleteProgram(obj);
+            }
+        }
+
+    public static int glGetHandleARB(int pname) {
+            return pname == ARBShaderObjects.GL_PROGRAM_OBJECT_ARB ? GLStateManager.glGetInteger(GL20.GL_CURRENT_PROGRAM) : RENDER_BACKEND.getInteger(pname);
+        }
+
+    public static void glGetObjectParameterARB(int obj, int pname, IntBuffer params) {
+            final var backend = RENDER_BACKEND;
+            if (backend.isShader(obj)) {
+                params.put(params.position(), backend.getShaderi(obj, pname));
+            } else {
+                backend.getProgramiv(obj, pname, params);
+            }
+        }
+
+    public static void glGetObjectParameterARB(int obj, int pname, FloatBuffer params) {
+            final var backend = RENDER_BACKEND;
+            params.put(params.position(), (float) (backend.isShader(obj) ? backend.getShaderi(obj, pname) : backend.getProgrami(obj, pname)));
+        }
+
+    public static int glGetObjectParameteriARB(int obj, int pname) {
+            final var backend = RENDER_BACKEND;
+            return backend.isShader(obj) ? backend.getShaderi(obj, pname) : backend.getProgrami(obj, pname);
+        }
+
+    public static String glGetInfoLogARB(int obj, int maxLength) {
+            final var backend = RENDER_BACKEND;
+            return backend.isShader(obj) ? backend.getShaderInfoLog(obj, maxLength) : backend.getProgramInfoLog(obj, maxLength);
+        }
+
+    public static void glGetInfoLogARB(int obj, IntBuffer length, ByteBuffer infoLog) {
+            final var backend = RENDER_BACKEND;
+            if (backend.isShader(obj)) {
+                backend.getShaderInfoLog(obj, length, infoLog);
+            } else {
+                backend.getProgramInfoLog(obj, length, infoLog);
+            }
+        }
+
+    public static void glUniform4i(int location, int v0, int v1, int v2, int v3) {
+            RENDER_BACKEND.uniform4i(location, v0, v1, v2, v3);
+        }
+
+    public static void glUniform1(int location, FloatBuffer values) {
+            RENDER_BACKEND.uniform1fv(location, values);
+        }
+
+    public static void glUniform1(int location, IntBuffer values) {
+            RENDER_BACKEND.uniform1iv(location, values);
+        }
+
+    public static void glUniform1(int location, float[] values) {
+            RENDER_BACKEND.uniform1fv(location, values);
+        }
+
+    public static void glUniform2(int location, FloatBuffer values) {
+            RENDER_BACKEND.uniform2(location, values);
+        }
+
+    public static void glUniform2(int location, IntBuffer values) {
+            RENDER_BACKEND.uniform2iv(location, values);
+        }
+
+    public static void glUniform3(int location, FloatBuffer values) {
+            RENDER_BACKEND.uniform3(location, values);
+        }
+
+    public static void glUniform3(int location, IntBuffer values) {
+            RENDER_BACKEND.uniform3iv(location, values);
+        }
+
+    public static void glUniform3(int location, float[] values) {
+            RENDER_BACKEND.uniform3fv(location, values);
+        }
+
+    public static void glUniform4(int location, FloatBuffer values) {
+            RENDER_BACKEND.uniform4(location, values);
+        }
+
+    public static void glUniform4(int location, IntBuffer values) {
+            RENDER_BACKEND.uniform4iv(location, values);
+        }
+
+    public static void glUniform4(int location, float[] values) {
+            RENDER_BACKEND.uniform4fv(location, values);
+        }
+
+    public static void glUniformMatrix2(int location, boolean transpose, FloatBuffer matrices) {
+            RENDER_BACKEND.uniformMatrix2(location, transpose, matrices);
+        }
+
+    public static void glGetActiveAttrib(int program, int index, IntBuffer length, IntBuffer size, IntBuffer type, ByteBuffer name) {
+            RENDER_BACKEND.getActiveAttrib(program, index, length, size, type, name);
+        }
+
+    public static void glGetActiveAttrib(int program, int index, int[] length, int[] size, int[] type, ByteBuffer name) {
+            RENDER_BACKEND.getActiveAttrib(program, index, length, size, type, name);
+        }
+
+    public static String glGetActiveAttrib(int program, int index, int maxLength, IntBuffer sizeType) {
+            return RENDER_BACKEND.getActiveAttrib(program, index, maxLength, sizeType);
+        }
+
+    public static String glGetActiveAttrib(int program, int index, int maxLength, IntBuffer size, IntBuffer type) {
+            final IntBuffer sizeType = BufferUtils.createIntBuffer(2);
+            final String name = RENDER_BACKEND.getActiveAttrib(program, index, maxLength, sizeType);
+            if (size != null) size.put(size.position(), sizeType.get(0));
+            if (type != null) type.put(type.position(), sizeType.get(1));
+            return name;
+        }
+
+    public static String glGetActiveAttrib(int program, int index, IntBuffer size, IntBuffer type) {
+            return glGetActiveAttrib(program, index, glGetProgrami(program, GL20.GL_ACTIVE_ATTRIBUTE_MAX_LENGTH), size, type);
+        }
+
+    public static void glGetAttachedShaders(int program, IntBuffer count, IntBuffer shaders) {
+            RENDER_BACKEND.getAttachedShaders(program, count, shaders);
+        }
+
+    public static void glGetAttachedShaders(int program, int[] count, int[] shaders) {
+            RENDER_BACKEND.getAttachedShaders(program, count, shaders);
+        }
+
+    public static String glGetShaderSource(int shader, int maxLength) {
+            return RENDER_BACKEND.getShaderSource(shader, maxLength);
+        }
+
+    public static String glGetShaderSource(int shader) {
+            return glGetShaderSource(shader, glGetShaderi(shader, GL20.GL_SHADER_SOURCE_LENGTH));
+        }
+
+    public static void glGetShaderSource(int shader, IntBuffer length, ByteBuffer source) {
+            RENDER_BACKEND.getShaderSource(shader, length, source);
+        }
+
+    public static void glGetShaderSource(int shader, int[] length, ByteBuffer source) {
+            RENDER_BACKEND.getShaderSource(shader, length, source);
+        }
+
+    public static void glGetUniform(int program, int location, FloatBuffer params) {
+            RENDER_BACKEND.getUniformfv(program, location, params);
+        }
+
+    public static void glGetUniform(int program, int location, IntBuffer params) {
+            RENDER_BACKEND.getUniformiv(program, location, params);
+        }
+
+    public static int getProgramGeneration() {
+            return ctx().programGeneration;
+        }
+
+    public static IntegerStateStack getProgramStack() {
+            return ctx().programStack;
+        }
+
+    public static BooleanStateStack getVertexProgramTwoSideState() {
+            return ctx().vertexProgramTwoSideState;
+        }
+
+    public static int getActiveProgram() {
+            return ctx().activeProgram;
+        }
 }

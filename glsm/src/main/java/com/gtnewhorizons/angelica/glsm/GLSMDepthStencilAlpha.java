@@ -1,5 +1,11 @@
 package com.gtnewhorizons.angelica.glsm;
 
+import com.gtnewhorizons.angelica.glsm.DisplayListManager;
+import com.gtnewhorizons.angelica.glsm.stacks.AlphaStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.BooleanStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.DepthStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.StencilStateStack;
+import com.gtnewhorizons.angelica.glsm.states.AlphaState;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredAlphaHandler;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredDepthColorHandler;
@@ -258,4 +264,109 @@ public final class GLSMDepthStencilAlpha {
             RENDER_BACKEND.stencilOpSeparate(face, sfail, dpfail, dppass);
         }
     }
+
+    public static boolean isEffectiveDepthMaskEnabled() {
+            return ctx().depthState.isEffectiveMaskEnabled();
+        }
+
+    public static boolean isEffectiveAlphaTestEnabled() {
+            return ctx().alphaTest.isEffectivelyEnabled();
+        }
+
+    public static AlphaState getEffectiveAlphaState(AlphaState out) {
+            return ctx().alphaState.readEffective(out);
+        }
+
+    public static void enableAlphaTest() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordEnable(GL11.GL_ALPHA_TEST);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            final DeferredAlphaHandler ah = GLSMHooks.alphaHandler;
+            if (ah != null && ah.isAlphaTestLocked()) {
+                ctx().alphaTest.beforeModify();
+                ah.deferAlphaTestToggle(true);
+            } else {
+                ctx().alphaTest.enable();
+                if (GLSMHooks.ALPHA_STATE_CHANGE.hasListeners()) {
+                    GLSMHooks.ALPHA_STATE_CHANGE.post(GLSMHooks.alphaStateChangeEvent);
+                }
+            }
+            ctx().fragmentGeneration++;
+        }
+
+    public static void disableAlphaTest() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordDisable(GL11.GL_ALPHA_TEST);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            final DeferredAlphaHandler ah = GLSMHooks.alphaHandler;
+            if (ah != null && ah.isAlphaTestLocked()) {
+                ctx().alphaTest.beforeModify();
+                ah.deferAlphaTestToggle(false);
+            } else {
+                ctx().alphaTest.disable();
+                if (GLSMHooks.ALPHA_STATE_CHANGE.hasListeners()) {
+                    GLSMHooks.ALPHA_STATE_CHANGE.post(GLSMHooks.alphaStateChangeEvent);
+                }
+            }
+            ctx().fragmentGeneration++;
+        }
+
+    public static void enableDepthTest() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordEnable(GL11.GL_DEPTH_TEST);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            ctx().depthTest.enable();
+        }
+
+    public static void disableDepthTest() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordDisable(GL11.GL_DEPTH_TEST);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            ctx().depthTest.disable();
+        }
+
+    public static void glDepthRange(double near, double far) {
+            if (isCachingEnabled()) mod(ctx().viewportState).setDepthRange(near, far);
+            RENDER_BACKEND.depthRange(near, far);
+        }
+
+    public static DepthStateStack getDepthState() {
+            return ctx().depthState;
+        }
+
+    public static BooleanStateStack getDepthTest() {
+            return ctx().depthTest;
+        }
+
+    public static AlphaStateStack getAlphaState() {
+            return ctx().alphaState;
+        }
+
+    public static BooleanStateStack getAlphaTest() {
+            return ctx().alphaTest;
+        }
+
+    public static BooleanStateStack getStencilTest() {
+            return ctx().stencilTest;
+        }
+
+    public static StencilStateStack getStencilState() {
+            return ctx().stencilState;
+        }
 }

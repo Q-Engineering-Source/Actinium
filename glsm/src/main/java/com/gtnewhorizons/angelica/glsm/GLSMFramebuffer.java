@@ -1,5 +1,9 @@
 package com.gtnewhorizons.angelica.glsm;
 
+import com.gtnewhorizons.angelica.glsm.GpuCommandDiagnostics;
+import com.gtnewhorizons.angelica.glsm.stacks.IntegerStateStack;
+import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandPhase;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandType;
@@ -14,6 +18,11 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.mod;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.recordGpuCommand;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.requireContext;
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.initConfig;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.isGpuDiagnosticCacheTrusted;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.remapPixelTypeForGLES;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.restorePixelPackBuffer;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.suspendPixelPackBuffer;
 
 public final class GLSMFramebuffer {
 
@@ -156,4 +165,74 @@ public final class GLSMFramebuffer {
     }
 
     public static void glFramebufferRenderbuffer(int target, int attachment, int renderbuffertarget, int renderbuffer) { RENDER_BACKEND.framebufferRenderbuffer(target, attachment, renderbuffertarget, renderbuffer); }
+
+    public static boolean framebufferCompletenessIsMeaningful() { return RENDER_BACKEND.framebufferCompletenessIsMeaningful(); }
+
+    public static void glReadPixels(int x, int y, int width, int height, int format, int type, ByteBuffer pixels) {
+            type = remapPixelTypeForGLES(format, type);
+            suspendPixelPackBuffer();
+            RENDER_BACKEND.readPixels(x, y, width, height, format, type, pixels);
+            restorePixelPackBuffer();
+        }
+
+    public static void glReadPixels(int x, int y, int width, int height, int format, int type, FloatBuffer pixels) {
+            type = remapPixelTypeForGLES(format, type);
+            suspendPixelPackBuffer();
+            RENDER_BACKEND.readPixels(x, y, width, height, format, type, pixels);
+            restorePixelPackBuffer();
+        }
+
+    public static void glReadPixels(int x, int y, int width, int height, int format, int type, IntBuffer pixels) {
+            type = remapPixelTypeForGLES(format, type);
+            suspendPixelPackBuffer();
+            RENDER_BACKEND.readPixels(x, y, width, height, format, type, pixels);
+            restorePixelPackBuffer();
+        }
+
+    public static void glReadPixels(int x, int y, int width, int height, int format, int type, long pixelBufferOffset) {
+            type = remapPixelTypeForGLES(format, type);
+            RENDER_BACKEND.readPixels(x, y, width, height, format, type, pixelBufferOffset);
+        }
+
+    public static void glFramebufferTexture(int target, int attachment, int texture, int level) { RENDER_BACKEND.framebufferTexture(target, attachment, texture, level); }
+
+    public static void glBlitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1, int dstX0, int dstY0, int dstX1, int dstY1, int mask, int filter) {
+            final boolean cacheTrusted = isGpuDiagnosticCacheTrusted();
+            final int diagnosticReadFramebuffer = GpuCommandDiagnostics.trustedValue(cacheTrusted, ctx().readFramebuffer);
+            final int diagnosticDrawFramebuffer = GpuCommandDiagnostics.trustedValue(cacheTrusted, ctx().drawFramebuffer);
+            recordGpuCommand(
+                GpuCommandType.BLIT_FRAMEBUFFER,
+                GpuCommandPhase.BEGIN,
+                diagnosticReadFramebuffer,
+                diagnosticDrawFramebuffer
+            );
+            RENDER_BACKEND.blitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
+            recordGpuCommand(
+                GpuCommandType.BLIT_FRAMEBUFFER,
+                GpuCommandPhase.END,
+                diagnosticReadFramebuffer,
+                diagnosticDrawFramebuffer
+            );
+            gpuCheckpoint(GpuCommandType.BLIT_FRAMEBUFFER);
+        }
+
+    public static boolean isFramebufferEnabled() {
+            return initConfig != null && initConfig.isFramebufferSupported() && initConfig.isFboEnabled();
+        }
+
+    public static int getDrawFramebufferGeneration() {
+            return ctx().drawFramebufferGeneration;
+        }
+
+    public static IntegerStateStack getDrawBuffer() {
+            return ctx().drawBuffer;
+        }
+
+    public static int getDrawFramebuffer() {
+            return ctx().drawFramebuffer;
+        }
+
+    public static int getReadFramebuffer() {
+            return ctx().readFramebuffer;
+        }
 }

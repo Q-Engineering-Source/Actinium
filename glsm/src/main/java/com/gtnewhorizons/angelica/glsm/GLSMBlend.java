@@ -1,5 +1,12 @@
 package com.gtnewhorizons.angelica.glsm;
 
+import com.gtnewhorizons.angelica.glsm.DisplayListManager;
+import com.gtnewhorizons.angelica.glsm.stacks.BlendStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.BooleanStateStack;
+import com.gtnewhorizons.angelica.glsm.stacks.Color4Stack;
+import com.gtnewhorizons.angelica.glsm.stacks.ColorMaskStack;
+import com.gtnewhorizons.angelica.glsm.stacks.IntegerStateStack;
+import com.gtnewhorizons.angelica.glsm.states.BlendState;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredBlendHandler;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredDepthColorHandler;
@@ -18,6 +25,7 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.postVanillaBlendCha
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.snapshotVanillaBlendFunc;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.tryBlendFuncSeparate;
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.postVanillaBlendChange;
 
 public final class GLSMBlend {
 
@@ -163,4 +171,155 @@ public final class GLSMBlend {
     public static void glLogicOp(GlStateManager.LogicOp logicOperation) {
         glLogicOp(logicOperation.opcode);
     }
+
+    public static void enableBlend() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordEnable(GL11.GL_BLEND);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            final boolean wasEnabled = ctx().blendMode.isEffectivelyEnabled();
+            final DeferredBlendHandler bh = GLSMHooks.blendHandler;
+            if (bh != null && bh.isBlendLocked()) {
+                ctx().blendMode.beforeModify();
+                bh.deferBlendModeToggle(true);
+            } else {
+                ctx().blendMode.enable();
+            }
+            if (GLSMConfig.hudCacheOverride) {
+                GLSMConfig.hudCacheBlendEnabled = true;
+            }
+            if (!wasEnabled && ctx().blendMode.isEffectivelyEnabled()) {
+                postVanillaBlendChange();
+            }
+        }
+
+    public static void disableBlend() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordDisable(GL11.GL_BLEND);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            final boolean wasEnabled = ctx().blendMode.isEffectivelyEnabled();
+            final DeferredBlendHandler bh = GLSMHooks.blendHandler;
+            if (bh != null && bh.isBlendLocked()) {
+                ctx().blendMode.beforeModify();
+                bh.deferBlendModeToggle(false);
+            } else {
+                ctx().blendMode.disable();
+            }
+            if (GLSMConfig.hudCacheOverride) {
+                GLSMConfig.hudCacheBlendEnabled = false;
+            }
+            if (wasEnabled && !ctx().blendMode.isEffectivelyEnabled()) {
+                postVanillaBlendChange();
+            }
+        }
+
+    public static boolean isEffectiveBlendEnabled() {
+            return ctx().blendMode.isEffectivelyEnabled();
+        }
+
+    public static BlendState getEffectiveBlendState(BlendState out) {
+            return ctx().blendState.readEffective(out);
+        }
+
+    public static void setHudCacheOverride(boolean enabled) {
+            if (GLSMConfig.hudCacheOverride == enabled) return;
+            GLSMConfig.hudCacheOverride = enabled;
+            final DeferredBlendHandler bh = GLSMHooks.blendHandler;
+            if (bh != null && bh.isOverrideHeld()) return;
+            final BlendStateStack blend = ctx().blendState;
+            GLStateManager.issueBlendFunc(blend);
+            blend.clearFuncUnknownState();
+        }
+
+    public static void glBlendEquation(int mode) {
+            if (DisplayListManager.isRecording()) {
+                throw new UnsupportedOperationException("glBlendEquation in display lists not yet implemented - if you see this, please report!");
+            }
+            final boolean caching = isCachingEnabled();
+            final boolean bypass = BYPASS_CACHE || !caching;
+            if (bypass || ctx().blendState.getEquationRgb() != mode || ctx().blendState.getEquationAlpha() != mode) {
+                if (caching) {
+                    mod(ctx().blendState);
+                    ctx().blendState.setEquationRgb(mode);
+                    ctx().blendState.setEquationAlpha(mode);
+                }
+                RENDER_BACKEND.blendEquation(mode);
+            }
+        }
+
+    public static void tryBlendFuncSeparate(int srcRgb, int dstRgb, int srcAlpha, int dstAlpha) {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordBlendFunc(srcRgb, dstRgb, srcAlpha, dstAlpha);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            final boolean snapshotted = snapshotVanillaBlendFunc();
+            final DeferredBlendHandler bh = GLSMHooks.blendHandler;
+            if (bh != null && bh.isBlendLocked()) {
+                ctx().blendState.beforeModify();
+                bh.deferBlendFunc(srcRgb, dstRgb, srcAlpha, dstAlpha);
+                postVanillaBlendChangeIfMoved(snapshotted);
+                return;
+            }
+            // Cache thread check - only update state on main thread, but always make GL call if needed
+            final boolean caching = isCachingEnabled();
+            final boolean bypass = BYPASS_CACHE || !caching;
+            if (bypass || ctx().blendState.getSrcRgb() != srcRgb || ctx().blendState.getDstRgb() != dstRgb || ctx().blendState.getSrcAlpha() != srcAlpha || ctx().blendState.getDstAlpha() != dstAlpha) {
+                if (caching) mod(ctx().blendState).setAll(srcRgb, dstRgb, srcAlpha, dstAlpha);
+                issueBlendFunc(srcRgb, dstRgb, srcAlpha, dstAlpha);
+                postBlendFuncChange(
+                    srcRgb, dstRgb,
+                    GLSMConfig.hudCacheOverride ? GL11.GL_ONE : srcAlpha,
+                    GLSMConfig.hudCacheOverride ? GL11.GL_ONE_MINUS_SRC_ALPHA : dstAlpha);
+            }
+            postVanillaBlendChangeIfMoved(snapshotted);
+        }
+
+    public static void tryBlendFuncSeparate(GlStateManager.SourceFactor srcFactor,
+                                                GlStateManager.DestFactor dstFactor,
+                                                GlStateManager.SourceFactor srcFactorAlpha,
+                                                GlStateManager.DestFactor dstFactorAlpha) {
+            tryBlendFuncSeparate(srcFactor.factor, dstFactor.factor, srcFactorAlpha.factor, dstFactorAlpha.factor);
+        }
+
+    public static void defaultBlendFunc() {
+            tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO);
+        }
+
+    public static BlendStateStack getBlendState() {
+            return ctx().blendState;
+        }
+
+    public static BooleanStateStack getBlendMode() {
+            return ctx().blendMode;
+        }
+
+    public static Color4Stack getClearColor() {
+            return ctx().clearColor;
+        }
+
+    public static ColorMaskStack getColorMask() {
+            return ctx().colorMask;
+        }
+
+    public static IntegerStateStack getLogicOpMode() {
+            return ctx().logicOpMode;
+        }
+
+    public static BooleanStateStack getColorLogicOpState() {
+            return ctx().colorLogicOpState;
+        }
+
+    public static BooleanStateStack getIndexLogicOpState() {
+            return ctx().indexLogicOpState;
+        }
 }

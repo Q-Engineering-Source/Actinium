@@ -1,5 +1,16 @@
 package com.gtnewhorizons.angelica.glsm;
 
+import com.gtnewhorizons.angelica.glsm.DisplayListManager;
+import com.gtnewhorizons.angelica.glsm.GLContextState;
+import com.gtnewhorizons.angelica.glsm.GLESFormatRemap;
+import com.gtnewhorizons.angelica.glsm.GLStateManager.GLESTexImageRemap;
+import com.gtnewhorizons.angelica.glsm.RenderSystem;
+import com.gtnewhorizons.angelica.glsm.stacks.IntegerStateStack;
+import com.gtnewhorizons.angelica.glsm.states.ImageUnitBinding;
+import com.gtnewhorizons.angelica.glsm.states.TextureUnitArray;
+import org.lwjgl.opengl.EXTTextureFilterAnisotropic;
+import org.lwjgl.opengl.GL12;
+import org.lwjgl.opengl.GL14;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandPhase;
@@ -57,6 +68,8 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.updateTexParameterf
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.updateTexParameteriCache;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.warnOnce;
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.getBoundTexture;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.postTextureUnitState;
 
 public final class GLSMTextures {
 
@@ -415,7 +428,7 @@ public final class GLSMTextures {
     }
 
     public static void glBindTextureUnit(int unit, int texture) {
-        if (getBoundTextureForServerState(unit) == texture) return;
+        if (GLStateManager.getBoundTextureForServerState(unit) == texture) return;
         recordGpuCommand(GpuCommandType.TEXTURE_BIND, 0, texture);
         RENDER_BACKEND.bindTextureUnit(unit, texture);
         mod(ctx().textures.getTextureUnitBindings(unit)).setBinding(texture);
@@ -540,4 +553,373 @@ public final class GLSMTextures {
     public static void glGetTexImage(int target, int level, int format, int type, long pixelBufferOffset) {
         RENDER_BACKEND.getTexImage(target, level, format, type, pixelBufferOffset);
     }
+
+    public static int getMaxBoundTextureUnit() {
+            return ctx().maxBoundTextureUnit;
+        }
+
+    public static void trackMaxBoundTextureUnit(int unit) {
+            final GLContextState glCtx = ctx();
+            if (unit > glCtx.maxBoundTextureUnit) glCtx.maxBoundTextureUnit = unit;
+        }
+
+    public static int getActiveTextureUnitForServerState() {
+            if (isCachingEnabled()) {
+                return getActiveTextureUnit();
+            }
+            return RENDER_BACKEND.getInteger(GL13.GL_ACTIVE_TEXTURE) - GL13.GL_TEXTURE0;
+        }
+
+    public static int getBoundTextureForServerState() {
+            if (isCachingEnabled()) {
+                return getBoundTexture();
+            }
+            return RENDER_BACKEND.getInteger(GL11.GL_TEXTURE_BINDING_2D);
+        }
+
+    public static int getBoundTextureForServerState(int unit) {
+            if (isCachingEnabled()) {
+                return GLStateManager.getBoundTexture(unit);
+            }
+            return -1;
+        }
+
+    public static void glActiveTextureARB(int texture) {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordActiveTexture(texture);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            final int newTexture = texture - GL13.GL_TEXTURE0;
+            final boolean caching = isCachingEnabled();
+            if (BYPASS_CACHE || !caching || getActiveTextureUnit() != newTexture) {
+                if (caching) mod(ctx().activeTextureUnit).setValue(newTexture);
+                RENDER_BACKEND.activeTexture(texture);
+            }
+        }
+
+    public static int getClientActiveTextureUnit() {
+            return ctx().clientActiveTextureUnit;
+        }
+
+    public static GLESTexImageRemap remapTexImageForGLES(int internalformat, int format, int type) {
+            return new GLESTexImageRemap(GLESFormatRemap.apply(internalformat, format, type, RenderSystem.isGLES()));
+        }
+
+    public static int glCreateTextures(int target) {
+            requireContext("glCreateTextures");
+            final int texture = RENDER_BACKEND.createTextures(target);
+            TextureInfoCache.INSTANCE.getInfo(texture).setTarget(target);
+            return texture;
+        }
+
+    public static void enableTexture() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordEnable(GL11.GL_TEXTURE_2D);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            final int textureUnit = getActiveTextureUnit();
+            postTextureUnitState(textureUnit, true);
+            ctx().textures.getTextureUnitStates(textureUnit).enable();
+        }
+
+    public static void disableTexture() {
+            final RecordMode mode = DisplayListManager.getRecordMode();
+            if (mode != RecordMode.NONE) {
+                DisplayListManager.recordDisable(GL11.GL_TEXTURE_2D);
+                if (mode == RecordMode.COMPILE) {
+                    return;
+                }
+            }
+            final int textureUnit = getActiveTextureUnit();
+            postTextureUnitState(textureUnit, false);
+            ctx().textures.getTextureUnitStates(textureUnit).disable();
+        }
+
+    public static void setFilter(boolean bilinear, boolean mipmap) {
+            final int i, j;
+            if (bilinear) {
+                i = mipmap ? GL11.GL_LINEAR_MIPMAP_LINEAR : GL11.GL_LINEAR;
+                j = GL11.GL_LINEAR;
+            } else {
+                i = mipmap ? GL11.GL_LINEAR_MIPMAP_LINEAR : GL11.GL_NEAREST;
+                j = GL11.GL_NEAREST;
+            }
+            glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, i);
+            glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, j);
+        }
+
+    public static int getActiveTextureUnit() {
+            return ctx().activeTextureUnit.getValue();
+        }
+
+    public static boolean updateTexParameteriCache(int target, int texture, int pname, int param) {
+            if (target != GL11.GL_TEXTURE_2D) {
+                return true;
+            }
+            return updateTexParameteriCache(TextureInfoCache.INSTANCE.getInfo(texture), pname, param);
+        }
+
+    static boolean updateTexParameteriCache(TextureInfo info, int pname, int param) {
+            if (info == null) {
+                return true;
+            }
+            switch (pname) {
+                case GL11.GL_TEXTURE_MIN_FILTER -> {
+                    if (info.getMinFilter() == param && isCachingEnabled()) return false;
+                    info.setMinFilter(param);
+                }
+                case GL11.GL_TEXTURE_MAG_FILTER -> {
+                    if (info.getMagFilter() == param && isCachingEnabled()) return false;
+                    info.setMagFilter(param);
+                }
+                case GL11.GL_TEXTURE_WRAP_S -> {
+                    if (info.getWrapS() == param && isCachingEnabled()) return false;
+                    info.setWrapS(param);
+                }
+                case GL11.GL_TEXTURE_WRAP_T -> {
+                    if (info.getWrapT() == param && isCachingEnabled()) return false;
+                    info.setWrapT(param);
+                }
+                case GL12.GL_TEXTURE_BASE_LEVEL -> {
+                    if (info.getBaseLevel() == param && isCachingEnabled()) return false;
+                    info.setBaseLevel(param);
+                }
+                case GL12.GL_TEXTURE_MAX_LEVEL -> {
+                    if (info.getMaxLevel() == param && isCachingEnabled()) return false;
+                    info.setMaxLevel(param);
+                }
+                case GL12.GL_TEXTURE_MIN_LOD -> {
+                    if (info.getMinLod() == param && isCachingEnabled()) return false;
+                    info.setMinLod(param);
+                }
+                case GL12.GL_TEXTURE_MAX_LOD -> {
+                    if (info.getMaxLod() == param && isCachingEnabled()) return false;
+                    info.setMaxLod(param);
+                }
+            }
+            return true;
+        }
+
+    public static boolean updateTexParameterfCache(int target, int texture, int pname, float param) {
+            if (target != GL11.GL_TEXTURE_2D) {
+                return true;
+            }
+            return updateTexParameterfCache(TextureInfoCache.INSTANCE.getInfo(texture), pname, param);
+        }
+
+    static boolean updateTexParameterfCache(TextureInfo info, int pname, float param) {
+            if (info == null) {
+                return true;
+            }
+            switch (pname) {
+                case EXTTextureFilterAnisotropic.GL_TEXTURE_MAX_ANISOTROPY_EXT -> {
+                    if (info.getMaxAnisotropy() == param && isCachingEnabled()) return false;
+                    info.setMaxAnisotropy(param);
+                }
+                case GL14.GL_TEXTURE_LOD_BIAS -> {
+                    if (info.getLodBias() == param && isCachingEnabled()) return false;
+                    info.setLodBias(param);
+                }
+            }
+            return true;
+        }
+
+    public static float glGetTexParameterf(int target, int pname) {
+            if (target != GL11.GL_TEXTURE_2D || shouldBypassCache()) {
+                return RENDER_BACKEND.getTexParameterf(target, pname);
+            }
+            final int boundTexture = getBoundTextureForServerState();
+            final TextureInfo info = TextureInfoCache.INSTANCE.getInfo(boundTexture);
+            if(info == null) {
+                if (isRecordingDisplayList()) {
+                    throw new IllegalStateException(String.format(
+                        "glGetTexParameterf called during display list recording with no cached TextureInfo for texture %d. " +
+                        "Cannot query OpenGL state during compilation!", boundTexture));
+                }
+                return RENDER_BACKEND.getTexParameterf(target, pname);
+            }
+
+            return switch (pname) {
+                case EXTTextureFilterAnisotropic.GL_TEXTURE_MAX_ANISOTROPY_EXT -> info.getMaxAnisotropy();
+                case GL14.GL_TEXTURE_LOD_BIAS -> info.getLodBias();
+                default -> {
+                    if (isRecordingDisplayList()) {
+                        throw new IllegalStateException(String.format(
+                            "glGetTexParameterf called during display list recording with uncached pname 0x%s for texture %d. " +
+                            "Cannot query OpenGL state during compilation!", Integer.toHexString(pname), boundTexture));
+                    }
+                    yield RENDER_BACKEND.getTexParameterf(target, pname);
+                }
+            };
+        }
+
+    public static void glTexStorage2D(int target, int levels, int internalFormat, int width, int height) {
+            int texture = getBoundTextureForGpuDiagnostics();
+            recordGpuCommand(GpuCommandType.TEX_STORAGE_2D, GpuCommandPhase.BEGIN, texture, packDimensions(width, height));
+            RENDER_BACKEND.texStorage2D(target, levels, internalFormat, width, height);
+            recordGpuCommand(GpuCommandType.TEX_STORAGE_2D, GpuCommandPhase.END, texture, packDimensions(width, height));
+            gpuCheckpoint(GpuCommandType.TEX_STORAGE_2D);
+        }
+
+    public static void glClearTexImage(int texture, int level, int format, int type, ByteBuffer data) {
+            recordGpuCommand(GpuCommandType.CLEAR_TEX_IMAGE, GpuCommandPhase.BEGIN, texture, level);
+            RENDER_BACKEND.clearTexImage(texture, level, format, type);
+            recordGpuCommand(GpuCommandType.CLEAR_TEX_IMAGE, GpuCommandPhase.END, texture, level);
+            gpuCheckpoint(GpuCommandType.CLEAR_TEX_IMAGE);
+        }
+
+    public static int glGenSamplers() { return RENDER_BACKEND.genSamplers(); }
+
+    public static void glDeleteSamplers(int sampler) { RENDER_BACKEND.deleteSamplers(sampler); }
+
+    public static void glBindSampler(int unit, int sampler) { RENDER_BACKEND.bindSampler(unit, sampler); }
+
+    public static void glTexImage1D(int target, int level, int internalformat, int width, int border, int format, int type, ByteBuffer pixels) {
+            internalformat = changeFormatIfDeprecated(internalformat);
+            type = remapPixelTypeForGLES(format, type);
+            type = remapTypeForRemappedInternalFormat(internalformat, type);
+            if (DisplayListManager.isRecording()) {
+                throw new UnsupportedOperationException("glTexImage1D in display lists not yet implemented");
+            }
+            suspendPixelUnpackBuffer();
+            RENDER_BACKEND.texImage1D(target, level, internalformat, width, border, format, type, pixels);
+            restorePixelUnpackBuffer();
+        }
+
+    public static void glTexImage3D(int target, int level, int internalformat, int width, int height, int depth, int border, int format, int type, ByteBuffer pixels) {
+            internalformat = changeFormatIfDeprecated(internalformat);
+            type = remapPixelTypeForGLES(format, type);
+            type = remapTypeForRemappedInternalFormat(internalformat, type);
+            if (DisplayListManager.isRecording()) {
+                throw new UnsupportedOperationException("glTexImage3D in display lists not yet implemented");
+            }
+            recordGpuCommand(GpuCommandType.TEX_IMAGE_3D, GpuCommandPhase.BEGIN, target, packDimensions(width, height));
+            suspendPixelUnpackBuffer();
+            RENDER_BACKEND.texImage3D(target, level, internalformat, width, height, depth, border, format, type, pixels);
+            restorePixelUnpackBuffer();
+            recordGpuCommand(GpuCommandType.TEX_IMAGE_3D, GpuCommandPhase.END, target, packDimensions(width, height));
+            gpuCheckpoint(GpuCommandType.TEX_IMAGE_3D);
+        }
+
+    public static void glTexImage3D(int target, int level, int internalformat, int width, int height, int depth, int border, int format, int type, IntBuffer pixels) {
+            internalformat = changeFormatIfDeprecated(internalformat);
+            type = remapPixelTypeForGLES(format, type);
+            type = remapTypeForRemappedInternalFormat(internalformat, type);
+            if (DisplayListManager.isRecording()) {
+                throw new UnsupportedOperationException("glTexImage3D in display lists not yet implemented");
+            }
+            recordGpuCommand(GpuCommandType.TEX_IMAGE_3D, GpuCommandPhase.BEGIN, target, packDimensions(width, height));
+            suspendPixelUnpackBuffer();
+            RENDER_BACKEND.texImage3D(target, level, internalformat, width, height, depth, border, format, type, pixels);
+            restorePixelUnpackBuffer();
+            recordGpuCommand(GpuCommandType.TEX_IMAGE_3D, GpuCommandPhase.END, target, packDimensions(width, height));
+            gpuCheckpoint(GpuCommandType.TEX_IMAGE_3D);
+        }
+
+    public static void glTexSubImage1D(int target, int level, int xoffset, int width, int format, int type, ByteBuffer pixels) {
+            if (DisplayListManager.isRecording()) {
+                throw new UnsupportedOperationException("glTexSubImage1D in display lists not yet implemented");
+            }
+            suspendPixelUnpackBuffer();
+            RENDER_BACKEND.texSubImage1D(target, level, xoffset, width, format, type, pixels);
+            restorePixelUnpackBuffer();
+        }
+
+    public static void glTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, int type, ByteBuffer pixels) {
+            if (DisplayListManager.isRecording()) {
+                throw new UnsupportedOperationException("glTexSubImage3D in display lists not yet implemented - if you see this, please report!");
+            }
+            recordGpuCommand(GpuCommandType.TEX_SUB_IMAGE_3D, GpuCommandPhase.BEGIN, target, packDimensions(width, height));
+            suspendPixelUnpackBuffer();
+            RENDER_BACKEND.texSubImage3D(target, level, xoffset, yoffset, zoffset, width, height, depth, format, type, pixels);
+            restorePixelUnpackBuffer();
+            recordGpuCommand(GpuCommandType.TEX_SUB_IMAGE_3D, GpuCommandPhase.END, target, packDimensions(width, height));
+            gpuCheckpoint(GpuCommandType.TEX_SUB_IMAGE_3D);
+        }
+
+    public static void glCopyTexImage1D(int target, int level, int internalFormat, int x, int y, int width, int border) {
+            if (DisplayListManager.isRecording()) {
+                throw new UnsupportedOperationException("glCopyTexImage1D in display lists not yet implemented - if you see this, please report!");
+            }
+            RENDER_BACKEND.copyTexImage1D(target, level, internalFormat, x, y, width, border);
+        }
+
+    public static void glCopyTexSubImage1D(int target, int level, int xoffset, int x, int y, int width) {
+            if (DisplayListManager.isRecording()) {
+                throw new UnsupportedOperationException("glCopyTexSubImage1D in display lists not yet implemented - if you see this, please report!");
+            }
+            RENDER_BACKEND.copyTexSubImage1D(target, level, xoffset, x, y, width);
+        }
+
+    public static void glCopyTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int x, int y, int width, int height) {
+            if (DisplayListManager.isRecording()) {
+                throw new UnsupportedOperationException("glCopyTexSubImage3D in display lists not yet implemented - if you see this, please report!");
+            }
+            RENDER_BACKEND.copyTexSubImage3D(target, level, xoffset, yoffset, zoffset, x, y, width, height);
+        }
+
+    public static void glPixelStoref(int pname, float param) {
+            glPixelStorei(pname, param < 0 ? -Math.round(-param) : Math.round(param));
+        }
+
+    public static void forcePixelUnpackState(PixelStoreState target) {
+            PixelStoreState.applyDiff(ctx().pixelUnpackState, target, false);
+        }
+
+    public static void restorePixelUnpackState(PixelStoreState applied) {
+            PixelStoreState.applyDiff(applied, ctx().pixelUnpackState, false);
+        }
+
+    public static void glGenerateMipmap(int target) {
+            recordGpuCommand(GpuCommandType.GENERATE_MIPMAP, GpuCommandPhase.BEGIN, getBoundTextureForGpuDiagnostics(), target);
+            RENDER_BACKEND.generateMipmap(target);
+            recordGpuCommand(GpuCommandType.GENERATE_MIPMAP, GpuCommandPhase.END, getBoundTextureForGpuDiagnostics(), target);
+            gpuCheckpoint(GpuCommandType.GENERATE_MIPMAP);
+        }
+
+    public static void setActiveTexture(int textureUnit) {
+            glActiveTexture(textureUnit);
+        }
+
+    public static int remapTexClamp(int pname, int param) {
+            if (param == GL11.GL_CLAMP && (pname == GL11.GL_TEXTURE_WRAP_S || pname == GL11.GL_TEXTURE_WRAP_T || pname == GL12.GL_TEXTURE_WRAP_R)) {
+                return GL12.GL_CLAMP_TO_EDGE;
+            }
+            return param;
+        }
+
+    public static float remapTexClamp(int pname, float param) {
+            if ((int) param == GL11.GL_CLAMP && (pname == GL11.GL_TEXTURE_WRAP_S || pname == GL11.GL_TEXTURE_WRAP_T || pname == GL12.GL_TEXTURE_WRAP_R)) {
+                return (float) GL12.GL_CLAMP_TO_EDGE;
+            }
+            return param;
+        }
+
+    public static void remapTexClampBuffer(int pname, IntBuffer params) {
+            if (params.remaining() >= 1) {
+                final int val = params.get(params.position());
+                final int remapped = remapTexClamp(pname, val);
+                if (remapped != val) params.put(params.position(), remapped);
+            }
+        }
+
+    public static void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) { RENDER_BACKEND.bindImageTexture(unit, texture, level, layered, layer, access, format); }
+
+    public static ImageUnitBinding getImageUnitBinding(int unit) {
+            return ctx().imageUnits.get(unit);
+        }
+
+    public static IntegerStateStack getActiveTextureUnitStack() {
+            return ctx().activeTextureUnit;
+        }
+
+    public static TextureUnitArray getTextures() {
+            return ctx().textures;
+        }
 }
