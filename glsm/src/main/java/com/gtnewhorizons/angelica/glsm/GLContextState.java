@@ -96,6 +96,18 @@ public class GLContextState {
     public final StateSet[] attribSets = new StateSet[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
     public RetainedState retainedOwner;
     public int attribDepth;
+
+    /**
+     * Whether any open attrib bracket declares {@code slot} in its state set. A mutation of a slot no
+     * open bracket declares is never restored by a pop, so the copy-on-write stack can skip its snapshot.
+     */
+    public boolean savesState(int slot) {
+        for (int i = attribDepth - 1; i >= 0; i--) {
+            if (attribSets[i].contains(slot)) return true;
+        }
+        return false;
+    }
+
     public CowStateStack<?>[] stackById;
     public CowDepths[] depthsById;
     public int[] restoreBitById;

@@ -1,6 +1,7 @@
 package com.gtnewhorizons.angelica.glsm.stacks;
 
 import com.gtnewhorizon.gtnhlib.client.renderer.stacks.IStateStack;
+import com.gtnewhorizons.angelica.glsm.GLContextState;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 
 public interface CowStateStack<T> extends IStateStack<T> {
@@ -39,11 +40,12 @@ public interface CowStateStack<T> extends IStateStack<T> {
 
     @Override
     default void beforeModify() {
-        final int slot = cowDepths().claim(GLStateManager.getAttribDepth());
-        if (slot >= 0) {
-            captureSlot(slot);
-            GLStateManager.registerModifiedState(stackId());
-        }
+        final CowDepths depths = cowDepths();
+        final GLContextState glCtx = GLStateManager.ctx();
+        final int depth = glCtx.attribDepth;
+        if (depth == 0 || depths.claimedAt(depth) || !glCtx.savesState(stackId())) return;
+        captureSlot(depths.claim(depth));
+        GLStateManager.registerModifiedState(stackId());
     }
 
     @Override

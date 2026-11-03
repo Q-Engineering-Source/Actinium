@@ -23,8 +23,6 @@ public final class CowDepths {
     }
 
     public int claim(int depth) {
-        if (depth <= 0) return -1;
-        if (pointer > 0 && slotDepth[pointer - 1] == depth) return -1;
         slotDepth[pointer] = depth;
         return pointer++;
     }
