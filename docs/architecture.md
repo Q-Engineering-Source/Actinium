@@ -84,6 +84,10 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
 - **`loading/fml/`**：`transformers/MacDisplayForwardCompatTransformer` —— ASM transformer，
   为 macOS 的 `Display.create()` 注入 `GLFW_OPENGL_FORWARD_COMPAT` hint，防止 core context
   回退到 2.1；由 `MixinEarly` 注册。
+- **`startup/`**：`CoreProfileDisplayCreator` 在 `Minecraft.createDisplay` 的 redirect 里按版本回退
+  创建 core-profile 上下文，`CoreProfileContextAttributes` 构造请求属性，`ForgeEarlyGlConfig` 判断运行时
+  是否仍提供 Cleanroom 的 `ForgeEarlyConfig` 早期字段：`lwjglxx` 的 GLFW shim 只读那些字段并忽略
+  `ContextAttribs`，Outlands 的 SDL shim 没有这些字段且完全按 attribs 创建上下文。
 
 ### Mixin 组织
 
@@ -185,7 +189,9 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
 - **`celeritas/`**：`Shaders` —— 注册/清除 Embeddium 的 `ShaderProvider` 挂载点。
 - **`command/`**：`TogglePassCommand` —— dev 环境调试命令，切换渲染 pass。
 - **`debug/`**：`ActiniumDiagnostics`（生产诊断日志）、`ActiniumStartupDebugConfig`、
-  `CoreProfileContextAttributes`、`OpenGlVersion`（GL 版本检测）。
+  `OpenGlVersion`（GL 版本检测）。
+- **`startup/`**：`CoreProfileDisplayCreator`、`CoreProfileContextAttributes`、`ForgeEarlyGlConfig`
+  （core-profile 上下文创建与 `ForgeEarlyConfig` 早期字段的分流判断）。
 - **`gui/`**：`ActiniumVideoOptionsScreen`（自绘视频选项屏）、`ActiniumGameOptionPages`、
   `ActiniumWindowModeController` / `FullscreenMode`、`MinecraftOptionsStorage` /
   `VanillaBooleanOptionBinding`、`VintageDrawContext` / `VintageInteractionContext`。
@@ -532,10 +538,11 @@ Mixin 组织约定：
 
 - `com.dhj.actinium` 自身逻辑：`api/render/terrain`（BlockQuadTransformerHolder 注册分发）、
   `architecture`（包依赖方向约束，如 DependencyDirectionTest）、`compat/*`（各兼容层逻辑）、
-  `config`（运行时选项系统属性覆盖）、`debug`（启动 debug 配置、core profile、GL 版本、
+  `config`（运行时选项系统属性覆盖）、`debug`（启动 debug 配置、GL 版本、
   flight 记录含 crash 子进程）、`gui`（窗口模式）、`loading/fml/transformers`（Mac
   transformer 注入逻辑）、`mixin`/`mixins`（MixinConfigurationTest 配置覆盖校验、
-  MixinLate 门控逻辑）、`render`（EndPortal、流式绘制、投影纹理坐标、光照缓存等）。
+  MixinLate 门控逻辑）、`render`（EndPortal、流式绘制、投影纹理坐标、光照缓存等）、
+  `startup`（core-profile 上下文属性构造与 `ForgeEarlyConfig` 保存/恢复）。
 - 嵌入第三方源码的测试命名空间：`com.gtnewhorizons.angelica.*`（glsm：shader/uniform
   兼容、ffp 生成器、GPU 诊断、streaming）、`dhj.embeddedt.embeddium.*`（选项/区块渲染）、
   `net.coderbot.iris.*` 与

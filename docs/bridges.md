@@ -46,4 +46,4 @@
 4. **不暴露被注入方的具体类型**：接口方法返回最小类型（如 `WorldRendererCompat`
    用 `markSectionGraphDirty()` 压平返回根项目类型的 `getRenderSectionManager()`）。
 5. **新增桥必须有单元测试**：验证默认行为与注册后的转发（参照
-   `CoreProfileContextAttributesTest` 的保存/恢复模式）。
+   `ForgeEarlyGlConfigTest` 的保存/恢复模式）。
