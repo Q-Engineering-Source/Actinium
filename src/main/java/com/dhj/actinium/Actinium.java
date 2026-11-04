@@ -30,7 +30,6 @@ import net.coderbot.iris.pipeline.AdaptiveShadowBoundsStats;
 import net.coderbot.iris.compat.dh.DHCompat;
 import net.coderbot.iris.rendertarget.IRenderTargetExt;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.resources.IReloadableResourceManager;
 import net.minecraft.launchwrapper.Launch;
 import net.minecraftforge.client.ClientCommandHandler;
@@ -44,7 +43,6 @@ import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import dhj.embeddedt.embeddium.impl.common.util.MathUtil;
 import dhj.embeddedt.embeddium.impl.common.util.NativeBuffer;
-import dhj.embeddedt.embeddium.impl.gl.device.GLRenderDevice;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
 import dhj.embeddedt.embeddium.impl.runtime.EmbeddiumRuntimeOptions;
 import java.io.IOException;
@@ -63,7 +61,6 @@ public class Actinium {
     @EventHandler
     public void onConstruct(FMLConstructionEvent event) {
         BackendOptions.latch(ActiniumConfig.renderBackendSdlGpu, ActiniumConfig.renderBackendDriver, ActiniumConfig.glVersion);
-        GLRenderDevice.VANILLA_STATE_RESETTER = () -> OpenGlHelper.glBindBuffer(OpenGlHelper.GL_ARRAY_BUFFER, 0);
 
         var container = Loader.instance().getIndexedModList().get(MODID);
         String version = container != null ? container.getVersion() : "unknown";
