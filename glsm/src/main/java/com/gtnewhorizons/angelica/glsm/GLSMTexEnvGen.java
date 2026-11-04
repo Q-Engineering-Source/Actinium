@@ -9,6 +9,7 @@ import org.lwjgl.opengl.GL14;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.handleTexEnvScalar;
 import static com.gtnewhorizons.angelica.glsm.GLSMDraws.guardUnsupportedFFP;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.glTexParameterf;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.isCachingEnabled;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.texGenTempPlane;
@@ -26,6 +27,7 @@ public final class GLSMTexEnvGen {
         }
 
     public static void glTexEnv(int target, int pname, FloatBuffer params) {
+        rejectExitCapture();
             if (target == GL11.GL_TEXTURE_ENV && pname == GL11.GL_TEXTURE_ENV_COLOR && params.remaining() >= 4) {
                 final int pos = params.position();
                 final var envState = ctx().textures.getTexEnvState(ctx().activeTextureUnit.getValue());
@@ -47,6 +49,7 @@ public final class GLSMTexEnvGen {
         }
 
     public static void glTexEnv(int target, int pname, IntBuffer params) {
+        rejectExitCapture();
             if (target == GL11.GL_TEXTURE_ENV) {
                 handleTexEnvScalar(target, pname, (float) params.get(params.position()));
             }
@@ -57,6 +60,7 @@ public final class GLSMTexEnvGen {
         }
 
     public static int glGetTexEnvi(int target, int pname) {
+        rejectExitCapture();
             if (target != GL11.GL_TEXTURE_ENV) return 0;
 
             final var envState = ctx().textures.getTexEnvState(ctx().activeTextureUnit.getValue());
@@ -83,6 +87,7 @@ public final class GLSMTexEnvGen {
         }
 
     public static void glGetTexEnv(int target, int pname, IntBuffer params) {
+        rejectExitCapture();
             if (target != GL11.GL_TEXTURE_ENV) return;
             if (pname == GL11.GL_TEXTURE_ENV_COLOR) {
                 final var envState = ctx().textures.getTexEnvState(ctx().activeTextureUnit.getValue());
@@ -96,6 +101,7 @@ public final class GLSMTexEnvGen {
         }
 
     public static void glGetTexEnv(int target, int pname, FloatBuffer params) {
+        rejectExitCapture();
             if (target != GL11.GL_TEXTURE_ENV) return;
             if (pname == GL11.GL_TEXTURE_ENV_COLOR) {
                 final var envState = ctx().textures.getTexEnvState(ctx().activeTextureUnit.getValue());
@@ -190,6 +196,7 @@ public final class GLSMTexEnvGen {
         }
 
     public static int glGetTexGeni(int coord, int pname) {
+        rejectExitCapture();
             if (pname == GL11.GL_TEXTURE_GEN_MODE) {
                 return ctx().textures.getTexGenState(ctx().activeTextureUnit.getValue()).getMode(coord);
             }
@@ -211,6 +218,7 @@ public final class GLSMTexEnvGen {
         }
 
     public static void glGetTexGen(int coord, int pname, FloatBuffer params) {
+        rejectExitCapture();
             final var state = ctx().textures.getTexGenState(ctx().activeTextureUnit.getValue());
             if (pname == GL11.GL_TEXTURE_GEN_MODE) {
                 params.put(params.position(), (float) state.getMode(coord));
@@ -230,6 +238,7 @@ public final class GLSMTexEnvGen {
         }
 
     public static void glGetTexGen(int coord, int pname, DoubleBuffer params) {
+        rejectExitCapture();
             final var state = ctx().textures.getTexGenState(ctx().activeTextureUnit.getValue());
             if (pname == GL11.GL_TEXTURE_GEN_MODE) {
                 params.put(params.position(), state.getMode(coord));

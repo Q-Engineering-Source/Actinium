@@ -1352,15 +1352,15 @@ public class GLStateManager {
 
     private static final String RASTERPOS_MSG = "glRasterPos is not available in GL 3.3 core profile.";
 
-    public static void glRasterPos2f(float x, float y) { guardUnsupportedFFP("glRasterPos", RASTERPOS_MSG); }
-    public static void glRasterPos2d(double x, double y) { guardUnsupportedFFP("glRasterPos", RASTERPOS_MSG); }
-    public static void glRasterPos2i(int x, int y) { guardUnsupportedFFP("glRasterPos", RASTERPOS_MSG); }
-    public static void glRasterPos3f(float x, float y, float z) { guardUnsupportedFFP("glRasterPos", RASTERPOS_MSG); }
-    public static void glRasterPos3d(double x, double y, double z) { guardUnsupportedFFP("glRasterPos", RASTERPOS_MSG); }
-    public static void glRasterPos3i(int x, int y, int z) { guardUnsupportedFFP("glRasterPos", RASTERPOS_MSG); }
-    public static void glRasterPos4f(float x, float y, float z, float w) { guardUnsupportedFFP("glRasterPos", RASTERPOS_MSG); }
-    public static void glRasterPos4d(double x, double y, double z, double w) { guardUnsupportedFFP("glRasterPos", RASTERPOS_MSG); }
-    public static void glRasterPos4i(int x, int y, int z, int w) { guardUnsupportedFFP("glRasterPos", RASTERPOS_MSG); }
+            public static void glRasterPos2f(float x, float y) { GLSMDraws.glRasterPos2f(x, y); }
+            public static void glRasterPos2d(double x, double y) { GLSMDraws.glRasterPos2d(x, y); }
+            public static void glRasterPos2i(int x, int y) { GLSMDraws.glRasterPos2i(x, y); }
+            public static void glRasterPos3f(float x, float y, float z) { GLSMDraws.glRasterPos3f(x, y, z); }
+            public static void glRasterPos3d(double x, double y, double z) { GLSMDraws.glRasterPos3d(x, y, z); }
+            public static void glRasterPos3i(int x, int y, int z) { GLSMDraws.glRasterPos3i(x, y, z); }
+            public static void glRasterPos4f(float x, float y, float z, float w) { GLSMDraws.glRasterPos4f(x, y, z, w); }
+            public static void glRasterPos4d(double x, double y, double z, double w) { GLSMDraws.glRasterPos4d(x, y, z, w); }
+            public static void glRasterPos4i(int x, int y, int z, int w) { GLSMDraws.glRasterPos4i(x, y, z, w); }
 
             public static void setFilter(boolean bilinear, boolean mipmap) { GLSMTextures.setFilter(bilinear, mipmap); }
 
@@ -2878,8 +2878,8 @@ public class GLStateManager {
             public static int glGenSamplers() { return GLSMTextures.glGenSamplers(); }
             public static void glDeleteSamplers(int sampler) { GLSMTextures.glDeleteSamplers(sampler); }
             public static void glBindSampler(int unit, int sampler) { GLSMTextures.glBindSampler(unit, sampler); }
-    public static void glSamplerParameteri(int sampler, int pname, int param) { RENDER_BACKEND.samplerParameteri(sampler, pname, param); }
-    public static void glSamplerParameterf(int sampler, int pname, float param) { RENDER_BACKEND.samplerParameterf(sampler, pname, param); }
+    public static void glSamplerParameteri(int sampler, int pname, int param) { GLSMTextures.glSamplerParameteri(sampler, pname, param); }
+    public static void glSamplerParameterf(int sampler, int pname, float param) { GLSMTextures.glSamplerParameterf(sampler, pname, param); }
 
     static void glMaterialFront(int pname, FloatBuffer params) {
         switch (pname) {
@@ -3270,8 +3270,8 @@ public class GLStateManager {
     public static void glGetBufferSubData(int target, long offset, double[] data) { GLSMBuffers.glGetBufferSubData(target, offset, data); }
     public static void nglGetBufferSubData(int target, long offset, long size, long data) { glGetBufferSubData(target, offset, MemoryUtilities.memByteBuffer(data, checkedSize(size))); }
     public static int glGetBufferParameteri(int target, int pname) { return GLSMBuffers.glGetBufferParameteri(target, pname); }
-    public static int glGetBufferParameter(int target, int pname) { return glGetBufferParameteri(target, pname); }
-    public static void glGetBufferParameter(int target, int pname, IntBuffer params) { params.put(params.position(), glGetBufferParameteri(target, pname)); }
+    public static int glGetBufferParameter(int target, int pname) { return GLSMBuffers.glGetBufferParameter(target, pname); }
+    public static void glGetBufferParameter(int target, int pname, IntBuffer params) { GLSMBuffers.glGetBufferParameter(target, pname, params); }
             public static void glGetBufferParameteriv(int target, int pname, IntBuffer params) { GLSMBuffers.glGetBufferParameteriv(target, pname, params); }
             public static void glGetBufferParameteriv(int target, int pname, int[] params) { GLSMBuffers.glGetBufferParameteriv(target, pname, params); }
             public static void glBufferStorage(int target, java.nio.ByteBuffer data, int flags) { GLSMBuffers.glBufferStorage(target, data, flags); }
@@ -3343,9 +3343,9 @@ public class GLStateManager {
         bb.asDoubleBuffer().put(data);
         return bb;
     }
-    public static void glClearBufferSubData(int target, int internalFormat, long offset, long size, int format, int type, java.nio.ByteBuffer data) { RENDER_BACKEND.clearBufferSubData(target, internalFormat, offset, size, format, type, data); }
+    public static void glClearBufferSubData(int target, int internalFormat, long offset, long size, int format, int type, java.nio.ByteBuffer data) { GLSMBuffers.glClearBufferSubData(target, internalFormat, offset, size, format, type, data); }
     public static boolean glIsBuffer(int buffer) { return RENDER_BACKEND.isBuffer(buffer); }
-    public static void glCopyBufferSubData(int readTarget, int writeTarget, long readOffset, long writeOffset, long size) { RENDER_BACKEND.copyBufferSubData(readTarget, writeTarget, readOffset, writeOffset, size); }
+    public static void glCopyBufferSubData(int readTarget, int writeTarget, long readOffset, long writeOffset, long size) { GLSMBuffers.glCopyBufferSubData(readTarget, writeTarget, readOffset, writeOffset, size); }
 
     public static void glBindVertexArray(int array) { GLSMVertexInput.glBindVertexArray(array); }
 
@@ -3444,13 +3444,13 @@ public class GLStateManager {
 
     public static void glFramebufferRenderbuffer(int target, int attachment, int renderbuffertarget, int renderbuffer) { GLSMFramebuffer.glFramebufferRenderbuffer(target, attachment, renderbuffertarget, renderbuffer); }
 
-    public static boolean glIsTexture(int texture) { return !GLSMTextureLifetime.isDeferredDelete(texture) && RENDER_BACKEND.isTexture(texture); }
+    public static boolean glIsTexture(int texture) { return GLSMTextures.glIsTexture(texture); }
 
     public static boolean glIsFramebuffer(int framebuffer) { return RENDER_BACKEND.isFramebuffer(framebuffer); }
 
     public static boolean glIsRenderbuffer(int renderbuffer) { return RENDER_BACKEND.isRenderbuffer(renderbuffer); }
 
-    public static boolean glIsSampler(int sampler) { return RENDER_BACKEND.isSampler(sampler); }
+    public static boolean glIsSampler(int sampler) { return GLSMTextures.glIsSampler(sampler); }
 
     public static boolean glIsQuery(int query) { return RENDER_BACKEND.isQuery(query); }
 
@@ -3464,9 +3464,9 @@ public class GLStateManager {
 
             public static void glDeleteSync(long sync) { GLSMBuffers.glDeleteSync(sync); }
 
-    public static void glWaitSync(long sync, int flags, long timeout) { RENDER_BACKEND.waitSync(sync, flags, timeout); }
+    public static void glWaitSync(long sync, int flags, long timeout) { GLSMBuffers.glWaitSync(sync, flags, timeout); }
 
-    public static int glGetSynci(long sync, int pname, IntBuffer length) { return RENDER_BACKEND.getSynci(sync, pname, length); }
+    public static int glGetSynci(long sync, int pname, IntBuffer length) { return GLSMBuffers.glGetSynci(sync, pname, length); }
 
             public static void glGenQueries(IntBuffer ids) { GLSMQueries.glGenQueries(ids); }
 
@@ -3512,9 +3512,9 @@ public class GLStateManager {
 
     public static void glUniformBlockBinding(int program, int blockIndex, int binding) { RENDER_BACKEND.uniformBlockBinding(program, blockIndex, binding); }
 
-    public static void glFlushMappedBufferRange(int target, long offset, long length) { RENDER_BACKEND.flushMappedBufferRange(target, offset, length); }
+    public static void glFlushMappedBufferRange(int target, long offset, long length) { GLSMBuffers.glFlushMappedBufferRange(target, offset, length); }
 
-    public static void glClearBufferData(int target, int internalformat, int format, int type, ByteBuffer data) { RENDER_BACKEND.clearBufferData(target, internalformat, format, type, data); }
+    public static void glClearBufferData(int target, int internalformat, int format, int type, ByteBuffer data) { GLSMBuffers.glClearBufferData(target, internalformat, format, type, data); }
 
             public static void glSpecializeShader(int shader, CharSequence entryPoint, IntBuffer constantIndex, IntBuffer constantValue) { GLSMPrograms.glSpecializeShader(shader, entryPoint, constantIndex, constantValue); }
 
@@ -3878,7 +3878,7 @@ public class GLStateManager {
     public static void glGetProgramInfoLog(int program, int[] length, ByteBuffer infoLog) { GLSMPrograms.glGetProgramInfoLog(program, length, infoLog); }
 
             public static void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) { GLSMTextures.glBindImageTexture(unit, texture, level, layered, layer, access, format); }
-    public static void glMemoryBarrier(int barriers) { RENDER_BACKEND.memoryBarrier(barriers); }
+    public static void glMemoryBarrier(int barriers) { GLSMBuffers.glMemoryBarrier(barriers); }
     public static void glCopyImageSubData(int srcName, int srcTarget, int srcLevel, int srcX, int srcY, int srcZ, int dstName, int dstTarget, int dstLevel, int dstX, int dstY, int dstZ, int srcWidth, int srcHeight, int srcDepth) { GLSMTextures.glCopyImageSubData(srcName, srcTarget, srcLevel, srcX, srcY, srcZ, dstName, dstTarget, dstLevel, dstX, dstY, dstZ, srcWidth, srcHeight, srcDepth); }
 
     public static void glDispatchCompute(int x, int y, int z) {

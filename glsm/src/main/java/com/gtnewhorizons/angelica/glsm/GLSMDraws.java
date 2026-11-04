@@ -30,6 +30,7 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.preDrawFFP;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.prepareClientArrays;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.prepareWideLineEmulation;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.recordGpuCommand;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.FFP_WARN_ON_UNSUPPORTED;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.LOGGER;
@@ -38,12 +39,14 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.selectWarned;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.setLineStippleActive;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.warnedFFPFunctions;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.wideLineEmulationActive;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.wideLineEmulationEnabled;
 
 public final class GLSMDraws {
 
     private GLSMDraws() {}
 
     public static void glBegin(int mode) {
+        rejectExitCapture();
         ctx().unit23TexCoordSetDuringDraw = false;
         if (DisplayListManager.isRecording()) {
             ImmediateModeRecorder.begin(mode);
@@ -53,6 +56,7 @@ public final class GLSMDraws {
     }
 
     public static void glEnd() {
+        rejectExitCapture();
         if (DisplayListManager.isRecording()) {
             final DirectTessellator result = ImmediateModeRecorder.end();
             if (result != null) {
@@ -91,6 +95,7 @@ public final class GLSMDraws {
     }
 
     public static void glDrawElements(int mode, ByteBuffer indices) {
+        rejectExitCapture();
         CommandRecorder savedRecorder = null;
         final RecordMode recordMode = DisplayListManager.getRecordMode();
         if (recordMode != RecordMode.NONE) {
@@ -123,6 +128,7 @@ public final class GLSMDraws {
     }
 
     public static void glDrawElements(int mode, IntBuffer indices) {
+        rejectExitCapture();
         CommandRecorder savedRecorder = null;
         final RecordMode recordMode = DisplayListManager.getRecordMode();
         if (recordMode != RecordMode.NONE) {
@@ -159,6 +165,7 @@ public final class GLSMDraws {
     }
 
     public static void glDrawElements(int mode, ShortBuffer indices) {
+        rejectExitCapture();
         CommandRecorder savedRecorder = null;
         final RecordMode recordMode = DisplayListManager.getRecordMode();
         if (recordMode != RecordMode.NONE) {
@@ -195,6 +202,7 @@ public final class GLSMDraws {
     }
 
     public static void glDrawElements(int mode, int count, int type, ByteBuffer indices) {
+        rejectExitCapture();
         CommandRecorder savedRecorder = null;
         final RecordMode recordMode = DisplayListManager.getRecordMode();
         if (recordMode != RecordMode.NONE) {
@@ -235,6 +243,7 @@ public final class GLSMDraws {
     }
 
     public static void glDrawElements(int mode, int indices_count, int type, long indices_buffer_offset) {
+        rejectExitCapture();
         CommandRecorder savedRecorder = null;
         final RecordMode recordMode = DisplayListManager.getRecordMode();
         if (recordMode != RecordMode.NONE) {
@@ -279,6 +288,7 @@ public final class GLSMDraws {
     }
 
     public static void glDrawArrays(int mode, int first, int count) {
+        rejectExitCapture();
         CommandRecorder savedRecorder = null;
         final RecordMode recordMode = DisplayListManager.getRecordMode();
         if (recordMode != RecordMode.NONE) {
@@ -314,23 +324,28 @@ public final class GLSMDraws {
     }
 
     public static void glNewList(int list, int mode) {
+        rejectExitCapture();
         DisplayListManager.glNewList(list, mode);
     }
 
     public static void glEndList() {
+        rejectExitCapture();
         DisplayListManager.glEndList();
     }
 
     public static int glGenLists(int range) {
+        rejectExitCapture();
         return displayListIdAllocator.allocRange(range);
     }
 
     public static void glDeleteLists(int list, int range) {
+        rejectExitCapture();
         displayListIdAllocator.freeRange(list, range);
         DisplayListManager.glDeleteLists(list, range);
     }
 
     public static void glCallList(int list) {
+        rejectExitCapture();
         if (!GLDebug.isActive()) {
             DisplayListManager.glCallList(list);
             return;
@@ -348,6 +363,7 @@ public final class GLSMDraws {
     }
 
     public static int glRenderMode(int mode) {
+        rejectExitCapture();
         return FeedbackManager.glRenderMode(mode);
     }
 
@@ -362,6 +378,18 @@ public final class GLSMDraws {
     public static void glPixelTransferi(int pname, int param) {
             guardUnsupportedFFP("glPixelTransfer", PIXELTRANSFER_MSG);
         }
+
+    private static final String RASTERPOS_MSG = "glRasterPos is not available in GL 3.3 core profile.";
+
+    public static void glRasterPos2f(float x, float y) { guardUnsupportedFFP("glRasterPos", RASTERPOS_MSG); }
+    public static void glRasterPos2d(double x, double y) { guardUnsupportedFFP("glRasterPos", RASTERPOS_MSG); }
+    public static void glRasterPos2i(int x, int y) { guardUnsupportedFFP("glRasterPos", RASTERPOS_MSG); }
+    public static void glRasterPos3f(float x, float y, float z) { guardUnsupportedFFP("glRasterPos", RASTERPOS_MSG); }
+    public static void glRasterPos3d(double x, double y, double z) { guardUnsupportedFFP("glRasterPos", RASTERPOS_MSG); }
+    public static void glRasterPos3i(int x, int y, int z) { guardUnsupportedFFP("glRasterPos", RASTERPOS_MSG); }
+    public static void glRasterPos4f(float x, float y, float z, float w) { guardUnsupportedFFP("glRasterPos", RASTERPOS_MSG); }
+    public static void glRasterPos4d(double x, double y, double z, double w) { guardUnsupportedFFP("glRasterPos", RASTERPOS_MSG); }
+    public static void glRasterPos4i(int x, int y, int z, int w) { guardUnsupportedFFP("glRasterPos", RASTERPOS_MSG); }
 
     static boolean guardUnsupportedFFP(String function, String explanation) {
             if (!FFP_WARN_ON_UNSUPPORTED) {
@@ -411,6 +439,7 @@ public final class GLSMDraws {
         }
 
     public static void glMultiDrawElementsIndirect(int mode, int type, long indirect, int drawcount, int stride) {
+        rejectExitCapture();
             preDrawFFP();
             prepareClientArrays();
             recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, drawcount);
@@ -418,6 +447,7 @@ public final class GLSMDraws {
         }
 
     public static void glMultiDrawElementsBaseVertex(int mode, long pCount, int type, long pIndices, int drawcount, long pBaseVertex) {
+        rejectExitCapture();
             preDrawFFP();
             prepareClientArrays();
             recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, drawcount);
@@ -425,6 +455,7 @@ public final class GLSMDraws {
         }
 
     public static void glDrawElementsBaseVertex(int mode, int count, int type, long indices, int basevertex) {
+        rejectExitCapture();
             preDrawFFP();
             prepareClientArrays();
             recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, count);
@@ -432,6 +463,7 @@ public final class GLSMDraws {
         }
 
     public static void glDrawElementsInstanced(int mode, int count, int type, long indices, int primcount) {
+        rejectExitCapture();
             preDrawFFP();
             prepareClientArrays();
             recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, count);
@@ -439,6 +471,7 @@ public final class GLSMDraws {
         }
 
     public static void glDrawArraysInstanced(int mode, int first, int count, int primcount) {
+        rejectExitCapture();
             prepareWideLineEmulation(mode);
             preDrawFFP();
             prepareClientArrays(first, count);
@@ -455,6 +488,7 @@ public final class GLSMDraws {
         }
 
     public static void glDrawRangeElements(int mode, int start, int end, int count, int type, long indices) {
+        rejectExitCapture();
             preDrawFFP();
             prepareClientArrays();
             recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, count);
@@ -462,6 +496,7 @@ public final class GLSMDraws {
         }
 
     public static void glDrawRangeElementsBaseVertex(int mode, int start, int end, int count, int type, long indices, int baseVertex) {
+        rejectExitCapture();
             preDrawFFP();
             prepareClientArrays();
             recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, count);
@@ -469,6 +504,7 @@ public final class GLSMDraws {
         }
 
     public static void glMultiDrawArrays(int mode, IntBuffer firsts, IntBuffer counts) {
+        rejectExitCapture();
             preDrawFFP();
             prepareClientArrays();
             recordGpuCommand(GpuCommandType.DRAW_ARRAYS, mode, counts.remaining());
@@ -483,10 +519,12 @@ public final class GLSMDraws {
         }
 
     public static void glPrimitiveRestartIndex(int index) {
+        rejectExitCapture();
             RENDER_BACKEND.primitiveRestartIndex(index);
         }
 
     public static boolean glIsList(int list) {
+        rejectExitCapture();
             return displayListIdAllocator.isAllocated(list);
         }
 
@@ -499,14 +537,17 @@ public final class GLSMDraws {
         }
 
     public static void glFlush() {
+        rejectExitCapture();
             RENDER_BACKEND.flush();
         }
 
     public static void glFinish() {
+        rejectExitCapture();
             RENDER_BACKEND.finish();
         }
 
     public static void glMultiDrawArraysIndirectCount(int mode, long indirect, long drawcount, int maxdrawcount, int stride) {
+        rejectExitCapture();
             preDrawFFP();
             prepareClientArrays();
             recordGpuCommand(GpuCommandType.DRAW_ARRAYS, mode, maxdrawcount);
@@ -514,6 +555,7 @@ public final class GLSMDraws {
         }
 
     public static void glMultiDrawElementsIndirectCount(int mode, int type, long indirect, long drawcount, int maxdrawcount, int stride) {
+        rejectExitCapture();
             preDrawFFP();
             prepareClientArrays();
             recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, maxdrawcount);
@@ -542,14 +584,36 @@ public final class GLSMDraws {
         }
 
     public static void glListBase(int base) {
+        rejectExitCapture();
             ctx().listBase = base;
         }
 
     public static void nglMultiDrawElementsBaseVertex(int mode, long count, int type, long indices, int primcount, long basevertex) {
+        rejectExitCapture();
             RENDER_BACKEND.multiDrawElementsBaseVertex(mode, count, type, indices, primcount, basevertex);
         }
 
     public static void glObjectLabel(int identifier, int name, CharSequence label) { RENDER_BACKEND.objectLabel(identifier, name, label); }
+
+    public static String glGetObjectLabel(int identifier, int name, int bufSize) { rejectExitCapture(); return RENDER_BACKEND.getObjectLabel(identifier, name); }
+
+    public static boolean ffpWidensLineQuads() {
+        final GLContextState glCtx = ctx();
+        return wideLineEmulationEnabled && glCtx.activeProgram == 0 && glCtx.lineState.getWidth() > 1.0f
+            && !DisplayListManager.isRecording();
+    }
+
+    public static boolean isContinuousDraw(int drawMode) {
+        return drawMode == GL11.GL_TRIANGLE_STRIP || drawMode == GL11.GL_TRIANGLE_FAN
+            || drawMode == GL11.GL_LINE_STRIP || drawMode == GL11.GL_LINE_LOOP
+            || drawMode == GL11.GL_QUAD_STRIP || drawMode == GL11.GL_POLYGON;
+    }
+
+    public static void preDraw(GLContextState glCtx, int drawMode) {
+        prepareWideLineEmulation(drawMode);
+        glCtx.ffp.preDraw();
+        prepareClientArrays();
+    }
 
     public static void glPushDebugGroup(int source, int id, CharSequence message) { RENDER_BACKEND.pushDebugGroup(source, id, message); }
 
@@ -560,6 +624,7 @@ public final class GLSMDraws {
     public static void glDebugMessageControl(int source, int type, int severity, IntBuffer ids, boolean enabled) { RENDER_BACKEND.debugMessageControl(source, type, severity, ids, enabled); }
 
     public static int glGetDebugMessageLog(int count, IntBuffer sources, IntBuffer types, IntBuffer ids, IntBuffer severities, IntBuffer lengths, ByteBuffer messageLog) {
+        rejectExitCapture();
             return RENDER_BACKEND.getDebugMessageLog(count, sources, types, ids, severities, lengths, messageLog);
         }
 
@@ -572,14 +637,17 @@ public final class GLSMDraws {
         }
 
     public static void glFeedbackBuffer(int type, FloatBuffer buffer) {
+        rejectExitCapture();
             FeedbackManager.glFeedbackBuffer(type, buffer);
         }
 
     public static void glPassThrough(float token) {
+        rejectExitCapture();
             FeedbackManager.glPassThrough(token);
         }
 
     public static void glSelectBuffer(IntBuffer buffer) {
+        rejectExitCapture();
             if (!selectWarned) {
                 LOGGER.warn("glSelectBuffer: selection mode not emulated");
                 selectWarned = true;

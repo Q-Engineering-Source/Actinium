@@ -36,6 +36,7 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.MAX_TEXTURE_COORDS;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.MAX_TEXTURE_STACK_DEPTH;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.copyTrackedVector;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.drawFramebufferAttachmentSize;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.getActiveTextureUnit;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.getActiveTextureUnitForServerState;
@@ -63,6 +64,7 @@ public final class GLSMQueries {
     private GLSMQueries() {}
 
     public static boolean glGetBoolean(int pname) {
+        rejectExitCapture();
         if (shouldBypassCache()) {
             return RENDER_BACKEND.getBoolean(pname);
         }
@@ -149,6 +151,7 @@ public final class GLSMQueries {
     }
 
     public static void glGetBoolean(int pname, ByteBuffer params) {
+        rejectExitCapture();
         if (shouldBypassCache()) {
             RENDER_BACKEND.getBoolean(pname, params);
             return;
@@ -173,6 +176,7 @@ public final class GLSMQueries {
     }
 
     public static int glGetInteger(int pname) {
+        rejectExitCapture();
         if (shouldBypassCache()) {
             return RENDER_BACKEND.getInteger(pname);
         }
@@ -290,6 +294,7 @@ public final class GLSMQueries {
     }
 
     public static void glGetInteger(int pname, IntBuffer params) {
+        rejectExitCapture();
         if (shouldBypassCache()) {
             RENDER_BACKEND.getInteger(pname, params);
             return;
@@ -323,6 +328,7 @@ public final class GLSMQueries {
      * pname GLSM does not track through a direct scratch cleared before the query.
      */
     public static void glGetInteger(int pname, int[] params) {
+        rejectExitCapture();
         if (params.length == 0) return;
         if (shouldBypassCache()) {
             queryDriverVector(pname, params);
@@ -345,6 +351,7 @@ public final class GLSMQueries {
     }
 
     public static void glGetFloat(int pname, FloatBuffer params) {
+        rejectExitCapture();
         if (shouldBypassCache()) {
             RENDER_BACKEND.getFloat(pname, params);
             return;
@@ -446,6 +453,7 @@ public final class GLSMQueries {
     }
 
     public static double glGetDouble(int pname) {
+        rejectExitCapture();
         return switch (pname) {
             case GL11.GL_DEPTH_CLEAR_VALUE -> ctx().depthState.getClearValue();
             default -> glGetFloat(pname);
@@ -453,6 +461,7 @@ public final class GLSMQueries {
     }
 
     public static void glGetDouble(int pname, DoubleBuffer params) {
+        rejectExitCapture();
         final GLContextState glCtx = ctx();
         if (!isCachingEnabled()) {
             RENDER_BACKEND.getDouble(pname, params);
@@ -496,6 +505,7 @@ public final class GLSMQueries {
     }
 
     public static float glGetFloat(int pname) {
+        rejectExitCapture();
         if (shouldBypassCache()) {
             return RENDER_BACKEND.getFloat(pname);
         }
@@ -525,6 +535,7 @@ public final class GLSMQueries {
     }
 
     public static int glGetError() {
+        rejectExitCapture();
         if (!RENDER_BACKEND.hasContext()) return 0;
         final GLSMInitConfig config = initConfig;
         if (config != null && config.isNoErrorChecks()) return 0;
@@ -532,16 +543,19 @@ public final class GLSMQueries {
     }
 
     public static String glGetString(int pname) {
+        rejectExitCapture();
         if (!RENDER_BACKEND.hasContext()) return "no valid GL/render context";
         return RENDER_BACKEND.getString(pname);
     }
 
     public static String glGetStringi(int name, int index) {
+        rejectExitCapture();
         if (!RENDER_BACKEND.hasContext()) return "no valid GL/render context";
         return RENDER_BACKEND.getStringi(name, index);
     }
 
     public static int glGetInteger(int pname, int index) {
+        rejectExitCapture();
         return imageBindingOrBackend(pname, index);
     }
 
@@ -569,6 +583,7 @@ public final class GLSMQueries {
         }
 
     public static int glGetIntegeri(int pname, int index) {
+        rejectExitCapture();
             return imageBindingOrBackend(pname, index);
         }
 
@@ -577,6 +592,7 @@ public final class GLSMQueries {
         }
 
     public static void glGetIntegeri_v(int pname, int index, IntBuffer params) {
+        rejectExitCapture();
             params.put(params.position(), imageBindingOrBackend(pname, index));
         }
 
@@ -585,6 +601,7 @@ public final class GLSMQueries {
         }
 
     public static void glGetBooleani_v(int pname, int index, ByteBuffer params) {
+        rejectExitCapture();
             params.put(params.position(), (byte) (imageBindingOrBackend(pname, index) != 0 ? GL11.GL_TRUE : GL11.GL_FALSE));
         }
 
@@ -595,4 +612,20 @@ public final class GLSMQueries {
     public static void glGetBooleani(int pname, int index, ByteBuffer params) {
             glGetBooleani_v(pname, index, params);
         }
+
+    public static void glBeginQuery(int target, int id) { rejectExitCapture(); RENDER_BACKEND.beginQuery(target, id); }
+
+    public static void glEndQuery(int target) { rejectExitCapture(); RENDER_BACKEND.endQuery(target); }
+
+    public static void glDeleteQueries(int id) { rejectExitCapture(); RENDER_BACKEND.deleteQueries(id); }
+
+    public static void glGetQueryObjectui(int id, int pname, IntBuffer params) { rejectExitCapture(); RENDER_BACKEND.getQueryObjectui(id, pname, params); }
+
+    public static int glGetQueryObjecti(int id, int pname) { rejectExitCapture(); return RENDER_BACKEND.getQueryObjecti(id, pname); }
+
+    public static void glQueryCounter(int id, int target) { rejectExitCapture(); RENDER_BACKEND.queryCounter(id, target); }
+
+    public static long glGetQueryObjectui64(int id, int pname) { rejectExitCapture(); return RENDER_BACKEND.getQueryObjectui64(id, pname); }
+
+    public static boolean glIsQuery(int query) { rejectExitCapture(); return RENDER_BACKEND.isQuery(query); }
 }

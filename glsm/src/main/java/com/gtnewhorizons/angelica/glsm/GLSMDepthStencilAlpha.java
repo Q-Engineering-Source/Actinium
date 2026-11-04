@@ -14,6 +14,7 @@ import org.lwjgl.opengl.GL11;
 
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.BYPASS_CACHE;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.isCachingEnabled;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.mod;
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
@@ -61,6 +62,7 @@ public final class GLSMDepthStencilAlpha {
     }
 
     public static void glClearDepth(double depth) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordClearDepth(depth);
@@ -100,6 +102,7 @@ public final class GLSMDepthStencilAlpha {
     }
 
     public static void glStencilFunc(int func, int ref, int mask) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordStencilFunc(func, ref, mask);
@@ -117,6 +120,7 @@ public final class GLSMDepthStencilAlpha {
     }
 
     public static void glStencilMask(int mask) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordStencilMask(mask);
@@ -134,6 +138,7 @@ public final class GLSMDepthStencilAlpha {
     }
 
     public static void glStencilOp(int fail, int zfail, int zpass) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordStencilOp(fail, zfail, zpass);
@@ -151,6 +156,7 @@ public final class GLSMDepthStencilAlpha {
     }
 
     public static void glClearStencil(int s) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordClearStencil(s);
@@ -347,6 +353,7 @@ public final class GLSMDepthStencilAlpha {
         }
 
     public static void glDepthRange(double near, double far) {
+        rejectExitCapture();
             if (isCachingEnabled()) mod(ctx().viewportState).setDepthRange(near, far);
             RENDER_BACKEND.depthRange(near, far);
         }

@@ -22,6 +22,7 @@ import java.nio.IntBuffer;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.BYPASS_CACHE;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.MAX_CLIP_PLANES;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.hintShift;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.isCachingEnabled;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.isDriverHint;
@@ -92,6 +93,7 @@ public final class GLSMRasterizer {
     }
 
     public static void glLineWidth(float width) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordLineWidth(width);
@@ -145,6 +147,7 @@ public final class GLSMRasterizer {
     }
 
     public static void glHint(int target, int hint) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordHint(target, hint);
@@ -169,6 +172,7 @@ public final class GLSMRasterizer {
     }
 
     public static void glLineStipple(int factor, short pattern) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordLineStipple(factor, pattern);
@@ -181,6 +185,7 @@ public final class GLSMRasterizer {
     }
 
     public static void glPointSize(float size) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordPointSize(size);
@@ -198,6 +203,7 @@ public final class GLSMRasterizer {
     }
 
     public static void glPolygonMode(int face, int polygonMode) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordPolygonMode(face, polygonMode);
@@ -260,6 +266,7 @@ public final class GLSMRasterizer {
     }
 
     public static void glClipPlane(int plane, DoubleBuffer equation) {
+        rejectExitCapture();
         if (DisplayListManager.isRecording()) {
             final int pos = equation.position();
             DisplayListManager.recordClipPlane(plane, equation.get(pos), equation.get(pos + 1), equation.get(pos + 2), equation.get(pos + 3));
@@ -277,6 +284,7 @@ public final class GLSMRasterizer {
     }
 
     public static void glGetClipPlane(int plane, DoubleBuffer equation) {
+        rejectExitCapture();
             final int index = plane - GL11.GL_CLIP_PLANE0;
             if (index < 0 || index >= MAX_CLIP_PLANES) return;
             ctx().clipPlaneState.getEyePlane(index, equation);
@@ -349,6 +357,10 @@ public final class GLSMRasterizer {
     public static boolean anyClipPlaneEnabled() {
             return ctx().clipPlaneEnabledMask != 0;
         }
+
+    public static boolean anyClipPlaneEnabled(GLContextState glCtx) {
+        return glCtx.clipPlaneEnabledMask != 0;
+    }
 
     public static void glSampleCoverage(float value, boolean invert) {
             if (DisplayListManager.isRecording()) {

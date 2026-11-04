@@ -14,6 +14,7 @@ import java.nio.IntBuffer;
 
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.HAS_MULTIPLE_SET;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.getFogColor;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.getFogMode;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.isCachingEnabled;
@@ -25,6 +26,7 @@ public final class GLSMFog {
     private GLSMFog() {}
 
     public static void glFog(int pname, FloatBuffer param) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordFog(pname, param);
@@ -67,6 +69,7 @@ public final class GLSMFog {
     }
 
     public static void glFogf(int pname, float param) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordFogf(pname, param);
@@ -110,6 +113,7 @@ public final class GLSMFog {
     }
 
     public static void glFogi(int pname, int param) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordFogi(pname, param);
@@ -159,6 +163,7 @@ public final class GLSMFog {
         }
 
     public static void fogColor(float red, float green, float blue, float alpha) {
+        rejectExitCapture();
             final boolean caching = isCachingEnabled();
             if (BYPASS_CACHE || !caching || red != ctx().fogState.getFogColor().x || green != ctx().fogState.getFogColor().y || blue != ctx().fogState.getFogColor().z || alpha != ctx().fogState.getFogAlpha()) {
                 if (caching) {
@@ -178,6 +183,10 @@ public final class GLSMFog {
     public static FogStateStack getFogState() {
             return ctx().fogState;
         }
+
+    public static float getFogAlpha() {
+        return ctx().fogState.getFogAlpha();
+    }
 
     public static BooleanStateStack getFogMode() {
             return ctx().fogMode;

@@ -258,7 +258,11 @@ SDL 后端暂缓期间可推进的全部工作，共 38 个 PR，分三批。批
 
 已在 PR #263 上合并：第 1、2、10、12、24 项。第 5 项（`ExitStateCapture`）在后续 PR 上，它不依赖 Tracy no-op 门面；`TextureUtilHooks`、`MixinTextureUtil`、`VanillaLayerRig` 三个上游文件因本地缺类整体跳过，`rejectExitCapture` 守卫留给第 6 项与那 54 个门面方法一起做。
 
-第 6 项的 `GLSMTextureLifetime` 拆出已在 `feat/glsm-texture-lifetime` 分支完成：`glsm/profiling/Tracy` 落 no-op 门面（无原生采集、无 `TracyBackend`、无 `tracy-client` 子项目），`GLSMTextureLifetime` 用 `Int2LongOpenHashMap` 状态机接管延迟删除，`GLStateManager.deferDeleteTexture`/`flushDeferredTextureDeletes` 改为委托、签名与调用点不变。`beginAttach` 里上游的 `TextureInfoCache.onWrittenOutsideUploads` 一项因本地无该字段跳过，`TextureStaging` 属第 7 项；上游 `FrameHooks.frameEnd()` 的帧计数改由 `MixinMinecraft` 在 `updateDisplay` 前调用 `GLSMTextureLifetime.onFrameEnd()`。第 6 项剩余的 54 个门面方法仍待做。
+第 6 项的 `GLSMTextureLifetime` 拆出已在 `feat/glsm-texture-lifetime` 分支完成：`glsm/profiling/Tracy` 落 no-op 门面（无原生采集、无 `TracyBackend`、无 `tracy-client` 子项目），`GLSMTextureLifetime` 用 `Int2LongOpenHashMap` 状态机接管延迟删除，`GLStateManager.deferDeleteTexture`/`flushDeferredTextureDeletes` 改为委托、签名与调用点不变。`beginAttach` 里上游的 `TextureInfoCache.onWrittenOutsideUploads` 一项因本地无该字段跳过，`TextureStaging` 属第 7 项；上游 `FrameHooks.frameEnd()` 的帧计数改由 `MixinMinecraft` 在 `updateDisplay` 前调用 `GLSMTextureLifetime.onFrameEnd()`。
+
+门面的公开方法补齐与 `rejectExitCapture` 守卫已在 `feat/glsm-facade-guards` 分支完成。按 `8e099e95` 与本地逐方法比对，17 个门面共缺 113 个 `public static` 方法，补了 94 个；剩余 19 个依赖本地不存在的类型或设施，留给对应批次：`TextureStaging` 与 `samplerUnits` 相关 8 个属第 7 项，`flushDeferredVertexAttribs`/`flushEntityIds`/`setEntityIds`/`setFfpInstancing` 属第 9 项，`getMvLinearGeneration`、`isProgramPendingDeletion`、`glBindImageTextures`、`lookupTexParameteri`、`markTextureAsAtlas`、`setTextureSupersamplingSamples`、`unbindAllSamplers` 依赖本地未移植的 generation/生命周期字段与 `isImageFormat` 判定。守卫按上游分布逐方法插入，上游 810 个公开方法中 291 个带守卫，本地已对齐 284 个，差异 7 个全部落在上面未移植的方法上。
+
+`GLSM_ExitCaptureCoverage_UnitTest` 按上游语义重写：枚举 17 个门面的 `gl*` 公开静态方法，检查每个方法直接或经门面调用间接到达 `ExitStateCapture`。`GLSM_ExitState_GLTest.untrackedCallsAndStateQueriesReject` 的 6 个分支与 `GLSM_ExitTextureFilter_GLTest.textureParameterReadsAndWritesStillReject` 已恢复。
 
 | # | 范围 | 覆盖上游 | 规模 | 前置 |
 |---|---|---|---|---|
@@ -267,7 +271,7 @@ SDL 后端暂缓期间可推进的全部工作，共 38 个 PR，分三批。批
 | 3 | 测试骨架：`ArchScan`、`NoWildcardImportsTest`、`GlsmRedirectAgent`、`GLSMCoreExtension`、`FfpFixture`，`glIntegrationTest` 补 `javaagent` | `85d0641a`、`6c5e146f` | 4 新 2 改，约 400 行 | 无，可与 1、2 并行 |
 | 4 | 门面补齐（334 个无调用方方法），用架构测试防回退 | `91e67f8d` 部分 | 17 改，约 1200 行 | 1、2 |
 | 5 | `ExitStateCapture`、`ExitState`、`hooks/BatchStateGuard`，`GLStateManager` 入口按门面重定向 | `102c6cad` | 3 新 21 改，约 2300 行 | 已完成；Tracy no-op 门面不在此提交内，留给需要它的 `GLSMTextureLifetime` |
-| 6 | 门面收尾（54 个依赖 `rejectExitCapture` 的方法）与 `GLSMTextureLifetime` 拆出 | `91e67f8d` 剩余 | 18 改，约 800 行 | 5；`GLSMTextureLifetime` 拆出已完成（`feat/glsm-texture-lifetime`），54 个门面方法待做 |
+| 6 | 门面收尾（补齐公开方法并逐方法插入 `rejectExitCapture` 守卫）与 `GLSMTextureLifetime` 拆出 | `91e67f8d` 剩余 | 17 改 1 新，约 1600 行 | 5；`GLSMTextureLifetime` 拆出已完成（`feat/glsm-texture-lifetime`）；门面方法补齐与守卫已在 `feat/glsm-facade-guards` 完成，见下方小节 |
 | 7 | 延迟纹理删除状态机与 `TextureStaging` | `e84c8c8d` 阶段二 | 1 新 8 改，约 700 行 | 6，且需 S02 的 `TextureStaging` |
 | 8 | 宽线 `LineQuads` 与 `LineDrawHandler`，`ImmediateModeRecorder.processDrawElementsFromAttribs`，删除 `GeometryShaderGenerator` | `2f1f380e` | 2 新 8 改 1 删，约 900 行 | 7 |
 | 9 | 逐顶点实体 ID：`TessellatorEntityIds`、`ImmediateExtendedAttribHandler`、`setFfpInstancing` | `ab3bf176` | 2 新 12 改，约 800 行 | 8，且需 F02 的 `FfpExtendedAttribs` 与 `InstancedAttribs` |

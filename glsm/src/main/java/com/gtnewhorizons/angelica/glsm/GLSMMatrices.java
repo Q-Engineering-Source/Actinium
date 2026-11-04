@@ -23,6 +23,7 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.bumpMatrixGeneratio
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.conversionMatrix4d;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.conversionMatrix4f;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.getMatrixStack;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.initConfig;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.isCachingEnabled;
@@ -281,7 +282,7 @@ public final class GLSMMatrices {
         }
         if (isCachingEnabled()) {
             try {
-                getMatrixStack(glCtx).pushMatrix();
+                GLStateManager.getMatrixStack(glCtx).pushMatrix();
             } catch (IllegalStateException ignored) {
                 glCtx.exitCapture.reject();
                 if (initConfig != null && initConfig.isLwjglDebug()) LOGGER.warn("Matrix stack overflow ", new Throwable());
@@ -382,6 +383,7 @@ public final class GLSMMatrices {
         }
 
     public static void setProjectionMatrix(Matrix4fc m) {
+        rejectExitCapture();
             final GLContextState glCtx = ctx();
             glCtx.exitCapture.matrixChange(GL11.GL_PROJECTION, 0, true);
             if (isCachingEnabled()) {
@@ -416,6 +418,7 @@ public final class GLSMMatrices {
         }
 
     public static void gluPickMatrix(float x, float y, float deltaX, float deltaY, IntBuffer viewport) {
+        rejectExitCapture();
             if (deltaX <= 0 || deltaY <= 0) return;
             GLSMMatrices.glTranslatef(
                     (viewport.get(viewport.position() + 2) - 2 * (x - viewport.get(viewport.position() + 0))) / deltaX,
@@ -488,4 +491,8 @@ public final class GLSMMatrices {
     public static Matrix4fStack getProjectionMatrix() {
             return ctx().projectionMatrix;
         }
+
+    public static Matrix4fStack getMatrixStack() {
+        return GLStateManager.getMatrixStack(ctx());
+    }
 }

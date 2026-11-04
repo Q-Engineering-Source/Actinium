@@ -18,6 +18,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL14;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -307,6 +308,26 @@ class GLSM_ExitState_GLTest extends GLStateManagerIntegrationFixture {
         switch (operation) {
             case 0 -> GLSMEnable.glDisable(GL11.GL_SCISSOR_TEST);
             case 1 -> GLSMEnable.glDisable(GL11.GL_LINE_STIPPLE);
+            default -> throw new AssertionError();
+        }
+        assertFalse(GLStateManager.finishExitCapture(state));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1, 2, 3, 4, 5})
+    void untrackedCallsAndStateQueriesReject(int operation) {
+        final ExitState state = new ExitState();
+        final int program = GLSMPrograms.getActiveProgram();
+        GLStateManager.beginExitCapture(state);
+        switch (operation) {
+            case 0 -> GLSMEnable.glIsEnabled(GL11.GL_CULL_FACE);
+            case 1 -> GLSMQueries.glGetInteger(GL11.GL_DEPTH_FUNC);
+            case 2 -> GLSMEnable.glDisable(GL11.GL_SCISSOR_TEST);
+            case 3 -> GLSMPrograms.glUseProgram(program);
+            case 4 -> GLSMBlend.glBlendEquation(GL14.GL_FUNC_ADD);
+            case 5 -> GLSMFog.fogColor((float) GLSMFog.getFogState().getFogColor().x,
+                (float) GLSMFog.getFogState().getFogColor().y, (float) GLSMFog.getFogState().getFogColor().z,
+                GLSMFog.getFogAlpha());
             default -> throw new AssertionError();
         }
         assertFalse(GLStateManager.finishExitCapture(state));

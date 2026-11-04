@@ -238,6 +238,8 @@ public class GLContextState {
     public int boundVAO;
     public int boundPixelUnpackBuffer;
     public int boundPixelPackBuffer;
+    public int boundCopyReadBuffer;
+    public int boundCopyWriteBuffer;
     public PixelStoreState pixelUnpackState = PixelStoreState.DEFAULT;
     public PixelStoreState pixelPackState = PixelStoreState.DEFAULT;
     public int drawFramebuffer;

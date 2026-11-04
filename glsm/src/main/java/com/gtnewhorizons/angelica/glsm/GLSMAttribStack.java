@@ -12,9 +12,9 @@ import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import org.lwjgl.opengl.GL11;
 
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.CLIENT_ATTRIB_STACK_DEPTH;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.MAX_ATTRIB_STACK_DEPTH;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
-import static com.gtnewhorizons.angelica.glsm.GLStateManager.popState;
-import static com.gtnewhorizons.angelica.glsm.GLStateManager.pushState;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.restorePixelStore;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.warnOnce;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.RETAINED_SLOT;
@@ -35,6 +35,7 @@ public final class GLSMAttribStack {
     private GLSMAttribStack() {}
 
     public static void glPushClientAttrib(int mask) {
+        rejectExitCapture();
         final int slot = ctx().clientAttribStackPointer;
         if (slot >= CLIENT_ATTRIB_STACK_DEPTH) {
             warnOnce("pushclientattrib-overflow", "glPushClientAttrib called with a full client attribute stack ({} deep); ignoring", CLIENT_ATTRIB_STACK_DEPTH);
@@ -51,6 +52,7 @@ public final class GLSMAttribStack {
     }
 
     public static void glPopClientAttrib() {
+        rejectExitCapture();
         if (ctx().clientAttribStackPointer == 0) {
             warnOnce("popclientattrib-underflow", "glPopClientAttrib called with an empty client attribute stack; ignoring");
             return;
@@ -111,6 +113,29 @@ public final class GLSMAttribStack {
             }
         }
 
+    public static void registerModifiedState(GLContextState c, int id) {
+        if (c.attribDepth > 0) {
+            final int depth = c.attribDepth - 1;
+            c.modifiedIds[depth][c.modifiedCount[depth]++] = id;
+        }
+    }
+
+    public static int pushState(StateSet set) {
+        return GLStateManager.pushState(set);
+    }
+
+    public static void pushState(int mask) {
+        GLStateManager.pushState(mask);
+    }
+
+    public static void popStateTo(int depth) {
+        GLStateManager.popStateTo(depth);
+    }
+
+    public static void popState() {
+        GLStateManager.popState();
+    }
+
     public static void retainModifiedState(int depth, RetainedState out) {
             final GLContextState glCtx = ctx();
             if (depth < 0 || depth != glCtx.attribDepth - 1) {
@@ -132,6 +157,7 @@ public final class GLSMAttribStack {
         }
 
     public static void applyRetainedState(RetainedState in) {
+        rejectExitCapture();
             final GLContextState glCtx = ctx();
             if (glCtx.retainedOwner != in) return;
             final CowStateStack<?>[] stackById = glCtx.stackById;
@@ -147,6 +173,7 @@ public final class GLSMAttribStack {
         }
 
     public static void replayStateToBackend() {
+        rejectExitCapture();
             final GLContextState glCtx = ctx();
 
             final List<BooleanStateStack> booleanStates = glCtx.allBooleanStates;
