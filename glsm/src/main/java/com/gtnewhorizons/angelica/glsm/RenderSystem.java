@@ -44,6 +44,8 @@ public class RenderSystem {
     private static boolean supportsSSBO;
     private static boolean supportsBufferStorage;
     private static boolean supportsClearTexture;
+    private static boolean supportsStencilTexturing;
+    private static boolean supportsTextureStorage;
     private static boolean supportsTesselation;
     private static boolean supportsSamplerObjects;
     private static int maxImageUnits;
@@ -116,6 +118,9 @@ public class RenderSystem {
         supportsSSBO = GLStateManager.capabilities.OpenGL43 || GLStateManager.capabilities.GL_ARB_shader_storage_buffer_object;
         supportsBufferStorage = !isGLES && (GLStateManager.capabilities.OpenGL44 || GLStateManager.capabilities.GL_ARB_buffer_storage);
         supportsClearTexture = GLStateManager.capabilities.OpenGL44 || GLStateManager.capabilities.GL_ARB_clear_texture;
+        supportsStencilTexturing = GLStateManager.capabilities.OpenGL43 || GLStateManager.capabilities.GL_ARB_stencil_texturing;
+        supportsTextureStorage = isGLES ? glesVersion >= 300
+            : GLStateManager.capabilities.OpenGL42 || GLStateManager.capabilities.GL_ARB_texture_storage;
         // MobileGlues masquerades as desktop GL but compiles shaders through ESSL translation,
         // where gl_ClipDistance needs GL_EXT_clip_cull_distance (issue #214). MobileGlues advertises
         // that extension only when the real ES backend supports it, so the plain extension query
@@ -471,6 +476,16 @@ public class RenderSystem {
 
     public static boolean supportsClearTexture() {
         return supportsClearTexture;
+    }
+
+    /** Whether {@code GL_DEPTH_STENCIL_TEXTURE_MODE} exists, so a rescued stencil texture keeps its default mode. */
+    public static boolean supportsStencilTexturing() {
+        return supportsStencilTexturing;
+    }
+
+    /** Whether immutable storage is in use, in which case a released texture keeps its immutable levels. */
+    public static boolean supportsTextureStorage() {
+        return supportsTextureStorage;
     }
 
     public static int getMaxSSBOBindings() {
