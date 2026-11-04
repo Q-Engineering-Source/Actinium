@@ -115,6 +115,11 @@ public final class GLSMFramebuffer {
     public static void glDeleteFramebuffers(int framebuffer) {
         if (ctx().drawFramebuffer == framebuffer) ctx().drawFramebuffer = 0;
         if (ctx().readFramebuffer == framebuffer) ctx().readFramebuffer = 0;
+        // Slots of a deleted framebuffer no longer keep their textures alive.
+        final int[] slots = ctx().framebufferTextures.remove(framebuffer);
+        if (slots != null) {
+            for (int slot = 0; slot < slots.length; slot++) GLSMTextureLifetime.setFramebufferSlot(slots, slot, 0);
+        }
         RENDER_BACKEND.deleteFramebuffers(framebuffer);
     }
 
@@ -149,22 +154,27 @@ public final class GLSMFramebuffer {
     }
 
     public static void glFramebufferTexture2D(int target, int attachment, int textarget, int texture, int level) {
+        if (!GLSMTextureLifetime.beginAttach(target, attachment, texture)) return;
         RENDER_BACKEND.framebufferTexture2D(target, attachment, textarget, texture, level);
     }
 
     public static void glFramebufferTexture1D(int target, int attachment, int textarget, int texture, int level) {
+        if (!GLSMTextureLifetime.beginAttach(target, attachment, texture)) return;
         RENDER_BACKEND.framebufferTexture1D(target, attachment, textarget, texture, level);
     }
 
     public static void glFramebufferTexture3D(int target, int attachment, int textarget, int texture, int level, int zoffset) {
+        if (!GLSMTextureLifetime.beginAttach(target, attachment, texture)) return;
         RENDER_BACKEND.framebufferTexture3D(target, attachment, textarget, texture, level, zoffset);
     }
 
     public static void glFramebufferTextureLayer(int target, int attachment, int texture, int level, int layer) {
+        if (!GLSMTextureLifetime.beginAttach(target, attachment, texture)) return;
         RENDER_BACKEND.framebufferTextureLayer(target, attachment, texture, level, layer);
     }
 
     public static void glNamedFramebufferTexture(int framebuffer, int attachment, int texture, int level) {
+        if (!GLSMTextureLifetime.beginAttach(ctx(), framebuffer, attachment, texture)) return;
         RENDER_BACKEND.namedFramebufferTexture(framebuffer, attachment, texture, level);
     }
 
@@ -188,7 +198,11 @@ public final class GLSMFramebuffer {
         for (int i = 0; i < renderbuffers.length; i++) renderbuffers[i] = RENDER_BACKEND.genRenderbuffers();
     }
 
-    public static void glFramebufferRenderbuffer(int target, int attachment, int renderbuffertarget, int renderbuffer) { RENDER_BACKEND.framebufferRenderbuffer(target, attachment, renderbuffertarget, renderbuffer); }
+    public static void glFramebufferRenderbuffer(int target, int attachment, int renderbuffertarget, int renderbuffer) {
+        // A renderbuffer replaces the texture in the slot, so the slot no longer keeps a texture alive.
+        GLSMTextureLifetime.beginAttach(target, attachment, 0);
+        RENDER_BACKEND.framebufferRenderbuffer(target, attachment, renderbuffertarget, renderbuffer);
+    }
 
     public static boolean framebufferCompletenessIsMeaningful() { return RENDER_BACKEND.framebufferCompletenessIsMeaningful(); }
 
@@ -218,7 +232,10 @@ public final class GLSMFramebuffer {
             RENDER_BACKEND.readPixels(x, y, width, height, format, type, pixelBufferOffset);
         }
 
-    public static void glFramebufferTexture(int target, int attachment, int texture, int level) { RENDER_BACKEND.framebufferTexture(target, attachment, texture, level); }
+    public static void glFramebufferTexture(int target, int attachment, int texture, int level) {
+        if (!GLSMTextureLifetime.beginAttach(target, attachment, texture)) return;
+        RENDER_BACKEND.framebufferTexture(target, attachment, texture, level);
+    }
 
     public static void glBlitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1, int dstX0, int dstY0, int dstX1, int dstY1, int mask, int filter) {
             final boolean cacheTrusted = isGpuDiagnosticCacheTrusted();

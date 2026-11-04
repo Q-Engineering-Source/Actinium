@@ -36,6 +36,7 @@ import com.gtnewhorizons.angelica.glsm.states.Color4;
 import com.gtnewhorizons.angelica.glsm.states.ImageUnitArray;
 import com.gtnewhorizons.angelica.glsm.states.PixelStoreState;
 import com.gtnewhorizons.angelica.glsm.states.TextureUnitArray;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.joml.Matrix4fStack;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
@@ -241,6 +242,8 @@ public class GLContextState {
     public PixelStoreState pixelPackState = PixelStoreState.DEFAULT;
     public int drawFramebuffer;
     public int readFramebuffer;
+    /** Texture attached to each framebuffer's attachment slots, so a deferred delete can detach and ref-count it. */
+    public final Int2ObjectOpenHashMap<int[]> framebufferTextures = new Int2ObjectOpenHashMap<>();
     public final int[] clientAttribSavedTextureUnit = new int[GLStateManager.CLIENT_ATTRIB_STACK_DEPTH];
     public final int[] clientAttribSavedVertexFlags = new int[GLStateManager.CLIENT_ATTRIB_STACK_DEPTH];
     public final PixelStoreState[] clientAttribSavedPixelUnpack = new PixelStoreState[GLStateManager.CLIENT_ATTRIB_STACK_DEPTH];

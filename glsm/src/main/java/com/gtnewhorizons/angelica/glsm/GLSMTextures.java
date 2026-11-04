@@ -34,7 +34,6 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.MAX_TEXTURE_COORDS;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.changeFormatIfDeprecated;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.deferDeleteTexture;
-import static com.gtnewhorizons.angelica.glsm.GLStateManager.deferredDeleteTextures;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.flushDeferredTextureDeletes;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.getActiveTextureUnit;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.getActiveTextureUnitForServerState;
@@ -117,8 +116,9 @@ public final class GLSMTextures {
             }
         }
         // Rebinding a deferred-delete texture rescues it (Mesa/compat-profile behavior)
+        final long claim = GLSMTextureLifetime.claimForBind(texture, target);
+        if (claim == GLSMTextureLifetime.BIND_REJECTED) return;
         if (texture != 0) {
-            deferredDeleteTextures.remove(texture);
             TextureInfoCache.INSTANCE.getInfo(texture).setTarget(target);
         }
 
@@ -127,6 +127,7 @@ public final class GLSMTextures {
             logUncachedTextureTarget(target);
             recordGpuCommand(GpuCommandType.TEXTURE_BIND, target, texture);
             RENDER_BACKEND.bindTexture(target, texture);
+            GLSMTextureLifetime.finishRescue(target, texture, claim);
             return;
         }
 
@@ -135,6 +136,7 @@ public final class GLSMTextures {
             recordGpuCommand(GpuCommandType.TEXTURE_BIND, target, texture);
             RENDER_BACKEND.bindTexture(target, texture);
             GLSMHooks.notifyTextureBindSync(activeUnit, texture);
+            GLSMTextureLifetime.finishRescue(target, texture, claim);
             return;
         }
 
@@ -161,6 +163,7 @@ public final class GLSMTextures {
         }
         // Mirror executed binds even during GL_COMPILE_AND_EXECUTE recording and on cache hits.
         GLSMHooks.notifyTextureBindSync(activeUnit, texture);
+        GLSMTextureLifetime.finishRescue(target, texture, claim);
     }
 
     public static void glTexImage2D(int target, int level, int internalformat, int width, int height, int border, int format, int type, IntBuffer pixels) {
@@ -296,6 +299,21 @@ public final class GLSMTextures {
     public static void glDeleteTextures(int[] ids) {
         for (int id : ids) {
             glDeleteTextures(id);
+        }
+    }
+
+    /** Clears every texture unit and image unit binding that still names {@code id}. */
+    static void clearTextureBindings(GLContextState glCtx, int id) {
+        for (int i = 0; i <= glCtx.maxBoundTextureUnit; i++) {
+            if (glCtx.textures.getTextureUnitBindings(i).getBinding() == id) {
+                mod(glCtx.textures.getTextureUnitBindings(i)).setBinding(0);
+            }
+        }
+        for (int i = 0; i <= glCtx.maxBoundImageUnit; i++) {
+            final ImageUnitBinding image = glCtx.imageUnits.get(i);
+            if (image != null && image.getTexture() == id) {
+                image.reset();
+            }
         }
     }
 
@@ -619,6 +637,7 @@ public final class GLSMTextures {
             requireContext("glCreateTextures");
             final int texture = RENDER_BACKEND.createTextures(target);
             TextureInfoCache.INSTANCE.getInfo(texture).setTarget(target);
+            GLSMTextureLifetime.recordTarget(texture, target);
             return texture;
         }
 
@@ -917,6 +936,8 @@ public final class GLSMTextures {
         }
 
     public static void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) {
+        // A deferred name cannot take an image binding until something binds it again, which reclaims it.
+        if (GLSMTextureLifetime.isDeferredDelete(texture)) return;
         final GLContextState glCtx = ctx();
         final ImageUnitBinding binding = glCtx.imageUnits.get(unit);
         if (binding == null) {

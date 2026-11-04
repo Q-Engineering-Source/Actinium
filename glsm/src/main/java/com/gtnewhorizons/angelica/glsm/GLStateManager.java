@@ -221,7 +221,7 @@ public class GLStateManager {
 
     public static ContextCapabilities capabilities;
 
-    private static final CopyOnWriteArrayList<GLContextState> registeredContexts = new CopyOnWriteArrayList<>();
+    static final CopyOnWriteArrayList<GLContextState> registeredContexts = new CopyOnWriteArrayList<>();
     private static volatile GLContextState primaryContext;
     private static GLContextState mainCtx;
     private static final ThreadLocal<GLContextState> tlWorkerContext = new ThreadLocal<>();
@@ -240,7 +240,7 @@ public class GLStateManager {
         return current != null ? current : primaryContext();
     }
 
-    private static GLContextState primaryContext() {
+    static GLContextState primaryContext() {
         GLContextState primary = primaryContext;
         if (primary != null) return primary;
         synchronized (GLStateManager.class) {
@@ -392,7 +392,7 @@ public class GLStateManager {
 
     // Deferred texture deletion: names kept valid until glGenTextures recycles them.
     // Emulates Mesa/compat-profile behavior where delete-then-bind doesn't error.
-    static final IntOpenHashSet deferredDeleteTextures = new IntOpenHashSet();
+    // The state machine lives in GLSMTextureLifetime; deferDeleteTexture/flushDeferredTextureDeletes delegate to it.
     private static long loggedUncachedTextureTargets = 0;
 
     @Getter private static Vendor VENDOR;
@@ -1302,56 +1302,12 @@ public class GLStateManager {
 
     /** Shrink texture to 1x1 to free GPU memory, unbind from all units, but keep the name valid. */
     static void deferDeleteTexture(int id) {
-        if (id == 0) return;
-
-        final int savedUnit = ctx().activeTextureUnit.getValue();
-        final int savedBinding = ctx().textures.getTextureUnitBindings(savedUnit).getBinding();
-        boolean changedUnit = false;
-
-        for (int i = 0; i <= ctx().maxBoundTextureUnit; i++) {
-            if (ctx().textures.getTextureUnitBindings(i).getBinding() == id) {
-                if (i != savedUnit) {
-                    RENDER_BACKEND.activeTexture(GL13.GL_TEXTURE0 + i);
-                    changedUnit = true;
-                }
-                RENDER_BACKEND.bindTexture(GL11.GL_TEXTURE_2D, 0);
-            }
-        }
-
-        for (int i = 0; i <= ctx().maxBoundImageUnit; i++) {
-            final ImageUnitBinding image = ctx().imageUnits.get(i);
-            if (image != null && image.getTexture() == id) {
-                RENDER_BACKEND.bindImageTexture(i, 0, 0, false, 0, GL15.GL_READ_ONLY, GL30.GL_R8);
-            }
-        }
-
-        if (changedUnit) {
-            RENDER_BACKEND.activeTexture(GL13.GL_TEXTURE0 + savedUnit);
-        }
-
-        // The shrink goes through TEXTURE_2D: non-2D targets keep their storage until the
-        // deferred delete runs, rather than erroring on the mismatched bind and shrinking
-        // whatever 2D texture happens to be bound instead.
-        final TextureInfo info = TextureInfoCache.INSTANCE.peekInfo(id);
-        if (info == null || info.getTarget() == GL11.GL_TEXTURE_2D) {
-            RENDER_BACKEND.bindTexture(GL11.GL_TEXTURE_2D, id);
-            RENDER_BACKEND.texParameteri(GL11.GL_TEXTURE_2D, GL12.GL_TEXTURE_MAX_LEVEL, 0);
-            RENDER_BACKEND.texImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_R8, 1, 1, 0, GL11.GL_RED, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
-
-            RENDER_BACKEND.bindTexture(GL11.GL_TEXTURE_2D, savedBinding == id ? 0 : savedBinding);
-        }
-
-        deferredDeleteTextures.add(id);
+        GLSMTextureLifetime.deferDeleteTexture(id);
     }
 
     /** Flush deferred deletes so the driver can recycle names. */
     static void flushDeferredTextureDeletes() {
-        if (deferredDeleteTextures.isEmpty()) return;
-        final var it = deferredDeleteTextures.iterator();
-        while (it.hasNext()) {
-            RENDER_BACKEND.deleteTextures(it.nextInt());
-        }
-        deferredDeleteTextures.clear();
+        GLSMTextureLifetime.flushDeferredTextureDeletes();
     }
 
     public static int glGenTextures() { return GLSMTextures.glGenTextures(); }
@@ -3488,7 +3444,7 @@ public class GLStateManager {
 
     public static void glFramebufferRenderbuffer(int target, int attachment, int renderbuffertarget, int renderbuffer) { GLSMFramebuffer.glFramebufferRenderbuffer(target, attachment, renderbuffertarget, renderbuffer); }
 
-    public static boolean glIsTexture(int texture) { return RENDER_BACKEND.isTexture(texture); }
+    public static boolean glIsTexture(int texture) { return !GLSMTextureLifetime.isDeferredDelete(texture) && RENDER_BACKEND.isTexture(texture); }
 
     public static boolean glIsFramebuffer(int framebuffer) { return RENDER_BACKEND.isFramebuffer(framebuffer); }
 
