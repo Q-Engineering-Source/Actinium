@@ -50,6 +50,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class GLContextState {
+    final ExitStateCapture exitCapture = new ExitStateCapture(this);
     private final List<IStateStack<?>> allStacksBuilder = new ArrayList<>();
     IStateStack<?>[] allStacks;
     final List<BooleanStateStack> allBooleanStates = new ArrayList<>();
@@ -228,6 +229,10 @@ public class GLContextState {
     public final StreamingVaos streamingVaos = new StreamingVaos();
     public float lastBrightnessX;
     public float lastBrightnessY;
+    public int savedFilterTextureId;
+    public int savedFilterMin = -1;
+    public int savedFilterMag = -1;
+    public float savedFilterAniso = -1.0f;
     public int boundVBO;
     public int boundVAO;
     public int boundPixelUnpackBuffer;
@@ -271,6 +276,7 @@ public class GLContextState {
             final int id = cow.stackId();
             stackById[id] = cow;
             depthsById[id] = cow.cowDepths();
+            depthsById[id].owner = this;
             restoreBitById[id] = cow.restoreBit();
             restoreUnitById[id] = cow.restoreUnit();
             kindById[id] = CowDispatch.kindOf(cow);

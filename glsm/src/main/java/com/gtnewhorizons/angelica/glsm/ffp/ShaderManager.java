@@ -248,6 +248,7 @@ public final class ShaderManager {
     }
 
     public static void setCurrentNormal(float x, float y, float z) {
+        GLStateManager.recordExitNormal();
         final ShaderManager ffp = getInstance();
         ffp.normalStack.beforeModify();
         ffp.currentNormal.set(x, y, z);
@@ -255,6 +256,7 @@ public final class ShaderManager {
     }
 
     public static void setCurrentTexCoord(float s, float t, float r, float q) {
+        GLStateManager.recordExitTexCoord(0);
         final ShaderManager ffp = getInstance();
         ffp.texCoordStack.beforeModify();
         ffp.currentTexCoords[0].set(s, t, r, q);
@@ -262,6 +264,7 @@ public final class ShaderManager {
     }
 
     public static void setCurrentTexCoord(int unit, float s, float t, float r, float q) {
+        GLStateManager.recordExitTexCoord(unit);
         final ShaderManager ffp = getInstance();
         if (unit == 0) ffp.texCoordStack.beforeModify();
         ffp.currentTexCoords[unit].set(s, t, r, q);

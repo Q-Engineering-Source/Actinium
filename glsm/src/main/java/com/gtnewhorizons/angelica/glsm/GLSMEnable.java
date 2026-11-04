@@ -118,7 +118,10 @@ public final class GLSMEnable {
             case GL11.GL_TEXTURE_GEN_T -> ctx().textures.getTexGenTStates(ctx().activeTextureUnit.getValue()).enable();
             case GL11.GL_TEXTURE_GEN_R -> ctx().textures.getTexGenRStates(ctx().activeTextureUnit.getValue()).enable();
             case GL11.GL_TEXTURE_GEN_Q -> ctx().textures.getTexGenQStates(ctx().activeTextureUnit.getValue()).enable();
-            default -> RENDER_BACKEND.enable(cap);
+            default -> {
+                ctx().exitCapture.reject();
+                RENDER_BACKEND.enable(cap);
+            }
         }
     }
 
@@ -201,7 +204,10 @@ public final class GLSMEnable {
             case GL11.GL_TEXTURE_GEN_T -> ctx().textures.getTexGenTStates(ctx().activeTextureUnit.getValue()).disable();
             case GL11.GL_TEXTURE_GEN_R -> ctx().textures.getTexGenRStates(ctx().activeTextureUnit.getValue()).disable();
             case GL11.GL_TEXTURE_GEN_Q -> ctx().textures.getTexGenQStates(ctx().activeTextureUnit.getValue()).disable();
-            default -> RENDER_BACKEND.disable(cap);
+            default -> {
+                ctx().exitCapture.reject();
+                RENDER_BACKEND.disable(cap);
+            }
         }
     }
 

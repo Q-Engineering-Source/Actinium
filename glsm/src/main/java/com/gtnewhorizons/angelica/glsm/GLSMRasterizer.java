@@ -58,6 +58,7 @@ public final class GLSMRasterizer {
     }
 
     public static void glShadeModel(int mode) {
+        ctx().exitCapture.write(ExitStateCapture.SHADE_MODEL);
         final RecordMode recordMode = DisplayListManager.getRecordMode();
         if (recordMode != RecordMode.NONE) {
             DisplayListManager.recordShadeModel(mode);
@@ -108,6 +109,7 @@ public final class GLSMRasterizer {
     }
 
     public static void glCullFace(int mode) {
+        ctx().exitCapture.write(ExitStateCapture.CULL_FACE);
         final RecordMode recordMode = DisplayListManager.getRecordMode();
         if (recordMode != RecordMode.NONE) {
             DisplayListManager.recordCullFace(mode);
@@ -125,6 +127,7 @@ public final class GLSMRasterizer {
     }
 
     public static void glFrontFace(int mode) {
+        ctx().exitCapture.write(ExitStateCapture.FRONT_FACE);
         final RecordMode recordMode = DisplayListManager.getRecordMode();
         if (recordMode != RecordMode.NONE) {
             DisplayListManager.recordFrontFace(mode);
@@ -224,6 +227,7 @@ public final class GLSMRasterizer {
     }
 
     public static void glPolygonOffset(float factor, float units) {
+        ctx().exitCapture.write(ExitStateCapture.OFFSET_VALUES);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordPolygonOffset(factor, units);
@@ -330,6 +334,7 @@ public final class GLSMRasterizer {
             if (DisplayListManager.isRecording()) {
                 throw new UnsupportedOperationException("glPolygonOffsetClamp in display lists not yet implemented - if you see this, please report!");
             }
+            ctx().exitCapture.write(ExitStateCapture.OFFSET_VALUES);
             final boolean caching = isCachingEnabled();
             if (BYPASS_CACHE || !caching || ctx().polygonState.getOffsetFactor() != factor || ctx().polygonState.getOffsetUnits() != units || ctx().polygonState.getOffsetClamp() != clamp) {
                 if (caching) {

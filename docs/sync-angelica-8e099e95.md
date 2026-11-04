@@ -151,7 +151,7 @@
 | 115 | `e84c8c8d` | Stop stalls on some GPUs when closing the questbook (#2286) | 2026-10-22 | 分 hunk 同步 | G05 | 取 GLSM 延迟纹理删除、`FrameHooks`、`TextureTargets` 与 `DSAUnsupported`；SDL 采样器与 `Lwjgl2GLRenderBackend` 排除 |
 | 116 | `fc8d3e8b` | Keep armor and held-item glint materials separate (#2289) | 2026-10-22 | 待同步 | F02 | 盔甲与手持附魔材质分离，本地缺 `EntityMaterials`、`ItemGlint` |
 | 117 | `8af9340b` | Initial commit for shadow-pass-camera (#2291) | 2026-10-22 | 待同步 | P01 | 阴影 pass 相机同步；本地 `ShadowRenderer` 只保存与恢复 `renderManager.viewerPos*`，未设置 `cacheActiveRenderInfo` 与 `TileEntityRendererDispatcher.staticPlayer*` |
-| 118 | `102c6cad` | Initial commit for glsm-exit-state-capture (#2292) | 2026-10-24 | 待同步 | G07 | 退出状态捕获，本地缺 `ExitState`、`ExitStateCapture` |
+| 118 | `102c6cad` | Initial commit for glsm-exit-state-capture (#2292) | 2026-10-24 | 已同步 | G07 | 退出状态捕获已落地：`ExitState`、`ExitStateCapture`、`hooks/BatchStateGuard` 三个新类，`GLStateManager` 的入口按门面拆到 8 个 `GLSM*` 类，`RenderSystem` 与 Iris 桥接各补一处。`hooks/TextureUtilHooks`、`MixinTextureUtil`、`VanillaLayerRig` 因本地缺类跳过；门面里的 `rejectExitCapture` 守卫留到 54 个缺失方法那一批 |
 | 119 | `713509a8` | Entity Shadow Replay (#2294) | 2026-10-24 | 待同步 | F04 | 实体阴影重放，本地缺 `EntityShadowReplay`、`RetainedTesrGroups` |
 | 120 | `ea50e0a0` | Bunch of rendering fixes (#2295) | 2026-10-25 | 待同步 | F01 | 云着色属性与玻璃板渲染等一组渲染修正 |
 | 121 | `6c5e146f` | Fix GL core tests that depended on test order and JIT timing (#2298) | 2026-10-24 | 分 hunk 同步 | G01 | 取通用 hunks：`glsm/` 的 `GLSM_SharedDrawableContext_GLTest`、`ffp/FFPVertexLightingGLTest`（落 `src/glIntegrationTest`）、`testFixtures/` 的 `GLSMCoreExtension`、`GlsmRedirectAgent`、`ffp/FfpFixture`、`testutil/MutableStatics`、`Reflect`（按 Actinium 现有结构转为根项目 `src/test` 的测试辅助类）与 `RetainedTesrGroupsGLTest`、`TesrLayerStateTest`、`TesrShaderProgramsGLTest`、`ProgramBindingRegressionTest`。排除：`build.gradle.kts`、`glsm/build.gradle.kts` 的构建配置与 `sdl-gpu/glsm/GlsmSdlAttachmentClearTest` |
@@ -256,7 +256,7 @@ SDL 后端暂缓期间可推进的全部工作，共 38 个 PR，分三批。批
 
 ### 批次一：GLSM 收尾
 
-已在 PR #263 的集成分支上完成并合入同一个测试包（`alpha-0.0.14-g03batch`）：第 1、2、10、12、24 项。批量测试通过后一起合并。
+已在 PR #263 上合并：第 1、2、10、12、24 项。第 5 项（`ExitStateCapture`）在后续 PR 上，它不依赖 Tracy no-op 门面；`TextureUtilHooks`、`MixinTextureUtil`、`VanillaLayerRig` 三个上游文件因本地缺类整体跳过，`rejectExitCapture` 守卫留给第 6 项与那 54 个门面方法一起做。
 
 | # | 范围 | 覆盖上游 | 规模 | 前置 |
 |---|---|---|---|---|
@@ -264,7 +264,7 @@ SDL 后端暂缓期间可推进的全部工作，共 38 个 PR，分三批。批
 | 2 | COW 剪枝：`GLContextState.savesState`、`CowStateStack.beforeModify` 提前返回、`popState` 的 `claimedAt` 守卫 | `12fa08ab` | 4 改 1 新，约 150 行 | 无 |
 | 3 | 测试骨架：`ArchScan`、`NoWildcardImportsTest`、`GlsmRedirectAgent`、`GLSMCoreExtension`、`FfpFixture`，`glIntegrationTest` 补 `javaagent` | `85d0641a`、`6c5e146f` | 4 新 2 改，约 400 行 | 无，可与 1、2 并行 |
 | 4 | 门面补齐（334 个无调用方方法），用架构测试防回退 | `91e67f8d` 部分 | 17 改，约 1200 行 | 1、2 |
-| 5 | `Tracy` 的 no-op 门面（只含 `ZoneId`、`zoneId`、`beginZone`、`endZone`，不引入原生采集）与 `ExitStateCapture`、`ExitState`、`BatchStateGuard` | `102c6cad` | 3 新 11 改，约 1500 行 | 4 |
+| 5 | `ExitStateCapture`、`ExitState`、`hooks/BatchStateGuard`，`GLStateManager` 入口按门面重定向 | `102c6cad` | 3 新 21 改，约 2300 行 | 已完成；Tracy no-op 门面不在此提交内，留给需要它的 `GLSMTextureLifetime` |
 | 6 | 门面收尾（54 个依赖 `rejectExitCapture` 的方法）与 `GLSMTextureLifetime` 拆出 | `91e67f8d` 剩余 | 18 改，约 800 行 | 5 |
 | 7 | 延迟纹理删除状态机与 `TextureStaging` | `e84c8c8d` 阶段二 | 1 新 8 改，约 700 行 | 6，且需 S02 的 `TextureStaging` |
 | 8 | 宽线 `LineQuads` 与 `LineDrawHandler`，`ImmediateModeRecorder.processDrawElementsFromAttribs`，删除 `GeometryShaderGenerator` | `2f1f380e` | 2 新 8 改 1 删，约 900 行 | 7 |

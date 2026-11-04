@@ -93,6 +93,7 @@ public class TessellatorStreamingDrawer {
         }
 
         // Determine the optimal vertex format from the tessellator's flags
+        GLStateManager.requireExitVertexDefaults(!tess.hasNormals(), !tess.hasTexture(), !tess.hasColor(), !tess.hasBrightness());
         final int flags = VertexFlags.convertToFlags(tess.hasTexture(), tess.hasColor(), tess.hasNormals(), tess.hasBrightness());
         final VertexFormat format = DefaultVertexFormat.ALL_FORMATS[flags];
         final int vertexSize = format.getVertexSize();

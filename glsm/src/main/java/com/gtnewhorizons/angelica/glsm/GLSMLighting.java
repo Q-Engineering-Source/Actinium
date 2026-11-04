@@ -81,6 +81,7 @@ public final class GLSMLighting {
     }
 
     public static void glMaterial(int face, int pname, FloatBuffer params) {
+        ctx().exitCapture.material(face, pname);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordMaterial(face, pname, params);
@@ -106,6 +107,7 @@ public final class GLSMLighting {
     }
 
     public static void glMaterial(int face, int pname, IntBuffer params) {
+        ctx().exitCapture.material(face, pname);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             final float[] floatParams = new float[params.remaining()];
@@ -352,6 +354,7 @@ public final class GLSMLighting {
     }
 
     public static void glColorMaterial(int face, int mode) {
+        ctx().exitCapture.write(ExitStateCapture.COLOR_MATERIAL_SETTINGS);
         final RecordMode recordMode = DisplayListManager.getRecordMode();
         if (recordMode != RecordMode.NONE) {
             DisplayListManager.recordColorMaterial(face, mode);
@@ -402,11 +405,13 @@ public final class GLSMLighting {
                 }
             }
             ctx().colorMaterial.enable();
+            ctx().exitCapture.requireMaterialBakeInputs();
             final float r = getColor().getRed();
             final float g = getColor().getGreen();
             final float b = getColor().getBlue();
             final float a = getColor().getAlpha();
             if (ctx().colorMaterialFace.getValue() == GL11.GL_FRONT || ctx().colorMaterialFace.getValue() == GL11.GL_FRONT_AND_BACK) {
+                ctx().exitCapture.material(GL11.GL_FRONT, ctx().colorMaterialParameter.getValue());
                 switch (ctx().colorMaterialParameter.getValue()) {
                     case GL11.GL_AMBIENT_AND_DIFFUSE -> {
                         ctx().frontMaterial.ambient.set(r, g, b, a);
@@ -419,6 +424,7 @@ public final class GLSMLighting {
                 }
             }
             if (ctx().colorMaterialFace.getValue() == GL11.GL_BACK || ctx().colorMaterialFace.getValue() == GL11.GL_FRONT_AND_BACK) {
+                ctx().exitCapture.material(GL11.GL_BACK, ctx().colorMaterialParameter.getValue());
                 switch (ctx().colorMaterialParameter.getValue()) {
                     case GL11.GL_AMBIENT_AND_DIFFUSE -> {
                         ctx().backMaterial.ambient.set(r, g, b, a);
