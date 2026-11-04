@@ -30,7 +30,6 @@ public class ShaderCache {
     private static final long EMPTY_MARKER = 0L; // slot [1] == 0 means empty (fkLen >= 1 guarantees nonzero)
 
     private final Long2ObjectOpenHashMap<String> vertexSourceCache = new Long2ObjectOpenHashMap<>();
-    private final Long2ObjectOpenHashMap<String> geometrySourceCache = new Long2ObjectOpenHashMap<>();
 
     // Open-addressed table — parallel arrays
     private long[] keys;
@@ -107,8 +106,7 @@ public class ShaderCache {
             uniqueFragCount++;
         }
 
-        final String geomSrc = vk.wideLineEmulation() ? getOrGenerateGeometry(vk) : null;
-        final Program program = Program.create(vk, fk, vertSrc, fragSrc, geomSrc);
+        final Program program = Program.create(vk, fk, vertSrc, fragSrc);
 
         final int insertIdx = findEmptySlot(hash);
         final int base = insertIdx * SLOT_STRIDE;
@@ -126,9 +124,6 @@ public class ShaderCache {
         if (dumpDir != null) {
             dumpShader(Long.toHexString(vkPacked), ".vert.glsl", vertSrc);
             dumpShader("frag_" + fragmentDumpCounter++, ".frag.glsl", fragSrc);
-            if (geomSrc != null) {
-                dumpShader(Long.toHexString(vkPacked), ".geom.glsl", geomSrc);
-            }
         }
 
         return program;
@@ -219,10 +214,6 @@ public class ShaderCache {
         return vertexSourceCache.computeIfAbsent(vk.pack(), k -> VertexShaderGenerator.generate(vk));
     }
 
-    private String getOrGenerateGeometry(VertexKey vk) {
-        return geometrySourceCache.computeIfAbsent(vk.pack(), k -> GeometryShaderGenerator.generate(vk));
-    }
-
     private void dumpShader(String name, String suffix, String source) {
         if (dumpDir == null) return;
         try {
@@ -251,11 +242,8 @@ public class ShaderCache {
                     dumpShader("frag_" + idx, ".frag.glsl", fragSources[i]);
                 }
             }
-            for (var entry : geometrySourceCache.entrySet()) {
-                dumpShader(Long.toHexString(entry.getKey()), ".geom.glsl", entry.getValue());
-            }
-            GLStateManager.LOGGER.info("Dumped {} vertex, {} geometry, and {} fragment FFP shader sources to {}",
-                vertexSourceCache.size(), geometrySourceCache.size(), seen.size(), outputDir);
+            GLStateManager.LOGGER.info("Dumped {} vertex and {} fragment FFP shader sources to {}",
+                vertexSourceCache.size(), seen.size(), outputDir);
         } catch (IOException e) {
             GLStateManager.LOGGER.warn("Failed to dump FFP shaders: {}", e.getMessage());
         }
@@ -274,7 +262,6 @@ public class ShaderCache {
         count = 0;
         uniqueFragCount = 0;
         vertexSourceCache.clear();
-        geometrySourceCache.clear();
         lastProgram = null;
         lastVK = Long.MIN_VALUE;
         GLStateManager.LOGGER.debug("FFP shader cache cleared");

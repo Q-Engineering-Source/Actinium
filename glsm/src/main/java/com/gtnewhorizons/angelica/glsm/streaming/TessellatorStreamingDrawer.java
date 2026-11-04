@@ -5,11 +5,15 @@ import com.gtnewhorizon.gtnhlib.client.renderer.vertex.DefaultVertexFormat;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFlags;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormat;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.GLContextState;
+import com.gtnewhorizons.angelica.glsm.GLSMDraws;
 import com.gtnewhorizons.angelica.glsm.ITessellatorData;
 import com.gtnewhorizons.angelica.glsm.QuadConverter;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
+import com.gtnewhorizons.angelica.glsm.hooks.LineDrawHandler;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11;
@@ -49,6 +53,10 @@ public class TessellatorStreamingDrawer {
     private static IntBuffer repackIntBuffer;
     private static long repackAddress;
     private static int repackCapacity;
+
+    private static ByteBuffer lineQuadBuffer;
+    private static long lineQuadAddress;
+    private static int lineQuadCapacity;
 
     private static boolean initialized = false;
 
@@ -249,15 +257,25 @@ public class TessellatorStreamingDrawer {
     ) {
         final boolean perfDebugEnabled = GLSMPerfDebug.isEnabled();
         final long perfStart = perfDebugEnabled ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.STREAM_UPLOAD_AND_DRAW) : 0L;
+        if (LineQuads.isLineMode(drawMode) && drawLinesAsQuads(packed, format, drawMode, vertexCount)) {
+            if (perfDebugEnabled) {
+                GLSMPerfDebug.end(GLSMPerfDebug.Stage.STREAM_UPLOAD_AND_DRAW, perfStart);
+            }
+            return;
+        }
         final boolean perfSampled = perfStart != 0L;
         final StreamingVaos vaos = GLStateManager.getStreamingVaos();
-        ensureVAO(vaos, flags, format);
+        final boolean lineQuads = LineQuads.isQuadFormat(format);
+        final int[] persistentVAOs = lineQuads ? vaos.lineQuadPersistentVAOs : vaos.persistentVAOs;
+        final int[] orphanVAOs = lineQuads ? vaos.lineQuadOrphanVAOs : vaos.orphanVAOs;
+        ensureVAO(persistentVAOs, orphanVAOs, flags, format);
 
         int firstVertex = -1;
 
         if (persistentBuffer != null) {
             final long uploadStart = perfSampled ? GLSMPerfDebug.now() : 0L;
-            firstVertex = persistentBuffer.upload(packed, vertexSize, drawMode == GL11.GL_QUADS ? 4 : 1);
+            final int alignment = drawMode == GL11.GL_QUADS ? 4 : lineQuads ? LineQuads.VERTICES_PER_SEGMENT : 1;
+            firstVertex = persistentBuffer.upload(packed, vertexSize, alignment);
             if (perfSampled) {
                 GLSMPerfDebug.record(GLSMPerfDebug.Stage.STREAM_PERSISTENT_UPLOAD, uploadStart, GLSMPerfDebug.now());
             }
@@ -267,11 +285,11 @@ public class TessellatorStreamingDrawer {
         final int vao;
         final int bufferId;
         if (persistentPath) {
-            vao = vaos.persistentVAOs[flags];
+            vao = persistentVAOs[flags];
             bufferId = persistentBuffer.getBufferId();
             GLSMVertexInput.glBindVertexArray(vao);
         } else {
-            vao = vaos.orphanVAOs[flags];
+            vao = orphanVAOs[flags];
             bufferId = orphanBuffers[flags].getBufferId();
             GLSMVertexInput.glBindVertexArray(vao);
             final long uploadStart = perfSampled ? GLSMPerfDebug.now() : 0L;
@@ -317,6 +335,76 @@ public class TessellatorStreamingDrawer {
         if (perfDebugEnabled) {
             GLSMPerfDebug.end(GLSMPerfDebug.Stage.STREAM_UPLOAD_AND_DRAW, perfStart);
         }
+    }
+
+    /**
+     * Expands a line draw into quads and streams them. The FFP path needs the line-quad vertex key, so the draw
+     * runs with {@code lineQuadsActive} set; a host line program takes the direction-only layout instead.
+     */
+    private static boolean drawLinesAsQuads(ByteBuffer packed, VertexFormat format, int drawMode, int vertexCount) {
+        final int segments = LineQuads.segmentCount(drawMode, vertexCount);
+        if (segments == 0) {
+            return false;
+        }
+        final LineDrawHandler handler = GLSMHooks.lineDrawHandler;
+        if (handler != null && handler.bindLineProgram()) {
+            try {
+                drawLineQuads(packed, format, drawMode, vertexCount, segments, false);
+            } finally {
+                handler.restoreProgram();
+            }
+            return true;
+        }
+        if (GLSMDraws.ffpWidensLineQuads()) {
+            final GLContextState glCtx = GLStateManager.ctx();
+            glCtx.lineQuadsActive = true;
+            try {
+                drawLineQuads(packed, format, drawMode, vertexCount, segments, true);
+            } finally {
+                glCtx.lineQuadsActive = false;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private static void drawLineQuads(ByteBuffer packed, VertexFormat format, int drawMode, int vertexCount, int segments, boolean otherEnd) {
+        final VertexFormat quadFormat = LineQuads.quadFormat(format);
+        final int quadVertices = segments * LineQuads.VERTICES_PER_SEGMENT;
+        final int quadBytes = quadVertices * quadFormat.getVertexSize();
+        ensureLineQuadCapacity(quadBytes);
+        final long src = memAddress0(packed) + packed.position();
+        if (otherEnd) {
+            LineQuads.expandWithOtherEnd(src, format, drawMode, vertexCount, lineQuadAddress);
+        } else {
+            LineQuads.expandWithDirection(src, format, drawMode, vertexCount, lineQuadAddress);
+        }
+        lineQuadBuffer.position(0);
+        lineQuadBuffer.limit(quadBytes);
+        final boolean culled = LineQuads.disableCulling();
+        try {
+            uploadAndDraw(lineQuadBuffer, quadFormat.getVertexFlags(), quadFormat, quadFormat.getVertexSize(), GL11.GL_TRIANGLES, quadVertices, false);
+        } finally {
+            LineQuads.restoreCulling(culled);
+        }
+        if (lineQuadCapacity > 0x20000 && quadBytes < (lineQuadCapacity >> 3)) {
+            memFree(lineQuadBuffer);
+            lineQuadBuffer = null;
+            lineQuadCapacity = 0;
+        }
+    }
+
+    private static void ensureLineQuadCapacity(int requiredBytes) {
+        if (lineQuadBuffer != null && requiredBytes <= lineQuadCapacity) return;
+
+        int newCapacity = Math.max(0x4000, lineQuadCapacity);
+        while (newCapacity < requiredBytes) {
+            newCapacity *= 2;
+        }
+        if (lineQuadBuffer != null) memFree(lineQuadBuffer);
+        lineQuadBuffer = memAlloc(newCapacity);
+        lineQuadAddress = memAddress0(lineQuadBuffer);
+        lineQuadCapacity = newCapacity;
     }
 
     private static void drawWithQuadConversion(int drawMode, int firstVertex, int vertexCount, boolean singleQuadFastPath) {
@@ -449,13 +537,13 @@ public class TessellatorStreamingDrawer {
         return repackBuffer;
     }
 
-    private static void ensureVAO(StreamingVaos vaos, int flags, VertexFormat format) {
+    private static void ensureVAO(int[] persistentVAOs, int[] orphanVAOs, int flags, VertexFormat format) {
         init();
         if (orphanBuffers[flags] == null) orphanBuffers[flags] = new OrphanStreamingBuffer();
 
-        if (vaos.orphanVAOs[flags] == 0) {
-            vaos.orphanVAOs[flags] = GLSMVertexInput.glGenVertexArrays();
-            GLSMVertexInput.glBindVertexArray(vaos.orphanVAOs[flags]);
+        if (orphanVAOs[flags] == 0) {
+            orphanVAOs[flags] = GLSMVertexInput.glGenVertexArrays();
+            GLSMVertexInput.glBindVertexArray(orphanVAOs[flags]);
             GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, orphanBuffers[flags].getBufferId());
             format.setupBufferState(0L);
             QuadConverter.attachSharedEboToCurrentVao();
@@ -463,9 +551,9 @@ public class TessellatorStreamingDrawer {
             GLSMVertexInput.glBindVertexArray(0);
         }
 
-        if (persistentBuffer != null && vaos.persistentVAOs[flags] == 0) {
-            vaos.persistentVAOs[flags] = GLSMVertexInput.glGenVertexArrays();
-            GLSMVertexInput.glBindVertexArray(vaos.persistentVAOs[flags]);
+        if (persistentBuffer != null && persistentVAOs[flags] == 0) {
+            persistentVAOs[flags] = GLSMVertexInput.glGenVertexArrays();
+            GLSMVertexInput.glBindVertexArray(persistentVAOs[flags]);
             GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, persistentBuffer.getBufferId());
             format.setupBufferState(0L);
             QuadConverter.attachSharedEboToCurrentVao();

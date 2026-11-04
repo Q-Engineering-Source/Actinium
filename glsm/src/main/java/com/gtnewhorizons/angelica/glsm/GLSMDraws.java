@@ -12,13 +12,17 @@ import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandType;
+import com.gtnewhorizons.angelica.glsm.ffp.VAOManager;
 import com.gtnewhorizons.angelica.glsm.recording.CommandRecorder;
 import com.gtnewhorizons.angelica.glsm.recording.ImmediateModeRecorder;
 import com.gtnewhorizons.angelica.glsm.recording.commands.IndexedDrawCapture;
+import com.gtnewhorizons.angelica.glsm.streaming.LineQuads;
+import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.KHRDebugCallback;
 
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.DEBUG_DRAW_LOGS;
@@ -38,7 +42,7 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.PIXELTRANSFER_MSG;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.selectWarned;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.setLineStippleActive;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.warnedFFPFunctions;
-import static com.gtnewhorizons.angelica.glsm.GLStateManager.wideLineEmulationActive;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.warnOnce;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.wideLineEmulationEnabled;
 
 public final class GLSMDraws {
@@ -113,6 +117,10 @@ public final class GLSMDraws {
         }
         try {
             prepareWideLineEmulation(mode);
+            if (widensLineDraw(mode, indices.remaining())) {
+                drawLinesAsQuads(ctx(), ImmediateModeRecorder.processDrawElementsFromAttribs(mode, indices.remaining(), GL11.GL_UNSIGNED_BYTE, MemoryUtilities.memAddress(indices)));
+                return;
+            }
             preDrawFFP();
             prepareClientArrays();
             if (DEBUG_DRAW_LOGS) {
@@ -146,6 +154,10 @@ public final class GLSMDraws {
         }
         try {
             prepareWideLineEmulation(mode);
+            if (widensLineDraw(mode, indices.remaining())) {
+                drawLinesAsQuads(ctx(), ImmediateModeRecorder.processDrawElementsFromAttribs(mode, indices.remaining(), GL11.GL_UNSIGNED_INT, MemoryUtilities.memAddress(indices)));
+                return;
+            }
             preDrawFFP();
             prepareClientArrays();
             if (DEBUG_DRAW_LOGS) {
@@ -183,6 +195,10 @@ public final class GLSMDraws {
         }
         try {
             prepareWideLineEmulation(mode);
+            if (widensLineDraw(mode, indices.remaining())) {
+                drawLinesAsQuads(ctx(), ImmediateModeRecorder.processDrawElementsFromAttribs(mode, indices.remaining(), GL11.GL_UNSIGNED_SHORT, MemoryUtilities.memAddress(indices)));
+                return;
+            }
             preDrawFFP();
             prepareClientArrays();
             if (DEBUG_DRAW_LOGS) {
@@ -220,6 +236,10 @@ public final class GLSMDraws {
         }
         try {
             prepareWideLineEmulation(mode);
+            if (widensLineDraw(mode, count)) {
+                drawLinesAsQuads(ctx(), ImmediateModeRecorder.processDrawElementsFromAttribs(mode, count, type, MemoryUtilities.memAddress(indices)));
+                return;
+            }
             preDrawFFP();
             prepareClientArrays();
             if (DEBUG_DRAW_LOGS) {
@@ -269,6 +289,10 @@ public final class GLSMDraws {
         }
         try {
             prepareWideLineEmulation(mode);
+            if (widensLineDraw(mode, indices_count)) {
+                drawLinesAsQuads(ctx(), lineElementsFromBuffer(mode, indices_count, type, indices_buffer_offset));
+                return;
+            }
             preDrawFFP();
             prepareClientArrays();
             if (DEBUG_DRAW_LOGS) {
@@ -305,6 +329,11 @@ public final class GLSMDraws {
             return;
         }
         prepareWideLineEmulation(mode);
+        if (widensLineDraw(mode, count)) {
+            drawLinesAsQuads(ctx(), ImmediateModeRecorder.processDrawArraysFromAttribs(mode, first, count));
+            if (savedRecorder != null) DisplayListManager.resumeRecording(savedRecorder);
+            return;
+        }
         preDrawFFP();
         prepareClientArrays(first, count);
         if (DEBUG_DRAW_LOGS) {
@@ -432,7 +461,6 @@ public final class GLSMDraws {
         }
 
     public static void preDraw() {
-            wideLineEmulationActive = false;
             setLineStippleActive(false);
             preDrawFFP();
             prepareClientArrays();
@@ -464,6 +492,7 @@ public final class GLSMDraws {
 
     public static void glDrawElementsInstanced(int mode, int count, int type, long indices, int primcount) {
         rejectExitCapture();
+            warnIfInstancedWideLines(mode);
             preDrawFFP();
             prepareClientArrays();
             recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, count);
@@ -473,6 +502,7 @@ public final class GLSMDraws {
     public static void glDrawArraysInstanced(int mode, int first, int count, int primcount) {
         rejectExitCapture();
             prepareWideLineEmulation(mode);
+            warnIfInstancedWideLines(mode);
             preDrawFFP();
             prepareClientArrays(first, count);
             recordGpuCommand(GpuCommandType.DRAW_ARRAYS, mode, count);
@@ -489,6 +519,11 @@ public final class GLSMDraws {
 
     public static void glDrawRangeElements(int mode, int start, int end, int count, int type, long indices) {
         rejectExitCapture();
+            prepareWideLineEmulation(mode);
+            if (widensLineDraw(mode, count)) {
+                drawLinesAsQuads(ctx(), lineElementsFromBuffer(mode, count, type, indices));
+                return;
+            }
             preDrawFFP();
             prepareClientArrays();
             recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, count);
@@ -505,6 +540,16 @@ public final class GLSMDraws {
 
     public static void glMultiDrawArrays(int mode, IntBuffer firsts, IntBuffer counts) {
         rejectExitCapture();
+            prepareWideLineEmulation(mode);
+            if (LineQuads.isLineMode(mode) && ffpWidensLineQuads()) {
+                // Each range is its own line primitive; widening them as one draw would join the ranges
+                for (int i = firsts.position(); i < firsts.limit(); i++) {
+                    final int count = counts.get(counts.position() + i - firsts.position());
+                    if (LineQuads.segmentCount(mode, count) == 0) continue;
+                    drawLinesAsQuads(ctx(), ImmediateModeRecorder.processDrawArraysFromAttribs(mode, firsts.get(i), count));
+                }
+                return;
+            }
             preDrawFFP();
             prepareClientArrays();
             recordGpuCommand(GpuCommandType.DRAW_ARRAYS, mode, counts.remaining());
@@ -601,6 +646,52 @@ public final class GLSMDraws {
         final GLContextState glCtx = ctx();
         return wideLineEmulationEnabled && glCtx.activeProgram == 0 && glCtx.lineState.getWidth() > 1.0f
             && !DisplayListManager.isRecording();
+    }
+
+    private static boolean widensLineDraw(int mode, int count) {
+        return LineQuads.isLineMode(mode) && LineQuads.segmentCount(mode, count) > 0 && ffpWidensLineQuads();
+    }
+
+    /**
+     * Widens a line draw by expanding it into quads and streaming them through the FFP program. The draw path
+     * leaves the VAO and array buffer bound, so both are restored before control returns to the caller.
+     */
+    private static void drawLinesAsQuads(GLContextState glCtx, DirectTessellator lines) {
+        if (lines == null) return;
+        if (readsBufferObject(glCtx.vaos)) {
+            warnOnce("line-readback", "Wide GL_LINES drawn from a buffer object; widening them reads the buffer back, which waits for the GPU");
+        }
+        final int vao = glCtx.boundVAO;
+        final int vbo = glCtx.boundVBO;
+        TessellatorStreamingDrawer.drawDirect(lines);
+        GLSMVertexInput.glBindVertexArray(vao);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+    }
+
+    /** Reads an index range out of the bound element buffer so the indexed line draw can be expanded. */
+    private static DirectTessellator lineElementsFromBuffer(int mode, int count, int type, long offset) {
+        if (ctx().vaos.boundEBO == 0) return null;
+        final ByteBuffer indices = MemoryUtilities.memAlloc(count * GLTypes.sizeBytes(type));
+        try {
+            GLSMBuffers.glGetBufferSubData(GL15.GL_ELEMENT_ARRAY_BUFFER, offset, indices);
+            return ImmediateModeRecorder.processDrawElementsFromAttribs(mode, count, type, MemoryUtilities.memAddress0(indices));
+        } finally {
+            MemoryUtilities.memFree(indices);
+        }
+    }
+
+    private static void warnIfInstancedWideLines(int mode) {
+        if (LineQuads.isLineMode(mode) && ffpWidensLineQuads()) {
+            warnOnce("instanced-wide-lines", "Instanced wide GL_LINES are not widened and draw 1 px wide");
+        }
+    }
+
+    private static boolean readsBufferObject(VAOManager vaos) {
+        for (int i = 0; i < VAOManager.MAX_ATTRIBS; i++) {
+            final VAOManager.Attrib attrib = vaos.attrib(i);
+            if (attrib != null && attrib.enabled && attrib.vboId != 0) return true;
+        }
+        return false;
     }
 
     public static boolean isContinuousDraw(int drawMode) {

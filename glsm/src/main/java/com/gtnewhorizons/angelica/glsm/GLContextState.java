@@ -234,6 +234,8 @@ public class GLContextState {
     public int savedFilterMin = -1;
     public int savedFilterMag = -1;
     public float savedFilterAniso = -1.0f;
+    /** True while a line-quad draw is in flight, so the FFP vertex key picks the widening variant. */
+    public boolean lineQuadsActive = false;
     public int boundVBO;
     public int boundVAO;
     public int boundPixelUnpackBuffer;

@@ -47,8 +47,8 @@ public final class VertexKey {
     private static final int BIT_TEXGEN_R            = BIT_TEXGEN_T + 3;
     private static final int BIT_TEXGEN_Q            = BIT_TEXGEN_R + 3;
     private static final int BIT_CLIP_PLANES         = BIT_TEXGEN_Q + 3;
-    private static final int BIT_WIDE_LINE           = BIT_CLIP_PLANES + 1;
-    private static final int BIT_UNIT_TEXMAT_BASE    = BIT_WIDE_LINE + 1;
+    private static final int BIT_LINE_QUADS          = BIT_CLIP_PLANES + 1;
+    private static final int BIT_UNIT_TEXMAT_BASE    = BIT_LINE_QUADS + 1;
     private static final int BIT_UNIT23_UV_FROM_UNIT0 = BIT_UNIT_TEXMAT_BASE + MAX_UNITS;
     private static final int BIT_LINE_STIPPLE        = BIT_UNIT23_UV_FROM_UNIT0 + 1;
     // Per-vertex texcoord availability for the extended multi-texture units 2/3 (issue #175).
@@ -113,8 +113,8 @@ public final class VertexKey {
     public int texGenModeQ()              { return (int)((packed >> BIT_TEXGEN_Q) & 0x7); }
     public boolean texGenEnabled()        { return texGenModeS() != TG_NONE || texGenModeT() != TG_NONE || texGenModeR() != TG_NONE || texGenModeQ() != TG_NONE; }
     public boolean clipPlanesEnabled()    { return bit(BIT_CLIP_PLANES); }
-    public boolean wideLineEmulation()   { return bit(BIT_WIDE_LINE); }
     public boolean lineStipple()          { return bit(BIT_LINE_STIPPLE); }
+    public boolean lineQuads()            { return bit(BIT_LINE_QUADS); }
 
     public boolean cmReplacesAmbient()    { final int m = colorMaterialMode(); return m == CM_AMBIENT || m == CM_AMBIENT_AND_DIFFUSE; }
     public boolean cmReplacesDiffuse()    { final int m = colorMaterialMode(); return m == CM_DIFFUSE || m == CM_AMBIENT_AND_DIFFUSE; }
@@ -225,9 +225,10 @@ public final class VertexKey {
             bits |= (1L << BIT_UNIT_TEXMAT_BASE);
         }
 
-        // Vertex format flags
+        // Vertex format flags. A line-quad vertex carries the segment's other endpoint in the normal slot, so
+        // the shader must not treat it as a per-vertex normal.
         if (hasColor) bits |= (1L << BIT_HAS_VERTEX_COLOR);
-        if (hasNormal) bits |= (1L << BIT_HAS_VERTEX_NORMAL);
+        if (hasNormal && !GLStateManager.ctx().lineQuadsActive) bits |= (1L << BIT_HAS_VERTEX_NORMAL);
         if (hasTexCoord) bits |= (1L << BIT_HAS_VERTEX_TEX);
         if (hasLightmap) bits |= (1L << BIT_HAS_VERTEX_LIGHTMAP);
 
@@ -249,9 +250,9 @@ public final class VertexKey {
             bits |= (1L << BIT_CLIP_PLANES);
         }
 
-        // Wide line GS emulation
-        if (GLStateManager.wideLineEmulationActive) {
-            bits |= (1L << BIT_WIDE_LINE);
+        // Wide line emulation through line quads
+        if (GLStateManager.ctx().lineQuadsActive) {
+            bits |= (1L << BIT_LINE_QUADS);
         }
 
         // Line stipple fragment simulation
@@ -284,12 +285,12 @@ public final class VertexKey {
 
     @Override
     public String toString() {
-        return String.format("FFPVertexKey[0x%011X: lit=%b l0=%b l1=%b cm=%b fog=%b tex=%d%d%d%d texmat=%d%d%d%d col=%b nrm=%b vtex=%b vlm=%b tg=%d/%d/%d/%d clip=%b wline=%b stipple=%b]",
+        return String.format("FFPVertexKey[0x%011X: lit=%b l0=%b l1=%b cm=%b fog=%b tex=%d%d%d%d texmat=%d%d%d%d col=%b nrm=%b vtex=%b vlm=%b tg=%d/%d/%d/%d clip=%b lquads=%b stipple=%b]",
             packed, lightingEnabled(), lightEnabled(0), lightEnabled(1),
             colorMaterialEnabled(), fogEnabled(),
             unitTexCoordEnabled(0)?1:0, unitTexCoordEnabled(1)?1:0, unitTexCoordEnabled(2)?1:0, unitTexCoordEnabled(3)?1:0,
             unitTexMatEnabled(0)?1:0, unitTexMatEnabled(1)?1:0, unitTexMatEnabled(2)?1:0, unitTexMatEnabled(3)?1:0,
             hasVertexColor(), hasVertexNormal(), hasVertexTexCoord(), hasVertexLightmap(),
-            texGenModeS(), texGenModeT(), texGenModeR(), texGenModeQ(), clipPlanesEnabled(), wideLineEmulation(), lineStipple());
+            texGenModeS(), texGenModeT(), texGenModeR(), texGenModeQ(), clipPlanesEnabled(), lineQuads(), lineStipple());
     }
 }

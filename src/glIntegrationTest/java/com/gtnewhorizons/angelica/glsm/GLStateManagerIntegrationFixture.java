@@ -5,6 +5,10 @@ import org.junit.jupiter.api.BeforeAll;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.system.MemoryUtil;
 
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMInitConfig;
+import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormat;
+import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormatElement;
+
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.lwjgl.sdl.SDLError.SDL_GetError;
@@ -25,6 +29,43 @@ public abstract class GLStateManagerIntegrationFixture {
 
     protected static long window;
     protected static long context;
+
+    /**
+     * Installs the host config the streaming upload paths read. Subclasses outside this package cannot reach
+     * {@code GLStateManager.applyInitConfig}, which stays package-private.
+     */
+    protected static void installDefaultGlsmConfig() {
+        GLStateManager.applyInitConfig(GLSMInitConfig.builder().build());
+    }
+
+    private static boolean formatRoutingRegistered;
+    private static boolean routeFormats;
+
+    /**
+     * Routes {@code VertexFormat.setupBufferState} through GLSM generic attribute pointers. The production
+     * redirector rewrites those calls; the harness has no redirector, so the compat client-array entry points
+     * would reach the core-profile driver and silently leave the attribute unset.
+     */
+    protected static void routeVertexFormats(boolean enabled) {
+        routeFormats = enabled;
+        if (formatRoutingRegistered) return;
+        formatRoutingRegistered = true;
+        VertexFormat.registerSetupBufferStateOverride((format, offset) -> {
+            if (!routeFormats) return false;
+            final int stride = format.getVertexSize();
+            int elementOffset = (int) offset;
+            for (VertexFormatElement element : format.getElements()) {
+                final VertexFormatElement.Usage usage = element.getUsage();
+                final boolean normalized = usage == VertexFormatElement.Usage.COLOR
+                    || usage == VertexFormatElement.Usage.NORMAL;
+                GLSMVertexInput.glEnableVertexAttribArray(usage.getAttributeLocation());
+                GLSMVertexInput.glVertexAttribPointer(usage.getAttributeLocation(), element.getCount(),
+                    element.getType().getGlType(), normalized, stride, elementOffset);
+                elementOffset += element.getByteSize();
+            }
+            return true;
+        });
+    }
 
     @BeforeAll
     static void createGlContext() {

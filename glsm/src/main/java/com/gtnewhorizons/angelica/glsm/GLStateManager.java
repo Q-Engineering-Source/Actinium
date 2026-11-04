@@ -57,6 +57,7 @@ import com.gtnewhorizons.angelica.glsm.states.ImageUnitBinding;
 import com.gtnewhorizons.angelica.glsm.states.PixelStoreState;
 import com.gtnewhorizons.angelica.glsm.states.TextureBinding;
 import com.gtnewhorizons.angelica.glsm.states.TextureUnitArray;
+import com.gtnewhorizons.angelica.glsm.streaming.LineQuads;
 import com.gtnewhorizons.angelica.glsm.ffp.VAOManager;
 import com.gtnewhorizons.angelica.glsm.ffp.VertexKey;
 import com.gtnewhorizons.angelica.glsm.streaming.StreamingVaos;
@@ -469,13 +470,8 @@ public class GLStateManager {
     // Line width range queried at init from GL_ALIASED_LINE_WIDTH_RANGE
     static float lineWidthMin = 1.0f;
     static float lineWidthMax = 1.0f;
-    /** True when the driver cannot render wide lines natively (Mesa forward-compat). GS emulation handles widths > 1.0. */
+    // The driver cannot draw wide lines (Mesa forward-compat), so FFP widens them from LineQuads in the vertex shader
     public static boolean wideLineEmulationEnabled = false;
-    /**
-     * Set per draw call: true when the current draw is a line primitive that needs GS expansion. Read by
-     * {@link com.gtnewhorizons.angelica.glsm.ffp.VertexKey}.
-     */
-    public static boolean wideLineEmulationActive = false;
     /**
      * Set per draw call: true when the current draw is a line primitive with GL_LINE_STIPPLE
      * enabled. Read by {@link com.gtnewhorizons.angelica.glsm.ffp.VertexKey} and
@@ -691,7 +687,7 @@ public class GLStateManager {
         }
         wideLineEmulationEnabled = lineWidthMax <= 1.0f;
         if (wideLineEmulationEnabled) {
-            LOGGER.info("GL line width: aliased range [{}, {}], probe at {} rejected, native [{}, {}], GS emulation active for [{}, {}]", lineWidthMin, queriedMax, queriedMax, lineWidthMin, lineWidthMax, lineWidthMax, queriedMax);
+            LOGGER.info("GL line width: aliased range [{}, {}], probe at {} rejected, native [{}, {}], line quads widen ({}, {}]", lineWidthMin, queriedMax, queriedMax, lineWidthMin, lineWidthMax, lineWidthMax, queriedMax);
         } else {
             LOGGER.info("GL line width: aliased range [{}, {}], probe at {} accepted, native [{}, {}]", lineWidthMin, queriedMax, queriedMax, lineWidthMin, lineWidthMax);
         }
@@ -1475,9 +1471,7 @@ public class GLStateManager {
         RENDER_BACKEND.pointParameteri(GL20.GL_POINT_SPRITE_COORD_ORIGIN, point.getSpriteCoordOrigin());
     }
 
-    public static boolean supportsGeometryShaders() { return RENDER_BACKEND.supportsGeometryShaders(); }
-
-            public static boolean framebufferCompletenessIsMeaningful() { return GLSMFramebuffer.framebufferCompletenessIsMeaningful(); }
+    public static boolean framebufferCompletenessIsMeaningful() { return GLSMFramebuffer.framebufferCompletenessIsMeaningful(); }
 
     public static String getRenderBackendName() {
         return RENDER_BACKEND.getName();
@@ -2984,9 +2978,7 @@ public class GLStateManager {
 
     public static void prepareWideLineEmulation(int drawMode) {
         final GLContextState glCtx = ctx();
-        final boolean isLine = drawMode == GL11.GL_LINES || drawMode == GL11.GL_LINE_STRIP || drawMode == GL11.GL_LINE_LOOP;
-        wideLineEmulationActive = wideLineEmulationEnabled && isLine && glCtx.lineState.getWidth() > 1.0f;
-        setLineStippleActive(isLine && glCtx.lineStippleState.isEnabled());
+        setLineStippleActive((LineQuads.isLineMode(drawMode) || glCtx.lineQuadsActive) && glCtx.lineStippleState.isEnabled());
     }
 
     /**
