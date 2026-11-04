@@ -54,6 +54,7 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.mod;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.onDeleteTexture;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.packDimensions;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.recordGpuCommand;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.recordExitTextureBind;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.remapPixelTypeForGLES;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.remapTexClamp;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.remapTypeForRemappedInternalFormat;
@@ -76,6 +77,8 @@ public final class GLSMTextures {
     private GLSMTextures() {}
 
     public static void glActiveTexture(int texture) {
+        final GLContextState glCtx = ctx();
+        glCtx.exitCapture.write(ExitStateCapture.ACTIVE_UNIT);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordActiveTexture(texture);
@@ -85,8 +88,8 @@ public final class GLSMTextures {
         }
         final int newTexture = texture - GL13.GL_TEXTURE0;
         final boolean caching = isCachingEnabled();
-        if (BYPASS_CACHE || !caching || getActiveTextureUnit() != newTexture) {
-            if (caching) mod(ctx().activeTextureUnit).setValue(newTexture);
+        if (BYPASS_CACHE || !caching || glCtx.activeTextureUnit.getValue() != newTexture) {
+            if (caching) mod(glCtx.activeTextureUnit).setValue(newTexture);
             RENDER_BACKEND.activeTexture(texture);
         }
     }
@@ -98,10 +101,14 @@ public final class GLSMTextures {
                 "glClientActiveTexture({}) is outside the {} supported texture coordinate units; ignoring", texture, MAX_TEXTURE_COORDS);
             return;
         }
-        ctx().clientActiveTextureUnit = unit;
+        final GLContextState glCtx = ctx();
+        glCtx.exitCapture.write(ExitStateCapture.CLIENT_ACTIVE_UNIT);
+        glCtx.clientActiveTextureUnit = unit;
     }
 
     public static void glBindTexture(int target, int texture) {
+        final GLContextState glCtx = ctx();
+        recordExitTextureBind(glCtx, target, glCtx.activeTextureUnit.getValue());
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordBindTexture(target, texture);

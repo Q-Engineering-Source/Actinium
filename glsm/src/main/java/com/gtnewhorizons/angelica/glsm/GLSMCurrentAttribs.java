@@ -124,6 +124,8 @@ public final class GLSMCurrentAttribs {
                     ctx().unit23TexCoordSetDuringDraw = true;
                 }
                 ShaderManager.setCurrentTexCoord(unit, s, t, 0.0f, 1.0f);
+            } else {
+                ctx().exitCapture.reject();
             }
         }
     }
@@ -134,6 +136,7 @@ public final class GLSMCurrentAttribs {
 
     public static void setOverlayColor(float r, float g, float b, float a) {
             final GLContextState glCtx = ctx();
+            glCtx.exitCapture.write(ExitStateCapture.OVERLAY_COLOR);
             if (r == glCtx.overlayR && g == glCtx.overlayG && b == glCtx.overlayB && a == glCtx.overlayA) return;
             glCtx.overlayR = r; glCtx.overlayG = g; glCtx.overlayB = b; glCtx.overlayA = a;
             glCtx.fragmentGeneration++;
@@ -141,6 +144,7 @@ public final class GLSMCurrentAttribs {
 
     public static void setShaderColor(float r, float g, float b, float a) {
             final GLContextState glCtx = ctx();
+            glCtx.exitCapture.write(ExitStateCapture.SHADER_COLOR);
             if (r == glCtx.shaderColorR && g == glCtx.shaderColorG && b == glCtx.shaderColorB && a == glCtx.shaderColorA) return;
             glCtx.shaderColorR = r; glCtx.shaderColorG = g; glCtx.shaderColorB = b; glCtx.shaderColorA = a;
             if (GLSMHooks.SHADER_COLOR_CHANGE.hasListeners()) {
@@ -360,6 +364,7 @@ public final class GLSMCurrentAttribs {
     public static void setLightmapTextureCoords(int unit, float x, float y) {
             if (unit == GL13.GL_TEXTURE1) {
                 final GLContextState glCtx = ctx();
+                glCtx.exitCapture.write(ExitStateCapture.LIGHTMAP);
                 glCtx.lastBrightnessX = x;
                 glCtx.lastBrightnessY = y;
                 glCtx.dirtyLightmapAttrib = true;

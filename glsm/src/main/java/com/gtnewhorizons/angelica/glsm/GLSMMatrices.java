@@ -41,7 +41,14 @@ public final class GLSMMatrices {
 
     private GLSMMatrices() {}
 
+    /** Absolute changes replace the matrix, so a capture cannot model them as a relative edit. */
+    private static void beforeMatrixChange(GLContextState c, boolean absolute) {
+        c.exitCapture.matrixChange(absolute);
+    }
+
     public static void glMatrixMode(int mode) {
+        final GLContextState glCtx = ctx();
+        glCtx.exitCapture.write(ExitStateCapture.MATRIX_MODE);
         final RecordMode recordMode = DisplayListManager.getRecordMode();
         if (recordMode != RecordMode.NONE) {
             DisplayListManager.recordMatrixMode(mode);
@@ -50,11 +57,12 @@ public final class GLSMMatrices {
                 return;
             }
         }
-        mod(ctx().matrixMode).setMode(mode);
+        mod(glCtx.matrixMode).setMode(mode);
     }
 
     public static void glLoadMatrix(FloatBuffer m) {
         final GLContextState glCtx = ctx();
+        beforeMatrixChange(glCtx, true);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             final Matrix4f matrix = new Matrix4f().set(m);
@@ -73,6 +81,7 @@ public final class GLSMMatrices {
 
     public static void glLoadMatrix(DoubleBuffer m) {
         final GLContextState glCtx = ctx();
+        beforeMatrixChange(glCtx, true);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             conversionMatrix4d.set(m);
@@ -94,6 +103,7 @@ public final class GLSMMatrices {
 
     public static void glLoadIdentity() {
         final GLContextState glCtx = ctx();
+        beforeMatrixChange(glCtx, true);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordLoadIdentity();
@@ -110,6 +120,7 @@ public final class GLSMMatrices {
 
     public static void glTranslatef(float x, float y, float z) {
         final GLContextState glCtx = ctx();
+        beforeMatrixChange(glCtx, false);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.updateRelativeTransform(x, y, z, DisplayListManager.TransformOp.TRANSLATE, null);
@@ -123,6 +134,7 @@ public final class GLSMMatrices {
 
     public static void glTranslated(double x, double y, double z) {
         final GLContextState glCtx = ctx();
+        beforeMatrixChange(glCtx, false);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.updateRelativeTransform((float) x, (float) y, (float) z, DisplayListManager.TransformOp.TRANSLATE, null);
@@ -136,6 +148,7 @@ public final class GLSMMatrices {
 
     public static void glScalef(float x, float y, float z) {
         final GLContextState glCtx = ctx();
+        beforeMatrixChange(glCtx, false);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.updateRelativeTransform(x, y, z, DisplayListManager.TransformOp.SCALE, null);
@@ -149,6 +162,7 @@ public final class GLSMMatrices {
 
     public static void glScaled(double x, double y, double z) {
         final GLContextState glCtx = ctx();
+        beforeMatrixChange(glCtx, false);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.updateRelativeTransform((float) x, (float) y, (float) z, DisplayListManager.TransformOp.SCALE, null);
@@ -162,6 +176,7 @@ public final class GLSMMatrices {
 
     public static void glMultMatrix(FloatBuffer floatBuffer) {
         final GLContextState glCtx = ctx();
+        beforeMatrixChange(glCtx, false);
         multMatrix.set(floatBuffer);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
@@ -176,6 +191,7 @@ public final class GLSMMatrices {
 
     public static void glMultMatrix(DoubleBuffer matrix) {
         final GLContextState glCtx = ctx();
+        beforeMatrixChange(glCtx, false);
         conversionMatrix4d.set(matrix);
         conversionMatrix4f.set(conversionMatrix4d);
         final RecordMode mode = DisplayListManager.getRecordMode();
@@ -193,6 +209,7 @@ public final class GLSMMatrices {
         final float lenSq = x * x + y * y + z * z;
         if (lenSq == 0.0f) return;
         final GLContextState glCtx = ctx();
+        beforeMatrixChange(glCtx, false);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             rotation.set(x, y, z).normalize();
@@ -210,6 +227,7 @@ public final class GLSMMatrices {
         final double lenSq = x * x + y * y + z * z;
         if (lenSq == 0.0) return;
         final GLContextState glCtx = ctx();
+        beforeMatrixChange(glCtx, false);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             rotation.set((float) x, (float) y, (float) z).normalize();
@@ -225,6 +243,7 @@ public final class GLSMMatrices {
 
     public static void glOrtho(double left, double right, double bottom, double top, double zNear, double zFar) {
         final GLContextState glCtx = ctx();
+        beforeMatrixChange(glCtx, false);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.updateRelativeTransformOrtho(left, right, bottom, top, zNear, zFar);
@@ -238,6 +257,7 @@ public final class GLSMMatrices {
 
     public static void glFrustum(double left, double right, double bottom, double top, double zNear, double zFar) {
         final GLContextState glCtx = ctx();
+        beforeMatrixChange(glCtx, false);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.updateRelativeTransformFrustum(left, right, bottom, top, zNear, zFar);
@@ -250,6 +270,8 @@ public final class GLSMMatrices {
     }
 
     public static void glPushMatrix() {
+        final GLContextState glCtx = ctx();
+        glCtx.exitCapture.pushMatrix();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordPushMatrix();
@@ -259,8 +281,9 @@ public final class GLSMMatrices {
         }
         if (isCachingEnabled()) {
             try {
-                getMatrixStack(ctx()).pushMatrix();
+                getMatrixStack(glCtx).pushMatrix();
             } catch (IllegalStateException ignored) {
+                glCtx.exitCapture.reject();
                 if (initConfig != null && initConfig.isLwjglDebug()) LOGGER.warn("Matrix stack overflow ", new Throwable());
             }
         }
@@ -268,6 +291,7 @@ public final class GLSMMatrices {
 
     public static void glPopMatrix() {
         final GLContextState glCtx = ctx();
+        glCtx.exitCapture.popMatrix();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordPopMatrix();
@@ -280,6 +304,7 @@ public final class GLSMMatrices {
                 GLStateManager.getMatrixStack(glCtx).popMatrix();
                 bumpMatrixGeneration(glCtx);
             } catch (IllegalStateException ignored) {
+                glCtx.exitCapture.reject();
                 if (initConfig != null && initConfig.isLwjglDebug()) LOGGER.warn("Matrix stack underflow ", new Throwable());
             }
         }
@@ -340,14 +365,25 @@ public final class GLSMMatrices {
 
     public static void setModelViewMatrix(Matrix4fc m) {
             final GLContextState glCtx = ctx();
+            glCtx.exitCapture.matrixChange(GL11.GL_MODELVIEW, 0, true);
             if (isCachingEnabled()) {
                 glCtx.modelViewMatrix.set(m);
                 glCtx.mvGeneration++;
             }
         }
 
+    public static void setTextureMatrix(int unit, Matrix4fc m) {
+            final GLContextState glCtx = ctx();
+            glCtx.exitCapture.matrixChange(GL11.GL_TEXTURE, unit, true);
+            if (isCachingEnabled()) {
+                glCtx.textures.getTextureUnitMatrix(unit).set(m);
+                glCtx.texMatrixGeneration++;
+            }
+        }
+
     public static void setProjectionMatrix(Matrix4fc m) {
             final GLContextState glCtx = ctx();
+            glCtx.exitCapture.matrixChange(GL11.GL_PROJECTION, 0, true);
             if (isCachingEnabled()) {
                 glCtx.projectionMatrix.set(m);
                 glCtx.projGeneration++;
@@ -356,6 +392,7 @@ public final class GLSMMatrices {
 
     public static void applyMultMatrix(Matrix4f multMatrix) {
             final GLContextState glCtx = ctx();
+            beforeMatrixChange(glCtx, false);
             if (isCachingEnabled()) {
                 GLStateManager.getMatrixStack(glCtx).mul(multMatrix);
                 bumpMatrixGeneration(glCtx);

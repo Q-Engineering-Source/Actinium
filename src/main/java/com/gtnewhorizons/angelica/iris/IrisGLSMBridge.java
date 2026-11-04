@@ -146,6 +146,11 @@ public final class IrisGLSMBridge {
             }
 
             @Override
+            public boolean isOverrideHeld() {
+                return Iris.enabled && AlphaTestStorage.isOverrideHeld();
+            }
+
+            @Override
             public void deferAlphaTestToggle(boolean enabled) {
                 AlphaTestStorage.deferAlphaTestToggle(enabled);
             }

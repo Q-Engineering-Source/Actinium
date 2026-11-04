@@ -25,8 +25,14 @@ public class TextureInfoCache {
 
     private final Int2ObjectMap<TextureInfo> cache = new Int2ObjectOpenHashMap<>();
     private final ReentrantLock lock = new ReentrantLock();
+    private int deleteCount;
 
     private TextureInfoCache() {
+    }
+
+    /** Deletions so far; an exit capture that outlived a texture deletion can no longer be applied. */
+    public int deleteCount() {
+        return deleteCount;
     }
 
     public TextureInfo getInfo(int id) {
@@ -128,6 +134,7 @@ public class TextureInfoCache {
 
     public void onDeleteTexture(int id) {
         if (id < 0) return;
+        deleteCount++;
 
         if (GLStateManager.isSplashComplete()) {
             cache.remove(id);

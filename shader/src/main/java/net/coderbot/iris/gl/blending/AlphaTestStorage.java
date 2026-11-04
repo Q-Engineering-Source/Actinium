@@ -12,6 +12,7 @@ public class AlphaTestStorage {
     private static AlphaTest originalAlphaTest;
 	@Getter
     private static boolean alphaTestLocked;
+	@Getter
 	private static boolean overrideHeld;
 
     public static void overrideAlphaTest(AlphaTest override) {

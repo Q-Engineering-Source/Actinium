@@ -180,6 +180,7 @@ public class RenderSystem {
     }
 
     public static void generateMipmaps(int texture, int mipmapTarget) {
+        GLStateManager.rejectExitCapture();
         GLStateManager.recordGpuCommand(GpuCommandType.GENERATE_MIPMAP, GpuCommandPhase.BEGIN, texture, mipmapTarget);
         dsaState.generateMipmaps(texture, mipmapTarget);
         GLStateManager.recordGpuCommand(GpuCommandType.GENERATE_MIPMAP, GpuCommandPhase.END, texture, mipmapTarget);
@@ -187,10 +188,12 @@ public class RenderSystem {
     }
 
     public static void bindAttributeLocation(int program, int index, CharSequence name) {
+        GLStateManager.rejectExitCapture();
         RENDER_BACKEND.bindAttribLocation(program, index, name);
     }
 
     public static void texImage2D(int texture, int target, int level, int internalformat, int width, int height, int border, int format, int type, @Nullable ByteBuffer pixels) {
+        GLStateManager.rejectExitCapture();
         final GLStateManager.GLESTexImageRemap remap = GLStateManager.remapTexImageForGLES(internalformat, format, type);
         internalformat = remap.internalFormat();
         format = remap.format();
@@ -205,6 +208,7 @@ public class RenderSystem {
     }
 
     public static void uniformMatrix4fv(int location, boolean transpose, FloatBuffer matrix) {
+        GLStateManager.rejectExitCapture();
         RENDER_BACKEND.uniformMatrix4(location, transpose, matrix);
     }
 
@@ -213,48 +217,59 @@ public class RenderSystem {
     }
 
     public static void uniform1f(int location, float v0) {
+        GLStateManager.rejectExitCapture();
         RENDER_BACKEND.uniform1f(location, v0);
     }
 
     public static void uniform1i(int location, int v0) {
+        GLStateManager.rejectExitCapture();
         RENDER_BACKEND.uniform1i(location, v0);
     }
 
     public static void uniform2f(int location, float v0, float v1) {
+        GLStateManager.rejectExitCapture();
         RENDER_BACKEND.uniform2f(location, v0, v1);
     }
 
     public static void uniform2i(int location, int v0, int v1) {
+        GLStateManager.rejectExitCapture();
         RENDER_BACKEND.uniform2i(location, v0, v1);
     }
 
     public static void uniform3f(int location, float v0, float v1, float v2) {
+        GLStateManager.rejectExitCapture();
         RENDER_BACKEND.uniform3f(location, v0, v1, v2);
     }
 
     public static void uniform3i(int location, int v0, int v1, int v2) {RENDER_BACKEND.uniform3i(location, v0, v1, v2);}
 
     public static void uniform4f(int location, float v0, float v1, float v2, float v3) {
+        GLStateManager.rejectExitCapture();
         RENDER_BACKEND.uniform4f(location, v0, v1, v2, v3);
     }
 
     public static void uniform4i(int location, int v0, int v1, int v2, int v3) {
+        GLStateManager.rejectExitCapture();
         RENDER_BACKEND.uniform4i(location, v0, v1, v2, v3);
     }
 
     public static int getAttribLocation(int programId, String name) {
+        GLStateManager.rejectExitCapture();
         return RENDER_BACKEND.getAttribLocation(programId, name);
     }
 
     public static int getUniformLocation(int programId, String name) {
+        GLStateManager.rejectExitCapture();
         return RENDER_BACKEND.getUniformLocation(programId, name);
     }
 
     public static void texParameteriv(int texture, int target, int pname, IntBuffer params) {
+        GLStateManager.rejectExitCapture();
         dsaState.texParameteriv(texture, target, pname, params);
     }
 
     public static void copyTexSubImage2D(int destTexture, int target, int i, int i1, int i2, int i3, int i4, int width, int height) {
+        GLStateManager.rejectExitCapture();
         GLStateManager.recordGpuCommand(GpuCommandType.COPY_TEX_SUB_IMAGE_2D, GpuCommandPhase.BEGIN, destTexture, packDimensions(width, height));
         dsaState.copyTexSubImage2D(destTexture, target, i, i1, i2, i3, i4, width, height);
         GLStateManager.recordGpuCommand(GpuCommandType.COPY_TEX_SUB_IMAGE_2D, GpuCommandPhase.END, destTexture, packDimensions(width, height));
@@ -262,35 +277,43 @@ public class RenderSystem {
     }
 
     public static void texParameteri(int texture, int target, int pname, int param) {
+        GLStateManager.rejectExitCapture();
         dsaState.texParameteri(texture, target, pname, param);
     }
 
     public static void texParameterf(int texture, int target, int pname, float param) {
+        GLStateManager.rejectExitCapture();
         dsaState.texParameterf(texture, target, pname, param);
     }
 
     public static void textureImage2D(int texture, int target, int level, int internalformat, int width, int height, int border, int format, int type, ByteBuffer pixels) {
+        GLStateManager.rejectExitCapture();
         dsaState.textureImage2D(texture, target, level, internalformat, width, height, border, format, type, pixels);
     }
 
     public static void textureImage2D(int texture, int target, int level, int internalformat, int width, int height, int border, int format, int type, IntBuffer pixels) {
+        GLStateManager.rejectExitCapture();
         dsaState.textureImage2D(texture, target, level, internalformat, width, height, border, format, type, pixels);
     }
 
     public static void textureSubImage2D(int texture, int target, int level, int xoffset, int yoffset, int width, int height, int format, int type, ByteBuffer pixels) {
+        GLStateManager.rejectExitCapture();
         dsaState.textureSubImage2D(texture, target, level, xoffset, yoffset, width, height, format, type, pixels);
     }
 
     public static void textureSubImage2D(int texture, int target, int level, int xoffset, int yoffset, int width, int height, int format, int type, IntBuffer pixels) {
+        GLStateManager.rejectExitCapture();
         dsaState.textureSubImage2D(texture, target, level, xoffset, yoffset, width, height, format, type, pixels);
     }
 
     public static void texImage1D(int texture, int target, int level, int internalformat, int width, int border, int format, int type, ByteBuffer pixels) {
+        GLStateManager.rejectExitCapture();
         RENDER_BACKEND.bindTexture(target, texture);
         RENDER_BACKEND.texImage1D(target, level, internalformat, width, border, format, type, pixels);
     }
 
     public static void texImage3D(int texture, int target, int level, int internalformat, int width, int height, int depth, int border, int format, int type, ByteBuffer pixels) {
+        GLStateManager.rejectExitCapture();
         GLStateManager.recordGpuCommand(GpuCommandType.TEX_IMAGE_3D, GpuCommandPhase.BEGIN, texture, packDimensions(width, height));
         RENDER_BACKEND.bindTexture(target, texture);
         RENDER_BACKEND.texImage3D(target, level, internalformat, width, height, depth, border, format, type, pixels);
@@ -299,26 +322,32 @@ public class RenderSystem {
     }
 
     public static String getProgramInfoLog(int program) {
+        GLStateManager.rejectExitCapture();
         return RENDER_BACKEND.getProgramInfoLog(program, RENDER_BACKEND.getProgrami(program, GL20.GL_INFO_LOG_LENGTH));
     }
 
     public static String getShaderInfoLog(int shader) {
+        GLStateManager.rejectExitCapture();
         return RENDER_BACKEND.getShaderInfoLog(shader, RENDER_BACKEND.getShaderi(shader, GL20.GL_INFO_LOG_LENGTH));
     }
 
     public static void drawBuffers(int framebuffer, IntBuffer buffers) {
+        GLStateManager.rejectExitCapture();
         dsaState.drawBuffers(framebuffer, buffers);
     }
 
     public static void readBuffer(int framebuffer, int buffer) {
+        GLStateManager.rejectExitCapture();
         dsaState.readBuffer(framebuffer, buffer);
     }
 
     public static String getActiveUniform(int program, int index, int maxLength, IntBuffer sizeType) {
+        GLStateManager.rejectExitCapture();
         return RENDER_BACKEND.getActiveUniform(program, index, maxLength, sizeType);
     }
 
     public static void readPixels(int x, int y, int width, int height, int format, int type, FloatBuffer pixels) {
+        GLStateManager.rejectExitCapture();
         RENDER_BACKEND.readPixels(x, y, width, height, format, type, pixels);
     }
 
@@ -327,26 +356,32 @@ public class RenderSystem {
     }
 
     public static int bufferStorage(int target, FloatBuffer data, int usage) {
+        GLStateManager.rejectExitCapture();
         return dsaState.bufferStorage(target, data, usage);
     }
 
     public static void vertexAttrib4f(int index, float v0, float v1, float v2, float v3) {
+        GLStateManager.rejectExitCapture();
         RENDER_BACKEND.vertexAttrib4f(index, v0, v1, v2, v3);
     }
 
     public static void detachShader(int program, int shader) {
+        GLStateManager.rejectExitCapture();
         RENDER_BACKEND.detachShader(program, shader);
     }
 
     public static void framebufferTexture2D(int fb, int fbtarget, int attachment, int target, int texture, int levels) {
+        GLStateManager.rejectExitCapture();
         dsaState.framebufferTexture2D(fb, fbtarget, attachment, target, texture, levels);
     }
 
     public static int getTexParameteri(int texture, int target, int pname) {
+        GLStateManager.rejectExitCapture();
         return dsaState.getTexParameteri(texture, target, pname);
     }
 
     public static int getTexLevelParameteri(int texture, int level, int pname) {
+        GLStateManager.rejectExitCapture();
         return dsaState.getTexLevelParameteri(texture, level, pname);
     }
 
@@ -443,10 +478,12 @@ public class RenderSystem {
     }
 
     public static void getProgramiv(int program, int value, IntBuffer storage) {
+        GLStateManager.rejectExitCapture();
         RENDER_BACKEND.getProgramiv(program, value, storage);
     }
 
     public static void dispatchCompute(int workX, int workY, int workZ) {
+        GLStateManager.rejectExitCapture();
         GLStateManager.recordGpuCommand(GpuCommandType.DISPATCH_COMPUTE, workX, workY << 16 | workZ & 0xFFFF);
         RENDER_BACKEND.dispatchCompute(workX, workY, workZ);
     }
@@ -456,6 +493,7 @@ public class RenderSystem {
     }
 
     public static void dispatchComputeIndirect(long offset) {
+        GLStateManager.rejectExitCapture();
         GLStateManager.recordGpuCommand(GpuCommandType.DISPATCH_COMPUTE_INDIRECT, (int) (offset >>> 32), (int) offset);
         RENDER_BACKEND.dispatchComputeIndirect(offset);
     }
@@ -465,6 +503,7 @@ public class RenderSystem {
     }
 
     public static void memoryBarrier(int barriers) {
+        GLStateManager.rejectExitCapture();
         if (supportsCompute) {
             RENDER_BACKEND.memoryBarrier(barriers);
         }
@@ -489,10 +528,12 @@ public class RenderSystem {
     }
 
     public static void bindTextureToUnit(int unit, int texture) {
+        if (unit == 0) GLStateManager.recordExitTextureBind(GL11.GL_TEXTURE_2D, 0);
         dsaState.bindTextureToUnit(unit, texture);
     }
 
     public static void bindTextureToUnit(int target, int unit, int texture) {
+        if (unit == 0) GLStateManager.recordExitTextureBind(target, 0);
         dsaState.bindTextureToUnit(target, unit, texture);
     }
 
@@ -521,10 +562,12 @@ public class RenderSystem {
     }
 
     public static int createFramebuffer() {
+        GLStateManager.rejectExitCapture();
         return dsaState.createFramebuffer();
     }
 
     public static int createTexture(int target) {
+        GLStateManager.rejectExitCapture();
         return dsaState.createTexture(target);
     }
 
@@ -546,6 +589,7 @@ public class RenderSystem {
     }
 
     public static void bufferStorage(int target, long size, int flags) {
+        GLStateManager.rejectExitCapture();
         RENDER_BACKEND.bufferStorage(target, size, flags);
     }
 
@@ -564,6 +608,7 @@ public class RenderSystem {
     }
 
     public static void clearTexImage(int texture, int target, int level, int format, int type) {
+        GLStateManager.rejectExitCapture();
         GLStateManager.recordGpuCommand(GpuCommandType.CLEAR_TEX_IMAGE, GpuCommandPhase.BEGIN, texture, level);
         RENDER_BACKEND.clearTexImage(texture, level, format, type);
         GLStateManager.recordGpuCommand(GpuCommandType.CLEAR_TEX_IMAGE, GpuCommandPhase.END, texture, level);

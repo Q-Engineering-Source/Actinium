@@ -146,6 +146,62 @@ import static com.gtnewhorizons.angelica.glsm.Vendor.NVIDIA;
 @SuppressWarnings("unused") // Used in ASM
 public class GLStateManager {
 
+    public static void beginExitCapture(ExitState result) { ctx().exitCapture.begin(result); }
+    public static boolean finishExitCapture(ExitState result) { return ctx().exitCapture.finish(result); }
+    public static boolean canApplyExitState(ExitState result) { return ctx().exitCapture.canApply(result); }
+    public static void applyExitState(ExitState result) { ctx().exitCapture.apply(result); }
+    public static void cancelExitCapture() { ctx().exitCapture.cancel(); }
+    public static boolean suspendExitCapture() {
+        if (!ExitStateCapture.anyOpen()) return false;
+        ctx().exitCapture.suspend();
+        return true;
+    }
+    public static void resumeExitCapture(boolean suspended) { if (suspended) ctx().exitCapture.resume(); }
+    public static boolean isExitCaptureActive() { return ExitStateCapture.anyOpen() && ctx().exitCapture.active(); }
+    public static void requireExitDrawState(boolean materialFromState) {
+        if (ExitStateCapture.anyOpen()) ctx().exitCapture.requireDrawState(materialFromState);
+    }
+    public static void requireExitVertexDefaults(boolean normal, boolean texCoord, boolean color, boolean lightmap) {
+        if (ExitStateCapture.anyOpen()) ctx().exitCapture.requireVertexDefaults(normal, texCoord, color, lightmap);
+    }
+    public static boolean beginExitTextureFilter(boolean nearest) { return ExitStateCapture.anyOpen() && ctx().exitCapture.beginTextureFilter(nearest); }
+    public static void finishExitTextureFilterSave() { ctx().exitCapture.finishTextureFilterSave(); }
+    public static boolean beginExitTextureFilterRestore() { return ExitStateCapture.anyOpen() && ctx().exitCapture.beginTextureFilterRestore(); }
+    public static void finishExitTextureFilterRestore() { ctx().exitCapture.finishTextureFilterRestore(); }
+    public static void failExitTextureFilter() { ctx().exitCapture.failTextureFilter(); }
+    public static void requireExitTextureFilter(int texture, boolean nearest) {
+        if (ExitStateCapture.anyOpen()) ctx().exitCapture.requireTextureFilter(texture, nearest);
+    }
+    public static int getExitPolygonOffsetWrites() { return ExitStateCapture.anyOpen() ? ctx().exitCapture.polygonOffsetWrites() : 0; }
+    public static boolean isExitLightingWritten() { return ExitStateCapture.anyOpen() && ctx().exitCapture.lightingWritten(); }
+
+    public static void recordExitCapability(GLContextState context, int cap, int unit) {
+        if (context != null) context.exitCapture.capability(cap, unit);
+    }
+
+    public static void recordExitNormal() {
+        if (ExitStateCapture.anyOpen()) ctx().exitCapture.write(ExitStateCapture.NORMAL);
+    }
+
+    public static void recordExitTexCoord(int unit) {
+        if (!ExitStateCapture.anyOpen()) return;
+        if (unit == 0) ctx().exitCapture.write(ExitStateCapture.TEXCOORD);
+        else ctx().exitCapture.reject();
+    }
+
+    static void rejectExitCapture() {
+        if (ExitStateCapture.anyOpen()) ctx().exitCapture.reject();
+    }
+
+    static void recordExitTextureBind(int target, int unit) {
+        if (ExitStateCapture.anyOpen()) recordExitTextureBind(ctx(), target, unit);
+    }
+
+    static void recordExitTextureBind(GLContextState glCtx, int target, int unit) {
+        if (target == GL11.GL_TEXTURE_2D && unit == 0) glCtx.exitCapture.write(ExitStateCapture.TEXTURE_BINDING);
+        else glCtx.exitCapture.reject();
+    }
+
     public static final Logger LOGGER = LogManager.getLogger("GLSM");
     private static final Set<String> WARN_ONCE = ConcurrentHashMap.newKeySet();
 
@@ -445,6 +501,7 @@ public class GLStateManager {
 
     public static void reset() {
         final GLContextState glCtx = ctx();
+        glCtx.exitCapture.cancel();
         runningSplash = true;
         glCtx.attribDepth = 0;
         glCtx.retainedOwner = null;
@@ -1058,6 +1115,7 @@ public class GLStateManager {
             public static float i2f(int i) { return GLSMLighting.i2f(i); }
 
     static boolean changeColor(float red, float green, float blue, float alpha) {
+        ctx().exitCapture.write(ExitStateCapture.COLOR);
         // Per GL semantics glColor* clamps its components to [0,1] at the API boundary, so clamp
         // before caching: raw out-of-range values would otherwise leak into the FFP u_CurrentColor
         // upload, where Uniforms.sanitizeUniformColor treats any negative channel as the
@@ -2028,6 +2086,7 @@ public class GLStateManager {
 
     static int pushStateLive(StateSet set) {
         final GLContextState glCtx = ctx();
+        glCtx.exitCapture.pushAttrib();
         if (glCtx.attribDepth >= MAX_ATTRIB_STACK_DEPTH) {
             throw new IllegalStateException("Attrib stack overflow: max depth " + MAX_ATTRIB_STACK_DEPTH + " reached");
         }
@@ -2083,6 +2142,7 @@ public class GLStateManager {
         }
         final int poppedDepth = glCtx.attribDepth;
         final StateSet set = glCtx.attribSets[poppedDepth - 1];
+        glCtx.exitCapture.popAttrib(set);
         final boolean inspectAlpha = GLSMHooks.ALPHA_STATE_CHANGE.hasListeners()
             && ((glCtx.alphaState.cowDepths().claimedAt(poppedDepth) && set.contains(glCtx.alphaState.stackId()))
                 || (glCtx.alphaTest.cowDepths().claimedAt(poppedDepth) && set.contains(glCtx.alphaTest.stackId())));

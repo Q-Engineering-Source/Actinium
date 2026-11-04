@@ -23,6 +23,7 @@ public final class GLSMDepthStencilAlpha {
     private GLSMDepthStencilAlpha() {}
 
     public static void glDepthFunc(int func) {
+        ctx().exitCapture.write(ExitStateCapture.DEPTH_FUNC);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordDepthFunc(func);
@@ -38,6 +39,7 @@ public final class GLSMDepthStencilAlpha {
     }
 
     public static void glDepthMask(boolean mask) {
+        ctx().exitCapture.writeDepthColor(ExitStateCapture.DEPTH_MASK);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordDepthMask(mask);
@@ -71,6 +73,7 @@ public final class GLSMDepthStencilAlpha {
     }
 
     public static void glAlphaFunc(int function, float reference) {
+        ctx().exitCapture.writeAlpha();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordAlphaFunc(function, reference);
@@ -287,6 +290,7 @@ public final class GLSMDepthStencilAlpha {
             }
             final DeferredAlphaHandler ah = GLSMHooks.alphaHandler;
             if (ah != null && ah.isAlphaTestLocked()) {
+                ctx().exitCapture.capability(GL11.GL_ALPHA_TEST, -1);
                 ctx().alphaTest.beforeModify();
                 ah.deferAlphaTestToggle(true);
             } else {
@@ -308,6 +312,7 @@ public final class GLSMDepthStencilAlpha {
             }
             final DeferredAlphaHandler ah = GLSMHooks.alphaHandler;
             if (ah != null && ah.isAlphaTestLocked()) {
+                ctx().exitCapture.capability(GL11.GL_ALPHA_TEST, -1);
                 ctx().alphaTest.beforeModify();
                 ah.deferAlphaTestToggle(false);
             } else {

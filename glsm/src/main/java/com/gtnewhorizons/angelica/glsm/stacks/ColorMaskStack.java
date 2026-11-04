@@ -43,6 +43,12 @@ public final class ColorMaskStack extends ColorMask implements CowStateStack<Col
         }
     }
 
+    public ColorMask readEffective(ColorMask out) {
+        out.set(this);
+        VanillaStateLayer.capture(vanillaLayer, out);
+        return out;
+    }
+
     @Override
     public boolean topSlotChanged() {
         return !cow.isEmpty() && !sameAs(stack[cow.top()]);

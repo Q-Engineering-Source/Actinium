@@ -54,6 +54,7 @@ public final class GLSMBlend {
     }
 
     public static void glBlendFunc(int srcFactor, int dstFactor) {
+        ctx().exitCapture.writeBlend();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordBlendFunc(srcFactor, dstFactor, srcFactor, dstFactor);
@@ -108,6 +109,7 @@ public final class GLSMBlend {
     }
 
     public static void glColorMask(boolean red, boolean green, boolean blue, boolean alpha) {
+        ctx().exitCapture.writeDepthColor(ExitStateCapture.COLOR_MASK);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordColorMask(red, green, blue, alpha);
@@ -183,6 +185,7 @@ public final class GLSMBlend {
             final boolean wasEnabled = ctx().blendMode.isEffectivelyEnabled();
             final DeferredBlendHandler bh = GLSMHooks.blendHandler;
             if (bh != null && bh.isBlendLocked()) {
+                ctx().exitCapture.capability(GL11.GL_BLEND, -1);
                 ctx().blendMode.beforeModify();
                 bh.deferBlendModeToggle(true);
             } else {
@@ -207,6 +210,7 @@ public final class GLSMBlend {
             final boolean wasEnabled = ctx().blendMode.isEffectivelyEnabled();
             final DeferredBlendHandler bh = GLSMHooks.blendHandler;
             if (bh != null && bh.isBlendLocked()) {
+                ctx().exitCapture.capability(GL11.GL_BLEND, -1);
                 ctx().blendMode.beforeModify();
                 bh.deferBlendModeToggle(false);
             } else {
@@ -255,6 +259,8 @@ public final class GLSMBlend {
         }
 
     public static void tryBlendFuncSeparate(int srcRgb, int dstRgb, int srcAlpha, int dstAlpha) {
+            final GLContextState glCtx = ctx();
+            glCtx.exitCapture.writeBlend();
             final RecordMode mode = DisplayListManager.getRecordMode();
             if (mode != RecordMode.NONE) {
                 DisplayListManager.recordBlendFunc(srcRgb, dstRgb, srcAlpha, dstAlpha);
