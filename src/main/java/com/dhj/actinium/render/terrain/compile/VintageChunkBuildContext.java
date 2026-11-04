@@ -34,6 +34,7 @@ import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.ChunkVertexEncode
 import dhj.embeddedt.embeddium.impl.util.QuadUtil;
 import org.lwjgl.opengl.GL11;
 import com.dhj.actinium.runtime.ActiniumRuntime;
+import com.dhj.actinium.compat.farmersfuturedelight.FarmersFutureDelightCompat;
 import com.dhj.actinium.texture.TextureMapExtension;
 import com.dhj.actinium.world.WorldSlice;
 import com.dhj.actinium.render.terrain.compile.light.LightDataCache;
@@ -118,19 +119,26 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         }
     }
 
-    public void beginVanillaBlockRender(BufferBuilder buffer, BlockPos pos, IBlockState state) {
+    public void beginVanillaBlockRender(BufferBuilder buffer, BlockPos pos, IBlockState state,
+                                        BlockRenderLayer layer) {
         if (!(buffer instanceof BufferBuilderExtension extension)) {
             return;
         }
 
-        int metadata = state.getBlock().getMetaFromState(state);
-        int effectiveMetadata = applyShaderStateBits(state, pos, metadata);
-        int shaderBlockId = resolveShaderBlockStateId(state.getBlock(), effectiveMetadata);
-        int nbtBlockId = resolveBlockNbtId(state, pos);
-        if (nbtBlockId != -1) {
-            shaderBlockId = nbtBlockId;
+        boolean waterloggedWater = FarmersFutureDelightCompat.usesWaterIdentity(state, layer);
+        Block shaderBlock = waterloggedWater ? Blocks.WATER : state.getBlock();
+        int shaderMetadata = waterloggedWater
+                ? 0
+                : applyShaderStateBits(state, pos, state.getBlock().getMetaFromState(state));
+        int shaderBlockId = resolveShaderBlockStateId(shaderBlock, shaderMetadata);
+        if (!waterloggedWater) {
+            int nbtBlockId = resolveBlockNbtId(state, pos);
+            if (nbtBlockId != -1) {
+                shaderBlockId = nbtBlockId;
+            }
         }
-        short renderType = state.getMaterial() == WATER || state.getMaterial() == LAVA
+        short renderType = waterloggedWater
+                || state.getMaterial() == WATER || state.getMaterial() == LAVA
                 ? ExtendedDataHelper.FLUID_RENDER_TYPE
                 : ExtendedDataHelper.BLOCK_RENDER_TYPE;
 

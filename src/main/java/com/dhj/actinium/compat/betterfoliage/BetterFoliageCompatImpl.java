@@ -58,7 +58,7 @@ public final class BetterFoliageCompatImpl implements BetterFoliageCompat {
         }
 
         BufferBuilder buffer = buildContext.getBufferForLayer(layer);
-        buildContext.beginVanillaBlockRender(buffer, pos, state);
+        buildContext.beginVanillaBlockRender(buffer, pos, state, layer);
         try {
             Hooks.renderWorldBlock(
                     Minecraft.getMinecraft().getBlockRendererDispatcher(),
