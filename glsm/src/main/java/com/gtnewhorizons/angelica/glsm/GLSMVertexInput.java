@@ -13,6 +13,7 @@ import org.lwjgl.opengl.GL11;
 
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.clientStateToVertexFlag;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ffpClientArrayPointer;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.isLegalVertexAttrib;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.texCoordConventional;
@@ -125,6 +126,7 @@ public final class GLSMVertexInput {
     }
 
     public static ByteBuffer glGetPointer(int pname, long result_size) {
+        rejectExitCapture();
         final int key = VAOManager.clientArrayField(pname, ctx().clientActiveTextureUnit);
         if ((key & ~0xFF) != VAOManager.FIELD_POINTER) return null;
         final VAOManager.Attrib a = ctx().vaos.conventional(key & 0xFF);
@@ -134,6 +136,7 @@ public final class GLSMVertexInput {
     }
 
     public static void glEnableClientState(int cap) {
+        rejectExitCapture();
         final int conv = VAOManager.pnameToConventional(cap, ctx().clientActiveTextureUnit);
         if (conv < 0) {
             warnOnce("client-state-" + cap, "glEnableClientState(0x{}) is not a client array GLSM tracks; ignoring", Integer.toHexString(cap));
@@ -145,6 +148,7 @@ public final class GLSMVertexInput {
     }
 
     public static void glDisableClientState(int cap) {
+        rejectExitCapture();
         final int conv = VAOManager.pnameToConventional(cap, ctx().clientActiveTextureUnit);
         if (conv < 0) {
             warnOnce("client-state-" + cap, "glDisableClientState(0x{}) is not a client array GLSM tracks; ignoring", Integer.toHexString(cap));
@@ -156,6 +160,7 @@ public final class GLSMVertexInput {
     }
 
     public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, long offset) {
+        rejectExitCapture();
         if (!isLegalVertexAttrib(index, size, type, stride, false)) return;
         if (ctx().vaos.setAttribute(index, size, type, normalized, stride, offset, ctx().boundVBO)) {
             RENDER_BACKEND.vertexAttribPointer(index, size, type, normalized, stride, offset);
@@ -183,21 +188,25 @@ public final class GLSMVertexInput {
     }
 
     public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, ByteBuffer pointer) {
+        rejectExitCapture();
         if (!isLegalVertexAttrib(index, size, type, stride, false)) return;
         ctx().vaos.setAttribute(index, size, type, normalized, stride, pointer, 0);
     }
 
     public static void glEnableVertexAttribArray(int index) {
+        rejectExitCapture();
         if (ctx().vaos.enableAttribute(index)) ctx().vaos.repointAttrib(index);
         RENDER_BACKEND.enableVertexAttribArray(index);
     }
 
     public static void glDisableVertexAttribArray(int index) {
+        rejectExitCapture();
         if (ctx().vaos.disableAttribute(index)) ctx().vaos.repointAttrib(index);
         if (!ctx().vaos.isAttribEnabled(index)) RENDER_BACKEND.disableVertexAttribArray(index);
     }
 
     public static void glBindVertexArray(int array) {
+        rejectExitCapture();
         if (DisplayListManager.isRecording()) {
             DisplayListManager.recordBindVAO(array);
             // Since the vao needs to be bound to do stuff like state setup & data upload, it'll still execute the bind call.
@@ -215,6 +224,7 @@ public final class GLSMVertexInput {
     }
 
     public static void glDeleteVertexArrays(int array) {
+        rejectExitCapture();
         final GLContextState glCtx = ctx();
         glCtx.vaos.onDeleteVertexArray(array);
         if (array == glCtx.boundVAO) {
@@ -325,6 +335,7 @@ public final class GLSMVertexInput {
         }
 
     public static void glVertexAttribIPointer(int index, int size, int type, int stride, long offset) {
+        rejectExitCapture();
             if (!isLegalVertexAttrib(index, size, type, stride, true)) return;
             if (ctx().vaos.setIntegerAttribute(index, size, type, stride, offset, ctx().boundVBO)) {
                 RENDER_BACKEND.vertexAttribIPointer(index, size, type, stride, offset);
@@ -332,6 +343,7 @@ public final class GLSMVertexInput {
         }
 
     public static void glVertexAttribIPointer(int index, int size, int type, int stride, ByteBuffer pointer) {
+        rejectExitCapture();
             if (!isLegalVertexAttrib(index, size, type, stride, true)) return;
             ctx().vaos.setIntegerAttribute(index, size, type, stride, pointer, 0);
         }
@@ -345,6 +357,7 @@ public final class GLSMVertexInput {
         }
 
     public static void glVertexAttribDivisor(int index, int divisor) {
+        rejectExitCapture();
             if (ctx().vaos.setDivisor(index, divisor)) RENDER_BACKEND.vertexAttribDivisor(index, divisor);
         }
 
@@ -459,6 +472,7 @@ public final class GLSMVertexInput {
         }
 
     public static boolean glIsVertexArray(int array) {
+        rejectExitCapture();
             return RENDER_BACKEND.isVertexArray(array);
         }
 
@@ -469,4 +483,14 @@ public final class GLSMVertexInput {
     public static int getBoundVAO() {
             return ctx().boundVAO;
         }
+
+    public static void glBindVertexBuffer(int bindingindex, int buffer, long offset, int stride) { rejectExitCapture(); RENDER_BACKEND.bindVertexBuffer(bindingindex, buffer, offset, stride); }
+
+    public static void glVertexAttribBinding(int attribindex, int bindingindex) { rejectExitCapture(); RENDER_BACKEND.vertexAttribBinding(attribindex, bindingindex); }
+
+    public static void glVertexAttribDivisorARB(int index, int divisor) { glVertexAttribDivisor(index, divisor); }
+
+    public static void glVertexAttribFormat(int attribindex, int size, int type, boolean normalized, int relativeoffset) { rejectExitCapture(); RENDER_BACKEND.vertexAttribFormat(attribindex, size, type, normalized, relativeoffset); }
+
+    public static void glVertexAttribIFormat(int attribindex, int size, int type, int relativeoffset) { rejectExitCapture(); RENDER_BACKEND.vertexAttribIFormat(attribindex, size, type, relativeoffset); }
 }

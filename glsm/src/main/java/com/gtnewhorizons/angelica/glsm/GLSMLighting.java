@@ -20,6 +20,7 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.glMaterialFront;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.isCachingEnabled;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.mod;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.putLightingInts;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import static com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs.getColor;
 
 public final class GLSMLighting {
@@ -27,6 +28,7 @@ public final class GLSMLighting {
     private GLSMLighting() {}
 
     public static void glGetMaterial(int face, int pname, FloatBuffer params) {
+        rejectExitCapture();
         final MaterialStateStack state;
         if (face == GL11.GL_FRONT) {
             state = ctx().frontMaterial;
@@ -56,6 +58,7 @@ public final class GLSMLighting {
     }
 
     public static void glGetLight(int light, int pname, FloatBuffer params) {
+        rejectExitCapture();
         final LightStateStack state = ctx().lightDataStates[light - GL11.GL_LIGHT0];
         switch (pname) {
             case GL11.GL_AMBIENT -> state.ambient.get(params.position(), params);
@@ -139,6 +142,7 @@ public final class GLSMLighting {
     }
 
     public static void glMaterialf(int face, int pname, float val) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordMaterialf(face, pname, val);
@@ -165,6 +169,7 @@ public final class GLSMLighting {
     }
 
     public static void glLight(int light, int pname, FloatBuffer params) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordLight(light, pname, params);
@@ -191,6 +196,7 @@ public final class GLSMLighting {
     }
 
     public static void glLight(int light, int pname, IntBuffer params) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             final float[] floatParams = new float[params.remaining()];
@@ -223,6 +229,7 @@ public final class GLSMLighting {
     }
 
     public static void glLightf(int light, int pname, float param) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordLightf(light, pname, param);
@@ -244,6 +251,7 @@ public final class GLSMLighting {
     }
 
     public static void glLighti(int light, int pname, int param) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordLighti(light, pname, param);
@@ -266,6 +274,7 @@ public final class GLSMLighting {
     }
 
     public static void glLightModel(int pname, FloatBuffer params) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordLightModel(pname, params);
@@ -285,6 +294,7 @@ public final class GLSMLighting {
     }
 
     public static void glLightModel(int pname, IntBuffer params) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             final float[] floatParams = new float[params.remaining()];
@@ -311,6 +321,7 @@ public final class GLSMLighting {
     }
 
     public static void glLightModelf(int pname, float param) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordLightModelf(pname, param);
@@ -332,6 +343,7 @@ public final class GLSMLighting {
     }
 
     public static void glLightModeli(int pname, int param) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordLightModeli(pname, param);
@@ -546,4 +558,55 @@ public final class GLSMLighting {
     public static MaterialStateStack getBackMaterial() {
             return ctx().backMaterial;
         }
+
+    public static void captureLighting(LightingSnapshot out) {
+        final GLContextState glCtx = ctx();
+        for (int i = 0; i < out.lights.length; i++) {
+            out.lightEnabled[i] = glCtx.lightStates[i].isEnabled();
+            out.lights[i].set(glCtx.lightDataStates[i]);
+        }
+        out.lightModel.set(glCtx.lightModel);
+        out.frontMaterial.set(glCtx.frontMaterial);
+        out.backMaterial.set(glCtx.backMaterial);
+        out.colorMaterial = glCtx.colorMaterial.isEnabled();
+        out.colorMaterialFace = glCtx.colorMaterialFace.getValue();
+        out.colorMaterialParameter = glCtx.colorMaterialParameter.getValue();
+        out.normalize = glCtx.normalizeState.isEnabled();
+        out.rescaleNormal = glCtx.rescaleNormalState.isEnabled();
+    }
+
+    public static void applyLighting(LightingSnapshot in) {
+        rejectExitCapture();
+        final GLContextState glCtx = ctx();
+        boolean changed = false;
+        for (int i = 0; i < in.lights.length; i++) {
+            glCtx.lightStates[i].setEnabled(in.lightEnabled[i]);
+            if (!glCtx.lightDataStates[i].sameAs(in.lights[i])) {
+                mod(glCtx.lightDataStates[i]).set(in.lights[i]);
+                changed = true;
+            }
+        }
+        if (!glCtx.lightModel.sameAs(in.lightModel)) {
+            mod(glCtx.lightModel).set(in.lightModel);
+            changed = true;
+        }
+        if (!glCtx.frontMaterial.sameAs(in.frontMaterial)) {
+            mod(glCtx.frontMaterial).set(in.frontMaterial);
+            changed = true;
+        }
+        if (!glCtx.backMaterial.sameAs(in.backMaterial)) {
+            mod(glCtx.backMaterial).set(in.backMaterial);
+            changed = true;
+        }
+        if (glCtx.colorMaterialFace.getValue() != in.colorMaterialFace || glCtx.colorMaterialParameter.getValue() != in.colorMaterialParameter) {
+            mod(glCtx.colorMaterialFace).setValue(in.colorMaterialFace);
+            mod(glCtx.colorMaterialParameter).setValue(in.colorMaterialParameter);
+            changed = true;
+        }
+
+        glCtx.colorMaterial.setEnabled(in.colorMaterial);
+        glCtx.normalizeState.setEnabled(in.normalize);
+        glCtx.rescaleNormalState.setEnabled(in.rescaleNormal);
+        if (changed) glCtx.lightingGeneration++;
+    }
 }

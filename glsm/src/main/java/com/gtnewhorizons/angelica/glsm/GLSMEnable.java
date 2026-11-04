@@ -32,6 +32,7 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.enableLighting;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.enableRescaleNormal;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.enableScissorTest;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.enableTexture;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.shouldBypassCache;
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
 
@@ -126,8 +127,7 @@ public final class GLSMEnable {
     }
 
     public static void glDisable(int cap) {
-        final RecordMode mode = DisplayListManager.getRecordMode();
-        if (mode != RecordMode.NONE) {
+        final RecordMode mode = DisplayListManager.getRecordMode();        if (mode != RecordMode.NONE) {
             DisplayListManager.recordDisable(cap);
             if (mode == RecordMode.COMPILE) {
                 return;
@@ -212,6 +212,7 @@ public final class GLSMEnable {
     }
 
     public static boolean glIsEnabled(int cap) {
+        rejectExitCapture();
         if (shouldBypassCache()) {
             return RENDER_BACKEND.getBoolean(cap);
         }
@@ -289,5 +290,25 @@ public final class GLSMEnable {
                 yield conv >= 0 ? ctx().vaos.isConventionalEnabled(conv) : RENDER_BACKEND.getBoolean(cap);
             }
         };
+    }
+
+    public static void glEnablei(int cap, int index) {
+        rejectExitCapture();
+        RENDER_BACKEND.enablei(cap, index);
+        markIndexedCapUnknown(cap);
+    }
+
+    public static void glDisablei(int cap, int index) {
+        rejectExitCapture();
+        RENDER_BACKEND.disablei(cap, index);
+        markIndexedCapUnknown(cap);
+    }
+
+    private static void markIndexedCapUnknown(int cap) {
+        if (cap == GL11.GL_BLEND) {
+            ctx().blendMode.setUnknownState();
+        } else if (cap == GL11.GL_SCISSOR_TEST) {
+            ctx().scissorTest.setUnknownState();
+        }
     }
 }

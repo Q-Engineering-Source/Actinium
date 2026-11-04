@@ -3,6 +3,7 @@ package com.gtnewhorizons.angelica.glsm;
 import com.gtnewhorizons.angelica.glsm.stacks.BooleanStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.IntegerStateStack;
 import org.lwjgl.opengl.ARBShaderObjects;
+import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
@@ -20,6 +21,7 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.BYPASS_CACHE;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.TEXTURE;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.TEXTURE_RENAMED;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.generateVertexShaderIfNeeded;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.initConfig;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.isCachingEnabled;
@@ -36,6 +38,7 @@ public final class GLSMPrograms {
     private GLSMPrograms() {}
 
     public static void glUseProgram(int program) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordUseProgram(program);
@@ -107,6 +110,7 @@ public final class GLSMPrograms {
     }
 
     public static void glShaderSource(int shader, CharSequence source) {
+        rejectExitCapture();
         String src = source.toString();
         // Always rename reserved words for the target GLSL version (e.g. 'sampler' at 460)
         src = GlslTransformUtils.renameReservedWords(src, RENDER_BACKEND.getMinGLSLVersion());
@@ -133,6 +137,7 @@ public final class GLSMPrograms {
     }
 
     public static void glLinkProgram(int program) {
+        rejectExitCapture();
         if (ShaderManager.getInstance().isEnabled()) {
             generateVertexShaderIfNeeded(program);
         }
@@ -142,6 +147,7 @@ public final class GLSMPrograms {
     }
 
     public static void glDeleteProgram(int program) {
+        rejectExitCapture();
         if (program == 0) return;
         CompatUniformManager.onDeleteProgram(program);
 
@@ -160,6 +166,7 @@ public final class GLSMPrograms {
     }
 
     public static void glCompileShader(int shader) {
+        rejectExitCapture();
         RENDER_BACKEND.compileShader(shader);
     }
 
@@ -170,58 +177,72 @@ public final class GLSMPrograms {
     }
 
     public static void glAttachShader(int program, int shader) {
+        rejectExitCapture();
         RENDER_BACKEND.attachShader(program, shader);
     }
 
     public static void glDeleteShader(int shader) {
+        rejectExitCapture();
         RENDER_BACKEND.deleteShader(shader);
     }
 
     public static void glBindAttribLocation(int program, int index, CharSequence name) {
+        rejectExitCapture();
         RENDER_BACKEND.bindAttribLocation(program, index, name);
     }
 
     public static int glGetShaderi(int shader, int pname) {
+        rejectExitCapture();
         return RENDER_BACKEND.getShaderi(shader, pname);
     }
 
     public static String glGetShaderInfoLog(int shader, int maxLength) {
+        rejectExitCapture();
         return RENDER_BACKEND.getShaderInfoLog(shader, maxLength);
     }
 
     public static String glGetShaderInfoLog(int shader) {
+        rejectExitCapture();
         return RENDER_BACKEND.getShaderInfoLog(shader);
     }
 
     public static void glGetShaderInfoLog(int shader, IntBuffer length, ByteBuffer infoLog) {
+        rejectExitCapture();
         RENDER_BACKEND.getShaderInfoLog(shader, length, infoLog);
     }
 
     public static void glGetShaderInfoLog(int shader, int[] length, ByteBuffer infoLog) {
+        rejectExitCapture();
         RENDER_BACKEND.getShaderInfoLog(shader, length, infoLog);
     }
 
     public static int glGetProgrami(int program, int pname) {
+        rejectExitCapture();
         return RENDER_BACKEND.getProgrami(program, pname);
     }
 
     public static String glGetProgramInfoLog(int program, int maxLength) {
+        rejectExitCapture();
         return RENDER_BACKEND.getProgramInfoLog(program, maxLength);
     }
 
     public static String glGetProgramInfoLog(int program) {
+        rejectExitCapture();
         return RENDER_BACKEND.getProgramInfoLog(program);
     }
 
     public static void glGetProgramInfoLog(int program, IntBuffer length, ByteBuffer infoLog) {
+        rejectExitCapture();
         RENDER_BACKEND.getProgramInfoLog(program, length, infoLog);
     }
 
     public static void glGetProgramInfoLog(int program, int[] length, ByteBuffer infoLog) {
+        rejectExitCapture();
         RENDER_BACKEND.getProgramInfoLog(program, length, infoLog);
     }
 
     public static int glGetUniformLocation(int program, CharSequence name) {
+        rejectExitCapture();
         int loc = RENDER_BACKEND.getUniformLocation(program, name);
         if (loc == -1 && TEXTURE.contentEquals(name)) {
             loc = RENDER_BACKEND.getUniformLocation(program, TEXTURE_RENAMED);
@@ -230,6 +251,7 @@ public final class GLSMPrograms {
     }
 
     public static int glGetUniformLocation(int program, ByteBuffer name) {
+        rejectExitCapture();
         int loc = RENDER_BACKEND.getUniformLocation(program, name);
         if (loc == -1 && isTextureBuffer(name)) {
             loc = RENDER_BACKEND.getUniformLocation(program, TEXTURE_RENAMED);
@@ -238,6 +260,7 @@ public final class GLSMPrograms {
     }
 
     public static int glGetAttribLocation(int program, CharSequence name) {
+        rejectExitCapture();
         int loc = RENDER_BACKEND.getAttribLocation(program, name);
         if (loc == -1 && TEXTURE.contentEquals(name)) {
             loc = RENDER_BACKEND.getAttribLocation(program, TEXTURE_RENAMED);
@@ -246,6 +269,7 @@ public final class GLSMPrograms {
     }
 
     public static int glGetAttribLocation(int program, ByteBuffer name) {
+        rejectExitCapture();
         int loc = RENDER_BACKEND.getAttribLocation(program, name);
         if (loc == -1 && isTextureBuffer(name)) {
             loc = RENDER_BACKEND.getAttribLocation(program, TEXTURE_RENAMED);
@@ -254,38 +278,47 @@ public final class GLSMPrograms {
     }
 
     public static void glUniform1f(int location, float v0) {
+        rejectExitCapture();
         RENDER_BACKEND.uniform1f(location, v0);
     }
 
     public static void glUniform2f(int location, float v0, float v1) {
+        rejectExitCapture();
         RENDER_BACKEND.uniform2f(location, v0, v1);
     }
 
     public static void glUniform3f(int location, float v0, float v1, float v2) {
+        rejectExitCapture();
         RENDER_BACKEND.uniform3f(location, v0, v1, v2);
     }
 
     public static void glUniform4f(int location, float v0, float v1, float v2, float v3) {
+        rejectExitCapture();
         RENDER_BACKEND.uniform4f(location, v0, v1, v2, v3);
     }
 
     public static void glUniform1i(int location, int v0) {
+        rejectExitCapture();
         RENDER_BACKEND.uniform1i(location, v0);
     }
 
     public static void glUniform2i(int location, int v0, int v1) {
+        rejectExitCapture();
         RENDER_BACKEND.uniform2i(location, v0, v1);
     }
 
     public static void glUniform3i(int location, int v0, int v1, int v2) {
+        rejectExitCapture();
         RENDER_BACKEND.uniform3i(location, v0, v1, v2);
     }
 
     public static void glUniformMatrix3(int location, boolean transpose, FloatBuffer matrices) {
+        rejectExitCapture();
         RENDER_BACKEND.uniformMatrix3(location, transpose, matrices);
     }
 
     public static void glUniformMatrix4(int location, boolean transpose, FloatBuffer matrices) {
+        rejectExitCapture();
         RENDER_BACKEND.uniformMatrix4(location, transpose, matrices);
     }
 
@@ -298,6 +331,7 @@ public final class GLSMPrograms {
     }
 
     public static void glGetActiveUniform(int program, int index, IntBuffer length, IntBuffer size, IntBuffer type, ByteBuffer name) {
+        rejectExitCapture();
         RENDER_BACKEND.getActiveUniform(program, index, length, size, type, name);
     }
 
@@ -315,6 +349,7 @@ public final class GLSMPrograms {
     }
 
     public static void nglShaderSource(int shader, int count, long strings, long lengths) {
+        rejectExitCapture();
             if (count <= 0) return;
             final CharSequence source;
             if (count == 1) {
@@ -328,26 +363,32 @@ public final class GLSMPrograms {
         }
 
     public static void glSpecializeShader(int shader, CharSequence entryPoint, IntBuffer constantIndex, IntBuffer constantValue) {
+        rejectExitCapture();
             RENDER_BACKEND.specializeShader(shader, entryPoint, constantIndex, constantValue);
         }
 
     public static void glDetachShader(int program, int shader) {
+        rejectExitCapture();
             RENDER_BACKEND.detachShader(program, shader);
         }
 
     public static void glValidateProgram(int program) {
+        rejectExitCapture();
             RENDER_BACKEND.validateProgram(program);
         }
 
     public static boolean glIsProgram(int obj) {
+        rejectExitCapture();
             return RENDER_BACKEND.isProgram(obj);
         }
 
     public static boolean glIsShader(int obj) {
+        rejectExitCapture();
             return RENDER_BACKEND.isShader(obj);
         }
 
     public static void glDeleteObjectARB(int obj) {
+        rejectExitCapture();
             if (RENDER_BACKEND.isShader(obj)) {
                 RENDER_BACKEND.deleteShader(obj);
             } else {
@@ -356,10 +397,12 @@ public final class GLSMPrograms {
         }
 
     public static int glGetHandleARB(int pname) {
+        rejectExitCapture();
             return pname == ARBShaderObjects.GL_PROGRAM_OBJECT_ARB ? GLSMQueries.glGetInteger(GL20.GL_CURRENT_PROGRAM) : RENDER_BACKEND.getInteger(pname);
         }
 
     public static void glGetObjectParameterARB(int obj, int pname, IntBuffer params) {
+        rejectExitCapture();
             final var backend = RENDER_BACKEND;
             if (backend.isShader(obj)) {
                 params.put(params.position(), backend.getShaderi(obj, pname));
@@ -369,21 +412,25 @@ public final class GLSMPrograms {
         }
 
     public static void glGetObjectParameterARB(int obj, int pname, FloatBuffer params) {
+        rejectExitCapture();
             final var backend = RENDER_BACKEND;
             params.put(params.position(), (float) (backend.isShader(obj) ? backend.getShaderi(obj, pname) : backend.getProgrami(obj, pname)));
         }
 
     public static int glGetObjectParameteriARB(int obj, int pname) {
+        rejectExitCapture();
             final var backend = RENDER_BACKEND;
             return backend.isShader(obj) ? backend.getShaderi(obj, pname) : backend.getProgrami(obj, pname);
         }
 
     public static String glGetInfoLogARB(int obj, int maxLength) {
+        rejectExitCapture();
             final var backend = RENDER_BACKEND;
             return backend.isShader(obj) ? backend.getShaderInfoLog(obj, maxLength) : backend.getProgramInfoLog(obj, maxLength);
         }
 
     public static void glGetInfoLogARB(int obj, IntBuffer length, ByteBuffer infoLog) {
+        rejectExitCapture();
             final var backend = RENDER_BACKEND;
             if (backend.isShader(obj)) {
                 backend.getShaderInfoLog(obj, length, infoLog);
@@ -393,14 +440,17 @@ public final class GLSMPrograms {
         }
 
     public static void glUniform4i(int location, int v0, int v1, int v2, int v3) {
+        rejectExitCapture();
             RENDER_BACKEND.uniform4i(location, v0, v1, v2, v3);
         }
 
     public static void glUniform1(int location, FloatBuffer values) {
+        rejectExitCapture();
             RENDER_BACKEND.uniform1fv(location, values);
         }
 
     public static void glUniform1(int location, IntBuffer values) {
+        rejectExitCapture();
             RENDER_BACKEND.uniform1iv(location, values);
         }
 
@@ -409,50 +459,62 @@ public final class GLSMPrograms {
         }
 
     public static void glUniform2(int location, FloatBuffer values) {
+        rejectExitCapture();
             RENDER_BACKEND.uniform2(location, values);
         }
 
     public static void glUniform2(int location, IntBuffer values) {
+        rejectExitCapture();
             RENDER_BACKEND.uniform2iv(location, values);
         }
 
     public static void glUniform3(int location, FloatBuffer values) {
+        rejectExitCapture();
             RENDER_BACKEND.uniform3(location, values);
         }
 
     public static void glUniform3(int location, IntBuffer values) {
+        rejectExitCapture();
             RENDER_BACKEND.uniform3iv(location, values);
         }
 
     public static void glUniform3(int location, float[] values) {
+        rejectExitCapture();
             RENDER_BACKEND.uniform3fv(location, values);
         }
 
     public static void glUniform4(int location, FloatBuffer values) {
+        rejectExitCapture();
             RENDER_BACKEND.uniform4(location, values);
         }
 
     public static void glUniform4(int location, IntBuffer values) {
+        rejectExitCapture();
             RENDER_BACKEND.uniform4iv(location, values);
         }
 
     public static void glUniform4(int location, float[] values) {
+        rejectExitCapture();
             RENDER_BACKEND.uniform4fv(location, values);
         }
 
     public static void glUniformMatrix2(int location, boolean transpose, FloatBuffer matrices) {
+        rejectExitCapture();
             RENDER_BACKEND.uniformMatrix2(location, transpose, matrices);
         }
 
     public static void glGetActiveAttrib(int program, int index, IntBuffer length, IntBuffer size, IntBuffer type, ByteBuffer name) {
+        rejectExitCapture();
             RENDER_BACKEND.getActiveAttrib(program, index, length, size, type, name);
         }
 
     public static void glGetActiveAttrib(int program, int index, int[] length, int[] size, int[] type, ByteBuffer name) {
+        rejectExitCapture();
             RENDER_BACKEND.getActiveAttrib(program, index, length, size, type, name);
         }
 
     public static String glGetActiveAttrib(int program, int index, int maxLength, IntBuffer sizeType) {
+        rejectExitCapture();
             return RENDER_BACKEND.getActiveAttrib(program, index, maxLength, sizeType);
         }
 
@@ -469,6 +531,7 @@ public final class GLSMPrograms {
         }
 
     public static void glGetAttachedShaders(int program, IntBuffer count, IntBuffer shaders) {
+        rejectExitCapture();
             RENDER_BACKEND.getAttachedShaders(program, count, shaders);
         }
 
@@ -477,6 +540,7 @@ public final class GLSMPrograms {
         }
 
     public static String glGetShaderSource(int shader, int maxLength) {
+        rejectExitCapture();
             return RENDER_BACKEND.getShaderSource(shader, maxLength);
         }
 
@@ -485,18 +549,22 @@ public final class GLSMPrograms {
         }
 
     public static void glGetShaderSource(int shader, IntBuffer length, ByteBuffer source) {
+        rejectExitCapture();
             RENDER_BACKEND.getShaderSource(shader, length, source);
         }
 
     public static void glGetShaderSource(int shader, int[] length, ByteBuffer source) {
+        rejectExitCapture();
             RENDER_BACKEND.getShaderSource(shader, length, source);
         }
 
     public static void glGetUniform(int program, int location, FloatBuffer params) {
+        rejectExitCapture();
             RENDER_BACKEND.getUniformfv(program, location, params);
         }
 
     public static void glGetUniform(int program, int location, IntBuffer params) {
+        rejectExitCapture();
             RENDER_BACKEND.getUniformiv(program, location, params);
         }
 
@@ -515,4 +583,30 @@ public final class GLSMPrograms {
     public static int getActiveProgram() {
             return ctx().activeProgram;
         }
+
+    public static void glBindFragDataLocation(int program, int colorNumber, CharSequence name) { rejectExitCapture(); RENDER_BACKEND.bindFragDataLocation(program, colorNumber, name); }
+
+    public static int glGetUniformBlockIndex(int program, CharSequence name) { rejectExitCapture(); return RENDER_BACKEND.getUniformBlockIndex(program, name); }
+
+    public static void glUniformBlockBinding(int program, int blockIndex, int binding) { rejectExitCapture(); RENDER_BACKEND.uniformBlockBinding(program, blockIndex, binding); }
+
+    public static void glProgramParameteri(int program, int pname, int value) {
+        rejectExitCapture();
+        RENDER_BACKEND.programParameteri(program, pname, value);
+    }
+
+    public static void glGetProgramBinary(int program, IntBuffer length, IntBuffer binaryFormat, ByteBuffer binary) {
+        rejectExitCapture();
+        RENDER_BACKEND.getProgramBinary(program, length, binaryFormat, binary);
+    }
+
+    public static void glProgramBinary(int program, int binaryFormat, ByteBuffer binary) {
+        rejectExitCapture();
+        RENDER_BACKEND.programBinary(program, binaryFormat, binary);
+        if (RENDER_BACKEND.getProgrami(program, GL20.GL_LINK_STATUS) == GL11.GL_TRUE) {
+            CompatUniformManager.onLinkProgram(program, CompatUniformManager.beforeLinkProgram(program));
+        }
+    }
+
+    public static void glDispatchCompute(int x, int y, int z) { rejectExitCapture(); RENDER_BACKEND.dispatchCompute(x, y, z); }
 }

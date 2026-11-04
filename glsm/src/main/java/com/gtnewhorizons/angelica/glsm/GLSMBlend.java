@@ -5,6 +5,8 @@ import com.gtnewhorizons.angelica.glsm.stacks.BlendStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.BooleanStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.Color4Stack;
 import com.gtnewhorizons.angelica.glsm.stacks.ColorMaskStack;
+import com.gtnewhorizons.angelica.glsm.states.ColorMask;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import com.gtnewhorizons.angelica.glsm.stacks.IntegerStateStack;
 import com.gtnewhorizons.angelica.glsm.states.BlendState;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
@@ -32,6 +34,7 @@ public final class GLSMBlend {
     private GLSMBlend() {}
 
     public static void glBlendColor(float red, float green, float blue, float alpha) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordBlendColor(red, green, blue, alpha);
@@ -89,6 +92,7 @@ public final class GLSMBlend {
     }
 
     public static void glBlendEquationSeparate(int modeRGB, int modeAlpha) {
+        rejectExitCapture();
         if (DisplayListManager.isRecording()) {
             throw new UnsupportedOperationException("glBlendEquationSeparate in display lists not yet implemented - if you see this, please report!");
         }
@@ -133,6 +137,7 @@ public final class GLSMBlend {
     }
 
     public static void glClearColor(float red, float green, float blue, float alpha) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordClearColor(red, green, blue, alpha);
@@ -154,6 +159,7 @@ public final class GLSMBlend {
     }
 
     public static void glLogicOp(int opcode) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordLogicOp(opcode);
@@ -232,6 +238,16 @@ public final class GLSMBlend {
             return ctx().blendState.readEffective(out);
         }
 
+    public static ColorMask getEffectiveColorMask(ColorMask out) {
+        return ctx().colorMask.readEffective(out);
+    }
+
+    public static void glBlendFuncSeparatei(int buf, int srcRGB, int dstRGB, int srcAlpha, int dstAlpha) {
+        rejectExitCapture();
+        RENDER_BACKEND.blendFuncSeparatei(buf, srcRGB, dstRGB, srcAlpha, dstAlpha);
+        ctx().blendState.setFuncUnknownState();
+    }
+
     public static void setHudCacheOverride(boolean enabled) {
             if (GLSMConfig.hudCacheOverride == enabled) return;
             GLSMConfig.hudCacheOverride = enabled;
@@ -243,6 +259,7 @@ public final class GLSMBlend {
         }
 
     public static void glBlendEquation(int mode) {
+        rejectExitCapture();
             if (DisplayListManager.isRecording()) {
                 throw new UnsupportedOperationException("glBlendEquation in display lists not yet implemented - if you see this, please report!");
             }

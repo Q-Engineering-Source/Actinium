@@ -14,6 +14,7 @@ import org.lwjgl.opengl.GL13;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.changeColor;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.changeSecondaryColor;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.setLightmapTextureCoords;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ub2f;
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
@@ -63,6 +64,7 @@ public final class GLSMCurrentAttribs {
     }
 
     public static void glSecondaryColor3f(float red, float green, float blue) {
+        rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordSecondaryColor(red, green, blue);
@@ -162,6 +164,12 @@ public final class GLSMCurrentAttribs {
             glCtx.unit23TexCoordSetDuringDraw = false;
             return v;
         }
+
+    public static boolean consumeUnit23TexCoordSetDuringDraw(GLContextState glCtx) {
+        boolean v = glCtx.unit23TexCoordSetDuringDraw;
+        glCtx.unit23TexCoordSetDuringDraw = false;
+        return v;
+    }
 
     public static void forceAttribDefaultsDirty() {
             final GLContextState glCtx = ctx();

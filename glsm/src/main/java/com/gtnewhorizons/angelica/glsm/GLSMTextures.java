@@ -58,6 +58,7 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.remapPixelTypeForGL
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.remapTexClamp;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.remapTypeForRemappedInternalFormat;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.requireContext;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.restorePixelPackBuffer;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.restorePixelUnpackBuffer;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.shouldBypassCache;
@@ -167,6 +168,7 @@ public final class GLSMTextures {
     }
 
     public static void glTexImage2D(int target, int level, int internalformat, int width, int height, int border, int format, int type, IntBuffer pixels) {
+        rejectExitCapture();
         internalformat = changeFormatIfDeprecated(internalformat);
         type = remapPixelTypeForGLES(format, type);
         type = remapTypeForRemappedInternalFormat(internalformat, type);
@@ -195,6 +197,7 @@ public final class GLSMTextures {
     }
 
     public static void glTexImage2D(int target, int level, int internalformat, int width, int height, int border, int format, int type, FloatBuffer pixels) {
+        rejectExitCapture();
         internalformat = changeFormatIfDeprecated(internalformat);
         type = remapPixelTypeForGLES(format, type);
         type = remapTypeForRemappedInternalFormat(internalformat, type);
@@ -218,6 +221,7 @@ public final class GLSMTextures {
     }
 
     public static void glTexImage2D(int target, int level, int internalformat, int width, int height, int border, int format, int type, DoubleBuffer pixels) {
+        rejectExitCapture();
         internalformat = changeFormatIfDeprecated(internalformat);
         type = remapPixelTypeForGLES(format, type);
         type = remapTypeForRemappedInternalFormat(internalformat, type);
@@ -241,6 +245,7 @@ public final class GLSMTextures {
     }
 
     public static void glTexImage2D(int target, int level, int internalformat, int width, int height, int border, int format, int type, ByteBuffer pixels) {
+        rejectExitCapture();
         internalformat = changeFormatIfDeprecated(internalformat);
         type = remapPixelTypeForGLES(format, type);
         type = remapTypeForRemappedInternalFormat(internalformat, type);
@@ -268,6 +273,7 @@ public final class GLSMTextures {
     }
 
     public static void glTexImage2D(int target, int level, int internalformat, int width, int height, int border, int format, int type, long pixels_buffer_offset) {
+        rejectExitCapture();
         internalformat = changeFormatIfDeprecated(internalformat);
         type = remapPixelTypeForGLES(format, type);
         type = remapTypeForRemappedInternalFormat(internalformat, type);
@@ -284,11 +290,13 @@ public final class GLSMTextures {
     }
 
     public static void glDeleteTextures(int id) {
+        rejectExitCapture();
         deferDeleteTexture(id);
         onDeleteTexture(id);
     }
 
     public static void glDeleteTextures(IntBuffer ids) {
+        rejectExitCapture();
         for (int i = 0; i < ids.remaining(); i++) {
             final int id = ids.get(ids.position() + i);
             deferDeleteTexture(id);
@@ -297,6 +305,7 @@ public final class GLSMTextures {
     }
 
     public static void glDeleteTextures(int[] ids) {
+        rejectExitCapture();
         for (int id : ids) {
             glDeleteTextures(id);
         }
@@ -334,6 +343,7 @@ public final class GLSMTextures {
     }
 
     public static void glTexParameter(int target, int pname, IntBuffer params) {
+        rejectExitCapture();
         if (handleRemovedTexParam(target, pname, params.remaining() >= 1 ? params.get(params.position()) : 0)) return;
         if (params.remaining() >= 1) {
             final int val = params.get(params.position());
@@ -347,6 +357,7 @@ public final class GLSMTextures {
     }
 
     public static void glTexParameter(int target, int pname, FloatBuffer params) {
+        rejectExitCapture();
         if (handleRemovedTexParam(target, pname, params.remaining() >= 1 ? (int) params.get(params.position()) : 0)) return;
         if (params.remaining() >= 1) {
             final float val = params.get(params.position());
@@ -360,6 +371,7 @@ public final class GLSMTextures {
     }
 
     public static void glTexParameteri(int target, int pname, int param) {
+        rejectExitCapture();
         if (handleRemovedTexParam(target, pname, param)) return;
         param = remapTexClamp(pname, param);
         final RecordMode mode = DisplayListManager.getRecordMode();
@@ -379,6 +391,7 @@ public final class GLSMTextures {
     }
 
     public static void glTexParameterf(int target, int pname, float param) {
+        rejectExitCapture();
         if (handleRemovedTexParam(target, pname, param > 0 ? (int) (param + 0.5f) : (int) (param - 0.5f))) return;
         param = remapTexClamp(pname, param);
         final RecordMode mode = DisplayListManager.getRecordMode();
@@ -398,6 +411,7 @@ public final class GLSMTextures {
     }
 
     public static int glGetTexParameteri(int target, int pname) {
+        rejectExitCapture();
         if (target != GL11.GL_TEXTURE_2D || shouldBypassCache()) {
             return RENDER_BACKEND.getTexParameteri(target, pname);
         }
@@ -405,6 +419,7 @@ public final class GLSMTextures {
     }
 
     public static int glGetTexLevelParameteri(int target, int level, int pname) {
+        rejectExitCapture();
         if (target != GL11.GL_TEXTURE_2D || shouldBypassCache()) {
             return RENDER_BACKEND.getTexLevelParameteri(target, level, pname);
         }
@@ -433,6 +448,7 @@ public final class GLSMTextures {
     }
 
     public static void glGetTexImage(int target, int level, int format, int type, ByteBuffer pixels) {
+        rejectExitCapture();
         if (RenderSystem.isGLES()) {
             getTexImageViaFboReadPixels(target, level, format, type, pixels);
             return;
@@ -443,6 +459,7 @@ public final class GLSMTextures {
     }
 
     public static void glGetTexImage(int target, int level, int format, int type, IntBuffer pixels) {
+        rejectExitCapture();
         if (RenderSystem.isGLES()) {
             getTexImageViaFboReadPixels(target, level, format, type, pixels);
             return;
@@ -463,6 +480,7 @@ public final class GLSMTextures {
     }
 
     public static void glTexSubImage2D(int target, int level, int xoffset, int yoffset, int width, int height, int format, int type, ByteBuffer pixels) {
+        rejectExitCapture();
         type = remapPixelTypeForGLES(format, type);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
@@ -489,6 +507,7 @@ public final class GLSMTextures {
     }
 
     public static void glTexSubImage2D(int target, int level, int xoffset, int yoffset, int width, int height, int format, int type, IntBuffer pixels) {
+        rejectExitCapture();
         type = remapPixelTypeForGLES(format, type);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
@@ -514,6 +533,7 @@ public final class GLSMTextures {
     }
 
     public static void glTexSubImage2D(int target, int level, int xoffset, int yoffset, int width, int height, int format, int type, long pixels_buffer_offset) {
+        rejectExitCapture();
         type = remapPixelTypeForGLES(format, type);
         if (DisplayListManager.isRecording()) {
             throw new UnsupportedOperationException("glTexSubImage2D with buffer offset in display lists not yet supported");
@@ -528,6 +548,7 @@ public final class GLSMTextures {
     }
 
     public static void glCopyTexImage2D(int target, int level, int internalFormat, int x, int y, int width, int height, int border) {
+        rejectExitCapture();
         if (DisplayListManager.isRecording()) {
             throw new UnsupportedOperationException("glCopyTexImage2D in display lists not yet implemented - if you see this, please report!");
         }
@@ -538,6 +559,7 @@ public final class GLSMTextures {
     }
 
     public static void glCopyTexSubImage2D(int target, int level, int xoffset, int yoffset, int x, int y, int width, int height) {
+        rejectExitCapture();
         if (DisplayListManager.isRecording()) {
             throw new UnsupportedOperationException("glCopyTexSubImage2D in display lists not yet implemented - if you see this, please report!");
         }
@@ -548,6 +570,7 @@ public final class GLSMTextures {
     }
 
     public static void glPixelStorei(int pname, int param) {
+        rejectExitCapture();
         if (DisplayListManager.isRecording()) {
             throw new UnsupportedOperationException("glPixelStorei in display lists not yet implemented - if you see this, please report!");
         }
@@ -564,6 +587,7 @@ public final class GLSMTextures {
     public static void glCopyImageSubData(int srcName, int srcTarget, int srcLevel, int srcX, int srcY, int srcZ,
                                            int dstName, int dstTarget, int dstLevel, int dstX, int dstY, int dstZ,
                                            int srcWidth, int srcHeight, int srcDepth) {
+        rejectExitCapture();
         recordGpuCommand(GpuCommandType.COPY_IMAGE_SUB_DATA, GpuCommandPhase.BEGIN, srcName, dstName);
         RENDER_BACKEND.copyImageSubData(srcName, srcTarget, srcLevel, srcX, srcY, srcZ,
             dstName, dstTarget, dstLevel, dstX, dstY, dstZ, srcWidth, srcHeight, srcDepth);
@@ -576,6 +600,7 @@ public final class GLSMTextures {
      * overloads, this must preserve the PBO binding so that offset zero is not a null CPU pointer.
      */
     public static void glGetTexImage(int target, int level, int format, int type, long pixelBufferOffset) {
+        rejectExitCapture();
         RENDER_BACKEND.getTexImage(target, level, format, type, pixelBufferOffset);
     }
 
@@ -685,6 +710,7 @@ public final class GLSMTextures {
         }
 
     public static boolean updateTexParameteriCache(int target, int texture, int pname, int param) {
+        rejectExitCapture();
             if (target != GL11.GL_TEXTURE_2D) {
                 return true;
             }
@@ -733,6 +759,7 @@ public final class GLSMTextures {
         }
 
     public static boolean updateTexParameterfCache(int target, int texture, int pname, float param) {
+        rejectExitCapture();
             if (target != GL11.GL_TEXTURE_2D) {
                 return true;
             }
@@ -757,6 +784,7 @@ public final class GLSMTextures {
         }
 
     public static float glGetTexParameterf(int target, int pname) {
+        rejectExitCapture();
             if (target != GL11.GL_TEXTURE_2D || shouldBypassCache()) {
                 return RENDER_BACKEND.getTexParameterf(target, pname);
             }
@@ -786,6 +814,7 @@ public final class GLSMTextures {
         }
 
     public static void glTexStorage2D(int target, int levels, int internalFormat, int width, int height) {
+        rejectExitCapture();
             int texture = getBoundTextureForGpuDiagnostics();
             recordGpuCommand(GpuCommandType.TEX_STORAGE_2D, GpuCommandPhase.BEGIN, texture, packDimensions(width, height));
             RENDER_BACKEND.texStorage2D(target, levels, internalFormat, width, height);
@@ -794,6 +823,7 @@ public final class GLSMTextures {
         }
 
     public static void glClearTexImage(int texture, int level, int format, int type, ByteBuffer data) {
+        rejectExitCapture();
             recordGpuCommand(GpuCommandType.CLEAR_TEX_IMAGE, GpuCommandPhase.BEGIN, texture, level);
             RENDER_BACKEND.clearTexImage(texture, level, format, type);
             recordGpuCommand(GpuCommandType.CLEAR_TEX_IMAGE, GpuCommandPhase.END, texture, level);
@@ -802,11 +832,98 @@ public final class GLSMTextures {
 
     public static int glGenSamplers() { return RENDER_BACKEND.genSamplers(); }
 
-    public static void glDeleteSamplers(int sampler) { RENDER_BACKEND.deleteSamplers(sampler); }
+    public static void glGenSamplers(IntBuffer samplers) {
+        requireContext("glGenSamplers");
+        for (int i = samplers.position(); i < samplers.limit(); i++) samplers.put(i, RENDER_BACKEND.genSamplers());
+    }
+
+    public static void glGenSamplers(int[] samplers) {
+        requireContext("glGenSamplers");
+        for (int i = 0; i < samplers.length; i++) samplers[i] = RENDER_BACKEND.genSamplers();
+    }
+
+    public static void glDeleteSamplers(int sampler) { rejectExitCapture(); RENDER_BACKEND.deleteSamplers(sampler); }
+
+    public static void glDeleteSamplers(IntBuffer samplers) {
+        for (int i = samplers.position(); i < samplers.limit(); i++) glDeleteSamplers(samplers.get(i));
+    }
+
+    public static void glDeleteSamplers(int[] samplers) {
+        for (int sampler : samplers) glDeleteSamplers(sampler);
+    }
 
     public static void glBindSampler(int unit, int sampler) { RENDER_BACKEND.bindSampler(unit, sampler); }
 
+    public static void glBindSamplers(int first, IntBuffer samplers) {
+        if (samplers != null) glBindSamplers(first, samplers.remaining(), samplers);
+    }
+
+    public static void glBindSamplers(int first, int count, IntBuffer samplers) {
+        if (samplers == null) {
+            for (int i = 0; i < count; i++) glBindSampler(first + i, 0);
+            return;
+        }
+        requireRemaining(samplers, count);
+        final int base = samplers.position();
+        for (int i = 0; i < count; i++) glBindSampler(first + i, samplers.get(base + i));
+    }
+
+    public static void glBindSamplers(int first, int[] samplers) {
+        if (samplers == null) return;
+        for (int i = 0; i < samplers.length; i++) glBindSampler(first + i, samplers[i]);
+    }
+
+    public static void glSamplerParameteri(int sampler, int pname, int param) { rejectExitCapture(); RENDER_BACKEND.samplerParameteri(sampler, pname, param); }
+
+    public static void glSamplerParameterf(int sampler, int pname, float param) { rejectExitCapture(); RENDER_BACKEND.samplerParameterf(sampler, pname, param); }
+
+    public static boolean glIsSampler(int sampler) { rejectExitCapture(); return RENDER_BACKEND.isSampler(sampler); }
+
+    public static boolean glIsTexture(int texture) { rejectExitCapture(); return !GLSMTextureLifetime.isDeferredDelete(texture) && RENDER_BACKEND.isTexture(texture); }
+
+    public static void glCreateTextures(int target, IntBuffer textures) {
+        for (int i = textures.position(); i < textures.limit(); i++) textures.put(i, glCreateTextures(target));
+    }
+
+    public static void glCreateTextures(int target, int[] textures) {
+        for (int i = 0; i < textures.length; i++) textures[i] = glCreateTextures(target);
+    }
+
+    public static void glBindTextures(int first, IntBuffer textures) {
+        if (textures != null) glBindTextures(first, textures.remaining(), textures);
+    }
+
+    public static void glBindTextures(int first, int count, IntBuffer textures) {
+        if (first < 0 || !isValidTextureUnit(first + count - 1, GL13.GL_TEXTURE0 + first + count - 1, "glBindTextures")) return;
+        if (textures != null) requireRemaining(textures, count);
+        for (int i = 0; i < count; i++) glBindTextureUnit(first + i, textures == null ? 0 : textures.get(textures.position() + i));
+    }
+
+    public static void glBindTextures(int first, int[] textures) {
+        if (textures != null) glBindTextures(first, textures.length, IntBuffer.wrap(textures));
+    }
+
+    public static void glBindMultiTextureEXT(int texunit, int target, int texture) {
+        if (DisplayListManager.isRecording()) throw new UnsupportedOperationException("glBindMultiTextureEXT in display lists not yet implemented");
+        if (!isValidTextureUnit(texunit - GL13.GL_TEXTURE0, texunit, "glBindMultiTextureEXT")) return;
+        final int saved = getActiveTextureUnit();
+        glActiveTexture(texunit);
+        glBindTexture(target, texture);
+        glActiveTexture(GL13.GL_TEXTURE0 + saved);
+    }
+
+    private static boolean isValidTextureUnit(int unit, int rawEnum, String function) {
+        if (unit >= 0 && unit < GLStateManager.MAX_TEXTURE_UNITS) return true;
+        warnOnce(function + rawEnum, "{}({}) is not a valid texture unit enum (expected GL_TEXTURE0..GL_TEXTURE{}); ignoring", function, rawEnum, GLStateManager.MAX_TEXTURE_UNITS - 1);
+        return false;
+    }
+
+    private static void requireRemaining(IntBuffer buffer, int count) {
+        if (buffer.remaining() < count) throw new IllegalArgumentException("Number of remaining buffer elements is " + buffer.remaining() + ", must be at least " + count);
+    }
+
     public static void glTexImage1D(int target, int level, int internalformat, int width, int border, int format, int type, ByteBuffer pixels) {
+        rejectExitCapture();
             internalformat = changeFormatIfDeprecated(internalformat);
             type = remapPixelTypeForGLES(format, type);
             type = remapTypeForRemappedInternalFormat(internalformat, type);
@@ -819,6 +936,7 @@ public final class GLSMTextures {
         }
 
     public static void glTexImage3D(int target, int level, int internalformat, int width, int height, int depth, int border, int format, int type, ByteBuffer pixels) {
+        rejectExitCapture();
             internalformat = changeFormatIfDeprecated(internalformat);
             type = remapPixelTypeForGLES(format, type);
             type = remapTypeForRemappedInternalFormat(internalformat, type);
@@ -834,6 +952,7 @@ public final class GLSMTextures {
         }
 
     public static void glTexImage3D(int target, int level, int internalformat, int width, int height, int depth, int border, int format, int type, IntBuffer pixels) {
+        rejectExitCapture();
             internalformat = changeFormatIfDeprecated(internalformat);
             type = remapPixelTypeForGLES(format, type);
             type = remapTypeForRemappedInternalFormat(internalformat, type);
@@ -849,6 +968,7 @@ public final class GLSMTextures {
         }
 
     public static void glTexSubImage1D(int target, int level, int xoffset, int width, int format, int type, ByteBuffer pixels) {
+        rejectExitCapture();
             if (DisplayListManager.isRecording()) {
                 throw new UnsupportedOperationException("glTexSubImage1D in display lists not yet implemented");
             }
@@ -858,6 +978,7 @@ public final class GLSMTextures {
         }
 
     public static void glTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, int type, ByteBuffer pixels) {
+        rejectExitCapture();
             if (DisplayListManager.isRecording()) {
                 throw new UnsupportedOperationException("glTexSubImage3D in display lists not yet implemented - if you see this, please report!");
             }
@@ -870,6 +991,7 @@ public final class GLSMTextures {
         }
 
     public static void glCopyTexImage1D(int target, int level, int internalFormat, int x, int y, int width, int border) {
+        rejectExitCapture();
             if (DisplayListManager.isRecording()) {
                 throw new UnsupportedOperationException("glCopyTexImage1D in display lists not yet implemented - if you see this, please report!");
             }
@@ -877,6 +999,7 @@ public final class GLSMTextures {
         }
 
     public static void glCopyTexSubImage1D(int target, int level, int xoffset, int x, int y, int width) {
+        rejectExitCapture();
             if (DisplayListManager.isRecording()) {
                 throw new UnsupportedOperationException("glCopyTexSubImage1D in display lists not yet implemented - if you see this, please report!");
             }
@@ -884,6 +1007,7 @@ public final class GLSMTextures {
         }
 
     public static void glCopyTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int x, int y, int width, int height) {
+        rejectExitCapture();
             if (DisplayListManager.isRecording()) {
                 throw new UnsupportedOperationException("glCopyTexSubImage3D in display lists not yet implemented - if you see this, please report!");
             }
@@ -903,6 +1027,7 @@ public final class GLSMTextures {
         }
 
     public static void glGenerateMipmap(int target) {
+        rejectExitCapture();
             recordGpuCommand(GpuCommandType.GENERATE_MIPMAP, GpuCommandPhase.BEGIN, getBoundTextureForGpuDiagnostics(), target);
             RENDER_BACKEND.generateMipmap(target);
             recordGpuCommand(GpuCommandType.GENERATE_MIPMAP, GpuCommandPhase.END, getBoundTextureForGpuDiagnostics(), target);
@@ -936,6 +1061,7 @@ public final class GLSMTextures {
         }
 
     public static void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) {
+        rejectExitCapture();
         // A deferred name cannot take an image binding until something binds it again, which reclaims it.
         if (GLSMTextureLifetime.isDeferredDelete(texture)) return;
         final GLContextState glCtx = ctx();

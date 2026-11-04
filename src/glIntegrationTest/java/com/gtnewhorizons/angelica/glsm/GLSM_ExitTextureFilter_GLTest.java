@@ -93,6 +93,22 @@ class GLSM_ExitTextureFilter_GLTest extends GLStateManagerIntegrationFixture {
         assertFalse(GLStateManager.finishExitCapture(state));
     }
 
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1, 2})
+    void textureParameterReadsAndWritesStillReject(int operation) {
+        final ExitState state = new ExitState();
+        GLStateManager.beginExitCapture(state);
+        save(false, false, 1);
+        switch (operation) {
+            case 0 -> GLSMTextures.glGetTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER);
+            case 1 -> GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+            case 2 -> GLSMTextures.glTexParameterf(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+            default -> throw new AssertionError();
+        }
+        restore();
+        assertFalse(GLStateManager.finishExitCapture(state));
+    }
+
     @Test
     void missingRestoreRejectsAndDoesNotAffectTheNextCapture() {
         final ExitState state = new ExitState();
