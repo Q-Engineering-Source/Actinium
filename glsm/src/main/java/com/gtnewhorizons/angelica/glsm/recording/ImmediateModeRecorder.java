@@ -4,6 +4,8 @@ import com.gtnewhorizon.gtnhlib.client.renderer.DirectTessellator;
 import com.gtnewhorizon.gtnhlib.client.renderer.TessellatorManager;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormatElement.Usage;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.GLTypes;
+import com.gtnewhorizons.angelica.glsm.QuadConverter;
 import com.gtnewhorizons.angelica.glsm.ffp.VAOManager;
 import com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities;
 import org.lwjgl.opengl.GL11;
@@ -15,6 +17,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
 import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
+
+import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memGetByte;
+import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memGetInt;
+import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memGetShort;
 
 /**
  * Records immediate mode GL calls (glBegin/glEnd/glVertex) via {@link DirectTessellator}.
@@ -208,6 +214,37 @@ public final class ImmediateModeRecorder {
             prepareReaders();
             if (positionReaderIndex < 0) return null;
             return readVerticesFromBuffer(mode, first, count);
+        } finally {
+            freeReadbackBuffers(readVBOCount);
+        }
+    }
+
+    /**
+     * Process a glDrawElements call during display list recording when the indices live in client memory.
+     * The index range is scanned first so only the vertex window the draw actually touches is read back.
+     */
+    public static DirectTessellator processDrawElementsFromAttribs(int mode, int count, int indexType, long indices) {
+        final long minMax = QuadConverter.scanMinMaxIndex(indices, indexType, count);
+        if (minMax == -1L) return null;
+        final int minVertex = (int) (minMax & 0xFFFFFFFFL);
+        final int maxVertex = (int) (minMax >>> 32);
+        final int readVBOCount = readbackAttribVBOs(minVertex, maxVertex - minVertex + 1);
+        try {
+            prepareReaders();
+            if (positionReaderIndex < 0) return null;
+            begin(mode);
+            final DirectTessellator t = tessellator();
+            final int indexSize = GLTypes.sizeBytes(indexType);
+            for (int i = 0; i < count; i++) {
+                final long at = indices + (long) i * indexSize;
+                final int vertex = switch (indexType) {
+                    case GL11.GL_UNSIGNED_BYTE -> memGetByte(at) & 0xFF;
+                    case GL11.GL_UNSIGNED_SHORT -> memGetShort(at) & 0xFFFF;
+                    default -> memGetInt(at);
+                };
+                readVertexFromBuffer(t, vertex);
+            }
+            return end();
         } finally {
             freeReadbackBuffers(readVBOCount);
         }

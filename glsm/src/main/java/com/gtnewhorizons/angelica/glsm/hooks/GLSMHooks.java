@@ -23,6 +23,8 @@ public final class GLSMHooks {
     public static DrawCallObserver drawCallObserver;
     public static ShaderWorkSubmitter shaderWorkSubmitter;
     public static ShaderTransformPostProcessor postTransformProcessor;
+    /** Host program that widens lines for shader-pack draws, used instead of the FFP line-quad path. */
+    public static LineDrawHandler lineDrawHandler;
     public static PerFrameUniformBlock perFrameUniformBlock;
     public static PerFrameUniformBlock perPassUniformBlock;
 

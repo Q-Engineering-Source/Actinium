@@ -97,7 +97,6 @@ public final class ShaderManager {
             final VertexKey vk = VertexKey.fromPacked(vkPacked);
             VertexShaderGenerator.generate(vk);
             FragmentShaderGenerator.generate(FragmentKey.fromPacked(fkScratch, fkLen));
-            GeometryShaderGenerator.generate(vk);
             final Class<?>[] touched = { Program.class, ShaderCache.class, TessellatorStreamingDrawer.class, QuadConverter.class };
             for (Class<?> c : touched) c.getName();
         } catch (Throwable t) {

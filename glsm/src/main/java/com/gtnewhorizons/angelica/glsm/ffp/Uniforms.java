@@ -138,7 +138,7 @@ public class Uniforms {
         }
 
         // Line emulation uniforms (wide lines and/or stipple)
-        if (program.getVertexKey().wideLineEmulation() || program.getVertexKey().lineStipple()) {
+        if (program.getVertexKey().lineQuads() || program.getVertexKey().lineStipple()) {
             uploadLineUniforms(program, uploaded);
         }
     }
