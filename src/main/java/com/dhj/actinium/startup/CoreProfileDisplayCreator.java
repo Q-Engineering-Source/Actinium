@@ -5,6 +5,7 @@ import com.dhj.actinium.debug.CoreProfileContextAttributes;
 import com.dhj.actinium.debug.OpenGlVersion;
 import com.gtnewhorizons.angelica.config.GLVersionChoice;
 import com.gtnewhorizons.angelica.config.SystemProperties;
+import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.backend.BackendOptions;
 import net.minecraftforge.common.ForgeEarlyConfig;
 import org.apache.logging.log4j.LogManager;
@@ -22,6 +23,11 @@ import org.lwjgl.opengl.PixelFormat;
  */
 public final class CoreProfileDisplayCreator {
     private static final Logger LOGGER = LogManager.getLogger("Celeritas");
+
+    /** Lowest core profile version Actinium runs on; the fallback scan cannot go below it. */
+    private static final int REQUIRED_MAJOR = RenderSystem.MIN_CORE_VERSION / 10;
+    private static final int REQUIRED_MINOR = RenderSystem.MIN_CORE_VERSION % 10;
+    private static final String REQUIRED_VERSION = REQUIRED_MAJOR + "." + REQUIRED_MINOR;
 
     private CoreProfileDisplayCreator() {
     }
@@ -51,14 +57,18 @@ public final class CoreProfileDisplayCreator {
         final GLVersionChoice requested = GLVersionChoice.of(requestedGlVersion(), macos ? 41 : 46);
         final int maxMajor = requested == GLVersionChoice.AUTO ? 4 : requested.version() / 10;
         final int maxMinor = requested == GLVersionChoice.AUTO ? (macos ? 1 : 6) : requested.version() % 10;
+        int maxProbe = maxMajor * 10 + maxMinor;
         Exception lastException = null;
         String lastRejection = null;
 
-        for (int major = maxMajor; major >= 3; --major) {
-            int startMinor = major == 4 ? maxMinor : 3;
-            int endMinor = major == 3 ? 3 : 0;
+        for (int major = maxMajor; major >= REQUIRED_MAJOR; --major) {
+            int startMinor = major == 4 ? maxMinor : REQUIRED_MINOR;
+            int endMinor = major == REQUIRED_MAJOR ? REQUIRED_MINOR : 0;
 
             for (int minor = startMinor; minor >= endMinor; --minor) {
+                // The configured version only narrows where the scan starts; a rejected context lowers
+                // the ceiling so the remaining versions are still probed downwards from it.
+                if (major * 10 + minor > maxProbe) continue;
                 // LWJGLXX ignores ContextAttribs and reads these fields instead, so keep them in sync on every platform.
                 CoreProfileContextAttributes.applyForgeEarlyCoreProfile(major, minor, lwjglDebug);
                 ContextAttribs attribs = CoreProfileContextAttributes.create(major, minor, lwjglDebug);
@@ -78,22 +88,28 @@ public final class CoreProfileDisplayCreator {
                 }
 
                 String actualVersionString = null;
+                int actualVersionPacked = -1;
                 OpenGlVersion actualVersion;
                 try {
                     actualVersionString = GL11.glGetString(GL11.GL_VERSION);
                     actualVersion = OpenGlVersion.parse(actualVersionString);
-                    if (!actualVersion.isAtLeast(3, 3)) {
+                    actualVersionPacked = actualVersion.major() * 10 + actualVersion.minor();
+                    if (!actualVersion.isAtLeast(REQUIRED_MAJOR, REQUIRED_MINOR)) {
                         throw new IllegalStateException(
-                            "OpenGL 3.3 or newer is required, but the created context reports " + actualVersion
+                            "OpenGL " + REQUIRED_VERSION + " or newer is required, but the created context reports "
+                                + actualVersion
                         );
                     }
                 } catch (RuntimeException e) {
                     boolean coreProfile = (GL11.glGetInteger(GL32.GL_CONTEXT_PROFILE_MASK)
                         & GL32.GL_CONTEXT_CORE_PROFILE_BIT) != 0;
                     String renderer = GL11.glGetString(GL11.GL_RENDERER);
-                    lastRejection = "requested OpenGL " + major + "." + minor + " core profile, driver returned \""
-                        + actualVersionString + "\" (core profile: " + coreProfile + ", GPU: " + renderer + ")";
+                    lastRejection = describeRejection(major, minor, actualVersionString, coreProfile, renderer);
                     lastException = createContextValidationFailure(e);
+                    maxProbe = Math.min(
+                        maxProbe,
+                        RenderSystem.probeCapAfterRejection(major * 10 + minor, actualVersionPacked)
+                    );
                     LOGGER.warn(
                         "Created requested OpenGL {}.{} core profile context, but actual GL_VERSION is unusable: {}",
                         major,
@@ -118,23 +134,53 @@ public final class CoreProfileDisplayCreator {
             }
         }
 
-        StringBuilder failureMessage = new StringBuilder(
-            "Actinium requires an OpenGL 3.3+ core profile context and could not create one."
+        final String failureMessage = describeFailure(lastRejection, lastException);
+        LOGGER.error("FATAL: {}", failureMessage);
+        throw new LWJGLException(failureMessage, lastException);
+    }
+
+    /**
+     * Assembles the startup failure text. Each part is only appended when the corresponding attempt
+     * recorded it, so a driver that never created a context reports its error alone.
+     *
+     * @param lastRejection description from {@link #describeRejection}, or null when no context was created
+     * @param lastException failure from the last attempt, or null when every attempt produced a context
+     */
+    static String describeFailure(String lastRejection, Exception lastException) {
+        final StringBuilder message = new StringBuilder(
+            "Actinium requires an OpenGL " + REQUIRED_VERSION + " core profile context and could not create one."
         );
         if (lastRejection != null) {
-            failureMessage.append(" Last driver answer: ").append(lastRejection).append('.');
+            message.append(" Last driver answer: ").append(lastRejection).append('.');
         }
         if (lastException != null) {
-            failureMessage.append(" Last error: ").append(lastException.getMessage()).append('.');
+            message.append(" Last error: ").append(lastException.getMessage()).append('.');
         }
-        failureMessage.append(" Update or install the GPU driver.");
-        LOGGER.error("FATAL: {}", failureMessage);
-        throw new LWJGLException(failureMessage.toString(), lastException);
+        return message.append(" Update or install the GPU driver.").toString();
+    }
+
+    /**
+     * Builds the driver-answer line quoted by the startup failure. It repeats the minimum version next to
+     * what the driver answered, because a report below the requirement is what makes the fallback scan
+     * skip versions that cannot work.
+     *
+     * @param driverVersion value of {@code GL_VERSION} on the created context, or null when unreadable
+     */
+    static String describeRejection(
+        int major,
+        int minor,
+        String driverVersion,
+        boolean coreProfile,
+        String renderer
+    ) {
+        return "requested OpenGL " + major + '.' + minor + " core profile, driver returned \"" + driverVersion
+            + "\" (core profile: " + coreProfile + ", GPU: " + renderer + "); OpenGL " + REQUIRED_VERSION
+            + " core or newer is required";
     }
 
     private static Exception createContextValidationFailure(RuntimeException e) {
         // Keep the return type as Exception so CleanMix can still resolve the lastException frame during transformation.
-        return new LWJGLException("Created context does not provide valid OpenGL 3.3+", e);
+        return new LWJGLException("Created context does not provide valid OpenGL " + REQUIRED_VERSION, e);
     }
 
     private static void createDisplay(PixelFormat format, ContextAttribs attribs) throws LWJGLException {
@@ -164,6 +210,20 @@ public final class CoreProfileDisplayCreator {
         if (raw.isEmpty()) {
             return BackendOptions.configGlVersion();
         }
+        final int parsed = parseGlProfile(raw);
+        if (parsed >= 0) {
+            return parsed;
+        }
+        LOGGER.warn("Ignoring unparsable angelica.glProfile value '{}'", raw);
+        return BackendOptions.configGlVersion();
+    }
+
+    /**
+     * Parses an {@code angelica.glProfile} value into the packed version the probe expects.
+     *
+     * @return the packed version, or -1 when the value is not a number or {@code major.minor} pair
+     */
+    static int parseGlProfile(String raw) {
         final int dot = raw.indexOf('.');
         try {
             if (dot < 0) {
@@ -173,8 +233,7 @@ public final class CoreProfileDisplayCreator {
             final String minorPart = raw.substring(dot + 1);
             return major * 10 + (minorPart.isEmpty() ? 0 : Integer.parseInt(minorPart));
         } catch (NumberFormatException e) {
-            LOGGER.warn("Ignoring unparsable angelica.glProfile value '{}'", raw);
-            return BackendOptions.configGlVersion();
+            return -1;
         }
     }
 }

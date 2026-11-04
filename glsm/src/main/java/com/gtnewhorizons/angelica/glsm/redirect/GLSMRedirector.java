@@ -845,6 +845,7 @@ public class GLSMRedirector {
             .add("glRenderbufferStorage")
             .add("glFramebufferRenderbuffer")
             .add("glBlitFramebuffer")
+            .add("glGenerateMipmap")
         );
         METHOD_REDIRECTS.put(EXT_FRAMEBUFFER_OBJECT, RedirectMap.newMap()
             .add("glBindFramebufferEXT", "glBindFramebuffer")
@@ -859,6 +860,7 @@ public class GLSMRedirector {
             .add("glGenRenderbuffersEXT", "glGenRenderbuffers")
             .add("glRenderbufferStorageEXT", "glRenderbufferStorage")
             .add("glFramebufferRenderbufferEXT", "glFramebufferRenderbuffer")
+            .add("glGenerateMipmapEXT", "glGenerateMipmap")
         );
         METHOD_REDIRECTS.put(ARB_OCCLUSION_QUERY, RedirectMap.newMap()
             .add("glGenQueriesARB", "glGenQueries")
@@ -1006,6 +1008,8 @@ public class GLSMRedirector {
             .add("gluBuild2DMipmaps")
             .add("gluErrorString")
         );
+        // Must honor disableErrorChecks like glGetError, or it throws on errors those checks left latched
+        METHOD_REDIRECTS.put("org/lwjgl/opengl/Util", RedirectMap.newMap().add("checkGLError"));
 
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL32C glFenceSync(II)J", "glFenceSync");
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL32C glClientWaitSync(JIJ)I", "glClientWaitSync");

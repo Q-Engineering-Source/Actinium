@@ -20,6 +20,7 @@ import dhj.embeddedt.embeddium.impl.gl.device.RenderDevice;
 import dhj.embeddedt.embeddium.impl.gl.tessellation.*;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.sorting.ChunkPrimitiveType;
 import dhj.embeddedt.embeddium.impl.render.chunk.data.SectionRenderDataStorage;
+import dhj.embeddedt.embeddium.impl.render.chunk.fog.FogService;
 import dhj.embeddedt.embeddium.impl.render.chunk.lists.ChunkRenderListIterable;
 import dhj.embeddedt.embeddium.impl.render.chunk.lists.ChunkRenderList;
 import dhj.embeddedt.embeddium.impl.render.chunk.multidraw.BatchAssembler;
@@ -68,8 +69,8 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
     private TerrainRenderPass currentRenderPass;
     private GlVertexFormat currentVertexFormat;
 
-    public DefaultChunkRenderer(RenderDevice device, RenderPassConfiguration<?> renderPassConfiguration) {
-        super(device, renderPassConfiguration);
+    public DefaultChunkRenderer(RenderDevice device, RenderPassConfiguration<?> renderPassConfiguration, FogService fogService) {
+        super(device, renderPassConfiguration, fogService);
 
         this.multiDrawMode = selectMultiDrawMode(device);
         this.sharedIndexBuffers = new Reference2ReferenceOpenHashMap<>();

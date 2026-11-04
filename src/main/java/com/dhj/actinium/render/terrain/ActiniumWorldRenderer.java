@@ -18,7 +18,6 @@ import dhj.embeddedt.embeddium.impl.render.chunk.ChunkRenderMatrices;
 import dhj.embeddedt.embeddium.impl.render.chunk.data.MinecraftBuiltRenderSectionData;
 import dhj.embeddedt.embeddium.impl.render.chunk.lists.ChunkRenderList;
 import dhj.embeddedt.embeddium.impl.render.chunk.lists.SortedRenderLists;
-import dhj.embeddedt.embeddium.impl.render.chunk.shader.ChunkShaderFogComponent;
 import dhj.embeddedt.embeddium.impl.render.chunk.terrain.TerrainRenderPass;
 import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.ChunkMeshFormats;
 import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.ChunkVertexType;
@@ -30,6 +29,7 @@ import dhj.embeddedt.embeddium.api.shader.ShaderProvider;
 import dhj.embeddedt.embeddium.api.shader.ShaderProviderHolder;
 import net.coderbot.iris.pipeline.ShadowRenderer;
 import com.dhj.actinium.compat.depthsupdate.DepthsUpdateCompat;
+import com.dhj.actinium.render.terrain.fog.GLStateManagerFogService;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
@@ -241,7 +241,7 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
 
         float pitch = viewEntity.rotationPitch;
         float yaw = viewEntity.rotationYaw;
-        float fogDistance = ChunkShaderFogComponent.FOG_SERVICE.getFogCutoff();
+        float fogDistance = GLStateManagerFogService.INSTANCE.getFogCutoff();
 
         return new CameraState(x, y, z, pitch, yaw, fogDistance);
     }

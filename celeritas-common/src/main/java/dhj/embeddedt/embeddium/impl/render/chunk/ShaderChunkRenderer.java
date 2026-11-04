@@ -8,6 +8,7 @@ import org.apache.logging.log4j.Logger;
 import dhj.embeddedt.embeddium.impl.gl.device.CommandList;
 import dhj.embeddedt.embeddium.impl.gl.device.RenderDevice;
 import dhj.embeddedt.embeddium.impl.gl.shader.*;
+import dhj.embeddedt.embeddium.impl.render.chunk.fog.FogService;
 import dhj.embeddedt.embeddium.impl.render.chunk.shader.*;
 import dhj.embeddedt.embeddium.impl.render.chunk.terrain.TerrainRenderPass;
 import dhj.embeddedt.embeddium.impl.render.shader.ShaderLoader;
@@ -34,8 +35,11 @@ public abstract class ShaderChunkRenderer implements ChunkRenderer {
 
     protected final boolean enableLegacyGLPatches;
 
-    public ShaderChunkRenderer(RenderDevice device, RenderPassConfiguration<?> renderPassConfiguration) {
+    protected final ChunkShaderEnvironment environment;
+
+    public ShaderChunkRenderer(RenderDevice device, RenderPassConfiguration<?> renderPassConfiguration, FogService fogService) {
         this.device = device;
+        this.environment = new ChunkShaderEnvironment(fogService);
         this.renderPassConfiguration = renderPassConfiguration;
         this.enableLegacyGLPatches = !LWJGL.isOpenGLVersionSupported(3, 2);
         if (this.enableLegacyGLPatches) {
@@ -111,7 +115,7 @@ public abstract class ShaderChunkRenderer implements ChunkRenderer {
             if (!this.enableLegacyGLPatches) {
                 builder.bindFragmentData("fragColor", ChunkShaderBindingPoints.FRAG_COLOR);
             }
-            return builder.link((shader) -> new DefaultChunkShaderInterface(shader, options));
+            return builder.link((shader) -> new DefaultChunkShaderInterface(shader, options, this.environment));
         } finally {
             loadedShaders.forEach(GlShader::delete);
         }
@@ -119,7 +123,7 @@ public abstract class ShaderChunkRenderer implements ChunkRenderer {
 
     protected List<ChunkShaderComponent.Factory<?>> getShaderComponents() {
         var componentFactories = new ArrayList<ChunkShaderComponent.Factory<?>>(4);
-        componentFactories.add(ChunkShaderFogComponent.FOG_SERVICE.getFogMode());
+        componentFactories.add(this.environment.fogService().getFogMode());
         return componentFactories;
     }
 

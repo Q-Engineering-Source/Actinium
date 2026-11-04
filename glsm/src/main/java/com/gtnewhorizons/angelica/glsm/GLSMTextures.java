@@ -909,7 +909,17 @@ public final class GLSMTextures {
             }
         }
 
-    public static void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) { RENDER_BACKEND.bindImageTexture(unit, texture, level, layered, layer, access, format); }
+    public static void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) {
+        final GLContextState glCtx = ctx();
+        final ImageUnitBinding binding = glCtx.imageUnits.get(unit);
+        if (binding == null) {
+            GLStateManager.LOGGER.warn("glBindImageTexture unit {} exceeds GL_MAX_IMAGE_UNITS {}", unit, glCtx.imageUnits.size());
+        } else {
+            binding.setBinding(texture, level, texture != 0 && layered, texture != 0 ? layer : 0, access, format);
+            if (texture != 0 && unit > glCtx.maxBoundImageUnit) glCtx.maxBoundImageUnit = unit;
+        }
+        RENDER_BACKEND.bindImageTexture(unit, texture, level, layered, layer, access, format);
+    }
 
     public static ImageUnitBinding getImageUnitBinding(int unit) {
             return ctx().imageUnits.get(unit);
