@@ -47,6 +47,17 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 > 返回 0；`./gradlew check --no-daemon` 通过，用户确认手持活塞与粘性活塞不再崩溃、火把动态光照仍在。
 > 修复 commit `1e3b7270`。
 
+> 2026-11-04 追加：Outlands 2026.11.04 起启动即崩溃，
+> `CoreProfileDisplayCreator.create` 读取 `ForgeEarlyConfig.OPENGL_VERSION_MAJOR` 抛 `NoSuchFieldError`。
+> 该版本把早期 OpenGL 字段改为 `openglVersionMajor` 等小写名并移出 `@Config`，其 SDL shim 完全按
+> `ContextAttribs` 创建上下文。修复为 `startup/ForgeEarlyGlConfig` 判断这些字段是否仍然存在，字段缺失时
+> 只走 attribs、不再读写配置。同一轮还修掉两处随后暴露的缺陷：`antlr4-runtime` 与
+> `glsl-transformation-lib` 改打进 jar 本体（`ContainedDeps` 的注入晚于 splash 线程首次编译着色器），以及
+> `StackIdAllocator` 改为按构造帧计数（首次上下文初始化嵌套构造把外层计数清成 -1，导致 4.6 请求被误判）。
+> Outlands 2026.11.05 + Foundation 1.0.3、Java 25.0.4.1、Windows 11、RTX 5070 Laptop（驱动 621.01）实测
+> 进入主菜单与世界，日志为 `Created OpenGL core profile context: requested=4.6 ... actual=4.6`、
+> `Max GLSL version: 4600`，详见 [docs/compat/outlands.md](compat/outlands.md)。
+
 > 2026-10-18 追加：Actinium 0.0.12 alpha + Cleanroom 0.6.13-alpha 下，Complementary Reimagined r5.9.3
 > 与 Derivative Main d24.4.14 手持火把完全没有动态光照。根因是 `ItemIrisMixin` 只把
 > `IrisItemLightProvider` 接口加到 `Item`，而 provider 默认恒返回 0；`IdMapUniforms` 因此每帧向

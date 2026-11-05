@@ -22,6 +22,12 @@ public interface WindowBackend {
     /** Returns and removes the dropped paths received since the previous poll. */
     List<String> pollDroppedFiles();
 
+    /** Returns the framebuffer width in pixels as the window currently has it. */
+    int framebufferWidth();
+
+    /** Returns the framebuffer height in pixels as the window currently has it. */
+    int framebufferHeight();
+
     /** Changes exclusive fullscreen state. Must be called on the Minecraft client/main thread. */
     void setExclusiveFullscreen(boolean fullscreen);
 }

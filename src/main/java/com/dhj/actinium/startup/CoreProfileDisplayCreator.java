@@ -1,13 +1,11 @@
 package com.dhj.actinium.startup;
 
 import com.dhj.actinium.debug.ActiniumStartupDebugConfig;
-import com.dhj.actinium.debug.CoreProfileContextAttributes;
 import com.dhj.actinium.debug.OpenGlVersion;
 import com.gtnewhorizons.angelica.config.GLVersionChoice;
 import com.gtnewhorizons.angelica.config.SystemProperties;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.backend.BackendOptions;
-import net.minecraftforge.common.ForgeEarlyConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.LWJGLException;
@@ -38,21 +36,24 @@ public final class CoreProfileDisplayCreator {
      * @throws LWJGLException if no attempted profile creates an OpenGL 3.3 or newer context
      */
     public static void create(PixelFormat format) throws LWJGLException {
-        final int originalMajor = ForgeEarlyConfig.OPENGL_VERSION_MAJOR;
-        final int originalMinor = ForgeEarlyConfig.OPENGL_VERSION_MINOR;
-        final boolean originalDebug = ForgeEarlyConfig.OPENGL_DEBUG_CONTEXT;
-        boolean lwjglDebug = ActiniumStartupDebugConfig.enableLwjglDebug();
+        final boolean lwjglDebug = ActiniumStartupDebugConfig.enableLwjglDebug();
+        final ForgeEarlyGlConfig forgeEarly = ForgeEarlyGlConfig.available() ? ForgeEarlyGlConfig.capture() : null;
         try {
-            createWithFallback(format, lwjglDebug);
+            createWithFallback(format, lwjglDebug, forgeEarly);
         } finally {
-            // LWJGLXX persists the requested profile while creating the context. Restore and sync the
-            // compatibility profile so later launches without Actinium keep Cleanroom's default path.
-            CoreProfileContextAttributes.restoreForgeEarlyCompatProfile(originalMajor, originalMinor, originalDebug);
-            CoreProfileContextAttributes.persistForgeEarlyCompatProfile();
+            // Display creation persists the requested profile while it builds the context. Restore and sync the
+            // compatibility profile so later launches without Actinium keep the loader's default path.
+            if (forgeEarly != null) {
+                forgeEarly.restoreAndPersist();
+            }
         }
     }
 
-    private static void createWithFallback(PixelFormat format, boolean lwjglDebug) throws LWJGLException {
+    private static void createWithFallback(
+        PixelFormat format,
+        boolean lwjglDebug,
+        ForgeEarlyGlConfig forgeEarly
+    ) throws LWJGLException {
         final boolean macos = LWJGLUtil.getPlatform() == LWJGLUtil.PLATFORM_MACOSX;
         final GLVersionChoice requested = GLVersionChoice.of(requestedGlVersion(), macos ? 41 : 46);
         final int maxMajor = requested == GLVersionChoice.AUTO ? 4 : requested.version() / 10;
@@ -69,12 +70,25 @@ public final class CoreProfileDisplayCreator {
                 // The configured version only narrows where the scan starts; a rejected context lowers
                 // the ceiling so the remaining versions are still probed downwards from it.
                 if (major * 10 + minor > maxProbe) continue;
-                // LWJGLXX ignores ContextAttribs and reads these fields instead, so keep them in sync on every platform.
-                CoreProfileContextAttributes.applyForgeEarlyCoreProfile(major, minor, lwjglDebug);
+                // Display shims that ignore ContextAttribs take the request from the loader configuration instead.
+                if (forgeEarly != null) {
+                    forgeEarly.apply(major, minor, lwjglDebug);
+                }
                 ContextAttribs attribs = CoreProfileContextAttributes.create(major, minor, lwjglDebug);
                 try {
                     createDisplay(format, attribs);
                 } catch (Exception e) {
+                    // The scan falls back by design, so only the first refusal is worth a line the default log shows:
+                    // it names the version and the reason the created context ends up older than the ceiling.
+                    if (lastException == null) {
+                        LOGGER.info(
+                            "Requested OpenGL {}.{} core profile context was refused (debug={})",
+                            major,
+                            minor,
+                            lwjglDebug,
+                            e
+                        );
+                    }
                     lastException = e;
                     LOGGER.debug(
                         "Failed to create requested OpenGL {}.{} core profile context (debug={})",

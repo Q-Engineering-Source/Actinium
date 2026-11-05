@@ -33,6 +33,16 @@ public final class GlfwWindowBackend implements WindowBackend {
     }
 
     @Override
+    public int framebufferWidth() {
+        return Display.getFramebufferWidth();
+    }
+
+    @Override
+    public int framebufferHeight() {
+        return Display.getFramebufferHeight();
+    }
+
+    @Override
     public void setExclusiveFullscreen(boolean fullscreen) {
         Display.setFullscreen(fullscreen);
     }

@@ -198,11 +198,18 @@ dependencies {
     testImplementation project(':celeritas-common')
     testImplementation project(':shader')
 
-    contain('org.taumc:glsl-transformation-lib:0.2.0-32.g7dd88a4-GTNH') {
+    // The shader transform libraries must exist in the jar body rather than as ContainedDeps jars: the font batcher
+    // compiles its first shader on the splash thread, which runs before a loader injects the jars bundled beside the
+    // mod file, so a ContainedDeps copy is resolved too late and the splash fails with NoClassDefFoundError.
+    implementation('org.taumc:glsl-transformation-lib:0.2.0-32.g7dd88a4-GTNH') {
         transitive = false
         exclude module: 'antlr4'
     }
-    contain 'org.antlr:antlr4-runtime:4.13.2'
+    implementation 'org.antlr:antlr4-runtime:4.13.2'
+    shadowBundle('org.taumc:glsl-transformation-lib:0.2.0-32.g7dd88a4-GTNH') {
+        transitive = false
+    }
+    shadowBundle 'org.antlr:antlr4-runtime:4.13.2'
 }
 
 def actiniumProjectAccessTransformer = propertyBool('use_access_transformer')
