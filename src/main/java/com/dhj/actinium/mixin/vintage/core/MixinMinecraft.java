@@ -5,9 +5,12 @@ import net.coderbot.iris.debug.flight.GlFlightStreamingSource;
 import com.dhj.actinium.gui.ActiniumWindowModeController;
 import com.dhj.actinium.render.BufferBuilderStreamingDrawer;
 import com.dhj.actinium.render.EndPortalCompositeRenderer;
+import com.dhj.actinium.render.frame.FramePacer;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.gtnewhorizons.angelica.glsm.GLSMTextureLifetime;
 import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mitchej123.lwjgl.LWJGLServiceProvider;
 import net.minecraft.client.Minecraft;
 import dhj.embeddedt.embeddium.impl.render.frame.RenderAheadManager;
@@ -71,6 +74,7 @@ public class MixinMinecraft {
         GlFlightRecording.beginStreamingSync(GlFlightStreamingSource.BUFFER_BUILDER);
         BufferBuilderStreamingDrawer.endFrame();
         GlFlightRecording.endStreamingSync(GlFlightStreamingSource.BUFFER_BUILDER);
+        FramePacer.beforePresent();
         GlFlightRecording.beginSwap();
     }
 
@@ -84,6 +88,36 @@ public class MixinMinecraft {
     )
     private void actinium$finishDisplaySwap(CallbackInfo ci) {
         GlFlightRecording.endSwap();
+    }
+
+    /**
+     * Replaces the unconditional {@code Thread.yield()} that follows presentation. The pacer decides the next frame's
+     * start time from the gate sample recorded around the swap, and calls the original yield only when it is not
+     * pacing the frame itself.
+     */
+    @WrapOperation(
+            method = "runGameLoop",
+            at = @At(value = "INVOKE", target = "Ljava/lang/Thread;yield()V", remap = false)
+    )
+    private void actinium$paceFrame(Operation<Void> original) {
+        final Minecraft minecraft = (Minecraft) (Object) this;
+        final int capHz = minecraft.isFramerateLimitBelowMax() ? minecraft.getLimitFramerate() : 0;
+        FramePacer.endFrame(capHz, null);
+        if (!FramePacer.pacedLastFrame()) {
+            original.call();
+        }
+    }
+
+    /**
+     * Drops the vanilla frame limiter. lwjglx implements it as a one-millisecond sleep followed by a yield loop, which
+     * stacks on top of the driver's vblank wait and adds jitter instead of bounding the frame rate.
+     */
+    @WrapOperation(
+            method = "runGameLoop",
+            at = @At(value = "INVOKE", target = "Lorg/lwjgl/opengl/Display;sync(I)V", remap = false)
+    )
+    private void actinium$skipVanillaFpsLimit(int fps, Operation<Void> original) {
+        // The pacer owns the cadence, so the vanilla limiter's sleep-and-yield loop is not called.
     }
 
     @Inject(method = "runGameLoop", at = @At("RETURN"))

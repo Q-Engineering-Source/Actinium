@@ -9,6 +9,7 @@ import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
 import com.gtnewhorizons.angelica.glsm.backend.GLDebugMessageListener;
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
+import com.gtnewhorizons.angelica.glsm.backend.VSyncMode;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GpuCheckpointTracker;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
@@ -1967,6 +1968,70 @@ public class GLStateManager {
         if (splashComplete) return;
         LOGGER.info("Splash complete (source={}, thread={})", source, Thread.currentThread().getName());
         markSplashComplete();
+    }
+
+    /** Presents the back buffer. Callers that take over the present path use this so the gate stays recorded. */
+    public static void swapBuffers() {
+        Display.swapBuffers();
+    }
+
+    /** Presents the frame and processes window events. */
+    public static void updateDisplay() {
+        updateDisplay(true);
+    }
+
+    /**
+     * Presents the frame and optionally processes window events.
+     *
+     * <p>The present call is timed and reported as the frame's gate. The frame pacer uses that sample to tell whether
+     * the driver blocks on vblank, how much of the wait still happens inside the swap call, and where the next frame
+     * should start. Event processing stays outside the timed region because it is not presentation work.
+     */
+    public static void updateDisplay(boolean processMessages) {
+        if (processMessages) {
+            RENDER_BACKEND.pumpDisplayMessages();
+        }
+        if (!RENDER_BACKEND.wantsDisplayUpdateGateTiming()) {
+            Display.update(false);
+            return;
+        }
+        final long start = System.nanoTime();
+        Display.update(false);
+        final long end = System.nanoTime();
+        RENDER_BACKEND.recordGate(end - start, end);
+        GLSMFramebuffer.armFirstClear();
+    }
+
+    public static void setVSyncEnabled(boolean enabled) {
+        RENDER_BACKEND.setVSyncEnabled(enabled);
+    }
+
+    public static void setVSyncMode(VSyncMode mode) {
+        RENDER_BACKEND.setVSyncMode(mode);
+    }
+
+    public static void setVSyncPreference(VSyncMode mode) {
+        RENDER_BACKEND.setVSyncPreference(mode);
+    }
+
+    public static boolean supportsVSyncMode(VSyncMode mode) {
+        return RENDER_BACKEND.supportsVSyncMode(mode);
+    }
+
+    public static VSyncMode preferredTearFreeMode() {
+        return RENDER_BACKEND.preferredTearFreeMode();
+    }
+
+    public static VSyncMode getEffectiveVSyncMode() {
+        return RENDER_BACKEND.getEffectiveVSyncMode();
+    }
+
+    public static long refreshPeriodNanos() {
+        return RENDER_BACKEND.refreshPeriodNanos();
+    }
+
+    public static void pumpDisplayMessages() {
+        RENDER_BACKEND.pumpDisplayMessages();
     }
 
     public static void glNewList(int list, int mode) { GLSMDraws.glNewList(list, mode); }

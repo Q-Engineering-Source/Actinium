@@ -12,6 +12,8 @@ import java.nio.ShortBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.locks.LockSupport;
+import java.util.function.Predicate;
 
 /**
  * Abstract rendering backend.
@@ -71,6 +73,210 @@ public abstract class RenderBackend {
 
     public abstract void flush();
     public abstract void finish();
+
+    private VSyncMode effectiveVSyncMode = VSyncMode.ON;
+    private VSyncMode preferredTearFreeMode;
+    private boolean vsyncHonored = true;
+
+    /** Applies the vsync state owned by {@code GameSettings.enableVsync}. */
+    public final void setVSyncEnabled(boolean enabled) {
+        setVSyncMode(enabled ? preferredTearFreeMode() : VSyncMode.OFF);
+    }
+
+    /**
+     * Requests a presentation mode and republishes the effective mode together with a new display generation, which
+     * tells the frame pacer to discard the samples it collected under the previous mode.
+     */
+    public final void setVSyncMode(VSyncMode preferred) {
+        setVSyncPreference(preferred);
+        final VSyncMode mode = applyVSyncMode(preferred);
+        vsyncHonored = applyHonored();
+        publishVSyncMode(mode);
+    }
+
+    /** Records the tear-free mode the user selected so a later {@link #setVSyncEnabled(boolean)} can restore it. */
+    public final void setVSyncPreference(VSyncMode preferred) {
+        if (preferred.tearFree()) preferredTearFreeMode = preferred;
+    }
+
+    /** Returns the tear-free mode to restore, falling back to {@link VSyncMode#ON} when the preference is unusable. */
+    public final VSyncMode preferredTearFreeMode() {
+        return resolveTearFreeMode(preferredTearFreeMode, this::supportsVSyncMode);
+    }
+
+    static VSyncMode resolveTearFreeMode(VSyncMode preferred, Predicate<VSyncMode> supported) {
+        if (preferred != null && preferred.tearFree() && supported.test(preferred)) return preferred;
+        return VSyncMode.ON;
+    }
+
+    /**
+     * Hands the requested presentation mode to the window system and returns the mode that is now in effect.
+     *
+     * <p>Window systems do not report when the driver policy overrides the request, so the return value describes what
+     * was asked for. Whether the driver actually blocks on presentation is decided from gate samples.
+     */
+    protected VSyncMode applyVSyncMode(VSyncMode preferred) {
+        final boolean vsync = preferred.tearFree();
+        WindowBackends.get().setSwapInterval(vsync);
+        return vsync ? VSyncMode.ON : VSyncMode.OFF;
+    }
+
+    /** Returns whether the window system reported that the requested swap interval took effect. */
+    protected boolean applyHonored() { return true; }
+
+    public final boolean vsyncHonored() { return vsyncHonored; }
+
+    /** Returns whether the window system can present with the given mode. GLFW only offers {@code OFF} and {@code ON}. */
+    public boolean supportsVSyncMode(VSyncMode mode) { return mode != VSyncMode.MAILBOX; }
+
+    protected final void publishVSyncMode(VSyncMode mode) {
+        effectiveVSyncMode = mode;
+        bumpDisplayGeneration();
+    }
+
+    public final VSyncMode getEffectiveVSyncMode() { return effectiveVSyncMode; }
+
+    private int displayGeneration;
+
+    /** Increments whenever the presentation mode or the measured refresh period changes. */
+    public final int displayGeneration() { return displayGeneration; }
+
+    protected final void bumpDisplayGeneration() { displayGeneration++; }
+
+    private static final long REFRESH_POLL_NANOS = 1_000_000_000L;
+    private static final long MIN_PLAUSIBLE_PERIOD_NANOS = 1_000_000L;
+    private static final long MAX_PLAUSIBLE_PERIOD_NANOS = 50_000_000L;
+
+    private long refreshPollNanos;
+    private long cachedRefreshPeriodNanos;
+
+    /**
+     * Returns the refresh period of the presenting display in nanoseconds, refreshed once per second, or zero when the
+     * window system cannot report a plausible value. A zero period disables refresh-aligned pacing.
+     */
+    public final long refreshPeriodNanos() {
+        final long now = System.nanoTime();
+        if (refreshPollNanos == 0L || now - refreshPollNanos >= REFRESH_POLL_NANOS) {
+            refreshPollNanos = now;
+            final long fresh = plausiblePeriodNanos(queryRefreshPeriodNanos());
+            if (fresh != cachedRefreshPeriodNanos) bumpDisplayGeneration();
+            cachedRefreshPeriodNanos = fresh;
+        }
+        return cachedRefreshPeriodNanos;
+    }
+
+    protected long queryRefreshPeriodNanos() { return WindowBackends.get().refreshPeriodNanos(); }
+
+    static long plausiblePeriodNanos(long periodNanos) {
+        return (periodNanos >= MIN_PLAUSIBLE_PERIOD_NANOS && periodNanos <= MAX_PLAUSIBLE_PERIOD_NANOS) ? periodNanos : 0L;
+    }
+
+    public static long periodFromRational(int numerator, int denominator, float fallbackHz) {
+        if (numerator > 0 && denominator > 0) {
+            final long scaledDenominator = 1_000_000_000L * denominator;
+            return (scaledDenominator + numerator / 2) / numerator;
+        }
+        return fallbackHz > 0.0f ? Math.round(1_000_000_000.0 / fallbackHz) : 0L;
+    }
+
+    private static final int[] TRUNCATED_NTSC_HZ = {23, 29, 59, 71, 119, 143, 239};
+
+    private static boolean isTruncatedNtscRate(int hz) {
+        for (int candidate : TRUNCATED_NTSC_HZ) {
+            if (candidate == hz) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Converts a whole-Hz refresh rate into a period. Rates reported truncated from a 1000/1001 NTSC base are expanded
+     * to the real period, so a 59Hz report becomes 16.683ms instead of 16.949ms and stays aligned with the vblank.
+     */
+    public static long periodFromIntegerHz(int hz) {
+        if (hz <= 0) return 0L;
+        if (isTruncatedNtscRate(hz)) {
+            final long denominator = (hz + 1) * 1000L;
+            return Math.round(1_000_000_000.0 * 1001 / denominator);
+        }
+        return Math.round(1_000_000_000.0 / hz);
+    }
+
+    public static int hzFromPeriod(long periodNanos) {
+        return periodNanos <= 0L ? 0 : (int) Math.round(1_000_000_000.0 / periodNanos);
+    }
+
+    /** Returns whether the backend's swapchain throttles presentation on its own. Only the SDL-GPU backend does. */
+    public boolean hasSwapchainBackpressure() { return false; }
+
+    /** One frame's presentation sample: how long the swap call blocked, when it returned, and GPU wait time. */
+    public static final class GateSample {
+        public long durationNanos;
+        public long endNanos;
+        public long gpuWaitNanos;
+    }
+
+    /**
+     * Keeps the longest gate of a frame, because a frame can present more than once when a shader pack renders to
+     * intermediate targets, and only the longest block reflects the driver's vblank alignment. The recorded end time
+     * belongs to that longest block so the pacer can anchor the next frame on a real presentation timestamp.
+     */
+    static final class GateRecorder {
+
+        private long gateDurationNanos;
+        private long gateEndNanos;
+        private long gpuWaitNanos;
+
+        synchronized void recordGate(long durationNanos, long endNanos) {
+            if (gateEndNanos != 0L && gateDurationNanos >= durationNanos) return;
+            gateDurationNanos = durationNanos;
+            gateEndNanos = endNanos;
+        }
+
+        synchronized void recordGpuWait(long nanos) {
+            gpuWaitNanos += nanos;
+        }
+
+        synchronized void readGateSample(GateSample out) {
+            final long end = gateEndNanos;
+            out.durationNanos = end == 0L ? 0L : gateDurationNanos;
+            out.endNanos = end;
+            out.gpuWaitNanos = gpuWaitNanos;
+            gpuWaitNanos = 0L;
+            gateEndNanos = 0L;
+        }
+    }
+
+    private final GateRecorder gateRecorder = new GateRecorder();
+
+    /** Returns whether the backend wants presentation timing attached to display updates. */
+    public boolean wantsDisplayUpdateGateTiming() { return true; }
+
+    /** Reports one presentation block. The longest block of the frame wins, see {@link GateRecorder}. */
+    public final void recordGate(long durationNanos, long endNanos) {
+        gateRecorder.recordGate(durationNanos, endNanos);
+    }
+
+    /** Reports time the main thread spent waiting for the GPU outside presentation. */
+    public final void recordGpuWait(long nanos) {
+        gateRecorder.recordGpuWait(nanos);
+    }
+
+    public final void readGateSample(GateSample out) {
+        gateRecorder.readGateSample(out);
+    }
+
+    /** Blocks until the next presentation slot when the backend has a way to wait for one. */
+    public void awaitPresent() {}
+
+    /** Sleeps the calling thread for the requested duration. Window systems with a better primitive override this. */
+    public void parkNanos(long nanos) {
+        LockSupport.parkNanos(nanos);
+    }
+
+    /** Processes pending window events without presenting, so input stays responsive while the pacer waits. */
+    public void pumpDisplayMessages() {
+        WindowBackends.get().pumpMessages();
+    }
 
     /**
      * Called by the frame loop before the first GL work of a frame. Consumes the splash state
