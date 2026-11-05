@@ -3,6 +3,7 @@ package com.dhj.actinium.render.terrain.compile.pipeline;
 import com.dhj.actinium.api.render.terrain.BlockQuadTransformerHolder;
 import com.dhj.actinium.compat.MissingModelCompat;
 import com.dhj.actinium.compat.componentmodelhider.ComponentModelHiderCompat;
+import com.dhj.actinium.compat.farmersfuturedelight.FarmersFutureDelightCompat;
 import net.coderbot.iris.debug.ShaderRegressionDebug;
 import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
@@ -83,6 +84,7 @@ public class VintageBlockRenderer {
     private int currentShaderMetadata;
     private int currentShaderBlockId;
     private BlockRenderLayer currentRenderLayer;
+    private boolean currentWaterloggedWater;
 
     private final BakedQuadGroupAnalyzer analyzer = new BakedQuadGroupAnalyzer();
 
@@ -99,6 +101,7 @@ public class VintageBlockRenderer {
     }
 
     public void resetSharedState() {
+        this.currentWaterloggedWater = false;
     }
 
     /**
@@ -107,7 +110,8 @@ public class VintageBlockRenderer {
      * translucent terrain into the fluid pass (#79).
      */
     protected Material resolveRenderMaterial(ChunkBuildBuffers buffers, IBlockState state, BlockRenderLayer layer) {
-        boolean isFluid = state.getMaterial() == WATER || state.getMaterial() == LAVA;
+        boolean isFluid = state.getMaterial() == WATER || state.getMaterial() == LAVA
+                || this.currentWaterloggedWater;
         return isFluid && layer == BlockRenderLayer.TRANSLUCENT
                 ? buffers.getRenderPassConfiguration().defaultFluidMaterial()
                 : buffers.getRenderPassConfiguration().getMaterialForRenderType(layer);
@@ -140,6 +144,7 @@ public class VintageBlockRenderer {
         this.currentShaderMetadata = applyShaderStateBits(state, pos, blockAccess, this.currentMetadata);
         state = state.getBlock().getExtendedState(state, blockAccess, pos);
         this.currentState = state;
+        this.currentWaterloggedWater = FarmersFutureDelightCompat.usesWaterIdentity(state, model, layer);
         this.currentShaderBlockId = resolveShaderBlockId(state, pos);
         this.currentRenderLayer = layer;
 
@@ -216,6 +221,7 @@ public class VintageBlockRenderer {
         this.currentShaderMetadata = 0;
         this.currentShaderBlockId = -1;
         this.currentRenderLayer = null;
+        this.currentWaterloggedWater = false;
     }
 
     private QuadLightData getVertexLight(LightPipeline lighter, BlockPos pos, EnumFacing cullFace, BakedQuadView quad) {
@@ -287,9 +293,11 @@ public class VintageBlockRenderer {
         }
 
         Block block = this.currentState.getBlock();
+        Block contextBlock = this.currentWaterloggedWater ? Blocks.WATER : block;
+        int contextMetadata = this.currentWaterloggedWater ? 0 : this.currentShaderMetadata;
         byte lightValue = (byte) this.currentState.getLightValue(this.currentBlockAccess, pos);
         boolean isFluid = isCurrentFluid();
-        int blockId = Block.getIdFromBlock(block);
+        int blockId = Block.getIdFromBlock(contextBlock);
         short renderType = isFluid
                 ? ExtendedDataHelper.FLUID_RENDER_TYPE
                 : ExtendedDataHelper.BLOCK_RENDER_TYPE;
@@ -308,7 +316,7 @@ public class VintageBlockRenderer {
                 lightValue
         );
         if (isFluid) {
-            encoder.prepareToRenderFluid(this.blockRenderContext, block, this.currentShaderMetadata, lightValue);
+            encoder.prepareToRenderFluid(this.blockRenderContext, contextBlock, contextMetadata, lightValue);
         } else {
             encoder.prepareToRenderBlock(this.blockRenderContext, block, this.currentShaderMetadata, renderType, lightValue);
             if (this.currentShaderBlockId != -1) {
@@ -319,7 +327,9 @@ public class VintageBlockRenderer {
     }
 
     private boolean isCurrentFluid() {
-        return this.currentState.getMaterial() == WATER || this.currentState.getMaterial() == LAVA;
+        return this.currentWaterloggedWater
+                || this.currentState.getMaterial() == WATER
+                || this.currentState.getMaterial() == LAVA;
     }
 
     private int applyShaderStateBits(IBlockState state, BlockPos pos, ActiniumBlockAccess blockAccess, int metadata) {

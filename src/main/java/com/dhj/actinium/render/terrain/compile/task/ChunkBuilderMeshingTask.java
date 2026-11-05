@@ -32,6 +32,7 @@ import dhj.embeddedt.embeddium.api.shader.ShaderProvider;
 import dhj.embeddedt.embeddium.api.shader.ShaderProviderHolder;
 import com.dhj.actinium.compat.architecturecraft.ArchitectureCraftCompat;
 import com.dhj.actinium.compat.componentmodelhider.ComponentModelHiderCompat;
+import com.dhj.actinium.compat.farmersfuturedelight.FarmersFutureDelightCompat;
 import com.dhj.actinium.compat.fluidlogged.FluidloggedCompat;
 import com.dhj.actinium.compat.snowrealmagic.SnowRealMagicCompat;
 import com.dhj.actinium.runtime.ActiniumRuntime;
@@ -147,7 +148,7 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                                     buildContext.getBlockRenderer().renderBlock(blockState, blockPos, slice, layer, false);
                                 } else {
                                     var buffer = buildContext.getBufferForLayer(layer);
-                                    buildContext.beginVanillaBlockRender(buffer, blockPos, blockState);
+                                    buildContext.beginVanillaBlockRender(buffer, blockPos, blockState, layer);
                                     try {
                                         dispatcher.renderBlock(blockState, blockPos, slice, buffer);
                                     } finally {
@@ -156,7 +157,8 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                                 }
                             } else {
                                 for (net.minecraft.util.BlockRenderLayer layer : VintageChunkBuildContext.LAYERS) {
-                                    if (block.canRenderInLayer(blockState, layer)) {
+                                    if (block.canRenderInLayer(blockState, layer)
+                                            || FarmersFutureDelightCompat.shouldForceTranslucentLayer(blockState, layer)) {
                                         ForgeHooksClient.setRenderLayer(layer);
                                         if (blockState.getRenderType() == EnumBlockRenderType.MODEL && ActiniumRuntime.options().performance.useFastBlockRenderer
                                                 && !SnowRealMagicCompat.shouldForceVanillaRender(block)
@@ -164,7 +166,7 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                                             buildContext.getBlockRenderer().renderBlock(blockState, blockPos, slice, layer);
                                         } else {
                                             var buffer = buildContext.getBufferForLayer(layer);
-                                            buildContext.beginVanillaBlockRender(buffer, blockPos, blockState);
+                                            buildContext.beginVanillaBlockRender(buffer, blockPos, blockState, layer);
                                             try {
                                                 dispatcher.renderBlock(blockState, blockPos, slice, buffer);
                                             } finally {

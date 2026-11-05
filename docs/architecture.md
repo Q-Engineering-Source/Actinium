@@ -121,6 +121,9 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
 - **DH 兼容**：Distant Horizons 自行完成 Actinium/Iris 集成（Iris 侧接管见 `shader` 子项目的
   `net.coderbot.iris.compat.dh`）。Actinium 不注入 DH，也不持有 DH 的 Iris 访问器或延迟 LOD
   开关（见 `docs/compat/dh.md`）。
+- **`compat/farmersfuturedelight/`**：`FarmersFutureDelightCompat` —— 含水方块识别（`waterlogged`
+  属性、`Material.WATER` 方块、水面模型类名）与 translucent 层判定，供 mesher 与
+  `VintageBlockRenderer` 把含水方块的水面按水身份与 fluid 材质写出。
 - **`compat/fluidlogged/`**：`FluidloggedCompat`、`FluidStateStorage`、`FluidloggedBlockAccess`
   —— 流体方块状态存取，供区块克隆离线读取。
 - **`compat/gibbed/`**：`ActiniumModelRenderer` —— Gibbed 尸块渲染模型扩展。

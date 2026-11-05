@@ -1,6 +1,6 @@
 # Actinium 兼容性矩阵
 
-最后更新：2026-11-02。
+最后更新：2026-11-05。
 
 状态定义：`已验证` 表示在记录的版本和场景中通过；`部分` 表示能运行但存在已知缺口；
 `无法启用` 表示光影包不能成功开启；`未验证` 不代表不兼容。更新记录时必须填写 Actinium commit、
@@ -8,6 +8,20 @@
 
 本轮验证环境：Actinium `30c7ffb`、Java 25.0.3、Cleanroom 0.5.12-alpha、Distant Horizons 3.1.2-b、
 Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
+
+> 2026-11-04 追加：Farmers-Future-Delight 的含水方块在光影下按承载方块材质渲染（水面没有波浪/反射/
+> 折射，包侧的水下雾与水体合成不生效）已做兼容——模组自有方块在含水时 `getMaterial` 返回
+> `Material.WATER`，水面 quads 由 `WaterloggedPlantBakedModel` 只在 TRANSLUCENT 层输出；模组在
+> OptiFine 下靠替换 `ShadersVertexBuilder.pushEntity` 的方块状态让水面带上水的 `mc_Entity`，
+> 并靠替换 `RenderChunk.canRenderInLayer` 让携带注入属性的原版方块进入 TRANSLUCENT 层，这两处
+> 在 Actinium 的区块管线里都不存在。修复新增 `compat/farmersfuturedelight`（`Mods` 门控、
+> 不引用模组类）：mesher 层判定补上含水方块的 TRANSLUCENT 层，`VintageBlockRenderer` 与
+> `VintageChunkBuildContext.beginVanillaBlockRender` 在该层按水写出（水的 block id、fluid
+> renderType、fluid 材质，光照仍取承载方块）。`./gradlew check` 通过，2026-11-05 用户在
+> Cleanroom 0.6.13-alpha + Java 25.0.4.1 的整合包实例复测确认（Actinium `ef89ffd9`、
+> Farmers-Future-Delight 1.5.1、Complementary Unbound r5.9.3 与 MakeUp-UltraFast 9.4c、
+> RTX 5070 Laptop / 驱动 621.01、Windows 11），详见
+> [docs/compat/farmersfuturedelight.md](compat/farmersfuturedelight.md)。
 
 > 2026-10-17 追加：AE2 Unofficial Extended Life 0.56.6 的已供电 ME 控制器彩色光效随距离变淡、
 > 最终"像没通电"（issue #191）已修复并由用户实机确认——控制器是 `BlockRenderLayer.CUTOUT`，
@@ -349,6 +363,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 | GalaxySpace（AsmodeusCore 天空） | 已验证 | 无（glsm 核心颜色语义修复，非模组接入） | `dev_1.12.2` 分支 + AsmodeusCore 1.0.4（issue #164）：夜晚 Overworld 自定义 skybox 发白、银河贴图呈灰块已修复——`SkyProviderBase#render` 以 `glColor3f(skyColor - playerY/400)` 画天球，夜晚为负值，GLSM `changeColor` 未按 GL 规范钳到 [0,1]，FFP `sanitizeUniformColor` 把负色误判为 dirty sentinel 洗成白色；修复为入口 `Color4.clamp01`，`./gradlew check` 通过，用户实机确认夜晚天空恢复正常、白天与 JourneyMap 网格/GUI 字体颜色无回归，详见 [docs/compat/galaxyspace.md](compat/galaxyspace.md) |
 | Goslingcord（Emojicord fork） | 已验证 | 无侵入（检测到 `emojicord` 时字体批处理器整体让位，`Mods.EMOJICORD` 门控） | 2.1.1（CurseForge 1207865:7269343，issue #204）：emoji 选择面板文字全部乱码已修复——Goslingcord 用 ASM 把 emoji 替换织入 vanilla `FontRenderer` 本体的 `renderStringAtPos`/`renderChar`/`getCharWidth`（`\u0000` 占位符 + 每字符绑定 emoji 纹理），而 `MixinFontRenderer` 在 `drawString`/`renderString` HEAD 改走 `BatchingFontRenderer` 绕过这些方法，占位符被当普通字符从字体图集随机取格；渲染器类名不变故无法按类名让位，改为按模组存在性整体让位（同 NeoFontRender）；实机确认面板/聊天 emoji 与文字正常，开/关光影无回归，详见 [docs/compat/goslingcord.md](compat/goslingcord.md) |
 | FindMe | 已验证 | 无侵入（延迟粒子批处理捕获并回放深度测试开关，刷新后恢复入口状态） | 1.1.0-8 + HEI 4.35.0（issue #202）：无光影时箱子定位粒子几乎不可见的问题已修复；原因为 FindMe 临时关闭深度测试的绘制被延迟到其重新开启深度测试后执行，而批处理遗漏了该状态。用户实机验证通过，详见 [docs/compat/findme.md](compat/findme.md) |
+| Farmers-Future-Delight | 已验证 | 兼容门控（`compat/farmersfuturedelight`：mesher 补含水方块的 translucent 层，含水渲染按水身份与 fluid 材质写出） | 含水方块的水面在光影下按承载方块材质渲染（没有波浪/反射/折射，包侧水下雾与水体合成不生效）：模组的水面 quads 只在 TRANSLUCENT 层输出，而它让原版方块进入该层、让水面带上水的 `mc_Entity` 各靠一处 OptiFine 侧 ASM，Actinium 的区块管线都不经过；识别依据为 `waterlogged` 属性、`Material.WATER` 与水面模型类名，不引用模组类。1.5.1 已由用户实机确认（Actinium `ef89ffd9`、Complementary Unbound r5.9.3 与 MakeUp-UltraFast 9.4c，2026-11-05）；stored-fluid 路径与非水流体见 [docs/compat/farmersfuturedelight.md](compat/farmersfuturedelight.md) |
 
 ## 验证记录模板
 
