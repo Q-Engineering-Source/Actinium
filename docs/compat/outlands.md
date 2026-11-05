@@ -55,9 +55,25 @@ Actinium 编译时绑定的是 Cleanroom 的大写字段名，运行到新版 Ou
 `CoreProfileContextAttributes` 与 `CoreProfileDisplayCreator` 一并归入 `startup` 包，`debug` 只保留诊断配置与
 `OpenGlVersion` 解析。
 
+## 后续暴露的两个问题
+
+字段问题修掉后，Outlands 上又暴露两处与显示无关的缺陷，都已在同一分支修掉：
+
+- **内嵌库注入时机**：`antlr4-runtime` 与 `glsl-transformation-lib` 原本以 `ContainedDeps` 分发，
+  加载器把它们解压到 `mods/<mcversion>/` 之后才注入 classpath，而 splash 线程已经先用字体批处理编译了
+  着色器，于是启动即 `NoClassDefFoundError: org/antlr/v4/runtime/CharStream`。改为通过 `shadowBundle`
+  打进 jar 本体后，类随 mod jar 一起进入 classpath，不再依赖注入顺序。
+- **栈 ID 计数**：首次 glsm 上下文初始化在 `Display.create` 内部进行时会嵌套构造另一个上下文状态，
+  `StackIdAllocator` 的全局计数游标被嵌套帧清成 `-1`，外层 `endContext()` 抛
+  `stack id count changed across contexts: 421 -> -1`。回退到下一个版本恰好绕开这段，看起来像"4.6 不被
+  支持"。改为每个 `beginContext()` 帧独立计数后，4.6 core 直接创建成功。
+
 ## 验证
 
-- `./gradlew compileJava --no-daemon`、`./gradlew check --no-daemon`、`./gradlew build --no-daemon` 通过。
-- 产物 `Actinium-alpha-0.0.14-8169f5c6.jar` 交给用户在 `outlands-2026.11.04-local`（Outlands 2026.11.04、
-  Java 25.0.1、Windows 11）实机启动：判据是越过大写字段读取、日志出现
-  `Created OpenGL core profile context: ...` 并进入游戏。
+- `./gradlew check --no-daemon`、`./gradlew build --no-daemon` 通过。
+- Outlands 2026.11.05 + Foundation 1.0.3、Java 25.0.4.1、Windows 11、NVIDIA RTX 5070 Laptop（驱动
+  621.01）：客户端进入主菜单并进入世界，日志为
+  `Created OpenGL core profile context: requested=4.6 (debug=false), actual=4.6 (4.6.0 NVIDIA 621.01)`，
+  `Max GLSL version: 4600`，无被拒版本行。
+- `@ Pre startup` 的 `1280: Invalid enum` 在本次修复之前带 Actinium 的运行里就已经存在，与本文记录的
+  三项修复无关。
