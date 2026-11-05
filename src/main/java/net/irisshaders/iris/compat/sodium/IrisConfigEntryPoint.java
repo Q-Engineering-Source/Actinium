@@ -10,6 +10,7 @@ import org.apache.logging.log4j.Logger;
 import dhj.embeddedt.embeddium.api.options.OptionIdentifier;
 import dhj.embeddedt.embeddium.api.options.control.ControlValueFormatter;
 import dhj.embeddedt.embeddium.api.options.control.SliderControl;
+import dhj.embeddedt.embeddium.api.options.control.TickBoxControl;
 import dhj.embeddedt.embeddium.api.options.structure.ExternalPage;
 import dhj.embeddedt.embeddium.api.options.structure.OptionGroup;
 import dhj.embeddedt.embeddium.api.options.structure.OptionImpl;
@@ -37,6 +38,8 @@ public final class IrisConfigEntryPoint {
 
     private final Consumer<Integer> shadowSaver;
     private final Supplier<Integer> shadowLoader;
+    private final Consumer<Boolean> shaderCacheSaver;
+    private final Supplier<Boolean> shaderCacheLoader;
     private final Consumer<GuiScreen> shaderPackOpener;
 
     /** Creates the production entrypoint backed by Iris' legacy settings and screen. */
@@ -45,14 +48,25 @@ public final class IrisConfigEntryPoint {
             IrisVideoSettings.shadowDistance = value;
             saveIrisConfig();
         }, () -> IrisVideoSettings.shadowDistance,
+                IrisConfigEntryPoint::setSaveCompiledShaders,
+                () -> Iris.getIrisConfig().shouldSaveCompiledShaders(),
                 parent -> Minecraft.getMinecraft().displayGuiScreen(new ShaderPackScreen(parent)));
     }
 
     /** Allows direct logic tests to supply persistence and screen boundaries without client bootstrapping. */
     public IrisConfigEntryPoint(Consumer<Integer> shadowSaver, Supplier<Integer> shadowLoader,
                                 Consumer<GuiScreen> shaderPackOpener) {
+        this(shadowSaver, shadowLoader, value -> { }, () -> false, shaderPackOpener);
+    }
+
+    /** Variant that also wires the compiled shader cache toggle. */
+    public IrisConfigEntryPoint(Consumer<Integer> shadowSaver, Supplier<Integer> shadowLoader,
+                                Consumer<Boolean> shaderCacheSaver, Supplier<Boolean> shaderCacheLoader,
+                                Consumer<GuiScreen> shaderPackOpener) {
         this.shadowSaver = Objects.requireNonNull(shadowSaver, "Iris shadow saver must not be null");
         this.shadowLoader = Objects.requireNonNull(shadowLoader, "Iris shadow loader must not be null");
+        this.shaderCacheSaver = Objects.requireNonNull(shaderCacheSaver, "Iris shader cache saver must not be null");
+        this.shaderCacheLoader = Objects.requireNonNull(shaderCacheLoader, "Iris shader cache loader must not be null");
         this.shaderPackOpener = Objects.requireNonNull(shaderPackOpener, "Iris shader pack opener must not be null");
     }
 
@@ -76,10 +90,25 @@ public final class IrisConfigEntryPoint {
                 .add(shadow)
                 .build();
 
+        OptionImpl<Object, Boolean> saveCompiled = OptionImpl.createBuilder(boolean.class, new IrisStorage())
+                .setId(OptionIdentifier.create(MOD_ID, "save_compiled_shaders", boolean.class))
+                .setName(TextComponent.translatable("options.iris.saveCompiledShaders"))
+                .setTooltip(TextComponent.translatable("options.iris.saveCompiledShaders.tooltip"))
+                .setControl(TickBoxControl::new)
+                .setBinding((ignored, value) -> this.shaderCacheSaver.accept(value), ignored -> this.shaderCacheLoader.get())
+                .setDefaultValue(false)
+                .setEnabledPredicate(() -> Iris.enabled)
+                .build();
+
+        OptionGroup cacheGroup = OptionGroup.createBuilder()
+                .setId(OptionIdentifier.create(MOD_ID, "shader_cache"))
+                .add(saveCompiled)
+                .build();
+
         OptionPage page = new OptionPage(
                 OptionIdentifier.create(MOD_ID, "video_settings"),
                 TextComponent.translatable("options.iris.title"),
-                List.of(group));
+                List.of(group, cacheGroup));
 
         ExternalPage shaderPacks = new ExternalPage(
                 OptionIdentifier.create(MOD_ID, "shader_pack_selection"),
@@ -98,6 +127,14 @@ public final class IrisConfigEntryPoint {
             Iris.getIrisConfig().save();
         } catch (IOException exception) {
             LOGGER.error("Failed to save Iris configuration after applying options", exception);
+        }
+    }
+
+    private static void setSaveCompiledShaders(boolean save) {
+        try {
+            Iris.getIrisConfig().setSaveCompiledShaders(save);
+        } catch (IOException exception) {
+            LOGGER.error("Failed to save the compiled shader cache setting", exception);
         }
     }
 

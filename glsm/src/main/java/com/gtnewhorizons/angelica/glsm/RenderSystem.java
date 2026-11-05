@@ -48,6 +48,7 @@ public class RenderSystem {
     private static boolean supportsTextureStorage;
     private static boolean supportsTesselation;
     private static boolean supportsSamplerObjects;
+    private static boolean supportsProgramBinary;
     private static int maxImageUnits;
     private static int maxSSBOBindings;
     private static int maxGlslVersion;
@@ -159,6 +160,8 @@ public class RenderSystem {
             samplers = new int[RENDER_BACKEND.getInteger(GL20.GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS)];
         }
 
+        supportsProgramBinary = RENDER_BACKEND.supportsProgramBinary();
+
         maxGlslVersion = Integer.parseInt(parseGlVersionString(RENDER_BACKEND.getString(GL20.GL_SHADING_LANGUAGE_VERSION)));
         supportsGpuShader4 = GLStateManager.capabilities.GL_EXT_gpu_shader4;
 
@@ -166,6 +169,7 @@ public class RenderSystem {
         GLStateManager.LOGGER.info("Image Load/Store: {}, Max Image Units: {}", supportsImageLoadStore, maxImageUnits);
         GLStateManager.LOGGER.info("SSBO: {}, Max SSBO Bindings: {}", supportsSSBO, maxSSBOBindings);
         GLStateManager.LOGGER.info("Buffer Storage: {}, Clear Texture: {}, Sampler Objects: {}", supportsBufferStorage, supportsClearTexture, supportsSamplerObjects);
+        GLStateManager.LOGGER.info("Program Binary: {}", supportsProgramBinary);
 
         if (isGLES) {
             GLStateManager.LOGGER.info("GL ES context detected, enabling shader transformer.");
@@ -691,6 +695,10 @@ public class RenderSystem {
 
     public static boolean supportsSamplerObjects() {
         return supportsSamplerObjects;
+    }
+
+    public static boolean supportsProgramBinary() {
+        return supportsProgramBinary;
     }
 
     public static int genSampler() {
