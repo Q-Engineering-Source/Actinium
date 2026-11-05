@@ -82,11 +82,11 @@ public final class CoreProfileDisplayCreator {
                     // it names the version and the reason the created context ends up older than the ceiling.
                     if (lastException == null) {
                         LOGGER.info(
-                            "Requested OpenGL {}.{} core profile context was refused (debug={}): {}",
+                            "Requested OpenGL {}.{} core profile context was refused (debug={})",
                             major,
                             minor,
                             lwjglDebug,
-                            e.toString()
+                            e
                         );
                     }
                     lastException = e;
