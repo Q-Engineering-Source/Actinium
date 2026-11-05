@@ -1,7 +1,11 @@
 package net.coderbot.iris.gl.program;
 
 import com.google.common.collect.ImmutableSet;
+import com.gtnewhorizons.angelica.glsm.DisplayListManager;
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
+import com.gtnewhorizons.angelica.glsm.recording.CommandRecorder;
+import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import net.coderbot.iris.gl.image.ImageHolder;
 import net.coderbot.iris.gl.sampler.GlSampler;
 import net.coderbot.iris.gl.sampler.SamplerHolder;
@@ -13,6 +17,8 @@ import net.coderbot.iris.gl.texture.InternalTextureFormat;
 import net.coderbot.iris.gl.texture.TextureType;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.IntSupplier;
 
 public class ProgramBuilder extends ProgramUniforms.Builder implements SamplerHolder, ImageHolder {
@@ -40,20 +46,36 @@ public class ProgramBuilder extends ProgramUniforms.Builder implements SamplerHo
 	public static ProgramBuilder begin(String name, @Nullable String vertexSource, @Nullable String geometrySource,
 									   @Nullable String tessControlSource, @Nullable String tessEvalSource,
 									   @Nullable String fragmentSource, ImmutableSet<Integer> reservedTextureUnits) {
+		final ProgramBinaryCache.Key cacheKey = ProgramCreator.cacheKey();
+		if (cacheKey != null) {
+			if (vertexSource != null) cacheKey.stage(ShaderType.VERTEX.id, vertexSource);
+			if (geometrySource != null) cacheKey.stage(ShaderType.GEOMETRY.id, geometrySource);
+			if (tessControlSource != null) cacheKey.stage(ShaderType.TESSELATION_CONTROL.id, tessControlSource);
+			if (tessEvalSource != null) cacheKey.stage(ShaderType.TESSELATION_EVAL.id, tessEvalSource);
+			if (fragmentSource != null) cacheKey.stage(ShaderType.FRAGMENT.id, fragmentSource);
+
+			final int saved = ProgramCreator.load(name, cacheKey);
+			if (saved != 0) {
+				initializeFallbackUniforms(saved);
+				return new ProgramBuilder(name, saved, reservedTextureUnits);
+			}
+		}
+
 		GlShader vertex = buildShader(ShaderType.VERTEX, name + ".vsh", vertexSource);
 		GlShader geometry = geometrySource != null ? buildShader(ShaderType.GEOMETRY, name + ".gsh", geometrySource) : null;
 		GlShader tessControl = tessControlSource != null ? buildShader(ShaderType.TESSELATION_CONTROL, name + ".tcs", tessControlSource) : null;
 		GlShader tessEval = tessEvalSource != null ? buildShader(ShaderType.TESSELATION_EVAL, name + ".tes", tessEvalSource) : null;
 		GlShader fragment = buildShader(ShaderType.FRAGMENT, name + ".fsh", fragmentSource);
 
-		java.util.List<GlShader> shaders = new java.util.ArrayList<>();
+		List<GlShader> shaders = new ArrayList<>();
 		shaders.add(vertex);
 		if (geometry != null) shaders.add(geometry);
 		if (tessControl != null) shaders.add(tessControl);
 		if (tessEval != null) shaders.add(tessEval);
 		shaders.add(fragment);
 
-		int programId = ProgramCreator.create(name, shaders.toArray(new GlShader[0]));
+		int programId = ProgramCreator.create(name, cacheKey, shaders.toArray(new GlShader[0]));
+		initializeFallbackUniforms(programId);
 
 		for (GlShader shader : shaders) {
 			shader.destroy();
@@ -67,13 +89,61 @@ public class ProgramBuilder extends ProgramUniforms.Builder implements SamplerHo
 			throw new IllegalStateException("This PC does not support compute shaders, but it's attempting to be used???");
 		}
 
+		final ProgramBinaryCache.Key cacheKey = ProgramCreator.cacheKey();
+		if (cacheKey != null) {
+			if (source != null) cacheKey.stage(ShaderType.COMPUTE.id, source);
+
+			final int saved = ProgramCreator.load(name, cacheKey);
+			if (saved != 0) {
+				initializeFallbackUniforms(saved);
+				return new ProgramBuilder(name, saved, reservedTextureUnits);
+			}
+		}
+
 		GlShader compute = buildShader(ShaderType.COMPUTE, name + ".csh", source);
 
-		int programId = ProgramCreator.create(name, compute);
+		int programId = ProgramCreator.create(name, cacheKey, compute);
+		initializeFallbackUniforms(programId);
 
 		compute.destroy();
 
 		return new ProgramBuilder(name, programId, reservedTextureUnits);
+	}
+
+	/**
+	 * Seeds the uniforms that shader pack code reads before the first pass update. A program restored from the
+	 * binary cache skips linking and never receives these values, so they are set right after the program exists.
+	 */
+	private static void initializeFallbackUniforms(int programId) {
+		final int previous = GLSMPrograms.getActiveProgram();
+		final CommandRecorder recorder = DisplayListManager.isRecording() ? DisplayListManager.pauseRecording() : null;
+		try {
+			GLSMPrograms.glUseProgram(programId);
+			seedUniform1i(programId, "iris_currentAlphaFunc", 7);
+			seedUniform1f(programId, "iris_currentAlphaTest", -1.0f);
+			seedUniform1f(programId, "alphaTestRef", -1.0f);
+			final int modulator = GLSMPrograms.glGetUniformLocation(programId, "iris_ColorModulator");
+			if (modulator != -1) {
+				RenderSystem.uniform4f(modulator, 1.0f, 1.0f, 1.0f, 1.0f);
+			}
+		} finally {
+			GLSMPrograms.glUseProgram(previous);
+			if (recorder != null) DisplayListManager.resumeRecording(recorder);
+		}
+	}
+
+	private static void seedUniform1i(int programId, String name, int value) {
+		final int location = GLSMPrograms.glGetUniformLocation(programId, name);
+		if (location != -1) {
+			RenderSystem.uniform1i(location, value);
+		}
+	}
+
+	private static void seedUniform1f(int programId, String name, float value) {
+		final int location = GLSMPrograms.glGetUniformLocation(programId, name);
+		if (location != -1) {
+			RenderSystem.uniform1f(location, value);
+		}
 	}
 
 	public Program build() {

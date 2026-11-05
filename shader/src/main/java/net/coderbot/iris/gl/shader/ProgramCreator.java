@@ -5,8 +5,10 @@ package net.coderbot.iris.gl.shader;
 import com.gtnewhorizons.angelica.glsm.GLDebug;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
+import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.KHRDebug;
@@ -21,7 +23,30 @@ public class ProgramCreator {
 	public static final int AT_TANGENT = 13;
 	public static final int AT_MIDBLOCK = 14;
 
+	@Nullable
+	public static ProgramBinaryCache.Key cacheKey() {
+		if (!ProgramBinaryCache.isEnabled()) return null;
+		final ProgramBinaryCache.Key key = ProgramBinaryCache.key();
+		key.attribute("mc_Entity", MC_ENTITY);
+		key.attribute("mc_midTexCoord", MC_MID_TEX_COORD);
+		key.attribute("at_tangent", AT_TANGENT);
+		key.attribute("at_midBlock", AT_MIDBLOCK);
+		return key;
+	}
+
+	public static int load(String name, ProgramBinaryCache.Key cacheKey) {
+		final int program = ProgramBinaryCache.load(cacheKey);
+		if (program != 0) {
+			GLDebug.nameObject(KHRDebug.GL_PROGRAM, program, name);
+		}
+		return program;
+	}
+
 	public static int create(String name, GlShader... shaders) {
+		return create(name, null, shaders);
+	}
+
+	public static int create(String name, @Nullable ProgramBinaryCache.Key cacheKey, GlShader... shaders) {
 		int program = GLSMPrograms.glCreateProgram();
 
 		// TODO: This is *really* hardcoded, we need to refactor this to support external calls to glBindAttribLocation
@@ -53,6 +78,10 @@ public class ProgramCreator {
 
 		if (result != GL11.GL_TRUE) {
 			throw new RuntimeException("Shader program linking failed, see log for details");
+		}
+
+		if (cacheKey != null) {
+			ProgramBinaryCache.save(cacheKey, program);
 		}
 
 		return program;
