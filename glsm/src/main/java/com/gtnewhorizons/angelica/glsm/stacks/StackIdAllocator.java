@@ -1,30 +1,45 @@
 package com.gtnewhorizons.angelica.glsm.stacks;
 
+import java.util.Arrays;
+
 public final class StackIdAllocator {
     private static final int STATIC_BASE = 4096;
     private static final int STATIC_CAPACITY = 16;
 
-    private static int next = -1;
+    /**
+     * One counter per {@link #beginContext()} frame. A context state is built inside a frame, and building one can
+     * start another (a drawable binding reached from the first one's initialisation); frame-local counters keep the
+     * nested construction from moving the enclosing frame's count, which previously made the second state share the
+     * outer bracket and fail the per-context invariant.
+     */
+    private static int[] frames = new int[4];
+    private static int depth;
     private static int perContext = -1;
     private static int staticNext;
 
     private StackIdAllocator() {}
 
     public static void beginContext() {
-        next = 0;
+        if (depth == frames.length) {
+            frames = Arrays.copyOf(frames, depth * 2);
+        }
+        frames[depth++] = 0;
     }
 
     public static void endContext() {
-        if (perContext == -1) {
-            perContext = next;
-        } else if (next != perContext) {
-            throw new IllegalStateException("stack id count changed across contexts: " + perContext + " -> " + next);
+        if (depth == 0) {
+            throw new IllegalStateException("endContext without a matching beginContext");
         }
-        next = -1;
+        final int allocated = frames[--depth];
+        if (perContext == -1) {
+            perContext = allocated;
+        } else if (allocated != perContext) {
+            throw new IllegalStateException("stack id count changed across contexts: " + perContext + " -> " + allocated);
+        }
     }
 
     public static int nextId() {
-        return next >= 0 ? next++ : -1;
+        return depth == 0 ? -1 : frames[depth - 1]++;
     }
 
     public static int nextStaticId() {
