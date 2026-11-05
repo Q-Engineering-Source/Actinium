@@ -66,4 +66,27 @@ class IrisConfigEntryPointTest {
         assertInstanceOf(ExternalPage.class, pages.get(1));
         assertEquals("shader_pack_selection", pages.get(1).getId().getPath());
     }
+
+    @Test
+    void compiledShaderCacheToggleReadsAndWritesTheInjectedBinding() {
+        AtomicBoolean persisted = new AtomicBoolean(false);
+        IrisConfigEntryPoint entryPoint = new IrisConfigEntryPoint(value -> { }, () -> 32,
+                persisted::set, persisted::get, ignored -> { });
+
+        OptionPage videoSettings = entryPoint.createPages().stream()
+                .filter(page -> "video_settings".equals(page.getId().getPath()))
+                .findFirst().orElseThrow();
+
+        @SuppressWarnings("unchecked")
+        Option<Boolean> saveCompiled = (Option<Boolean>) videoSettings.getOptions().stream()
+                .filter(option -> "save_compiled_shaders".equals(option.getId().getPath()))
+                .findFirst().orElseThrow();
+        assertEquals("options.iris.saveCompiledShaders",
+                ((TextComponent.Translatable) saveCompiled.getName()).keys().get(0));
+        assertEquals(false, saveCompiled.getValue());
+
+        saveCompiled.setValue(true);
+        saveCompiled.applyChanges();
+        assertTrue(persisted.get());
+    }
 }
