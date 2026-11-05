@@ -87,7 +87,7 @@
 | 51 | `bdcb4d18` | Fix Complementary + Euphoria Patches ULTRA on SDL-GPU (#2195) | 2026-10-02 | 分 hunk 同步 | S05 | 取 `GlslVulkanPreprocess` 与 Iris `ShaderTransformer` 修正；排除 SDL/GLES 交叉编译与预热测试 |
 | 52 | `c97fb700` | Fix (#2196) | 2026-10-02 | 不适用 | — | 单个 `sdl-gpu` 测试文件 |
 | 53 | `75a02781` | Fix splash issues (#2200) | 2026-10-03 | 待同步 | F05 | splash 字体问题；本地 `FontProviderMC`、`FontProviderUnicode` 结构与上游不同，需按本地结构调整 |
-| 54 | `338d9419` | Settle frame pacing after an inconsistent vsync gate (#2197) | 2026-10-03 | 待同步 | F09 | 帧节奏稳定，本地无 `PacerCore` |
+| 54 | `338d9419` | Settle frame pacing after an inconsistent vsync gate (#2197) | 2026-10-03 | 已同步 | F09 | 已落地：`com/dhj/actinium/render/frame/` 下的 `PacerCore`、`FramePacer`、`PacerSleeper`，glsm 侧的 gate 采样与 `VSyncMode`，机制与日志见 `docs/compat/intel-present.md` |
 | 55 | `c7a0f3a2` | Default raw custom textures to bilinear filtering and clamping (#2198) | 2026-10-04 | 已有等价 | — | `shader/src/main/java/net/coderbot/iris/shaderpack/ShaderPack.java:468` 起 `readRawTexture` 已默认 `blur = true`、`clamp = true`，仅 `.mcmeta` 可覆盖 |
 | 56 | `fe82cd32` | Plenty of fixes for GTNH (#2202) | 2026-10-03 | 分 hunk 同步 | G01 + F02 + F05 | 取 `StateSet` 修正、`GeometryShaderGenerator`、`BatchDrawDefaults`、字体与选项页修正；SDL 相关条目排除 |
 | 57 | `7cd97d12` | Fix HUD caching flicker and match non-cached GL state (#2201) | 2026-10-03 | 待同步 | G03 | HUD 缓存与非缓存 GL 状态对齐，本地缺 `CowStateStack`、`RetainedState`、`ScissorStateStack` |
@@ -146,7 +146,7 @@
 | 110 | `a037a96f` | Update to Celeritas 2.5.13-GTNH (#2283) | 2026-10-21 | 不适用 | — | 依赖版本号提升 |
 | 111 | `67ca46a2` | why min 16 (#2278) | 2026-10-22 | 不适用 | — | 本地无 `mobSpawnerRenderDistance` 选项与 `SodiumGameOptionPages`，选项下限无同步基础 |
 | 112 | `98703a11` | Read only the mcmeta in the interpolated icon check (#2284) | 2026-10-22 | 待同步 | S02 | 交错图标检测只读 mcmeta；本地无 `jss/notfine` 包，也没有 `notfine_at.cfg`，该优化随 S02 的 interpolated texture 实现一并移植（实现时需同时补 `FallbackResourceManager` 的 access transformer 条目） |
-| 113 | `69124e3f` | Stop capping mailbox present mode to the refresh rate (#2279) | 2026-10-21 | 待同步 | F09 | 帧呈现模式上限；本地无 `PacerCore`、`FramePacer`，归入 F09 的帧节奏工作 |
+| 113 | `69124e3f` | Stop capping mailbox present mode to the refresh rate (#2279) | 2026-10-21 | 已同步 | F09 | `resolveTearFreeMode` 默认回 `VSyncMode.ON`；MAILBOX 在 GLFW 路径由 `supportsVSyncMode` 标记为不支持，选项只暴露 ON/OFF |
 | 114 | `73d61d38` | initial commit for gl-fences (#2285) | 2026-10-21 | 已同步 | G05 | glsm 侧由 `feat/glsm-streaming-ring` 落地：新建 `FenceQueue` 与 `GlStreamingRing`，`PersistentStreamingBuffer` 改为薄包装，删除 `GlFence` 与 `StreamingBuffer` 接口，fence 时机、容量阈值、10ms 等待切片与 5s 总超时、`forcedReclaims` 计数与上游逐项一致。`Uniforms.invalidateBinding` 随 FFPUniformBlock+UBO ring 一并排除（本地逐 uniform 上传）；TESR/particle 侧的 `InstanceRing`、`ModelPartBatcher`、`TesrBatchRenderer`、`ParticleInstancer` 随 F03；Tracy 帧图与脚本排除 |
 | 115 | `e84c8c8d` | Stop stalls on some GPUs when closing the questbook (#2286) | 2026-10-22 | 分 hunk 同步 | G05 | 取 GLSM 延迟纹理删除、`FrameHooks`、`TextureTargets` 与 `DSAUnsupported`；SDL 采样器与 `Lwjgl2GLRenderBackend` 排除 |
 | 116 | `fc8d3e8b` | Keep armor and held-item glint materials separate (#2289) | 2026-10-22 | 待同步 | F02 | 盔甲与手持附魔材质分离，本地缺 `EntityMaterials`、`ItemGlint` |
@@ -302,7 +302,7 @@ SDL 后端暂缓期间可推进的全部工作，共 38 个 PR，分三批。批
 | 24 | 核心 profile 拒绝信息与探测上限 | `990dadc0` | 2 改 1 新，约 60 行 | 无 |
 | 25 | 阴影 pass 索尼相机与逐层 stage | `cbd16b1a`、`8af9340b` | 3 改，约 60 行 | 无 |
 | 26 | 自定义方块渲染的光影属性（`StateAwareTessellator`、`ImmediateExtendedAttribs`、方块材质属性） | `fe67a22d` | 5 新 4 改加 4 个 mixin，约 350 行 | 23、9 |
-| 27 | 帧节奏：`PacerCore`、`FramePacer`、`FpsReducer` | `338d9419`、`69124e3f`、`74ea5c47` 的 `FpsReducer` | 3 新 3 改，约 900 行 | 无 |
+| 27 | 帧节奏：`PacerCore`、`FramePacer`（`FpsReducer` 未移植） | `338d9419`、`69124e3f`、`74ea5c47` 的 `FpsReducer` | 5 新 7 改，约 1000 行 | 无 |
 | 28 | 缩放与鼠标模式选项 | `977db3d6`、`74ea5c47` 的 `Zoom` | 2 新 2 改，约 200 行 | 27 |
 | 29 | 字体改进：分段深度掩码、splash 纹理回退、抗锯齿外扩、自定义字体提供者 | `9081f4c3`、`97057224`、`fa71eda3`、`75a02781`、`5457df53`、`32f8eef1`、`d16c1e7c` | 2 新 9 改，约 700 行 | 无 |
 | 30 | 深色模式与离上下文字体创建 | `61bb779d`、`acedba4e`、`9cb35c67`、`66d2a548`、`8387b4e9`、`231a2ab2`、`0d959c2b` | 6 新 10 改，约 1300 行 | 29 |

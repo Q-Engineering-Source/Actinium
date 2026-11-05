@@ -31,6 +31,12 @@ public final class GLSMFramebuffer {
     private GLSMFramebuffer() {}
 
     private static long firstClearBlockNanos;
+    private static boolean firstClearPending;
+
+    /** Arms first-clear timing for the frame that follows. Called after each presentation. */
+    static void armFirstClear() {
+        firstClearPending = true;
+    }
 
     public static void glDrawBuffer(int mode) {
         rejectExitCapture();
@@ -55,7 +61,18 @@ public final class GLSMFramebuffer {
             }
         }
         recordGpuCommand(GpuCommandType.CLEAR, GpuCommandPhase.BEGIN, mask, 0);
-        RENDER_BACKEND.clear(mask);
+        if (firstClearPending && GLStateManager.isMainThread() && getDrawFramebuffer() == 0) {
+            firstClearPending = false;
+            final long start = System.nanoTime();
+            RENDER_BACKEND.clear(mask);
+            final long end = System.nanoTime();
+            if (end > start) {
+                firstClearBlockNanos += end - start;
+                RENDER_BACKEND.recordGate(end - start, end);
+            }
+        } else {
+            RENDER_BACKEND.clear(mask);
+        }
         recordGpuCommand(GpuCommandType.CLEAR, GpuCommandPhase.END, mask, 0);
         gpuCheckpoint(GpuCommandType.CLEAR);
     }

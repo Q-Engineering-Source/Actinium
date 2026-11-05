@@ -1084,6 +1084,15 @@ public class GLSMRedirector {
             GL_DESC_REDIRECTS.put(owner + " glDebugMessageCallback(Lorg/lwjgl/opengl/KHRDebugCallback;)V", "glDebugMessageCallback");
         }
 
+        // Presentation calls are redirected at the call site so the swap is timed and reported as the frame's gate.
+        // Display itself stays core-excluded from transformation, which keeps the wrapper in GLStateManager from
+        // recursing back into the redirected call.
+        final Map<String, String> displayRedirects = new HashMap<>(4);
+        displayRedirects.put("update", "updateDisplay");
+        displayRedirects.put("swapBuffers", "swapBuffers");
+        displayRedirects.put("setVSyncEnabled", "setVSyncEnabled");
+        METHOD_REDIRECTS.put("org/lwjgl/opengl/Display", displayRedirects);
+
         TYPE_REDIRECTS.put("org/lwjgl/util/glu/Sphere", "com/gtnewhorizons/angelica/glsm/compat/lwjgl/AngelicaSphere");
         TYPE_REDIRECTS.put("org/lwjgl/util/glu/Cylinder", "com/gtnewhorizons/angelica/glsm/compat/lwjgl/AngelicaCylinder");
         TYPE_REDIRECTS.put("org/lwjgl/util/glu/Disk", "com/gtnewhorizons/angelica/glsm/compat/lwjgl/AngelicaDisk");

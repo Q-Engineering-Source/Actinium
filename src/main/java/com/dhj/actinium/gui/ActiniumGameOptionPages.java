@@ -4,6 +4,8 @@ import com.google.common.collect.ImmutableList;
 import com.dhj.actinium.config.ActiniumRuntimeOptions;
 import com.dhj.actinium.compat.scalingguis.ScalingGuiCompat;
 import com.gtnewhorizon.gtnhlib.compat.Mods;
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.backend.VSyncMode;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.I18n;
@@ -16,7 +18,7 @@ import dhj.embeddedt.embeddium.api.options.control.SliderControl;
 import dhj.embeddedt.embeddium.api.options.control.TickBoxControl;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
 import dhj.embeddedt.embeddium.impl.gui.framework.TextComponent;
-import org.lwjgl.opengl.Display;
+import com.dhj.actinium.render.frame.FramePacer;
 import dhj.embeddedt.embeddium.impl.render.chunk.MultiDrawMode;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import dhj.embeddedt.embeddium.api.options.structure.OptionFlag;
@@ -177,7 +179,8 @@ public class ActiniumGameOptionPages {
                         .setControl(TickBoxControl::new)
                         .setBinding((opts, value) -> {
                             opts.enableVsync = value;
-                            Display.setVSyncEnabled(opts.enableVsync);
+                            GLStateManager.setVSyncMode(value ? VSyncMode.ON : VSyncMode.OFF);
+                            FramePacer.invalidate();
                         }, opts -> opts.enableVsync)
                         .setImpact(OptionImpact.VARIES)
                         .build())
