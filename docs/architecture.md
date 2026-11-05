@@ -54,7 +54,7 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
 2. **`MixinLate`**（late 阶段）：读取 `mixins.actinium.conditions.properties` 的 mod id 门控，
    挑选 conditional 配置加载。
 3. **`Actinium.onConstruct`**（`@Mod` 主类）：挂载全部第三方 bridge
-   （`GLRenderDevice.VANILLA_STATE_RESETTER`、`RuntimeOptionsBridge`、`EmbeddiumRuntimeOptions`、
+   （`RuntimeOptionsBridge`、`EmbeddiumRuntimeOptions`、
    `PostProcessingBridge`、`WorldRendererCompatBridge`、`IrisDebugOptions.Bridge`、
    `GLSMPerfDebugHooks`）；初始化 DH / NeoFontRender 兼容。
 4. **`onInit`**：NeoFontRender 初始化、dev 命令注册、Iris fmlInitEvent。

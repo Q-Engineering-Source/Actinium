@@ -6,6 +6,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.dhj.actinium.compat.ichunutil.PortalViewportProvider;
 import com.dhj.actinium.debug.GlStateDiffProbe;
 import com.dhj.actinium.render.BoundingBoxOutline;
+import com.dhj.actinium.render.ManagedCodeBoundary;
 import net.coderbot.iris.compat.rfp2.Rfp2Compat;
 import com.gtnewhorizons.angelica.glsm.shadow.InternalShadowRenderingState;
 import com.dhj.actinium.shadows.ShadowRenderingState;
@@ -33,7 +34,6 @@ import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
-import dhj.embeddedt.embeddium.impl.gl.device.RenderDevice;
 import dhj.embeddedt.embeddium.impl.render.terrain.SimpleWorldRenderer;
 import dhj.embeddedt.embeddium.impl.render.viewport.ViewportProvider;
 import org.spongepowered.asm.mixin.Final;
@@ -115,12 +115,12 @@ public abstract class MixinRenderGlobal implements SimpleWorldRenderer.Provider<
 
     @Inject(method = "setWorldAndLoadRenderers", at = @At("RETURN"))
     private void onWorldChanged(WorldClient world, CallbackInfo ci) {
-        RenderDevice.enterManagedCode();
+        ManagedCodeBoundary.enter();
 
         try {
             this.renderer.setWorld(world);
         } finally {
-            RenderDevice.exitManagedCode();
+            ManagedCodeBoundary.exit();
         }
     }
 
@@ -176,7 +176,7 @@ public abstract class MixinRenderGlobal implements SimpleWorldRenderer.Provider<
                 }
             }
         }
-        RenderDevice.enterManagedCode();
+        ManagedCodeBoundary.enter();
 
         RenderHelper.disableStandardItemLighting();
 
@@ -213,7 +213,7 @@ public abstract class MixinRenderGlobal implements SimpleWorldRenderer.Provider<
             GlStateDiffProbe.diffAndPrint("dh-injection-" + layerName + "-pass" + pass, beforeDhInjection, afterDhInjection);
             GlStateDiffProbe.diffAndPrint("celeritas-draw-" + layerName + "-pass" + pass, beforeTerrainDraw, GlStateDiffProbe.capture());
             RenderDebugHooksHolder.recordRenderGlobalStageTiming("terrain-" + layerName, pass, drawStartNanos);
-            RenderDevice.exitManagedCode();
+            ManagedCodeBoundary.exit();
         }
 
         this.mc.entityRenderer.disableLightmap();
@@ -244,14 +244,14 @@ public abstract class MixinRenderGlobal implements SimpleWorldRenderer.Provider<
             original.call(entity, tick, camera, frame, spectator);
         }
 
-        RenderDevice.enterManagedCode();
+        ManagedCodeBoundary.enter();
 
         try {
             this.renderer.setPortalCamera(portalCamera);
             this.renderer.setupTerrain(((ViewportProvider)camera).sodium$createViewport(), ActiniumWorldRenderer.captureCameraState(entity, tick),
                     frame, spectator, false);
         } finally {
-            RenderDevice.exitManagedCode();
+            ManagedCodeBoundary.exit();
         }
     }
 
@@ -278,12 +278,12 @@ public abstract class MixinRenderGlobal implements SimpleWorldRenderer.Provider<
 
     @Inject(method = "loadRenderers", at = @At("RETURN"))
     private void onReload(CallbackInfo ci) {
-        RenderDevice.enterManagedCode();
+        ManagedCodeBoundary.enter();
 
         try {
             this.renderer.reload();
         } finally {
-            RenderDevice.exitManagedCode();
+            ManagedCodeBoundary.exit();
         }
     }
 

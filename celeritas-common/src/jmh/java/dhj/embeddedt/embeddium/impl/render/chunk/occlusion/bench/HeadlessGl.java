@@ -1,6 +1,5 @@
 package dhj.embeddedt.embeddium.impl.render.chunk.occlusion.bench;
 
-import dhj.embeddedt.embeddium.impl.gl.device.GLRenderDevice;
 import org.lwjgl.egl.EGL;
 import org.lwjgl.egl.EGL10;
 import org.lwjgl.egl.EGL12;
@@ -48,10 +47,6 @@ public final class HeadlessGl {
             throw new IllegalStateException("OpenGL 4.4 is required by the benchmark renderer; found "
                     + GL11C.glGetString(GL11C.GL_VERSION));
         }
-
-        // GLRenderDevice requires this; the benchmarks never touch vanilla GL state.
-        GLRenderDevice.VANILLA_STATE_RESETTER = () -> {
-        };
 
         initialized = true;
     }
