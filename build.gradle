@@ -604,6 +604,13 @@ dependencies {
         glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl:3.4.1:${glIntegrationLwjglNatives}"
         glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl-sdl:3.4.1:${glIntegrationLwjglNatives}"
     }
+    // SpirvCompilerDiskCacheTest drives the real shaderc compiler, so the JNI wrapper and its host
+    // natives must be on the unit test classpath; production code only needs the compileOnly binding.
+    testImplementation 'org.lwjgl:lwjgl-shaderc:3.4.1'
+    if (glIntegrationLwjglNatives != null) {
+        testRuntimeOnly "org.lwjgl:lwjgl:3.4.1:${glIntegrationLwjglNatives}"
+        testRuntimeOnly "org.lwjgl:lwjgl-shaderc:3.4.1:${glIntegrationLwjglNatives}"
+    }
 }
 
 def validateGlIntegrationPlatform = tasks.register('validateGlIntegrationPlatform') {

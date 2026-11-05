@@ -22,6 +22,7 @@ import com.gtnewhorizon.gtnhlib.client.renderer.postprocessing.PostProcessingBri
 import com.gtnewhorizons.angelica.glsm.backend.BackendOptions;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
 import com.gtnewhorizons.angelica.glsm.compat.FogDistanceModeBridge;
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMConfig;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.iris.IrisGLSMBridge;
 import com.mojang.realmsclient.gui.ChatFormatting;
@@ -61,6 +62,7 @@ public class Actinium {
     @EventHandler
     public void onConstruct(FMLConstructionEvent event) {
         BackendOptions.latch(ActiniumConfig.renderBackendSdlGpu, ActiniumConfig.renderBackendDriver, ActiniumConfig.glVersion);
+        GLSMConfig.workerThreadCount = ActiniumConfig.workerThreadCount;
 
         var container = Loader.instance().getIndexedModList().get(MODID);
         String version = container != null ? container.getVersion() : "unknown";
@@ -173,6 +175,7 @@ public class Actinium {
         ChunkAnimatorCompat.install();
         KirinoCompat.install();
         NeverEnoughAnimationsAlphaOverride.install();
+        ClientProxy.configureShaderDiskCache();
 
         ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
                 .registerReloadListener(resourceManager -> MissingModelCompat.onResourceManagerReload());

@@ -12,6 +12,8 @@ public final class ActiniumConfig {
     public static boolean enableHardcodedCustomUniforms = false;
     public static boolean defineIsIris = true;
     public static int itemRendererCacheSize = 512;
+    /** Threads the GLSM worker pool may use. Zero sizes the pool from the core count. */
+    public static int workerThreadCount = 0;
 
     /** Requests the SDL GPU render backend. Read once at construction through {@code BackendOptions}. */
     public static boolean renderBackendSdlGpu = false;

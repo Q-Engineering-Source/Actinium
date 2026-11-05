@@ -24,5 +24,10 @@ public final class GLSMConfig {
     // disabled so the cache buffer alpha stays intact).
     public static boolean hudCacheBlendEnabled;
 
+    /**
+     * Threads the GLSM worker pool may use. Zero lets the pool size itself from the core count.
+     */
+    public static volatile int workerThreadCount;
+
     private GLSMConfig() {}
 }
