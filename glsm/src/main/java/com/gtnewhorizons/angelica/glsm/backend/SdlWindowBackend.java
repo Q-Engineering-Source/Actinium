@@ -5,12 +5,14 @@ import org.lwjgl.opengl.DisplayMode;
 import org.lwjgl.sdl.SDL_DisplayMode;
 import org.lwjgl.system.MemoryStack;
 
+import java.nio.IntBuffer;
 import java.util.List;
 
 import static org.lwjgl.sdl.SDLError.SDL_GetError;
 import static org.lwjgl.sdl.SDLVideo.SDL_GL_GetCurrentContext;
 import static org.lwjgl.sdl.SDLVideo.SDL_GetClosestFullscreenDisplayMode;
 import static org.lwjgl.sdl.SDLVideo.SDL_GetDisplayForWindow;
+import static org.lwjgl.sdl.SDLVideo.SDL_GetWindowSizeInPixels;
 import static org.lwjgl.sdl.SDLVideo.SDL_SetWindowFullscreen;
 import static org.lwjgl.sdl.SDLVideo.SDL_SetWindowFullscreenMode;
 import static org.lwjgl.sdl.SDLVideo.SDL_SyncWindow;
@@ -40,6 +42,34 @@ public final class SdlWindowBackend implements WindowBackend {
     @Override
     public List<String> pollDroppedFiles() {
         return SdlFileDropWatcher.pollDroppedFiles();
+    }
+
+    @Override
+    public int framebufferWidth() {
+        return framebufferSize()[0];
+    }
+
+    @Override
+    public int framebufferHeight() {
+        return framebufferSize()[1];
+    }
+
+    /**
+     * Reads the pixel size straight from SDL. {@code Display.getFramebufferWidth()} only changes when the resize event
+     * reaches the next event pump, so a caller that has just switched the window mode would resize the client with the
+     * previous geometry.
+     */
+    private static int[] framebufferSize() {
+        final long window = Display.getWindow();
+        if (window == 0L) {
+            return new int[] { Display.getFramebufferWidth(), Display.getFramebufferHeight() };
+        }
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            final IntBuffer width = stack.ints(0);
+            final IntBuffer height = stack.ints(0);
+            SDL_GetWindowSizeInPixels(window, width, height);
+            return new int[] { width.get(0), height.get(0) };
+        }
     }
 
     @Override

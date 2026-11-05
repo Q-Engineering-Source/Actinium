@@ -5,6 +5,7 @@ import com.dhj.actinium.runtime.ActiniumRuntime;
 import net.minecraft.client.Minecraft;
 import org.apache.logging.log4j.Logger;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
+import com.gtnewhorizons.angelica.glsm.backend.WindowBackend;
 import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
 import org.lwjgl.opengl.Display;
 
@@ -213,8 +214,9 @@ public final class ActiniumWindowModeController {
     }
 
     private static void updateClientDisplaySize(Minecraft client) {
-        int width = Display.getFramebufferWidth();
-        int height = Display.getFramebufferHeight();
+        final WindowBackend backend = WindowBackends.get();
+        int width = backend.framebufferWidth();
+        int height = backend.framebufferHeight();
 
         if (width > 0 && height > 0) {
             client.displayWidth = width;
