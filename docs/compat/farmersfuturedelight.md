@@ -1,7 +1,7 @@
 # Farmers-Future-Delight 含水方块光影兼容（farmers_future_delight）
 
-兼容状态：**代码完成，实机验证待做**。
-最后更新：2026-11-04。分支：`fix/ffd-waterlogged-faces`。
+兼容状态：**已验证（用户实机确认）**。
+最后更新：2026-11-05。分支：`fix/ffd-waterlogged-faces`。验证用 jar：`alpha-0.0.14-ef89ffd9`。
 
 ## 背景
 
@@ -78,13 +78,16 @@ Farmers-Future-Delight（modid `farmers_future_delight`，源码
 ## 验证记录
 
 ```text
-日期：
-Actinium commit：
-Java / Cleanroom：
-GPU / 驱动 / OS：
-光影包与预设：
-模组版本：Farmers-Future-Delight
-场景：水中台阶/栅栏/树叶（原版含水）、big_dripleaf/珊瑚/海草/azalea_leaves（模组含水）、
-      相邻海洋水面、玻璃与箱子类 TESR、快速方块渲染开/关、Render Pass 合并开/关、无光影
-结果：
+日期：2026-11-05
+Actinium commit：ef89ffd9（jar Actinium-alpha-0.0.14-ef89ffd9.jar）
+Java / Cleanroom：Java 25.0.4.1 / Cleanroom 0.6.13-alpha（CleanMix 0.7.2）
+GPU / 驱动 / OS：NVIDIA GeForce RTX 5070 Laptop GPU / 621.01 / Windows 11
+光影包与预设：Complementary Unbound r5.9.3、MakeUp-UltraFast 9.4c
+模组版本：Farmers-Future-Delight 1.5.1
+场景：光影与无光影下的含水方块水面（原版方块含水与模组自有含水方块）及相邻海洋水面，
+      两个光影包各测一次；开关组合未逐项记录
+结果：用户实机确认通过；logs/latest.log 无区块构建异常，无兼容层异常。
+      会话内另有一条 Complementary 自定义 uniform inSulfurCaves 的告警（缺少
+      BIOME_SULFUR_CAVES 常量），与本次改动无关
+日志与截图：实例 versions/1.12.2-Cleanroom/logs/latest.log（2026-11-05 14:40-14:43 会话）
 ```
