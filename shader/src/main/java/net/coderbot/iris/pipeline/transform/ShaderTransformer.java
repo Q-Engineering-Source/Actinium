@@ -224,9 +224,12 @@ public class ShaderTransformer {
         final String finalHeader = profileString + (extensions.isEmpty() ? "" : "\n" + extensions);
         final StringBuilder formattedShaderBuilder = new StringBuilder();
 
-        transformer.mutateTree(tree -> formattedShaderBuilder.append(GlslTransformUtils.getFormattedShader(tree, finalHeader)));
+        transformer.mutateTree(tree -> {
+            GlslTransformUtils.restoreReservedWordsInTree(tree);
+            formattedShaderBuilder.append(GlslTransformUtils.getFormattedShader(tree, finalHeader));
+        });
 
-        String formattedShader = GlslTransformUtils.restoreReservedWords(formattedShaderBuilder.toString());
+        String formattedShader = formattedShaderBuilder.toString();
 
         result.put(PatchShaderType.COMPUTE, formattedShader);
 
@@ -331,9 +334,12 @@ public class ShaderTransformer {
             final String finalHeader = header;
             final StringBuilder formattedShaderBuilder = new StringBuilder();
 
-            transformer.mutateTree(tree -> formattedShaderBuilder.append(GlslTransformUtils.getFormattedShader(tree, finalHeader)));
+            transformer.mutateTree(tree -> {
+                GlslTransformUtils.restoreReservedWordsInTree(tree);
+                formattedShaderBuilder.append(GlslTransformUtils.getFormattedShader(tree, finalHeader));
+            });
 
-            String formattedShader = GlslTransformUtils.restoreReservedWords(formattedShaderBuilder.toString());
+            String formattedShader = formattedShaderBuilder.toString();
 
             result.put(shaderType, formattedShader);
         }
@@ -468,12 +474,6 @@ public class ShaderTransformer {
     public static void addIfNotExists(Transformer transformer, String name, String code) {
         if (!transformer.hasVariable(name)) {
             transformer.injectVariable(code);
-        }
-    }
-
-    public static void addIfNotExistsType(Transformer transformer, String name, String type) {
-        if (!transformer.hasVariable(name)) {
-            transformer.injectVariable(type + " " + name + ";");
         }
     }
 

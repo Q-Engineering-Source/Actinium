@@ -1,15 +1,23 @@
 package com.gtnewhorizons.angelica.glsm;
 
+import org.antlr.v4.runtime.BailErrorStrategy;
 import org.antlr.v4.runtime.CharStreams;
+import org.antlr.v4.runtime.CommonToken;
 import org.antlr.v4.runtime.CommonTokenStream;
+import org.antlr.v4.runtime.DefaultErrorStrategy;
+import org.antlr.v4.runtime.Parser;
+import org.antlr.v4.runtime.Token;
+import org.antlr.v4.runtime.WritableToken;
+import org.antlr.v4.runtime.atn.PredictionMode;
+import org.antlr.v4.runtime.misc.ParseCancellationException;
 import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.TerminalNode;
 import org.taumc.glsl.grammar.GLSLLexer;
 import org.taumc.glsl.grammar.GLSLParser;
-import org.taumc.glsl.grammar.GLSLPreParser;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -58,10 +66,12 @@ public class GlslTransformUtils {
 
     private static final Map<Integer, List<ReservedWordRename>> VERSIONED_RESERVED_WORDS = Map.of(
         0, List.of(
-            new ReservedWordRename(Pattern.compile("\\bsample\\b"), RENAMED_PREFIX + "sample"),
-            new ReservedWordRename(Pattern.compile("\\bnew\\b"), RENAMED_PREFIX + "new")
+            new ReservedWordRename(Pattern.compile("sample(?<=\\bsample)\\b"), RENAMED_PREFIX + "sample"),
+            new ReservedWordRename(Pattern.compile("new(?<=\\bnew)\\b"), RENAMED_PREFIX + "new")
         ),
-        400, List.of(new ReservedWordRename(Pattern.compile("\\bsampler\\b(?!\\d)"), RENAMED_PREFIX + "sampler"))
+        400, List.of(
+            new ReservedWordRename(Pattern.compile("sampler(?<=\\bsampler)\\b(?!\\d)"), RENAMED_PREFIX + "sampler")
+        )
     );
 
     public static String replaceTexture(String input) {
@@ -131,44 +141,84 @@ public class GlslTransformUtils {
         return source;
     }
 
-    /** Parse a full GLSL translation unit with syntax-error listeners suppressed. */
-    public static GLSLParser.Translation_unitContext parseFullQuiet(String source) {
-        final GLSLLexer lexer = new GLSLLexer(CharStreams.fromString(source));
-        lexer.removeErrorListeners();
-        final GLSLParser parser = new GLSLParser(new CommonTokenStream(lexer));
-        parser.removeErrorListeners();
-        parser.setBuildParseTree(true);
-        return parser.translation_unit();
+    /** Restore renamed reserved words in place so the tree prints the original identifiers. */
+    public static void restoreReservedWordsInTree(ParseTree tree) {
+        if (tree instanceof TerminalNode terminal) {
+            final Token token = terminal.getSymbol();
+            final String text = token.getText();
+            if (text != null && text.startsWith(RENAMED_PREFIX) && token instanceof WritableToken writable) {
+                final String rest = text.substring(RENAMED_PREFIX.length());
+                if (rest.startsWith("texture") || rest.startsWith("sampler")
+                    || rest.startsWith("sample") || rest.startsWith("new")) {
+                    writable.setText(rest);
+                }
+            }
+            return;
+        }
+        for (int i = 0; i < tree.getChildCount(); i++) {
+            restoreReservedWordsInTree(tree.getChild(i));
+        }
     }
 
-    /** Parse only the preprocessor structure of a GLSL source, with syntax-error listeners suppressed. */
-    public static GLSLPreParser.Translation_unitContext parsePreQuiet(String source) {
+    public static GLSLParser.Translation_unitContext parseFullQuiet(String source) {
+        return parseQuiet(new GLSLParser(new CommonTokenStream(quietLexer(source))), GLSLParser::translation_unit);
+    }
+
+    private static <P extends Parser, T> T parseQuiet(P parser, Function<P, T> rule) {
+        parser.removeErrorListeners();
+        parser.setErrorHandler(new BailErrorStrategy());
+        parser.getInterpreter().setPredictionMode(PredictionMode.SLL);
+        try {
+            return rule.apply(parser);
+        } catch (ParseCancellationException e) {
+            // Rewinds the token stream, which keeps every token SLL already pulled from the lexer.
+            parser.reset();
+            parser.setErrorHandler(new DefaultErrorStrategy());
+            parser.getInterpreter().setPredictionMode(PredictionMode.LL);
+            return rule.apply(parser);
+        }
+    }
+
+    public static GLSLLexer quietLexer(String source) {
         final GLSLLexer lexer = new GLSLLexer(CharStreams.fromString(source));
         lexer.removeErrorListeners();
-        final GLSLPreParser preParser = new GLSLPreParser(new CommonTokenStream(lexer, GLSLLexer.DIRECTIVES));
-        preParser.removeErrorListeners();
-        preParser.setBuildParseTree(true);
-        return preParser.translation_unit();
+        return lexer;
     }
 
     public static String getFormattedShader(ParseTree tree, String header) {
-        StringBuilder sb = new StringBuilder(header + "\n");
-        String[] tabHolder = {""};
-        getFormattedShader(tree, sb, tabHolder);
+        final StringBuilder sb = new StringBuilder(header + "\n");
+        final String[] tabHolder = {""};
+        getFormattedShader(tree, sb, tabHolder, false);
         return sb.toString();
     }
 
-    private static void getFormattedShader(ParseTree tree, StringBuilder builder, String[] tabHolder) {
-        if (tree instanceof TerminalNode) {
-            String text = tree.getText();
+    /**
+     * Same as {@link #getFormattedShader} but also rewrites each terminal token's text and source
+     * offsets to the emitted position, so a later stage can slice the printed body by the tree's
+     * own start/stop indices. Reserved for the SDL GPU stage artifacts.
+     */
+    public static String getFormattedShaderRebased(ParseTree tree, String header) {
+        final StringBuilder sb = new StringBuilder(header + "\n");
+        final String[] tabHolder = {""};
+        getFormattedShader(tree, sb, tabHolder, true);
+        return sb.toString();
+    }
+
+    private static void getFormattedShader(ParseTree tree, StringBuilder builder, String[] tabHolder, boolean rebaseOffsets) {
+        if (tree instanceof TerminalNode terminal) {
+            final String text = terminal.getText();
             if ("<EOF>".equals(text)) {
                 return;
             }
             if ("#".equals(text)) {
                 builder.append("\n#");
+                rebaseAt(terminal, builder.length() - 1, text, rebaseOffsets);
                 return;
             }
             builder.append(text);
+            if (!"}".equals(text)) {
+                rebaseAt(terminal, builder.length() - text.length(), text, rebaseOffsets);
+            }
             if ("{".equals(text)) {
                 builder.append(" \n\t");
                 tabHolder[0] = "\t";
@@ -177,6 +227,7 @@ public class GlslTransformUtils {
                 if (builder.length() >= 2) {
                     builder.deleteCharAt(builder.length() - 2);
                 }
+                rebaseAt(terminal, builder.length() - 1, text, rebaseOffsets);
                 tabHolder[0] = "";
                 builder.append(" \n");
             } else {
@@ -185,7 +236,16 @@ public class GlslTransformUtils {
             return;
         }
         for (int i = 0; i < tree.getChildCount(); i++) {
-            getFormattedShader(tree.getChild(i), builder, tabHolder);
+            getFormattedShader(tree.getChild(i), builder, tabHolder, rebaseOffsets);
+        }
+    }
+
+    private static void rebaseAt(TerminalNode terminal, int startIndex, String text, boolean rebaseOffsets) {
+        if (!rebaseOffsets) return;
+        if (terminal.getSymbol() instanceof CommonToken common) {
+            common.setText(text);
+            common.setStartIndex(startIndex);
+            common.setStopIndex(startIndex + text.length() - 1);
         }
     }
 }
