@@ -9,6 +9,7 @@ import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandType;
+import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.KHRDebug;
 
@@ -140,6 +141,9 @@ public final class GLSMPrograms {
         rejectExitCapture();
         if (ShaderManager.getInstance().isEnabled()) {
             generateVertexShaderIfNeeded(program);
+        }
+        if (ProgramBinaryCache.isEnabled()) {
+            ProgramBinaryCache.markRetrievable(program);
         }
         long linkEpoch = CompatUniformManager.beforeLinkProgram(program);
         RENDER_BACKEND.linkProgram(program);

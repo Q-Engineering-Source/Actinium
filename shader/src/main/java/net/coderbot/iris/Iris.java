@@ -4,6 +4,7 @@ import net.coderbot.iris.debug.IrisDebugOptions;
 import com.google.common.base.Throwables;
 import dhj.embeddedt.embeddium.api.shader.ShaderProviderHolder;
 import com.gtnewhorizons.angelica.Tags;
+import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import it.unimi.dsi.fastutil.ints.Int2IntMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
 import lombok.Getter;
@@ -597,6 +598,7 @@ public class Iris {
 
         fallback = false;
         currentPackName = name;
+        ProgramBinaryCache.usePack(name);
 
         logger.info("Using shaderpack: " + name);
 
@@ -630,6 +632,7 @@ public class Iris {
     private static void setShadersDisabled() {
         currentPack = null;
         fallback = false;
+        ProgramBinaryCache.usePack(null);
         currentPackName = "(off)";
 
         logger.info("Shaders are disabled");
@@ -801,6 +804,7 @@ public class Iris {
      */
     private static void destroyEverything() {
         currentPack = null;
+        ProgramBinaryCache.usePack(null);
 
         getPipelineManager().destroyPipeline();
 
