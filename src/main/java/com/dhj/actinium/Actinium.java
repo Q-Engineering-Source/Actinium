@@ -25,15 +25,18 @@ import com.gtnewhorizons.angelica.glsm.compat.FogDistanceModeBridge;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMConfig;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.iris.IrisGLSMBridge;
+import com.gtnewhorizons.angelica.iris.ShaderWarmup;
 import com.mojang.realmsclient.gui.ChatFormatting;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.pipeline.AdaptiveShadowBoundsStats;
 import net.coderbot.iris.compat.dh.DHCompat;
 import net.coderbot.iris.rendertarget.IRenderTargetExt;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.resources.IReloadableResourceManager;
 import net.minecraft.launchwrapper.Launch;
 import net.minecraftforge.client.ClientCommandHandler;
+import net.minecraftforge.client.event.GuiOpenEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.Loader;
@@ -41,6 +44,7 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.Mod.EventHandler;
 import net.minecraftforge.fml.common.event.FMLConstructionEvent;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
+import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import dhj.embeddedt.embeddium.impl.common.util.MathUtil;
 import dhj.embeddedt.embeddium.impl.common.util.NativeBuffer;
@@ -58,6 +62,8 @@ import java.lang.management.ManagementFactory;
 )
 public class Actinium {
     public static final String MODID = ActiniumRuntime.MODID;
+
+    private boolean titleScreenOpened;
 
     @EventHandler
     public void onConstruct(FMLConstructionEvent event) {
@@ -223,6 +229,21 @@ public class Actinium {
             Iris.reload();
         } catch (IOException | RuntimeException exception) {
             Iris.logger.error("Failed to reload shader pipeline after changing Actinium perf debug", exception);
+        }
+    }
+
+    /**
+     * Starts the shader warmup on the first title screen. That is the earliest point where the render
+     * thread is idle, so class loading for the shader pipeline happens before any world is opened.
+     */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onTitleScreenOpened(GuiOpenEvent event) {
+        if (titleScreenOpened || event.isCanceled() || !(event.getGui() instanceof GuiMainMenu)) {
+            return;
+        }
+        titleScreenOpened = true;
+        if (Iris.enabled) {
+            ShaderWarmup.start();
         }
     }
 

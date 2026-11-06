@@ -63,8 +63,25 @@ public class IdMap {
     record ParsedIdMap(Object2IntMap<NamespacedId> simpleMap, Int2ObjectMap<List<BlockEntry>> nbtEntries) {}
 
     IdMap(Path shaderPath, ShaderPackOptions shaderPackOptions, Iterable<StringPair> environmentDefines) {
-        String rawBlockProperties = readProperties(shaderPath, "block.properties");
-        this.hasLegacySection = hasLegacySection(rawBlockProperties);
+        this(shaderPath, detectLegacySection(shaderPath), shaderPackOptions, environmentDefines);
+    }
+
+    /**
+     * Detects whether a pack's block.properties has a dedicated legacy section.
+     */
+    static boolean detectLegacySection(Path shaderPath) {
+        return hasLegacySection(readProperties(shaderPath, "block.properties"));
+    }
+
+    /**
+     * Builds the map with a legacy-section verdict the caller already computed.
+     *
+     * <p>Detecting the section reads and scans block.properties, which {@link ShaderPack} does once on the client
+     * thread before handing the map over to a worker; passing the result in keeps the file from being read and
+     * scanned twice.
+     */
+    IdMap(Path shaderPath, boolean hasLegacySection, ShaderPackOptions shaderPackOptions, Iterable<StringPair> environmentDefines) {
+        this.hasLegacySection = hasLegacySection;
 
         Iterable<StringPair> resolvedDefines = environmentDefines;
         if (!this.hasLegacySection) {

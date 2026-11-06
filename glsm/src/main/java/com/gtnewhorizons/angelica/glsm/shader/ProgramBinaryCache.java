@@ -241,6 +241,11 @@ public final class ProgramBinaryCache {
         return layer != null && ShaderDiskCache.getString(compiledSettingsKey(layer, settings)) != null;
     }
 
+    /** Whether a direct precompile session is active, so nested world tracking must not replace it. */
+    public static boolean isFolderCompileRunning() {
+        return folderSession != null;
+    }
+
     /**
      * Starts a per-folder session; every program saved until {@link #endFolderCompile()} is credited to
      * this folder. Runs alongside {@link #beginFullCompile()} without sharing its state.

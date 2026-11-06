@@ -47,6 +47,7 @@ public class PrecompileScreen extends GuiScreen {
 	private boolean rootExpanded = true;
 	private int scroll;
 	private boolean wasRunning;
+	private int observedDone;
 	@Nullable
 	private PrecompileQueue.Job activeJob;
 
@@ -128,6 +129,7 @@ public class PrecompileScreen extends GuiScreen {
 		this.scroll = 0;
 		this.activeJob = null;
 		this.wasRunning = PrecompileQueue.isRunning();
+		this.observedDone = PrecompileQueue.done();
 		rebuildRows();
 
 		final int bottom = this.height - 27;
@@ -253,11 +255,12 @@ public class PrecompileScreen extends GuiScreen {
 		}
 		PrecompileQueue.start(jobs);
 		this.wasRunning = true;
+		this.observedDone = 0;
 		this.activeJob = null;
 		updateButtonState();
 	}
 
-	/** Mirrors the queue state onto the tree: expands the pack being compiled and refreshes when the run ends. */
+	/** Mirrors completed folders and the active job onto the tree. */
 	private void syncQueue() {
 		final boolean running = PrecompileQueue.isRunning();
 		if (this.wasRunning && !running) {
@@ -272,6 +275,10 @@ public class PrecompileScreen extends GuiScreen {
 		}
 		if (running) {
 			this.wasRunning = true;
+			if (this.observedDone != PrecompileQueue.done()) {
+				this.observedDone = PrecompileQueue.done();
+				refreshCompiledState();
+			}
 			final PrecompileQueue.Job job = PrecompileQueue.currentJob();
 			if (job != null && !job.equals(this.activeJob)) {
 				if (this.activeJob == null || !job.packName().equals(this.activeJob.packName())) {
@@ -453,7 +460,7 @@ public class PrecompileScreen extends GuiScreen {
 		if (current) {
 			status = I18n.format("options.actinium.precompile.status.running");
 			statusColor = COLOR_RUNNING;
-		} else if (row.entry().compiled() || PrecompileQueue.isRunning() && progress >= 1.0F) {
+		} else if (row.entry().compiled()) {
 			status = I18n.format("options.actinium.precompile.status.compiled");
 			statusColor = COLOR_DONE;
 		} else {

@@ -140,6 +140,7 @@ public final class ShaderDiskCache {
         final Path r = root;
         if (r == null) return false;
         final Path target = key.path(r);
+        if (Arrays.equals(get(key), payload)) return true;
         final Path tmp = target.resolveSibling(key.hex() + '.' + TMP_SEQ.getAndIncrement() + ".tmp");
         try {
             try {
@@ -154,6 +155,7 @@ public final class ShaderDiskCache {
             try {
                 Files.deleteIfExists(tmp);
             } catch (IOException ignored) {}
+            if (Arrays.equals(get(key), payload)) return true;
             if (writeWarned.compareAndSet(false, true)) LOGGER.warn("Shader disk cache write failed for {}", target, e);
             return false;
         }

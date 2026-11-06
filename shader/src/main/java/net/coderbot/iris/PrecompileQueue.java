@@ -40,6 +40,7 @@ public final class PrecompileQueue {
 		running = false;
 		current = null;
 		skipNextFrame = false;
+		Iris.restoreAfterPrecompile();
 	}
 
 	/** Draws the current job before compiling it and leaves one rendered frame between driver calls. */
@@ -63,6 +64,7 @@ public final class PrecompileQueue {
 				Iris.logger.info("Precompile queue finished after {} folders", jobs.size());
 				running = false;
 				current = null;
+				Iris.restoreAfterPrecompile();
 			} else {
 				current = jobs.get(index);
 				skipNextFrame = true;

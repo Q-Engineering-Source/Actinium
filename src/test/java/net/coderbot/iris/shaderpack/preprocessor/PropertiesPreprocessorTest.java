@@ -74,4 +74,20 @@ class PropertiesPreprocessorTest {
         assertEquals(true, result.contains("SHADOW_QUALITY=00002178"));
         assertEquals(true, result.contains("nextKey = nextValue"));
     }
+
+    @Test
+    void cleanLinesSplitsOnEveryLineBreakRegexSeparator() {
+        // \R covers more than \r and \n; a pack using any of these must still be split into the same lines.
+        String result = PropertiesPreprocessor.cleanLines(
+            "  first  \r\nsecond\u000B third\f fourth\u0085 fifth\u2028 sixth\u2029 seventh \n\n");
+
+        assertEquals("first\nsecond\nthird\nfourth\nfifth\nsixth\nseventh\n", result);
+    }
+
+    @Test
+    void cleanLinesDropsCommentsAndBlankLines() {
+        String result = PropertiesPreprocessor.cleanLines("# a comment\n\n#define QUALITY 1\nkey = va#lue\n");
+
+        assertEquals("\n#define QUALITY 1\nkey = value\n", result);
+    }
 }
