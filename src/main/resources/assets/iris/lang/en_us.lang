@@ -79,3 +79,7 @@ options.actinium.precompile.progress=Compiling %s / %s
 options.actinium.precompile.status.compiled=Compiled
 options.actinium.precompile.status.pending=Not compiled
 options.actinium.precompile.status.running=Compiling...
+options.actinium.precompile.packSummary=%s / %s compiled
+options.actinium.precompile.status.folded=Collapsed
+options.actinium.precompile.status.unreadable=Unreadable
+options.actinium.precompile.root=shaderpacks

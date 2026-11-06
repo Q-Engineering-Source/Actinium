@@ -70,7 +70,12 @@ public class PipelineManager {
 
 			Iris.logger.info("Creating pipeline for dimension '{}'", currentDimension);
 			GlFlightRecording.beginPipelineCreate(currentDimension);
-			pipeline = pipelineFactory.apply(currentDimension);
+			Iris.beginFolderTracking(currentDimension);
+			try {
+				pipeline = pipelineFactory.apply(currentDimension);
+			} finally {
+				Iris.endFolderTracking();
+			}
 			MinecraftFramebufferHelper.restoreMainFramebuffer(true);
 			pipelinesPerDimension.put(currentDimension, pipeline);
 			GlFlightRecording.endPipelineCreate(currentDimension);

@@ -75,6 +75,11 @@ public final class ProgramBinaryCache {
         return enabled && packLayer != null && RenderSystem.supportsProgramBinary() && ShaderDiskCache.isEnabled();
     }
 
+    /** Whether the cache can hold entries at all, independent of which pack is active. */
+    private static boolean isStorageEnabled() {
+        return enabled && RenderSystem.supportsProgramBinary() && ShaderDiskCache.isEnabled();
+    }
+
     public static void usePack(String packName) {
         if (packName == null) {
             packLayer = null;
@@ -85,6 +90,14 @@ public final class ProgramBinaryCache {
         if (!enabled) return;
         ShaderDiskCache.touchLayer(layer);
         AngelicaWorkers.run(() -> ShaderDiskCache.keepNewestSubLayers(LAYER, PACKS_KEPT));
+    }
+
+    /**
+     * Points the cache at a pack layer without touching it, so precompiling a pack the player is not playing
+     * does not reorder eviction or trim other packs.
+     */
+    public static void usePackForPrecompile(String packName) {
+        packLayer = packName == null ? null : LAYER + '/' + folderName(packName);
     }
 
     public static Key key() {
@@ -314,18 +327,34 @@ public final class ProgramBinaryCache {
 
     /** True when a folder marker exists for this settings hash and folder, in memory or on disk. */
     public static boolean isFolderCompiled(String settings, String folder) {
-        if (!isEnabled()) return false;
         final String layer = packLayer;
-        if (layer == null) return false;
+        return layer != null && isFolderCompiledIn(layer, settings, folder);
+    }
+
+    /** Same check for a pack the player is not currently playing. */
+    public static boolean isFolderCompiledFor(String packName, String settings, String folder) {
+        return isFolderCompiledIn(LAYER + '/' + folderName(packName), settings, folder);
+    }
+
+    private static boolean isFolderCompiledIn(String layer, String settings, String folder) {
+        if (!isStorageEnabled()) return false;
         final ShaderDiskCache.Key marker = folderMarkerKey(layer, settings, folder);
         return completedFolderMarkers.contains(marker.hex()) || ShaderDiskCache.getString(marker) != null;
     }
 
     /** Deletes every cache entry the folder marker lists, then the marker itself. */
     public static void forgetFolder(String settings, String folder) {
-        if (!isEnabled()) return;
         final String layer = packLayer;
-        if (layer == null) return;
+        if (layer != null) forgetFolderIn(layer, settings, folder);
+    }
+
+    /** Same removal for a pack the player is not currently playing. */
+    public static void forgetFolderFor(String packName, String settings, String folder) {
+        forgetFolderIn(LAYER + '/' + folderName(packName), settings, folder);
+    }
+
+    private static void forgetFolderIn(String layer, String settings, String folder) {
+        if (!isStorageEnabled()) return;
         final ShaderDiskCache.Key marker = folderMarkerKey(layer, settings, folder);
         synchronized (WRITE_LOCK) {
             completedFolderMarkers.remove(marker.hex());

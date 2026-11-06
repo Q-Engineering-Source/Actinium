@@ -167,17 +167,22 @@ public class IrisCeleritasChunkProgramOverrides {
 
     private EnumMap<IrisTerrainPass, GlProgram<IrisCeleritasChunkShaderInterface>> createShaders(CeleritasTerrainPipeline pipeline,
                                                                                                  Function<IrisTerrainPass, ChunkVertexType> vertexTypeOf) {
-        final EnumMap<IrisTerrainPass, GlProgram<IrisCeleritasChunkShaderInterface>> programs = new EnumMap<>(IrisTerrainPass.class);
-        if (pipeline != null) {
-            for (IrisTerrainPass pass : IrisTerrainPass.VALUES) {
-                if (pass.isShadow() && !pipeline.hasShadowPass()) {
-                    programs.put(pass, null);
-                    continue;
+        Iris.beginFolderTracking(Iris.getCurrentDimensionName());
+        try {
+            final EnumMap<IrisTerrainPass, GlProgram<IrisCeleritasChunkShaderInterface>> programs = new EnumMap<>(IrisTerrainPass.class);
+            if (pipeline != null) {
+                for (IrisTerrainPass pass : IrisTerrainPass.VALUES) {
+                    if (pass.isShadow() && !pipeline.hasShadowPass()) {
+                        programs.put(pass, null);
+                        continue;
+                    }
+                    programs.put(pass, createShader(pass, pipeline, vertexTypeOf.apply(pass)));
                 }
-                programs.put(pass, createShader(pass, pipeline, vertexTypeOf.apply(pass)));
             }
+            return programs;
+        } finally {
+            Iris.endFolderTracking();
         }
-        return programs;
     }
 
     @Nullable

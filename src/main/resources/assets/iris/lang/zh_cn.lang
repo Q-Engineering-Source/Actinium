@@ -79,3 +79,7 @@ options.actinium.precompile.progress=正在编译 %s / %s
 options.actinium.precompile.status.compiled=已编译
 options.actinium.precompile.status.pending=未编译
 options.actinium.precompile.status.running=编译中...
+options.actinium.precompile.packSummary=%s / %s 已编译
+options.actinium.precompile.status.folded=已折叠
+options.actinium.precompile.status.unreadable=无法读取
+options.actinium.precompile.root=shaderpacks

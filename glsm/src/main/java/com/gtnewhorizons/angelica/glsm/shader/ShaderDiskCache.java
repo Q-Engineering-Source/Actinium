@@ -3,6 +3,7 @@ package com.gtnewhorizons.angelica.glsm.shader;
 import com.gtnewhorizons.angelica.glsm.threading.AngelicaWorkers;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
@@ -83,6 +84,11 @@ public final class ShaderDiskCache {
 
     public static boolean isEnabled() {
         return root != null;
+    }
+
+    /** Root of the cache, or null while the cache is disabled. */
+    public static @Nullable Path root() {
+        return root;
     }
 
     public static Key key(String layer) {

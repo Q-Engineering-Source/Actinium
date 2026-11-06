@@ -691,6 +691,17 @@ public class ShaderPack {
 	}
 
 	/**
+	 * The shader folder a dimension resolves to, or null when it renders the base shaders.
+	 */
+	@Nullable
+	public String folderForDimension(String dimensionName) {
+		final int dimensionId = Iris.getCurrentDimensionId();
+		final String canonicalDimension = DimensionId.canonicalize(dimensionName, dimensionId);
+		final String folderName = resolveDimensionFolder(dimensionMap, foldersWithShaderFiles, legacyDefaultFolder, canonicalDimension, dimensionId);
+		return folderName != null && foldersWithShaderFiles.contains(folderName) ? folderName : null;
+	}
+
+	/**
 	 * Creates or returns the cached ProgramSet for a dimension folder.
 	 */
 	@Nullable

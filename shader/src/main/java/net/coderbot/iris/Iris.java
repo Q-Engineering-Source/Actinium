@@ -6,6 +6,7 @@ import dhj.embeddedt.embeddium.api.shader.ShaderProvider;
 import dhj.embeddedt.embeddium.api.shader.ShaderProviderHolder;
 import com.gtnewhorizons.angelica.Tags;
 import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
+import com.gtnewhorizons.angelica.glsm.shader.ShaderDiskCache;
 import com.gtnewhorizons.angelica.glsm.threading.AngelicaWorkers;
 import it.unimi.dsi.fastutil.ints.Int2IntMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
@@ -51,6 +52,7 @@ import net.minecraftforge.fml.client.registry.ClientRegistry;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.InputEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.input.Keyboard;
@@ -70,12 +72,14 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -382,6 +386,13 @@ public class Iris {
                 && irisConfig.areDebugOptionsEnabled()
                 && wireframeKeybind != null
                 && wireframeKeybind.isKeyDown();
+    }
+
+    @SubscribeEvent
+    public void onRenderTick(TickEvent.RenderTickEvent event) {
+        if (event.phase == TickEvent.Phase.END) {
+            PrecompileQueue.tick();
+        }
     }
 
     @SubscribeEvent
@@ -829,6 +840,7 @@ public class Iris {
     private static void destroyEverything() {
         currentPack = null;
         currentPackSettings = null;
+        closePreviews();
         ProgramBinaryCache.usePack(null);
 
         getPipelineManager().destroyPipeline();
@@ -968,33 +980,71 @@ public class Iris {
     /** One selectable row of the precompile screen. */
     public record PrecompileEntry(@Nullable String folder, String displayName, boolean compiled) {}
 
-    /** Every shader folder of the loaded pack, in the order the precompile screen lists them. */
-    public static List<PrecompileEntry> precompileFolders() {
-        final List<PrecompileEntry> entries = new ArrayList<>();
-        if (currentPack == null) return entries;
-        for (Map.Entry<String, ProgramSet> entry : currentPack.getEveryProgramSet().entrySet()) {
-            final String folder = entry.getKey();
-            entries.add(new PrecompileEntry(folder, describeFolderName(folder), isFolderCompiled(folder)));
+    /** All shader packs under the shaderpacks folder, in display order. */
+    public static List<String> listShaderPacks() {
+        try {
+            return new ArrayList<>(getShaderpacksDirectoryManager().enumerate());
+        } catch (IOException | RuntimeException e) {
+            logger.error("Failed to list shader packs", e);
+            return List.of();
+        }
+    }
+
+    /**
+     * The folders of one pack, or null when the pack could not be read. Reading a pack parses its shaders, so this
+     * can take a moment the first time a pack is opened.
+     */
+    public static @Nullable List<PrecompileEntry> packEntries(String packName) {
+        final PackPreview preview = previewOf(packName);
+        if (preview == null) return null;
+        final List<PrecompileEntry> entries = new ArrayList<>(preview.folderNames.size());
+        for (String folder : preview.folderNames) {
+            entries.add(new PrecompileEntry(folder, describeFolderName(folder),
+                ProgramBinaryCache.isFolderCompiledFor(packName, preview.settings, folderKey(folder))));
         }
         return entries;
     }
 
+    public static boolean isPackFolderCompiled(String packName, @Nullable String folder) {
+        final PackPreview preview = previewOf(packName);
+        return preview != null && ProgramBinaryCache.isFolderCompiledFor(packName, preview.settings, folderKey(folder));
+    }
+
+    public static void forgetPackFolderCompilation(String packName, @Nullable String folder) {
+        final PackPreview preview = previewOf(packName);
+        if (preview != null) ProgramBinaryCache.forgetFolderFor(packName, preview.settings, folderKey(folder));
+    }
+
     /**
-     * Builds a throwaway pipeline for one shader folder so every program it would otherwise compile on first
-     * draw is compiled now and written to the disk cache. Must run on the client thread.
+     * Builds a throwaway pipeline for one shader folder of any pack so every program it would otherwise compile on
+     * first draw is compiled now and written to that pack's own cache layer. Must run on the client thread.
      *
      * @return true when the folder compiled and its marker was written
      */
-    public static boolean compileFolder(@Nullable String folder) {
-        final String settings = currentPackSettings;
-        if (settings == null || currentPack == null) return false;
-        final ProgramSet programs = currentPack.getProgramSetForFolder(folder);
-        if (programs == null) return false;
+    public static boolean compilePackFolder(String packName, @Nullable String folder) {
+        final PackPreview preview = previewOf(packName);
+        if (preview == null) {
+            logger.warn("Cannot precompile '{}': the pack could not be opened", packName);
+            return false;
+        }
+        final Map<String, ProgramSet> programs = ensurePrograms(preview);
+        if (programs == null) {
+            logger.warn("Cannot precompile '{}': the pack programs could not be loaded", packName);
+            return false;
+        }
+        final ProgramSet programSet = programs.get(folder);
+        if (programSet == null) {
+            logger.warn("Cannot precompile folder '{}' of pack '{}': no such program set (known: {})",
+                describeFolderName(folder), packName, programs.keySet());
+            return false;
+        }
 
-        ProgramBinaryCache.beginFolderCompile(settings, folderKey(folder));
+        final String previousPack = currentPackName;
+        ProgramBinaryCache.usePackForPrecompile(packName);
+        ProgramBinaryCache.beginFolderCompile(preview.settings, folderKey(folder));
         try {
             shaderPackLoadId++;
-            final DeferredWorldRenderingPipeline pipeline = new DeferredWorldRenderingPipeline(programs);
+            final DeferredWorldRenderingPipeline pipeline = new DeferredWorldRenderingPipeline(programSet);
             try {
                 final ShaderProvider provider = ShaderProviderHolder.getProvider();
                 if (provider instanceof IrisCeleritasShaderProvider terrain) {
@@ -1005,16 +1055,246 @@ public class Iris {
                 RetainedPrograms.afterPipelineBuilt();
             }
             ProgramBinaryCache.endFolderCompile();
+            logger.info("Compiled folder '{}' of pack '{}'", describeFolderName(folder), packName);
             return true;
         } catch (Exception e) {
-            logger.error("Failed to precompile shader folder '{}'", describeFolderName(folder), e);
+            logger.error("Failed to precompile shader folder '{}' of pack '{}'", describeFolderName(folder), packName, e);
             ProgramBinaryCache.abortFolderCompile();
             return false;
+        } finally {
+            ProgramBinaryCache.usePack(previousPack);
         }
+    }
+
+    private static final String BASE_FOLDER_MARKER = "<base>";
+
+    /**
+     * A pack opened for precompiling. The folder list comes from a cache file keyed by the pack fingerprint, so
+     * reopening a pack does not reparse its shaders; the programs load only when a folder is actually compiled.
+     */
+    private static final class PackPreview {
+        private final String packName;
+        private final Path root;
+        private final String settings;
+        private List<String> folderNames;
+        private final Properties configs;
+        private final List<StringPair> defines;
+        private @Nullable Map<String, ProgramSet> programs;
+        private @Nullable FileSystem fileSystem;
+
+        private PackPreview(String packName, Path root, String settings, List<String> folderNames,
+                            Properties configs, List<StringPair> defines) {
+            this.packName = packName;
+            this.root = root;
+            this.settings = settings;
+            this.folderNames = folderNames;
+            this.configs = configs;
+            this.defines = defines;
+        }
+    }
+
+    private static final Map<String, PackPreview> packPreviews = new HashMap<>();
+
+    @Nullable
+    private static PackPreview previewOf(String packName) {
+        final PackPreview cached = packPreviews.get(packName);
+        if (cached != null) return cached;
+        final PackPreview opened = openPack(packName);
+        if (opened != null) packPreviews.put(packName, opened);
+        return opened;
+    }
+
+    @Nullable
+    private static PackPreview openPack(String packName) {
+        final Path root;
+        try {
+            root = getShaderpacksDirectory().resolve(packName);
+        } catch (InvalidPathException e) {
+            logger.error("Shader pack name '{}' is not a valid path", packName);
+            return null;
+        }
+
+        final Properties configs = tryReadConfigProperties(getShaderpacksDirectory().resolve(packName + ".txt"))
+            .orElseGet(Properties::new);
+        final List<StringPair> defines = new ArrayList<>();
+        StandardMacros.createStandardEnvironmentDefines().forEach(defines::add);
+
+        final String settings = describeSettings(packName, root, configs, defines, false);
+        if (settings == null) {
+            logger.warn("Could not fingerprint shader pack '{}'; it cannot be precompiled", packName);
+            return null;
+        }
+
+        final List<String> cached = readFolderList(packName, settings);
+        if (cached != null) {
+            logger.info("Using the cached folder list of shader pack '{}' ({} folders)", packName, cached.size());
+            return new PackPreview(packName, root, settings, cached, configs, defines);
+        }
+        logger.info("Parsing shader pack '{}' for its folder list", packName);
+
+        final PackPreview preview = new PackPreview(packName, root, settings, List.of(), configs, defines);
+        final Map<String, ProgramSet> programs = ensurePrograms(preview);
+        if (programs == null) return null;
+        final List<String> folderNames = new ArrayList<>(programs.keySet());
+        writeFolderList(packName, settings, folderNames);
+        preview.folderNames = folderNames;
+        return preview;
+    }
+
+    private record LoadedPrograms(Map<String, ProgramSet> programs, FileSystem fileSystem) {}
+
+    @Nullable
+    private static Map<String, ProgramSet> ensurePrograms(PackPreview preview) {
+        if (preview.programs != null) return preview.programs;
+        final LoadedPrograms loaded = loadPrograms(preview.packName, preview.root, preview.configs, preview.defines);
+        if (loaded == null) return null;
+        preview.programs = loaded.programs();
+        preview.fileSystem = loaded.fileSystem();
+        return preview.programs;
+    }
+
+    @Nullable
+    private static LoadedPrograms loadPrograms(String packName, Path root, Properties configs, List<StringPair> defines) {
+        FileSystem fileSystem = null;
+        try {
+            final Path shaders;
+            if (root.toString().endsWith(".zip")) {
+                fileSystem = FileSystems.newFileSystem(root, Iris.class.getClassLoader());
+                shaders = findShadersDirectory(fileSystem.getRootDirectories().iterator().next());
+            } else {
+                shaders = root.resolve("shaders");
+            }
+            if (shaders == null || !Files.exists(shaders)) {
+                logger.warn("Shader pack '{}' has no shaders directory; it cannot be precompiled", packName);
+                closeQuietly(fileSystem);
+                return null;
+            }
+
+            final Map<String, String> changedConfigs = new HashMap<>();
+            for (String key : configs.stringPropertyNames()) {
+                changedConfigs.put(key, configs.getProperty(key));
+            }
+
+            final ShaderPack pack = new ShaderPack(shaders, changedConfigs, defines);
+            return new LoadedPrograms(new LinkedHashMap<>(pack.getEveryProgramSet()), fileSystem);
+        } catch (Exception e) {
+            logger.error("Failed to read shader pack '{}' for precompiling", packName, e);
+            closeQuietly(fileSystem);
+            return null;
+        }
+    }
+
+    @Nullable
+    private static Path folderListFile(String packName) {
+        final Path root = ShaderDiskCache.root();
+        if (root == null) return null;
+        return root.resolve("pack-folders").resolve(sanitizePackName(packName) + ".txt");
+    }
+
+    @Nullable
+    private static List<String> readFolderList(String packName, String settings) {
+        final Path file = folderListFile(packName);
+        if (file == null || !Files.isRegularFile(file)) return null;
+        try {
+            final List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+            if (lines.size() < 2 || !lines.get(0).equals(settingsHash(settings))) return null;
+            final List<String> folders = new ArrayList<>(lines.size() - 1);
+            for (int i = 1; i < lines.size(); i++) {
+                final String line = lines.get(i);
+                folders.add(BASE_FOLDER_MARKER.equals(line) ? null : line);
+            }
+            return folders;
+        } catch (IOException e) {
+            logger.warn("Failed to read the cached folder list for shader pack '{}'", packName, e);
+            return null;
+        }
+    }
+
+    private static void writeFolderList(String packName, String settings, List<String> folders) {
+        final Path file = folderListFile(packName);
+        if (file == null) return;
+        try {
+            Files.createDirectories(file.getParent());
+            final StringBuilder body = new StringBuilder(settingsHash(settings)).append('\n');
+            for (String folder : folders) {
+                body.append(folder == null ? BASE_FOLDER_MARKER : folder).append('\n');
+            }
+            Files.write(file, body.toString().getBytes(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            logger.warn("Failed to cache the folder list for shader pack '{}'", packName, e);
+        }
+    }
+
+    private static String settingsHash(String settings) {
+        try {
+            final byte[] digest = MessageDigest.getInstance("SHA-256").digest(settings.getBytes(StandardCharsets.UTF_8));
+            final StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                hex.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static String sanitizePackName(String packName) {
+        final StringBuilder out = new StringBuilder(Math.min(packName.length(), 64));
+        for (int i = 0; i < packName.length() && out.length() < 64; i++) {
+            final char c = packName.charAt(i);
+            out.append(c < 128 && (Character.isLetterOrDigit(c) || c == '.' || c == '-' || c == '_') ? c : '_');
+        }
+        return out.toString();
+    }
+
+    @Nullable
+    private static Path findShadersDirectory(Path root) throws IOException {
+        try (Stream<Path> stream = Files.walk(root)) {
+            return stream.filter(Files::isDirectory).filter(path -> path.endsWith("shaders")).findFirst().orElse(null);
+        }
+    }
+
+    private static void closeQuietly(@Nullable FileSystem fileSystem) {
+        if (fileSystem == null) return;
+        try {
+            fileSystem.close();
+        } catch (IOException e) {
+            logger.error("Failed to close a shader pack file system", e);
+        }
+    }
+
+    private static void closePreviews() {
+        for (PackPreview preview : packPreviews.values()) {
+            closeQuietly(preview.fileSystem);
+        }
+        packPreviews.clear();
     }
 
     private static String folderKey(@Nullable String folder) {
         return folder == null ? "" : folder;
+    }
+
+    private static int folderTrackingDepth;
+    private static boolean folderTrackingActive;
+
+    /**
+     * Credits every program compiled inside this scope to the shader folder the dimension resolves to, so a normal
+     * visit to a dimension counts towards its precompile state. Nested scopes share one cache session.
+     */
+    public static void beginFolderTracking(String dimensionName) {
+        if (folderTrackingDepth++ > 0) return;
+        final ShaderPack pack = currentPack;
+        final String settings = currentPackSettings;
+        if (pack == null || settings == null) return;
+        ProgramBinaryCache.beginFolderCompile(settings, folderKey(pack.folderForDimension(dimensionName)));
+        folderTrackingActive = true;
+    }
+
+    public static void endFolderTracking() {
+        if (folderTrackingDepth == 0 || --folderTrackingDepth > 0) return;
+        if (!folderTrackingActive) return;
+        folderTrackingActive = false;
+        ProgramBinaryCache.endFolderCompile();
     }
 
     /**
