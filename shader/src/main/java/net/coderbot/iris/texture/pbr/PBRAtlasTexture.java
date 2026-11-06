@@ -1,10 +1,14 @@
 package net.coderbot.iris.texture.pbr;
 
-import net.coderbot.iris.debug.IrisDebugOptions;
 import com.gtnewhorizons.angelica.compat.mojang.AutoClosableAbstractTexture;
-import net.coderbot.iris.debug.PBRDebug;
+import com.gtnewhorizons.angelica.glsm.profiling.DebugCounters;
 import lombok.Getter;
 import net.coderbot.iris.Iris;
+import net.coderbot.iris.debug.IrisDebugOptions;
+import net.coderbot.iris.debug.PBRDebug;
+import net.coderbot.iris.texture.SpriteAnimationGate;
+import net.coderbot.iris.texture.SpriteAnimationTicker;
+import net.coderbot.iris.texture.pbr.loader.AtlasPBRLoader;
 import net.coderbot.iris.texture.util.TextureExporter;
 import net.coderbot.iris.texture.util.TextureManipulationUtil;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
@@ -19,10 +23,10 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 public class PBRAtlasTexture extends AutoClosableAbstractTexture {
 	protected final TextureMap texMap;
@@ -30,7 +34,8 @@ public class PBRAtlasTexture extends AutoClosableAbstractTexture {
     protected final PBRType type;
 	protected final ResourceLocation id;
 	protected final Map<ResourceLocation, TextureAtlasSprite> sprites = new HashMap<>();
-	protected final Set<TextureAtlasSprite> animatedSprites = new HashSet<>();
+	protected final List<SpriteAnimationTicker> gatedSprites = new ArrayList<>();
+	protected final List<TextureAtlasSprite> alwaysAnimatedSprites = new ArrayList<>();
 
 	public PBRAtlasTexture(TextureMap textureMap, PBRType type) {
 		this.texMap = textureMap;
@@ -43,10 +48,19 @@ public class PBRAtlasTexture extends AutoClosableAbstractTexture {
 		return id;
 	}
 
-	public void addSprite(TextureAtlasSprite sprite) {
+	public void addSprite(AtlasPBRLoader.PBRTextureAtlasSprite sprite) {
 		sprites.put(completeResourceLocation(new ResourceLocation(sprite.getIconName())), sprite);
-		if (isAnimated(sprite)) {
-			animatedSprites.add(sprite);
+		if (!isAnimated(sprite)) {
+			return;
+		}
+
+		// A PBR sprite is never sampled through sprite UVs, so its visibility can only come from the
+		// base sprite. Without the animation mixins, or for a base sprite that carries no animation
+		// metadata, nothing would ever mark it, so it keeps uploading every frame.
+		if (sprite instanceof SpriteAnimationTicker ticker && sprite.getBaseSprite().hasAnimationMetadata()) {
+			gatedSprites.add(ticker);
+		} else {
+			alwaysAnimatedSprites.add(sprite);
 		}
 	}
 
@@ -57,7 +71,8 @@ public class PBRAtlasTexture extends AutoClosableAbstractTexture {
 
 	public void clear() {
 		sprites.clear();
-		animatedSprites.clear();
+		gatedSprites.clear();
+		alwaysAnimatedSprites.clear();
 	}
 
 	public void upload(int atlasWidth, int atlasHeight, int mipLevel, float anisotropicFiltering) {
@@ -77,7 +92,7 @@ public class PBRAtlasTexture extends AutoClosableAbstractTexture {
 			}
 		}
 
-		if (!animatedSprites.isEmpty()) {
+		if (!gatedSprites.isEmpty() || !alwaysAnimatedSprites.isEmpty()) {
 			final PBRAtlasHolder pbrHolder = ((TextureAtlasExtension) texMap).getOrCreatePBRHolder();
 			switch (type) {
 			case NORMAL:
@@ -89,7 +104,7 @@ public class PBRAtlasTexture extends AutoClosableAbstractTexture {
 			}
 		}
 
-		PBRDebug.atlasUploaded(this, atlasWidth, atlasHeight, mipLevel, sprites.size(), animatedSprites.size());
+		PBRDebug.atlasUploaded(this, atlasWidth, atlasHeight, mipLevel, sprites.size(), animatedSpriteCount());
 		if (IrisDebugOptions.pbrDebugEnabled()) {
 			TextureExporter.exportTextures("pbr_debug/atlas", id.getNamespace() + "_" + id.getPath().replaceAll("/", "_"), glId, mipLevel, atlasWidth, atlasHeight);
 		}
@@ -130,15 +145,45 @@ public class PBRAtlasTexture extends AutoClosableAbstractTexture {
 		return metadata != null && metadata.getFrameCount() > 1;
 	}
 
-	public void cycleAnimationFrames() {
-		if (animatedSprites.isEmpty()) {
+	private int animatedSpriteCount() {
+		return gatedSprites.size() + alwaysAnimatedSprites.size();
+	}
+
+	/**
+	 * Advances every animated PBR sprite by one tick.
+	 *
+	 * <p>Sprites whose visibility the base sprite can mark are ticked through the gate, so only the
+	 * visible ones upload their new frame while the rest only advance their frame counters.
+	 * Everything else uploads unconditionally, because nothing would ever mark it visible.
+	 */
+	public void cycleAnimationFrames(boolean onlyVisible) {
+		if (gatedSprites.isEmpty() && alwaysAnimatedSprites.isEmpty()) {
 			return;
 		}
 
 		bind();
-		for (TextureAtlasSprite sprite : animatedSprites) {
-            sprite.updateAnimation();
+		int updated = alwaysAnimatedSprites.size();
+		for (int i = 0; i < gatedSprites.size(); i++) {
+			if (gatedSprites.get(i).tickAnimation(onlyVisible)) {
+				updated++;
+			}
 		}
+		for (int i = 0; i < alwaysAnimatedSprites.size(); i++) {
+			alwaysAnimatedSprites.get(i).updateAnimation();
+		}
+
+		DebugCounters.PBR_ANIM_UPDATES.add(updated);
+		DebugCounters.PBR_ANIM_DRY_RUNS.add(animatedSpriteCount() - updated);
+	}
+
+	/**
+	 * Changes the animation frames of the PBR sprites with the gate the texture atlas resolved for
+	 * this frame.
+	 */
+	public void cycleAnimationFrames() {
+		final TextureMap map = texMap;
+		final boolean onlyVisible = map instanceof SpriteAnimationGate gate && gate.isAnimatingOnlyVisibleSprites();
+		cycleAnimationFrames(onlyVisible);
 	}
 
 	private ResourceLocation completeResourceLocation(ResourceLocation spriteName) {

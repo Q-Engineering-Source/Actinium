@@ -20,6 +20,7 @@ import net.coderbot.iris.debug.IrisDebugOptions;
 import com.gtnewhorizon.gtnhlib.client.renderer.RuntimeOptionsBridge;
 import com.gtnewhorizon.gtnhlib.client.renderer.postprocessing.PostProcessingBridge;
 import com.gtnewhorizons.angelica.glsm.backend.BackendOptions;
+import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
 import com.gtnewhorizons.angelica.glsm.compat.FogDistanceModeBridge;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMConfig;
@@ -46,6 +47,7 @@ import net.minecraftforge.fml.common.event.FMLConstructionEvent;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 import dhj.embeddedt.embeddium.impl.common.util.MathUtil;
 import dhj.embeddedt.embeddium.impl.common.util.NativeBuffer;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
@@ -244,6 +246,18 @@ public class Actinium {
         titleScreenOpened = true;
         if (Iris.enabled) {
             ShaderWarmup.start();
+        }
+    }
+
+    /**
+     * Drives the perf debug report clock from the render loop so a window with no timed stage still
+     * reports the {@code DebugCounters} deltas, which the periodic stage timer alone would never
+     * reach when shaders are off and the PBR animation counters are the only thing moving.
+     */
+    @SubscribeEvent
+    public void onRenderTick(TickEvent.RenderTickEvent event) {
+        if (event.phase == TickEvent.Phase.END && GLSMPerfDebug.isEnabled()) {
+            GLSMPerfDebug.pollCounters();
         }
     }
 

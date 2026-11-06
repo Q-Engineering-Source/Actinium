@@ -1,31 +1,28 @@
 package com.dhj.actinium.mixin.vintage.features.textures;
 
-import com.dhj.actinium.render.terrain.sprite.VisibleTextureIterator;
-import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
+import com.dhj.actinium.runtime.ActiniumRuntime;
+import com.dhj.actinium.texture.TextureMapExtension;
+import com.gtnewhorizons.angelica.mixins.interfaces.IPatchedTextureAtlasSprite;
 import com.llamalad7.mixinextras.sugar.Local;
+import dhj.embeddedt.embeddium.impl.util.collections.quadtree.QuadTree;
+import dhj.embeddedt.embeddium.impl.util.collections.quadtree.Rect2i;
+import net.coderbot.iris.texture.SpriteAnimationGate;
 import net.minecraft.client.renderer.texture.Stitcher;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureMap;
-import dhj.embeddedt.embeddium.impl.util.collections.quadtree.QuadTree;
-import dhj.embeddedt.embeddium.impl.util.collections.quadtree.Rect2i;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import com.dhj.actinium.runtime.ActiniumRuntime;
-import com.dhj.actinium.texture.TextureMapExtension;
 
-import java.util.Iterator;
 import java.util.Map;
 
 @Mixin(TextureMap.class)
-public class MixinTextureAtlas implements TextureMapExtension {
-    @Unique
-    private final VisibleTextureIterator celeritas$visibleTextureIterator = new VisibleTextureIterator();
-
+public class MixinTextureAtlas implements TextureMapExtension, SpriteAnimationGate {
     @Shadow
     @Final
     private Map<String, TextureAtlasSprite> mapUploadedSprites;
@@ -65,12 +62,17 @@ public class MixinTextureAtlas implements TextureMapExtension {
         return this.celeritas$height;
     }
 
-    @ModifyExpressionValue(method = "updateAnimations", at = @At(value = "INVOKE", target = "Ljava/util/List;iterator()Ljava/util/Iterator;"))
-    private Iterator<TextureAtlasSprite> getFilteredIterator(Iterator<TextureAtlasSprite> iterator) {
-        if (ActiniumRuntime.options().performance.animateOnlyVisibleTextures) {
-            return this.celeritas$visibleTextureIterator.reset(iterator);
-        } else {
-            return iterator;
-        }
+    @Override
+    public boolean isAnimatingOnlyVisibleSprites() {
+        return ActiniumRuntime.options().performance.animateOnlyVisibleTextures;
+    }
+
+    /**
+     * Replaces the per-sprite animation step with the visibility-aware tick, so a sprite that was not
+     * marked visible keeps its frame counters in step while its frame upload is skipped.
+     */
+    @Redirect(method = "updateAnimations", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/texture/TextureAtlasSprite;updateAnimation()V"))
+    private void actinium$tickAnimation(TextureAtlasSprite sprite) {
+        ((IPatchedTextureAtlasSprite) sprite).tickAnimation(isAnimatingOnlyVisibleSprites());
     }
 }
