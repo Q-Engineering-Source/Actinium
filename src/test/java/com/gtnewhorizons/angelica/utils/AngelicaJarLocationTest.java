@@ -23,17 +23,17 @@ class AngelicaJarLocationTest {
 
     @Test
     void stripsTheJarUrlPrefixAndEntrySeparator() {
-        final Path jar = Path.of("C:/mods").resolve("Actinium-1.0.0.jar");
-        final String nested = "jar:file:" + jar.toUri().getRawPath() + "!/com/dhj/actinium/Actinium.class";
+        final Path jar = Path.of("mods", "Actinium-1.0.0.jar").toAbsolutePath();
+        final String nested = "jar:" + jar.toUri() + "!/com/dhj/actinium/Actinium.class";
 
         assertEquals(jar, AngelicaJar.parseLocation(nested));
     }
 
     @Test
     void keepsThePathOfAJarWithoutAnEntrySeparator() {
-        final Path jar = Path.of("C:/mods").resolve("Actinium-1.0.0.jar");
+        final Path jar = Path.of("mods", "Actinium-1.0.0.jar").toAbsolutePath();
 
-        assertEquals(jar, AngelicaJar.parseLocation("jar:file:" + jar.toUri().getRawPath()));
+        assertEquals(jar, AngelicaJar.parseLocation("jar:" + jar.toUri()));
     }
 
     @Test
