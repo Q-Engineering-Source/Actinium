@@ -413,6 +413,19 @@ public final class ShaderDiskCache {
             return hex;
         }
 
+        /**
+         * Rebuilds a key from a digest produced by {@link #hex()}, so a marker file can list entries by
+         * digest alone. The digest is stored as given instead of being recomputed from {@code layer},
+         * which makes {@code fromHex(layer, h).hex()} equal {@code h} and resolves to the same file. The
+         * caller must pass the layer the entry was written to; the key is only good for path lookups.
+         */
+        static Key fromHex(String layer, String hex) {
+            if (!hex.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("Not a SHA-256 digest: " + hex);
+            final Key key = new Key(layer);
+            key.hex = hex;
+            return key;
+        }
+
         Path path(Path root) {
             return root.resolve(layer).resolve(hex() + ".bin");
         }

@@ -451,26 +451,12 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 		this.shadowComputes = createShadowComputes(programs.getShadowCompute());
 
+		final Map<SharedProgramKey, BuiltProgram> builtPrograms = new HashMap<>();
+
 		this.table = new ProgramTable<>((condition, availability) -> {
-			final int idx;
+			final ProgramId finalId = gbufferProgramId(ids, condition, availability);
 
-			if (availability.texture && availability.lightmap) {
-				idx = 2;
-			} else if (availability.texture) {
-				idx = 1;
-			} else {
-				idx = 0;
-			}
-
-			ProgramId id = ids[condition.ordinal() * 3 + idx];
-
-			if (id == null) {
-				id = ids[idx];
-			}
-
-			final ProgramId finalId = id;
-
-			return cachedPasses.computeIfAbsent(Pair.of(id, availability), p -> {
+			return cachedPasses.computeIfAbsent(Pair.of(finalId, availability), p -> {
 				final ProgramSource source = resolver.resolveNullable(p.getLeft());
 
 				if (condition == RenderCondition.SHADOW || condition == RenderCondition.SHADOW_TRANSLUCENT) {
@@ -491,7 +477,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 				try {
 					return createPass(source, availability,
-						condition == RenderCondition.SHADOW || condition == RenderCondition.SHADOW_TRANSLUCENT, finalId);
+						condition == RenderCondition.SHADOW || condition == RenderCondition.SHADOW_TRANSLUCENT, finalId, builtPrograms);
 				} catch (Exception e) {
 					throw new RuntimeException("Failed to create pass for " + source.getName() + " for rendering condition "
 						+ condition + " specialized to input availability " + availability, e);
@@ -1015,11 +1001,40 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			null, Collections.emptyList(), false);
 	}
 
-	private Pass createPass(ProgramSource source, InputAvailability availability, boolean shadow, ProgramId id) {
+	private static ProgramId gbufferProgramId(ProgramId[] ids, RenderCondition condition, InputAvailability availability) {
+		final int idx;
+
+		if (availability.texture && availability.lightmap) {
+			idx = 2;
+		} else if (availability.texture) {
+			idx = 1;
+		} else {
+			idx = 0;
+		}
+
+		final ProgramId id = ids[condition.ordinal() * 3 + idx];
+		return id != null ? id : ids[idx];
+	}
+
+	private record SharedProgramKey(String sourceName, InputAvailability availability, boolean shadow) {}
+
+	private record BuiltProgram(Program program, Pass firstPass) {}
+
+	private Pass createPass(ProgramSource source, InputAvailability availability, boolean shadow, ProgramId id,
+							Map<SharedProgramKey, BuiltProgram> builtPrograms) {
 		// Use pre-computed transform if available, otherwise transform synchronously
 		InputAvailability transformAvailability = getTransformInputAvailability(id, availability);
 		Pair<String, InputAvailability> key = Pair.of(source.getName(), transformAvailability);
 		Map<PatchShaderType, String> transformed = attributeTransforms.get(key);
+
+		// The synchronous fallback below depends on the program id, so only precomputed programs are shared
+		final SharedProgramKey shareKey = transformed != null ? new SharedProgramKey(source.getName(), transformAvailability, shadow) : null;
+		final BuiltProgram shared = shareKey != null ? builtPrograms.get(shareKey) : null;
+		if (shared != null) {
+			final Pass pass = createPassInner(shared.program(), source.getDirectives(), shadow, id);
+			this.customUniforms.mapPassLike(shared.firstPass(), pass);
+			return pass;
+		}
 
 		if (transformed == null) {
 			transformed = TransformPatcher.patchAttributes(
@@ -1041,23 +1056,28 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 		ProgramBuilder builder = ProgramBuilder.begin(source.getName(), vertex, geometry, tessControl, tessEval, fragment,
 			IrisSamplers.WORLD_RESERVED_TEXTURE_UNITS);
+		wireGbufferProgram(builder, availability, shadow);
+		final Program program = builder.build();
+		IrisGlDebug.logProgramSamplerState("create-pass", program.getProgramId(), availability.toString(), getPhase().name());
 
-		return createPassInner(builder, source.getDirectives(), availability, shadow, id);
-	}
-
-	private static InputAvailability getTransformInputAvailability(ProgramId id, InputAvailability availability) {
-		if (id == ProgramId.SkyTextured && availability.texture && !availability.lightmap) {
-			return INPUT_TEXTURE_NO_COLOR;
+		final Pass pass = createPassInner(program, source.getDirectives(), shadow, id);
+		this.customUniforms.mapholderToPass(builder, pass);
+		if (shareKey != null) {
+			builtPrograms.put(shareKey, new BuiltProgram(program, pass));
 		}
-		return availability;
+		return pass;
 	}
 
-	private Pass createPassInner(ProgramBuilder builder, ProgramDirectives programDirectives, InputAvailability availability, boolean shadow, ProgramId id) {
-
+	private void wireGbufferProgram(ProgramBuilder builder, InputAvailability availability, boolean shadow) {
 		CommonUniforms.addDynamicUniforms(builder, FogMode.PER_VERTEX);
-        this.customUniforms.assignTo(builder);
+		this.customUniforms.assignTo(builder);
 
-		Supplier<ImmutableSet<Integer>> flipped;
+		builder.bindAttributeLocation(11, "mc_Entity");
+		builder.bindAttributeLocation(12, "mc_midTexCoord");
+		builder.bindAttributeLocation(13, "at_tangent");
+		builder.bindAttributeLocation(14, "at_midBlock");
+
+		final Supplier<ImmutableSet<Integer>> flipped;
 
 		if (shadow) {
 			flipped = () -> ((shouldRenderPrepareBeforeShadow || hasRenderedPreparePass) ? flippedAfterPrepare : flippedBeforeShadow);
@@ -1100,7 +1120,16 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 				IrisImages.addShadowColorImages(builder, shadowRenderTargets, null);
 			}
 		}
+	}
 
+	private static InputAvailability getTransformInputAvailability(ProgramId id, InputAvailability availability) {
+		if (id == ProgramId.SkyTextured && availability.texture && !availability.lightmap) {
+			return INPUT_TEXTURE_NO_COLOR;
+		}
+		return availability;
+	}
+
+	private Pass createPassInner(Program program, ProgramDirectives programDirectives, boolean shadow, ProgramId id) {
 		GlFramebuffer framebufferBeforeTranslucents;
 		GlFramebuffer framebufferAfterTranslucents;
 
@@ -1112,11 +1141,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			framebufferBeforeTranslucents = renderTargets.createGbufferFramebuffer(flippedAfterPrepare, programDirectives.getDrawBuffers());
 			framebufferAfterTranslucents = renderTargets.createGbufferFramebuffer(flippedAfterTranslucent, programDirectives.getDrawBuffers());
 		}
-
-		builder.bindAttributeLocation(11, "mc_Entity");
-		builder.bindAttributeLocation(12, "mc_midTexCoord");
-		builder.bindAttributeLocation(13, "at_tangent");
-		builder.bindAttributeLocation(14, "at_midBlock");
 
 		AlphaTestOverride alphaTestOverride = programDirectives.getAlphaTestOverride()
 			.orElse(id.getDefaultAlphaTestOverride());
@@ -1130,15 +1154,8 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			}
 		});
 
-        Program builtProgram = builder.build();
-        IrisGlDebug.logProgramSamplerState("create-pass", builtProgram.getProgramId(), availability.toString(), getPhase().name());
-
-        Pass pass = new Pass(builtProgram, framebufferBeforeTranslucents, framebufferAfterTranslucents, alphaTestOverride,
-            programDirectives.getBlendModeOverride().orElse(id.getBlendModeOverride()), bufferOverrides, shadow);
-
-        this.customUniforms.mapholderToPass(builder, pass);
-
-		return pass;
+		return new Pass(program, framebufferBeforeTranslucents, framebufferAfterTranslucents, alphaTestOverride,
+			programDirectives.getBlendModeOverride().orElse(id.getBlendModeOverride()), bufferOverrides, shadow);
 	}
 
 	public void addGbufferOrShadowSamplers(SamplerHolder samplers, ImageHolder images, Supplier<ImmutableSet<Integer>> flipped,

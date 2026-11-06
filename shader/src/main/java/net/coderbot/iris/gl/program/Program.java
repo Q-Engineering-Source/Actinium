@@ -4,6 +4,7 @@ import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import net.coderbot.iris.gl.GlResource;
 import net.coderbot.iris.gl.blending.DepthColorStorage;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL42;
 import org.lwjgl.opengl.GL43;
 import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
@@ -13,8 +14,13 @@ public final class Program extends GlResource {
 	private final ProgramSamplers samplers;
 	private final ProgramImages images;
 
-	Program(int program, ProgramUniforms uniforms, ProgramSamplers samplers, ProgramImages images) {
+	@Nullable
+	private final RetainedPrograms.Sources sources;
+
+	Program(int program, @Nullable RetainedPrograms.Sources sources, ProgramUniforms uniforms, ProgramSamplers samplers, ProgramImages images) {
 		super(program);
+
+		this.sources = sources;
 
 		this.uniforms = uniforms;
 		this.samplers = samplers;
@@ -41,7 +47,11 @@ public final class Program extends GlResource {
 	@Override
     public void destroyInternal() {
 		DepthColorStorage.unregisterOwnedProgram(getGlId());
-		GLSMPrograms.glDeleteProgram(getGlId());
+		if (sources != null) {
+			RetainedPrograms.retain(sources, getGlId());
+		} else {
+			GLSMPrograms.glDeleteProgram(getGlId());
+		}
 	}
 
 	/**

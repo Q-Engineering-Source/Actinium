@@ -2,9 +2,11 @@ package net.coderbot.iris;
 
 import net.coderbot.iris.debug.IrisDebugOptions;
 import com.google.common.base.Throwables;
+import dhj.embeddedt.embeddium.api.shader.ShaderProvider;
 import dhj.embeddedt.embeddium.api.shader.ShaderProviderHolder;
 import com.gtnewhorizons.angelica.Tags;
 import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
+import com.gtnewhorizons.angelica.glsm.threading.AngelicaWorkers;
 import it.unimi.dsi.fastutil.ints.Int2IntMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
 import lombok.Getter;
@@ -17,6 +19,7 @@ import net.coderbot.iris.celeritas.IrisCeleritasShaderProvider;
 import net.coderbot.iris.client.IrisDebugScreenHandler;
 import net.coderbot.iris.gbuffer_overrides.matching.InputAvailability;
 import net.coderbot.iris.gl.shader.StandardMacros;
+import net.coderbot.iris.gl.program.RetainedPrograms;
 import net.coderbot.iris.gui.screen.ShaderPackScreen;
 import net.coderbot.iris.pipeline.DeferredWorldRenderingPipeline;
 import net.coderbot.iris.pipeline.FixedFunctionWorldRenderingPipeline;
@@ -28,6 +31,7 @@ import net.coderbot.iris.shaderpack.DimensionId;
 import net.coderbot.iris.shaderpack.OptionalBoolean;
 import net.coderbot.iris.shaderpack.ProgramSet;
 import net.coderbot.iris.shaderpack.ShaderPack;
+import net.coderbot.iris.shaderpack.StringPair;
 import net.coderbot.iris.shaderpack.discovery.ShaderpackDirectoryManager;
 import net.coderbot.iris.shaderpack.option.OptionSet;
 import net.coderbot.iris.shaderpack.option.Profile;
@@ -48,22 +52,35 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.InputEvent;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.input.Keyboard;
 import dhj.embeddedt.embeddium.api.debug.RenderDebugHooksHolder;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.FileSystem;
+import java.nio.file.FileSystemLoopException;
 import java.nio.file.FileSystemNotFoundException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
@@ -103,6 +120,8 @@ public class Iris {
     private static boolean initialized;
     @Getter
     private static int shaderPackLoadId = 0;
+    /** Fingerprint of the loaded pack, its options and the environment defines; null while the cache is off. */
+    private static String currentPackSettings;
 
     private static PipelineManager pipelineManager;
     @Getter
@@ -589,6 +608,10 @@ public class Iris {
             changedConfigsValues.getStringValues().forEach(configsToSave::setProperty);
 
             tryUpdateConfigPropertiesFile(shaderPackConfigTxt, configsToSave);
+
+            currentPackSettings = irisConfig.shouldSaveCompiledShaders()
+                ? describeSettings(name, shaderPackRoot, configsToSave, StandardMacros.createStandardEnvironmentDefines(), false)
+                : null;
         } catch (Exception e) {
             logger.error("Failed to load the shaderpack \"{}\"!", name);
             logger.error("", e);
@@ -631,6 +654,7 @@ public class Iris {
 
     private static void setShadersDisabled() {
         currentPack = null;
+        currentPackSettings = null;
         fallback = false;
         ProgramBinaryCache.usePack(null);
         currentPackName = "(off)";
@@ -804,6 +828,7 @@ public class Iris {
      */
     private static void destroyEverything() {
         currentPack = null;
+        currentPackSettings = null;
         ProgramBinaryCache.usePack(null);
 
         getPipelineManager().destroyPipeline();
@@ -824,6 +849,173 @@ public class Iris {
 
     public static String lastDimensionName = null;
     public static int lastDimensionId = 0;
+
+    private record HashedFile(long size, long modified, String hash) {}
+
+    private record VisitedFolder(Path path, @Nullable Object key) {}
+
+    private static final Map<Path, HashedFile> contentHashes = new ConcurrentHashMap<>();
+
+    /**
+     * Builds the fingerprint the compiled shader cache is keyed by: pack contents, pack options and the
+     * environment defines. {@code byContent} hashes file bytes; the load path passes false so turning
+     * shaders on only stats files instead of reading every one of them.
+     */
+    @Nullable
+    private static String describeSettings(String packName, Path packRoot, Properties options,
+                                           Iterable<StringPair> environmentDefines, boolean byContent) {
+        final StringBuilder settings = new StringBuilder(packName).append('\n');
+        if (Files.isRegularFile(packRoot)) {
+            try {
+                settings.append(Files.size(packRoot)).append('|').append(Files.getLastModifiedTime(packRoot).toMillis());
+            } catch (IOException e) {
+                return null;
+            }
+        } else if (Files.isDirectory(packRoot)) {
+            final TreeMap<String, String> files = new TreeMap<>();
+            try {
+                final Object rootKey = Files.readAttributes(packRoot, BasicFileAttributes.class).fileKey();
+                files.putAll(describeFolder(packRoot, new VisitedFolder(packRoot, rootKey), List.of(), byContent));
+            } catch (IOException | UncheckedIOException e) {
+                return null;
+            }
+            files.forEach((file, state) -> settings.append(file).append('|').append(state).append('\n'));
+        } else {
+            return null;
+        }
+        settings.append('\n');
+        new TreeMap<>(options).forEach((key, value) -> settings.append(key).append('=').append(value).append('\n'));
+        for (StringPair define : environmentDefines) {
+            settings.append('#').append(define.getKey()).append(' ').append(define.getValue()).append('\n');
+        }
+        return settings.toString();
+    }
+
+    private static Map<String, String> describeFolder(Path root, VisitedFolder folder, List<VisitedFolder> ancestors, boolean byContent) {
+        final Map<String, String> files = new HashMap<>();
+        final List<Supplier<Map<String, String>>> subfolders = new ArrayList<>();
+        final List<VisitedFolder> lineage = new ArrayList<>(ancestors);
+        lineage.add(folder);
+        try (DirectoryStream<Path> entries = Files.newDirectoryStream(folder.path())) {
+            for (Path entry : entries) {
+                BasicFileAttributes attributes;
+                try {
+                    attributes = Files.readAttributes(entry, BasicFileAttributes.class);
+                } catch (IOException e) {
+                    attributes = Files.readAttributes(entry, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                }
+                if (attributes.isDirectory()) {
+                    final VisitedFolder subfolder = new VisitedFolder(entry, attributes.fileKey());
+                    for (VisitedFolder ancestor : lineage) {
+                        final boolean same = subfolder.key() != null && ancestor.key() != null
+                            ? subfolder.key().equals(ancestor.key())
+                            : Files.isSameFile(ancestor.path(), entry);
+                        if (same) throw new FileSystemLoopException(entry.toString());
+                    }
+                    subfolders.add(() -> describeFolder(root, subfolder, lineage, byContent));
+                } else if (attributes.isRegularFile()) {
+                    files.put(root.relativize(entry).toString(),
+                        byContent ? contentHash(entry, attributes) : attributes.size() + "|" + attributes.lastModifiedTime().toMillis());
+                }
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        for (Map<String, String> nested : AngelicaWorkers.invokeAll(subfolders)) {
+            files.putAll(nested);
+        }
+        return files;
+    }
+
+    private static String contentHash(Path file, BasicFileAttributes attributes) {
+        final long size = attributes.size();
+        final long modified = attributes.lastModifiedTime().toMillis();
+        final HashedFile known = contentHashes.get(file);
+        if (known != null && known.size() == size && known.modified() == modified) return known.hash();
+        final String hash;
+        try {
+            hash = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        contentHashes.put(file, new HashedFile(size, modified, hash));
+        return hash;
+    }
+
+    /** Fingerprint of the loaded pack, its options and the environment defines; null while the cache is off. */
+    @Nullable
+    public static String currentPackSettings() {
+        return currentPackSettings;
+    }
+
+    /** The folder name to display for a compiled shader folder, or null for the pack base folder. */
+    public static String describeFolderName(@Nullable String folder) {
+        return folder == null ? I18n.format("options.actinium.precompile.baseFolder") : folder;
+    }
+
+    public static boolean isFolderCompiled(@Nullable String folder) {
+        final String settings = currentPackSettings;
+        return settings != null && ProgramBinaryCache.isFolderCompiled(settings, folderKey(folder));
+    }
+
+    public static void forgetFolderCompilation(@Nullable String folder) {
+        final String settings = currentPackSettings;
+        if (settings != null) ProgramBinaryCache.forgetFolder(settings, folderKey(folder));
+    }
+
+    /** One selectable row of the precompile screen. */
+    public record PrecompileEntry(@Nullable String folder, String displayName, boolean compiled) {}
+
+    /** Every shader folder of the loaded pack, in the order the precompile screen lists them. */
+    public static List<PrecompileEntry> precompileFolders() {
+        final List<PrecompileEntry> entries = new ArrayList<>();
+        if (currentPack == null) return entries;
+        for (Map.Entry<String, ProgramSet> entry : currentPack.getEveryProgramSet().entrySet()) {
+            final String folder = entry.getKey();
+            entries.add(new PrecompileEntry(folder, describeFolderName(folder), isFolderCompiled(folder)));
+        }
+        return entries;
+    }
+
+    /**
+     * Builds a throwaway pipeline for one shader folder so every program it would otherwise compile on first
+     * draw is compiled now and written to the disk cache. Must run on the client thread.
+     *
+     * @return true when the folder compiled and its marker was written
+     */
+    public static boolean compileFolder(@Nullable String folder) {
+        final String settings = currentPackSettings;
+        if (settings == null || currentPack == null) return false;
+        final ProgramSet programs = currentPack.getProgramSetForFolder(folder);
+        if (programs == null) return false;
+
+        ProgramBinaryCache.beginFolderCompile(settings, folderKey(folder));
+        try {
+            shaderPackLoadId++;
+            final DeferredWorldRenderingPipeline pipeline = new DeferredWorldRenderingPipeline(programs);
+            try {
+                final ShaderProvider provider = ShaderProviderHolder.getProvider();
+                if (provider instanceof IrisCeleritasShaderProvider terrain) {
+                    terrain.compileTerrainPrograms(pipeline.getCeleritasTerrainPipeline());
+                }
+            } finally {
+                getPipelineManager().discardPipeline(pipeline);
+                RetainedPrograms.afterPipelineBuilt();
+            }
+            ProgramBinaryCache.endFolderCompile();
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to precompile shader folder '{}'", describeFolderName(folder), e);
+            ProgramBinaryCache.abortFolderCompile();
+            return false;
+        }
+    }
+
+    private static String folderKey(@Nullable String folder) {
+        return folder == null ? "" : folder;
+    }
 
     /**
      * Gets the stable shader-pack dimension key for the current world.

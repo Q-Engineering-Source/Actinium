@@ -2,6 +2,7 @@ package net.irisshaders.iris.compat.sodium;
 
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.gui.option.IrisVideoSettings;
+import net.coderbot.iris.gui.screen.PrecompileScreen;
 import net.coderbot.iris.gui.screen.ShaderPackScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiScreen;
@@ -9,6 +10,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import dhj.embeddedt.embeddium.api.options.OptionIdentifier;
 import dhj.embeddedt.embeddium.api.options.control.ControlValueFormatter;
+import dhj.embeddedt.embeddium.api.options.control.ExternalButtonControl;
 import dhj.embeddedt.embeddium.api.options.control.SliderControl;
 import dhj.embeddedt.embeddium.api.options.control.TickBoxControl;
 import dhj.embeddedt.embeddium.api.options.structure.ExternalPage;
@@ -100,9 +102,21 @@ public final class IrisConfigEntryPoint {
                 .setEnabledPredicate(() -> Iris.enabled)
                 .build();
 
+        OptionImpl<Object, Void> precompile = OptionImpl.createBuilder(Void.class, new IrisStorage())
+                .setId(OptionIdentifier.create(MOD_ID, "precompile_shaders", Void.class))
+                .setName(TextComponent.translatable("options.actinium.precompile.name"))
+                .setTooltip(TextComponent.translatable("options.actinium.precompile.tooltip"))
+                .setControl(option -> new ExternalButtonControl(option,
+                        parent -> Minecraft.getMinecraft().displayGuiScreen(new PrecompileScreen(parent)),
+                        TextComponent.translatable("options.actinium.precompile.button")))
+                .setBinding((ignored, value) -> { }, ignored -> null)
+                .setEnabledPredicate(() -> Iris.enabled)
+                .build();
+
         OptionGroup cacheGroup = OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(MOD_ID, "shader_cache"))
                 .add(saveCompiled)
+                .add(precompile)
                 .build();
 
         OptionPage page = new OptionPage(

@@ -206,6 +206,11 @@ public class CustomUniforms implements FunctionContext {
 		locationMap.put(pass, locationMap.remove(holder));
 	}
 
+	public void mapPassLike(Object existingPass, Object pass) {
+		final Object2IntMap<CachedUniform> uniforms = locationMap.get(existingPass);
+		if (uniforms != null) locationMap.put(pass, uniforms);
+	}
+
 
 	public void update() {
 		for (CachedUniform value : this.uniformOrder) {

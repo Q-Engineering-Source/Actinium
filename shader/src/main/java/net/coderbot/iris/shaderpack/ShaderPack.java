@@ -53,6 +53,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -663,25 +664,7 @@ public class ShaderPack {
 		);
 
 		if (folderName != null && foldersWithShaderFiles.contains(folderName)) {
-			ProgramSet programSet = dimensionProgramSets.get(folderName);
-
-			if (programSet == null) {
-				try {
-					programSet = new ProgramSet(
-						AbsolutePackPath.fromAbsolutePath("/" + folderName),
-						sourceProvider,
-						shaderProperties,
-						this
-					);
-					dimensionProgramSets.put(folderName, programSet);
-
-					evictOldDimensions();
-				} catch (Exception e) {
-					// This shouldn't happen but just in case.
-					Iris.logger.error("Failed to create ProgramSet for dimension folder '{}', falling back to base", folderName, e);
-					programSet = null;
-				}
-			}
+			final ProgramSet programSet = getFolderProgramSet(folderName);
 
 			if (programSet != null) {
 				return programSet;
@@ -705,6 +688,73 @@ public class ShaderPack {
 		//     sense to bring it back as a configurable option, and have a more maintainable set of code backing it.
 
 		return base;
+	}
+
+	/**
+	 * Creates or returns the cached ProgramSet for a dimension folder.
+	 */
+	@Nullable
+	private ProgramSet getFolderProgramSet(String folderName) {
+		ProgramSet programSet = dimensionProgramSets.get(folderName);
+
+		if (programSet == null) {
+			// Create ProgramSet on-demand for dimension folder
+			try {
+				programSet = new ProgramSet(
+					AbsolutePackPath.fromAbsolutePath("/" + folderName),
+					sourceProvider,
+					shaderProperties,
+					this
+				);
+				dimensionProgramSets.put(folderName, programSet);
+
+				evictOldDimensions();
+			} catch (Exception e) {
+				Iris.logger.error("Failed to create ProgramSet for dimension folder '{}', falling back to base", folderName, e);
+				programSet = null;
+			}
+		}
+
+		return programSet;
+	}
+
+	/**
+	 * Resolves one shader folder for the precompile screen; a null folder means the pack base, which only
+	 * exists when some dimension can still fall back to it.
+	 */
+	@Nullable
+	public ProgramSet getProgramSetForFolder(@Nullable String folder) {
+		if (folder == null) {
+			return canFallBackToBase(dimensionMap, foldersWithShaderFiles, legacyDefaultFolder) ? base : null;
+		}
+		return getFolderProgramSet(folder);
+	}
+
+	/**
+	 * Every ProgramSet a full compile has to cover, keyed by folder name in sorted order; the base shaders are
+	 * under the null key and are only included when some dimension can still fall back to them.
+	 */
+	public Map<String, ProgramSet> getEveryProgramSet() {
+		final Map<String, ProgramSet> sets = new LinkedHashMap<>();
+		for (String folderName : new TreeSet<>(foldersWithShaderFiles)) {
+			final ProgramSet programSet = getFolderProgramSet(folderName);
+			if (programSet != null) sets.put(folderName, programSet);
+		}
+		if (canFallBackToBase(dimensionMap, foldersWithShaderFiles, legacyDefaultFolder)) {
+			sets.put(null, base);
+		}
+		return sets;
+	}
+
+	/**
+	 * @return whether some dimension resolves to no folder of its own and therefore renders the base shaders
+	 */
+	static boolean canFallBackToBase(Map<String, String> dimensionMap, Set<String> foldersWithShaderFiles, String legacyDefaultFolder) {
+		for (String folderName : dimensionMap.values()) {
+			if (!foldersWithShaderFiles.contains(folderName)) return true;
+		}
+		// A dimension that is named nowhere and has no world<id> folder of its own
+		return resolveDimensionFolder(dimensionMap, foldersWithShaderFiles, legacyDefaultFolder, "\0", Integer.MIN_VALUE) == null;
 	}
 
 	/**

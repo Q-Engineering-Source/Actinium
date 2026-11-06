@@ -130,6 +130,13 @@ public class PipelineManager {
 	}
 
 
+	/** Discards a throwaway pipeline built for precompiling one shader folder; active pipelines stay intact. */
+	public void discardPipeline(WorldRenderingPipeline unused) {
+		resetTextureState();
+		unused.destroy();
+		MinecraftFramebufferHelper.restoreMainFramebuffer(true);
+	}
+
 	/**
 	 * Destroys all the current pipelines.
 	 *
