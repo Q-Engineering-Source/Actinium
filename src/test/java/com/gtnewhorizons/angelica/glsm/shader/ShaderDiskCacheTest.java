@@ -7,8 +7,12 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -120,5 +124,32 @@ class ShaderDiskCacheTest {
         assertTrue(Files.isRegularFile(dir.resolve("salt")));
         ShaderDiskCache.put(ShaderDiskCache.key("t").i(9), new byte[] {5});
         assertArrayEquals(new byte[] {5}, ShaderDiskCache.get(ShaderDiskCache.key("t").i(9)));
+    }
+
+    @Test
+    void concurrentWritesOfTheSameEntrySucceed() throws Exception {
+        ShaderDiskCache.configure(dir, "a");
+        for (int round = 0; round < 4; round++) {
+            final ShaderDiskCache.Key key = ShaderDiskCache.key("concurrent").i(round);
+            final byte[] payload = new byte[] {1, 2, 3, (byte) round};
+            final CountDownLatch start = new CountDownLatch(1);
+            final List<CompletableFuture<Boolean>> writers = new ArrayList<>();
+            for (int i = 0; i < 32; i++) {
+                writers.add(CompletableFuture.supplyAsync(() -> {
+                    try {
+                        start.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(e);
+                    }
+                    return ShaderDiskCache.put(key, payload);
+                }));
+            }
+            start.countDown();
+            for (CompletableFuture<Boolean> writer : writers) {
+                assertTrue(writer.join());
+            }
+            assertArrayEquals(payload, ShaderDiskCache.get(key));
+        }
     }
 }

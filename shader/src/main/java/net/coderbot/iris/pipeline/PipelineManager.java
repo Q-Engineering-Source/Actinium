@@ -70,7 +70,12 @@ public class PipelineManager {
 
 			Iris.logger.info("Creating pipeline for dimension '{}'", currentDimension);
 			GlFlightRecording.beginPipelineCreate(currentDimension);
-			pipeline = pipelineFactory.apply(currentDimension);
+			Iris.beginFolderTracking(currentDimension);
+			try {
+				pipeline = pipelineFactory.apply(currentDimension);
+			} finally {
+				Iris.endFolderTracking();
+			}
 			MinecraftFramebufferHelper.restoreMainFramebuffer(true);
 			pipelinesPerDimension.put(currentDimension, pipeline);
 			GlFlightRecording.endPipelineCreate(currentDimension);
@@ -129,6 +134,13 @@ public class PipelineManager {
 		return Optional.ofNullable(pipeline);
 	}
 
+
+	/** Discards a throwaway pipeline built for precompiling one shader folder; active pipelines stay intact. */
+	public void discardPipeline(WorldRenderingPipeline unused) {
+		resetTextureState();
+		unused.destroy();
+		MinecraftFramebufferHelper.restoreMainFramebuffer(true);
+	}
 
 	/**
 	 * Destroys all the current pipelines.

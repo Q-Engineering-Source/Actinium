@@ -1,5 +1,6 @@
 package net.coderbot.iris.gl.shader;
 
+import net.coderbot.iris.Iris;
 import net.coderbot.iris.debug.IrisDebugOptions;
 import com.google.common.collect.ImmutableList;
 import com.gtnewhorizons.angelica.Tags;
@@ -44,54 +45,54 @@ public class StandardMacros {
 		defines.add(new StringPair(key, value));
 	}
 
+    // Only a leading channel prefix plus a numeric triplet may contribute to the version; anything
+    // after it (branch name, commit distance, git sha, dirty marker) is ignored so that extra tags
+    // and dev-build suffixes never leak digits into ACTINIUM_VERSION.
+    private static final Pattern ACTINIUM_VERSION_PATTERN =
+            Pattern.compile("^(?:[a-z]+-)?(\\d+)\\.(\\d+)\\.(\\d+)(?:-(?:alpha|beta|pre|rc)(\\d{1,3}))?");
+
+    private static final String UNPARSEABLE_VERSION = "99999999";
+
     private static String makeActiniumVersion()
     {
-        return formatActiniumVersion(Tags.VERSION);
+        final String version = Tags.VERSION;
+        final String formatted = parseActiniumVersion(version);
+        if (formatted == null) {
+            Iris.logger.warn("Could not parse Actinium version \"" + version
+                    + "\"; defining ACTINIUM_VERSION as " + UNPARSEABLE_VERSION);
+            return UNPARSEABLE_VERSION;
+        }
+        return formatted;
     }
 
     /**
-     * Encodes a version string (e.g. "alpha-0.0.5-da83c59") into a numeric macro value.
-     * Package-visible for testing.
+     * Encodes a version string (e.g. "alpha-0.0.14", "alpha-0.0.5-beta2",
+     * "alpha-0.0.14-feat-shader-preprocess-warmup.26+32aa1c9a-dirty") into a numeric macro value.
+     * Unparseable input yields {@link #UNPARSEABLE_VERSION}. Package-visible for testing.
      */
     static String formatActiniumVersion(String version)
     {
-        // The version may carry a non-numeric prefix (e.g. "alpha-0.0.1-2dc019e") and the
-        // build appends a git sha, so locate the first dotted numeric triplet instead of
-        // assuming the string starts with digits.
-        String[] parts = version.split("[.-]");
-        int numericStart = -1;
-        for (int i = 0; i < parts.length; i++) {
-            if (!parts[i].isEmpty() && parts[i].chars().allMatch(Character::isDigit)) {
-                numericStart = i;
-                break;
-            }
-        }
-        if (numericStart < 0 || numericStart + 2 >= parts.length) {
-            // Keep the define numeric so shader packs can still compare against it.
-            return "0";
-        }
-        int major = Integer.parseInt(parts[numericStart]);
-        int minor = Integer.parseInt(parts[numericStart + 1]);
-        int patch = Integer.parseInt(parts[numericStart + 2]);
-        int sub = 0;
+        final String formatted = parseActiniumVersion(version);
+        return formatted != null ? formatted : UNPARSEABLE_VERSION;
+    }
 
-        // Handle optional prerelease (like beta62). The segment must start with a
-        // letter so a trailing git sha (e.g. "00e287f") is not mistaken for a
-        // prerelease number.
-        if (numericStart + 3 < parts.length) {
-            String pre = parts[numericStart + 3];
-            if (!pre.isEmpty() && Character.isLetter(pre.charAt(0))) {
-                String num = pre.replaceAll("\\D+", ""); // remove all non-digits
-                if (!num.isEmpty())
-                    sub = Integer.parseInt(num);
-            }
+    /** Returns the encoded value, or null when the string carries no version triplet. */
+    private static String parseActiniumVersion(String version)
+    {
+        final Matcher matcher = ACTINIUM_VERSION_PATTERN.matcher(version);
+        if (!matcher.find()) {
+            return null;
         }
-        String encoded = String.format("%d%02d%02d%03d", major, minor, patch, sub);
+        final int major = Integer.parseInt(matcher.group(1));
+        final int minor = Integer.parseInt(matcher.group(2));
+        final int patch = Integer.parseInt(matcher.group(3));
+        final int sub = matcher.group(4) == null ? 0 : Integer.parseInt(matcher.group(4));
+        final String encoded = String.format("%d%02d%02d%03d", major, minor, patch, sub);
         // jcpp lexes macro values as C constants: a multi-digit value starting with '0' is
         // treated as octal, and an 8/9 digit then raises a LexerException that fails the whole
         // shader pack load (production: alpha-0.0.5-da83c59 -> "000058359"). Strip the leading
         // zeros; the numeric value is unchanged.
-        String stripped = encoded.replaceFirst("^0+", "");
+        final String stripped = encoded.replaceFirst("^0+", "");
         return stripped.isEmpty() ? "0" : stripped;
     }
 

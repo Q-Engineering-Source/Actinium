@@ -19,6 +19,9 @@ import java.util.Map;
 import java.util.Objects;
 
 public class IrisCeleritasShaderProvider implements ShaderProvider {
+    /** Format used when compiling terrain programs ahead of the first draw, before the renderer picks its own. */
+    private static final ChunkVertexType TERRAIN_VERTEX_TYPE = new ExtendedChunkVertexType();
+
     private final IrisCeleritasChunkProgramOverrides overrides = new IrisCeleritasChunkProgramOverrides();
     private TerrainVertexFormatRequirements vertexFormatRequirements = TerrainVertexFormatRequirements.all();
     private ChunkVertexType vertexType = new ExtendedChunkVertexType(this.vertexFormatRequirements);
@@ -74,6 +77,20 @@ public class IrisCeleritasShaderProvider implements ShaderProvider {
 
     public void deleteShaders() {
         overrides.deleteShaders();
+    }
+
+    /**
+     * Compiles every terrain program of {@code pipeline} and throws the results away. A separate overrides instance
+     * keeps the programs the renderer is actually using untouched.
+     */
+    public void compileTerrainPrograms(CeleritasTerrainPipeline pipeline) {
+        if (pipeline == null) return;
+        final IrisCeleritasChunkProgramOverrides scratch = new IrisCeleritasChunkProgramOverrides();
+        try {
+            scratch.createShaders(pipeline, TERRAIN_VERTEX_TYPE);
+        } finally {
+            scratch.deleteShaders();
+        }
     }
 
     public IrisCeleritasChunkProgramOverrides getOverrides() {

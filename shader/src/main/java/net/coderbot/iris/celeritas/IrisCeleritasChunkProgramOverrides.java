@@ -93,7 +93,11 @@ public class IrisCeleritasChunkProgramOverrides {
 
     @Nullable
     private GlProgram<IrisCeleritasChunkShaderInterface> createShader(IrisTerrainPass pass, CeleritasTerrainPipeline pipeline, RenderPassConfiguration<?> configuration) {
-        final var vertexType = pass.toTerrainPass(configuration).vertexType();
+        return createShader(pass, pipeline, pass.toTerrainPass(configuration).vertexType());
+    }
+
+    @Nullable
+    private GlProgram<IrisCeleritasChunkShaderInterface> createShader(IrisTerrainPass pass, CeleritasTerrainPipeline pipeline, ChunkVertexType vertexType) {
         final CeleritasTerrainPipeline.PassInfo passInfo = pipeline.getPassInfo(pass);
         final String name = "iris:celeritas-chunk-" + pass.getName();
         final BlendModeOverride blendOverride = passInfo.blendModeOverride();
@@ -153,18 +157,32 @@ public class IrisCeleritasChunkProgramOverrides {
     /**
      * Create shaders for all Iris terrain passes of one pipeline.
      */
-    private EnumMap<IrisTerrainPass, GlProgram<IrisCeleritasChunkShaderInterface>> createShaders(CeleritasTerrainPipeline pipeline, RenderPassConfiguration<?> configuration) {
-        final EnumMap<IrisTerrainPass, GlProgram<IrisCeleritasChunkShaderInterface>> programs = new EnumMap<>(IrisTerrainPass.class);
-        if (pipeline != null) {
-            for (IrisTerrainPass pass : IrisTerrainPass.VALUES) {
-                if (pass.isShadow() && !pipeline.hasShadowPass()) {
-                    programs.put(pass, null);
-                    continue;
+    EnumMap<IrisTerrainPass, GlProgram<IrisCeleritasChunkShaderInterface>> createShaders(CeleritasTerrainPipeline pipeline, RenderPassConfiguration<?> configuration) {
+        return createShaders(pipeline, pass -> pass.toTerrainPass(configuration).vertexType());
+    }
+
+    EnumMap<IrisTerrainPass, GlProgram<IrisCeleritasChunkShaderInterface>> createShaders(CeleritasTerrainPipeline pipeline, ChunkVertexType vertexType) {
+        return createShaders(pipeline, pass -> vertexType);
+    }
+
+    private EnumMap<IrisTerrainPass, GlProgram<IrisCeleritasChunkShaderInterface>> createShaders(CeleritasTerrainPipeline pipeline,
+                                                                                                 Function<IrisTerrainPass, ChunkVertexType> vertexTypeOf) {
+        Iris.beginFolderTracking(Iris.getCurrentDimensionName());
+        try {
+            final EnumMap<IrisTerrainPass, GlProgram<IrisCeleritasChunkShaderInterface>> programs = new EnumMap<>(IrisTerrainPass.class);
+            if (pipeline != null) {
+                for (IrisTerrainPass pass : IrisTerrainPass.VALUES) {
+                    if (pass.isShadow() && !pipeline.hasShadowPass()) {
+                        programs.put(pass, null);
+                        continue;
+                    }
+                    programs.put(pass, createShader(pass, pipeline, vertexTypeOf.apply(pass)));
                 }
-                programs.put(pass, createShader(pass, pipeline, configuration));
             }
+            return programs;
+        } finally {
+            Iris.endFolderTracking();
         }
-        return programs;
     }
 
     @Nullable

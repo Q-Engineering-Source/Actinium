@@ -3,6 +3,7 @@ package com.gtnewhorizons.angelica.glsm.shader;
 import com.gtnewhorizons.angelica.glsm.threading.AngelicaWorkers;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
@@ -85,6 +86,11 @@ public final class ShaderDiskCache {
         return root != null;
     }
 
+    /** Root of the cache, or null while the cache is disabled. */
+    public static @Nullable Path root() {
+        return root;
+    }
+
     public static Key key(String layer) {
         return new Key(layer);
     }
@@ -134,6 +140,7 @@ public final class ShaderDiskCache {
         final Path r = root;
         if (r == null) return false;
         final Path target = key.path(r);
+        if (Arrays.equals(get(key), payload)) return true;
         final Path tmp = target.resolveSibling(key.hex() + '.' + TMP_SEQ.getAndIncrement() + ".tmp");
         try {
             try {
@@ -148,6 +155,7 @@ public final class ShaderDiskCache {
             try {
                 Files.deleteIfExists(tmp);
             } catch (IOException ignored) {}
+            if (Arrays.equals(get(key), payload)) return true;
             if (writeWarned.compareAndSet(false, true)) LOGGER.warn("Shader disk cache write failed for {}", target, e);
             return false;
         }
@@ -411,6 +419,19 @@ public final class ShaderDiskCache {
                 hex = sb.toString();
             }
             return hex;
+        }
+
+        /**
+         * Rebuilds a key from a digest produced by {@link #hex()}, so a marker file can list entries by
+         * digest alone. The digest is stored as given instead of being recomputed from {@code layer},
+         * which makes {@code fromHex(layer, h).hex()} equal {@code h} and resolves to the same file. The
+         * caller must pass the layer the entry was written to; the key is only good for path lookups.
+         */
+        static Key fromHex(String layer, String hex) {
+            if (!hex.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("Not a SHA-256 digest: " + hex);
+            final Key key = new Key(layer);
+            key.hex = hex;
+            return key;
         }
 
         Path path(Path root) {

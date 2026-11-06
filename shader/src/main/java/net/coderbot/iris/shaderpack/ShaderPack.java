@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.stream.JsonReader;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
+import com.gtnewhorizons.angelica.glsm.threading.AngelicaWorkers;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -37,6 +38,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.StringReader;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -53,7 +55,11 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class ShaderPack {
@@ -83,6 +89,7 @@ public class ShaderPack {
 	private final boolean mappedByDimensionProperties;
 	private final String legacyDefaultFolder;
 	private final Function<AbsolutePackPath, String> sourceProvider;
+	private final ImmutableList<AbsolutePackPath> sourceFiles;
 	private final ShaderProperties shaderProperties;
 	private boolean hasLoggedCacheLimitReached = false;
 
@@ -94,7 +101,8 @@ public class ShaderPack {
 	@Getter private final Object2ObjectMap<String, ImageInformation> customImages;
 	@Getter private final Int2ObjectMap<ShaderStorageInfo> bufferObjects;
 	@Getter private final ShaderPackOptions shaderPackOptions;
-	@Getter private final OptionMenuContainer menuContainer;
+	private final ProfileSet profiles;
+	private OptionMenuContainer menuContainer;
 
 	private final ProfileSet.ProfileResult profile;
 	private final String profileInfo;
@@ -200,9 +208,17 @@ public class ShaderPack {
 		}
 		this.legacyDefaultFolder = legacyDefault;
 
-		// Read all files and included files recursively
-		IncludeGraph graph = new IncludeGraph(root, starts.build());
+		final CompletableFuture<LanguageMap> languageMapFuture = AngelicaWorkers.submit(() -> {
+			try {
+				return new LanguageMap(root.resolve("lang"));
+			} catch (IOException e) {
+				throw new UncheckedIOException(e);
+			}
+		});
 
+		// Read all files and included files recursively
+		this.sourceFiles = starts.build();
+		IncludeGraph graph = new IncludeGraph(root, sourceFiles);
 		if (!graph.getFailures().isEmpty()) {
 			graph.getFailures().forEach((path, error) -> {
 				Iris.logger.error("{}", error.toString());
@@ -210,8 +226,6 @@ public class ShaderPack {
 
 			throw new IOException("Failed to resolve some #include directives, see previous messages for details");
 		}
-
-		this.languageMap = new LanguageMap(root.resolve("lang"));
 
 		this.shaderPackOptions = new ShaderPackOptions(graph, changedConfigs);
 		graph = this.shaderPackOptions.getIncludes();
@@ -230,7 +244,7 @@ public class ShaderPack {
 		}
 		Iris.logger.info("Environment defines: {}", finalEnvironmentDefines.stream()
 			.map(p -> p.getKey() + "=" + p.getValue())
-			.collect(java.util.stream.Collectors.joining(", ")));
+			.collect(Collectors.joining(", ")));
 
 		this.shaderProperties = Optional.ofNullable(readProperties(root, "shaders.properties"))
 				.map(source -> new ShaderProperties(source, shaderPackOptions, finalEnvironmentDefines, RenderSystem::supportsBufferBlending))
@@ -252,7 +266,7 @@ public class ShaderPack {
 			IrisApi.getInstance().getConfig().setShadersEnabledAndApply(false);
 		}
 
-		ProfileSet profiles = ProfileSet.fromTree(shaderProperties.getProfiles(), this.shaderPackOptions.getOptionSet());
+		this.profiles = ProfileSet.fromTree(shaderProperties.getProfiles(), this.shaderPackOptions.getOptionSet());
 		this.profile = profiles.scan(this.shaderPackOptions.getOptionSet(), this.shaderPackOptions.getOptionValues());
 
 		List<String> disabledPrograms = new ArrayList<>();
@@ -264,8 +278,6 @@ public class ShaderPack {
 				disabledPrograms.add(program);
 			}
 		});
-
-		this.menuContainer = new OptionMenuContainer(shaderProperties, this.shaderPackOptions, profiles);
 
 		{
 			String profileName = getCurrentProfileName();
@@ -292,17 +304,10 @@ public class ShaderPack {
 				return null;
 			}
 
-			ImmutableList<String> lines = includeProcessor.getIncludedFile(path);
+			final byte[] contentHash = includeProcessor.getIncludedFileHash(path);
 
-			if (lines == null) {
+			if (contentHash == null) {
 				return null;
-			}
-
-			StringBuilder builder = new StringBuilder();
-
-			for (String line : lines) {
-				builder.append(line);
-				builder.append('\n');
 			}
 
 			// Apply GLSL preprocessor to source, while making environment defines available.
@@ -311,19 +316,36 @@ public class ShaderPack {
 			// #define statements in the actual source - instead, we tell the preprocessor about them
 			// directly. This removes one obstacle to accurate reporting of line numbers for errors,
 			// though there exist many more (such as relocating all #extension directives and similar things)
-			String source = builder.toString();
+			//
+			// The hash covers the file and every include it pulls in, so the include expansion and the
+			// workarounds only run when the preprocessed source is not already on disk.
+			return JcppProcessor.glslPreprocessSource(contentHash, () -> {
+				final ImmutableList<String> lines = includeProcessor.getIncludedFile(path);
 
-			// Apply shader pack workarounds for version compatibility (before preprocessing)
-			source = ShaderPackWorkarounds.apply(source);
+				int length = 0;
+				for (String line : lines) {
+					length += line.length() + 1;
+				}
 
-			source = JcppProcessor.glslPreprocessSource(source, finalEnvironmentDefines1);
+				final StringBuilder builder = new StringBuilder(length);
 
-			return source;
+				for (String line : lines) {
+					builder.append(line);
+					builder.append('\n');
+				}
+
+				// Apply shader pack workarounds for version compatibility (before preprocessing)
+				return ShaderPackWorkarounds.apply(builder.toString());
+			}, finalEnvironmentDefines1);
 		};
 
-		this.base = new ProgramSet(AbsolutePackPath.fromAbsolutePath("/"), sourceProvider, shaderProperties, this);
+		this.base = new ProgramSet(AbsolutePackPath.fromAbsolutePath("/"), preprocessInParallel(AbsolutePackPath.fromAbsolutePath("/")), shaderProperties, this);
 
-		this.idMap = new IdMap(root, shaderPackOptions, environmentDefines);
+		// Reading block.properties for the legacy-section verdict happens on the client thread; the map itself
+		// preprocesses three more files, so it is built on a worker and awaited once the pack is otherwise ready.
+		final boolean hasLegacySection = IdMap.detectLegacySection(root);
+		final CompletableFuture<IdMap> idMapFuture = AngelicaWorkers.submit(
+			() -> new IdMap(root, hasLegacySection, shaderPackOptions, environmentDefines));
 
 		customNoiseTexture = shaderProperties.getNoiseTexturePath().map(path -> {
 			try {
@@ -361,6 +383,28 @@ public class ShaderPack {
         this.customUniforms = shaderProperties.getCustomUniforms();
 		this.customImages = shaderProperties.getCustomImages();
 		this.bufferObjects = shaderProperties.getBufferObjects();
+
+		this.idMap = await(idMapFuture);
+		this.languageMap = await(languageMapFuture);
+	}
+
+	public OptionMenuContainer getMenuContainer() {
+		if (menuContainer == null) {
+			menuContainer = new OptionMenuContainer(shaderProperties, shaderPackOptions, profiles);
+		}
+		return menuContainer;
+	}
+
+	private static <T> T await(CompletableFuture<T> future) throws IOException {
+		try {
+			return future.join();
+		} catch (CompletionException e) {
+			if (e.getCause() instanceof UncheckedIOException io) throw io.getCause();
+			if (e.getCause() instanceof IOException io) throw io;
+			if (e.getCause() instanceof RuntimeException runtime) throw runtime;
+			if (e.getCause() instanceof Error error) throw error;
+			throw e;
+		}
 	}
 
 	private String getCurrentProfileName() {
@@ -663,25 +707,7 @@ public class ShaderPack {
 		);
 
 		if (folderName != null && foldersWithShaderFiles.contains(folderName)) {
-			ProgramSet programSet = dimensionProgramSets.get(folderName);
-
-			if (programSet == null) {
-				try {
-					programSet = new ProgramSet(
-						AbsolutePackPath.fromAbsolutePath("/" + folderName),
-						sourceProvider,
-						shaderProperties,
-						this
-					);
-					dimensionProgramSets.put(folderName, programSet);
-
-					evictOldDimensions();
-				} catch (Exception e) {
-					// This shouldn't happen but just in case.
-					Iris.logger.error("Failed to create ProgramSet for dimension folder '{}', falling back to base", folderName, e);
-					programSet = null;
-				}
-			}
+			final ProgramSet programSet = getFolderProgramSet(folderName);
 
 			if (programSet != null) {
 				return programSet;
@@ -705,6 +731,80 @@ public class ShaderPack {
 		//     sense to bring it back as a configurable option, and have a more maintainable set of code backing it.
 
 		return base;
+	}
+
+	/**
+	 * The shader folder a dimension resolves to, or null when it renders the base shaders.
+	 */
+	@Nullable
+	public String folderForDimension(String dimensionName) {
+		final int dimensionId = Iris.getCurrentDimensionId();
+		final String canonicalDimension = DimensionId.canonicalize(dimensionName, dimensionId);
+		final String folderName = resolveDimensionFolder(dimensionMap, foldersWithShaderFiles, legacyDefaultFolder, canonicalDimension, dimensionId);
+		return folderName != null && foldersWithShaderFiles.contains(folderName) ? folderName : null;
+	}
+
+	/**
+	 * Creates or returns the cached ProgramSet for a dimension folder.
+	 */
+	@Nullable
+	private ProgramSet getFolderProgramSet(String folderName) {
+		ProgramSet programSet = dimensionProgramSets.get(folderName);
+
+		if (programSet == null) {
+			// Create ProgramSet on-demand for dimension folder
+			try {
+				final AbsolutePackPath directory = AbsolutePackPath.fromAbsolutePath("/" + folderName);
+				programSet = new ProgramSet(directory, preprocessInParallel(directory), shaderProperties, this);
+				dimensionProgramSets.put(folderName, programSet);
+
+				evictOldDimensions();
+			} catch (Exception e) {
+				Iris.logger.error("Failed to create ProgramSet for dimension folder '{}', falling back to base", folderName, e);
+				programSet = null;
+			}
+		}
+
+		return programSet;
+	}
+
+	/**
+	 * Resolves one shader folder for the precompile screen; a null folder means the pack base, which only
+	 * exists when some dimension can still fall back to it.
+	 */
+	@Nullable
+	public ProgramSet getProgramSetForFolder(@Nullable String folder) {
+		if (folder == null) {
+			return canFallBackToBase(dimensionMap, foldersWithShaderFiles, legacyDefaultFolder) ? base : null;
+		}
+		return getFolderProgramSet(folder);
+	}
+
+	/**
+	 * Every ProgramSet a full compile has to cover, keyed by folder name in sorted order; the base shaders are
+	 * under the null key and are only included when some dimension can still fall back to them.
+	 */
+	public Map<String, ProgramSet> getEveryProgramSet() {
+		final Map<String, ProgramSet> sets = new LinkedHashMap<>();
+		for (String folderName : new TreeSet<>(foldersWithShaderFiles)) {
+			final ProgramSet programSet = getFolderProgramSet(folderName);
+			if (programSet != null) sets.put(folderName, programSet);
+		}
+		if (canFallBackToBase(dimensionMap, foldersWithShaderFiles, legacyDefaultFolder)) {
+			sets.put(null, base);
+		}
+		return sets;
+	}
+
+	/**
+	 * @return whether some dimension resolves to no folder of its own and therefore renders the base shaders
+	 */
+	static boolean canFallBackToBase(Map<String, String> dimensionMap, Set<String> foldersWithShaderFiles, String legacyDefaultFolder) {
+		for (String folderName : dimensionMap.values()) {
+			if (!foldersWithShaderFiles.contains(folderName)) return true;
+		}
+		// A dimension that is named nowhere and has no world<id> folder of its own
+		return resolveDimensionFolder(dimensionMap, foldersWithShaderFiles, legacyDefaultFolder, "\0", Integer.MIN_VALUE) == null;
 	}
 
 	/**
@@ -732,6 +832,51 @@ public class ShaderPack {
 		}
 
 		return folderName != null && availableFolders.contains(folderName) ? folderName : null;
+	}
+
+	/**
+	 * Wraps the pack source provider so every program of one folder is preprocessed before the folder is read.
+	 *
+	 * <p>Reading a folder's programs is independent work: include expansion, the shader pack workarounds and jcpp
+	 * all run per file. Doing it on the worker pool keeps a folder load from serializing them on the thread that
+	 * creates the {@link ProgramSet}. Only successful results are remembered; a program that fails or is disabled
+	 * falls through to the shared provider, so the error surfaces at the same point it would without this pass.
+	 */
+	private Function<AbsolutePackPath, String> preprocessInParallel(AbsolutePackPath directory) {
+		final String directoryPath = directory.getPathString();
+		final String prefix = directoryPath.endsWith("/") ? directoryPath : directoryPath + "/";
+		final List<AbsolutePackPath> files = new ArrayList<>();
+		final List<Supplier<String>> tasks = new ArrayList<>();
+
+		for (AbsolutePackPath file : sourceFiles) {
+			final String path = file.getPathString();
+
+			// Only the programs of this folder; includes live in other folders and are reached through the cache.
+			if (path.startsWith(prefix) && path.indexOf('/', prefix.length()) < 0) {
+				files.add(file);
+				tasks.add(() -> {
+					try {
+						return sourceProvider.apply(file);
+					} catch (RuntimeException e) {
+						// Leave the program to the shared provider so its failure is raised where it is read.
+						Iris.logger.debug("Deferring preprocessing of {} to its reader", file.getPathString(), e);
+						return null;
+					}
+				});
+			}
+		}
+
+		final List<String> sources = AngelicaWorkers.invokeAll(tasks);
+		final Map<AbsolutePackPath, String> preprocessed = new HashMap<>();
+
+		for (int i = 0; i < files.size(); i++) {
+			final String source = sources.get(i);
+			if (source != null) {
+				preprocessed.put(files.get(i), source);
+			}
+		}
+
+		return path -> preprocessed.containsKey(path) ? preprocessed.get(path) : sourceProvider.apply(path);
 	}
 
 	/**

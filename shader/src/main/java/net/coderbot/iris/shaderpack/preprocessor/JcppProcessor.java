@@ -1,5 +1,7 @@
 package net.coderbot.iris.shaderpack.preprocessor;
 
+import com.gtnewhorizons.angelica.glsm.RenderSystem;
+import com.gtnewhorizons.angelica.glsm.shader.ShaderDiskCache;
 import net.coderbot.iris.shaderpack.StringPair;
 import org.anarres.cpp.Feature;
 import org.anarres.cpp.LexerException;
@@ -7,7 +9,31 @@ import org.anarres.cpp.Preprocessor;
 import org.anarres.cpp.StringLexerSource;
 import org.anarres.cpp.Token;
 
+import java.util.function.Supplier;
+
 public class JcppProcessor {
+	/**
+	 * Preprocesses a GLSL source identified by the content hash of the file and every file it includes.
+	 *
+	 * <p>{@code source} is only called on a cache miss, so a warm entry skips include expansion and the shader pack
+	 * workarounds. The key also carries the maximum GLSL version, because the workarounds are selected by it and a
+	 * driver change must not serve a source prepared for another driver.
+	 */
+	public static String glslPreprocessSource(byte[] contentHash, Supplier<String> source, Iterable<StringPair> environmentDefines) {
+		final ShaderDiskCache.Key cacheKey = PreprocessedSourceCache.key("glsl", contentHash, environmentDefines);
+		PreprocessedSourceCache.variant(cacheKey, RenderSystem.getMaxGlslVersion());
+
+		final String cached = PreprocessedSourceCache.get(cacheKey);
+		if (cached != null) {
+			return cached;
+		}
+
+		final String preprocessed = glslPreprocessSource(source.get(), environmentDefines);
+		PreprocessedSourceCache.put(cacheKey, preprocessed);
+
+		return preprocessed;
+	}
+
 	// Derived from GlShader from Canvas, licenced under LGPL
 	public static String glslPreprocessSource(String source, Iterable<StringPair> environmentDefines) {
 		if (source.contains(GlslCollectingListener.VERSION_MARKER)
