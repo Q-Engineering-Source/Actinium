@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.glsm.debug;
 
+import com.gtnewhorizons.angelica.glsm.profiling.DebugCounters;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -130,6 +131,7 @@ public final class GLSMPerfDebug {
         fenceReclaimedRegions = 0;
         fenceQueuePeak = 0;
         lastReportNanos = 0L;
+        DebugCounters.advanceReportBaseline();
     }
 
     public static long begin(Stage stage) {
@@ -224,15 +226,76 @@ public final class GLSMPerfDebug {
     }
 
     private static void report(long now) {
+        lastReportNanos = now;
+        drainAndLog();
+    }
+
+    /**
+     * Emits the report for the current window when the report interval has elapsed and the window
+     * recorded something. Called once per rendered frame so a window in which only
+     * {@link DebugCounters} moved still produces a report, for example the PBR animation counters
+     * with shaders disabled.
+     *
+     * <p>The emptiness check runs before {@link #drainReport()} so an idle window does not invoke
+     * the registered extra stats providers, which reset their own counters on every call.
+     */
+    public static void pollCounters() {
+        pollCountersAt(System.nanoTime());
+    }
+
+    static String pollCountersAt(long nowNanos) {
+        if (lastReportNanos == 0L) {
+            lastReportNanos = nowNanos;
+            return "";
+        }
+        if (nowNanos - lastReportNanos < REPORT_INTERVAL_NS || !hasUnreportedSamples()) {
+            return "";
+        }
+        lastReportNanos = nowNanos;
+        return drainAndLog();
+    }
+
+    private static String drainAndLog() {
+        final String text = drainReport();
+        if (!text.isEmpty()) {
+            LOGGER.info(text);
+        }
+        return text;
+    }
+
+    private static boolean hasUnreportedSamples() {
+        for (int observed : observedCounts) {
+            if (observed != 0) return true;
+        }
+        for (int count : sourceCounts) {
+            if (count != 0) return true;
+        }
+        if (!bufferBuilderSourceCounts.isEmpty()
+            || !bufferBuilderStackSamples.isEmpty()
+            || !clientArrayStackSamples.isEmpty()) {
+            return true;
+        }
+        if (fenceReclaimedRegions != 0 || fenceQueuePeak != 0) {
+            return true;
+        }
+        return DebugCounters.hasDeltaSinceLastReport();
+    }
+
+    /**
+     * Text of the report for the current window, covering stage samples, source counts, fence
+     * statistics, the registered extra stats providers and the {@link DebugCounters} deltas.
+     * Consumes the window statistics and returns an empty string when nothing was recorded.
+     */
+    static String drainReport() {
         final StringBuilder sb = new StringBuilder(512);
         sb.append("GLSM perf:");
-        boolean hasSamples = false;
+        boolean hasContent = false;
         final Stage[] stages = Stage.values();
         for (int i = 0; i < stages.length; i++) {
             final int observed = observedCounts[i];
             final int sampled = sampledCounts[i];
             if (observed == 0) continue;
-            hasSamples = true;
+            hasContent = true;
             sb.append(' ')
                 .append(stages[i].label)
                 .append("[count=").append(observed)
@@ -250,16 +313,22 @@ public final class GLSMPerfDebug {
         for (int i = 0; i < sources.length; i++) {
             final int count = sourceCounts[i];
             if (count == 0) continue;
-            hasSamples = true;
+            hasContent = true;
             sb.append(' ')
                 .append(sources[i].label)
                 .append("[count=").append(count).append(']');
             sourceCounts[i] = 0;
         }
+        if (!bufferBuilderSourceCounts.isEmpty()
+            || !bufferBuilderStackSamples.isEmpty()
+            || !clientArrayStackSamples.isEmpty()) {
+            hasContent = true;
+        }
         appendTopEntries(sb, "bufferbuilder.source", bufferBuilderSourceCounts, MAX_BUFFERBUILDER_SOURCE_LINES);
         appendTopEntries(sb, "bufferbuilder.stackSample", bufferBuilderStackSamples, MAX_BUFFERBUILDER_SOURCE_LINES);
         appendTopEntries(sb, "clientArray.stackSample", clientArrayStackSamples, MAX_CLIENT_ARRAY_STACK_LINES);
         if (fenceReclaimedRegions != 0 || fenceQueuePeak != 0) {
+            hasContent = true;
             sb.append(" stream.fence[")
                 .append("reclaimedRegions=").append(fenceReclaimedRegions)
                 .append(",reclaimedBytes=").append(fenceReclaimedBytes)
@@ -271,12 +340,18 @@ public final class GLSMPerfDebug {
         }
         String extraStats = GLSMPerfDebugHooks.getExtraStats();
         if (extraStats != null && !extraStats.isEmpty()) {
+            hasContent = true;
             sb.append(' ').append(extraStats);
         }
-        lastReportNanos = now;
-        if (hasSamples) {
-            LOGGER.info(sb.toString());
+        final String counterStats = DebugCounters.dumpDeltaAndAdvance();
+        if (!counterStats.isEmpty()) {
+            hasContent = true;
+            sb.append(' ').append(counterStats);
         }
+        if (!hasContent) {
+            return "";
+        }
+        return sb.toString();
     }
 
     private static void appendTopEntries(StringBuilder sb, String label, Map<String, Integer> counts, int limit) {

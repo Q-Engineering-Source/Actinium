@@ -53,8 +53,8 @@ this.mc.getTextureManager().getTexture(TextureMap.LOCATION_BLOCKS_TEXTURE).resto
 
 ### 为什么不是 "Animate Only Visible Textures"
 
-该选项只在 `TextureMap.updateAnimations` 前按可见集合过滤 sprite
-（`MixinTextureAtlas#getFilteredIterator` → `VisibleTextureIterator`）。标记侧
+该选项在 `TextureMap.updateAnimations` 中逐 sprite 调用 `tickAnimation`，未标记可见的 sprite
+只推进帧计数，不上传新帧（`MixinTextureAtlas#actinium$tickAnimation`）。标记侧
 `GenericSectionSpriteTicker` 是 **region 级超集**:`recompute()` 汇总整个 region 内所有
 section 的 `animatedSprites`,只要该 region 有任一可见 section 就标记全部 sprite——
 控制器可见时它的 sprite 每帧都会被标记,动画从未停止更新,停掉的是像素。

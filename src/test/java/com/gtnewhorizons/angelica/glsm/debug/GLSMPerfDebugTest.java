@@ -4,6 +4,7 @@ import com.gtnewhorizon.gtnhlib.client.renderer.DirectTessellator;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.DefaultVertexFormat;
 import com.gtnewhorizons.angelica.glsm.ITessellatorData;
 import com.gtnewhorizons.angelica.glsm.QuadConverter;
+import com.gtnewhorizons.angelica.glsm.profiling.DebugCounters;
 import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -245,6 +246,90 @@ class GLSMPerfDebugTest {
         GLSMPerfDebug.end(GLSMPerfDebug.Stage.CHUNK_UPLOAD, start);
 
         assertEquals(1, GLSMPerfDebug.getSampledCount(GLSMPerfDebug.Stage.CHUNK_UPLOAD));
+    }
+
+    @Test
+    void reportsCountersWhenOnlyThePbrCountersMoved() {
+        GLSMPerfDebugHooks.setConfiguredEnabled(false);
+        GLSMPerfDebugHooks.setConfiguredEnabled(true);
+        DebugCounters.advanceReportBaseline();
+
+        DebugCounters.PBR_ANIM_UPDATES.add(3L);
+
+        assertTrue(GLSMPerfDebug.drainReport().contains("debugCounters[pbrAnimUpdates=3]"));
+    }
+
+    @Test
+    void reportCarriesStageSamplesAndCounterDeltasFromTheSameWindow() {
+        GLSMPerfDebugHooks.setConfiguredEnabled(false);
+        GLSMPerfDebugHooks.setConfiguredEnabled(true);
+
+        primeNextSample(GLSMPerfDebug.Stage.CHUNK_UPLOAD);
+        long start = GLSMPerfDebug.begin(GLSMPerfDebug.Stage.CHUNK_UPLOAD);
+        GLSMPerfDebug.end(GLSMPerfDebug.Stage.CHUNK_UPLOAD, start);
+        DebugCounters.PBR_ANIM_DRY_RUNS.add(2L);
+
+        final String report = GLSMPerfDebug.drainReport();
+        assertTrue(report.contains("chunk.upload["), report);
+        assertTrue(report.contains("debugCounters[pbrAnimDryRuns=2]"), report);
+    }
+
+    @Test
+    void drainReportConsumesTheWindowSoTheNextIntervalStartsEmpty() {
+        GLSMPerfDebugHooks.setConfiguredEnabled(false);
+        GLSMPerfDebugHooks.setConfiguredEnabled(true);
+        DebugCounters.PBR_ANIM_UPDATES.add(1L);
+
+        assertFalse(GLSMPerfDebug.drainReport().isEmpty());
+        assertEquals("", GLSMPerfDebug.drainReport());
+    }
+
+    @Test
+    void quietWindowProducesNoReport() {
+        GLSMPerfDebugHooks.setConfiguredEnabled(false);
+        GLSMPerfDebugHooks.setConfiguredEnabled(true);
+        DebugCounters.advanceReportBaseline();
+
+        assertEquals("", GLSMPerfDebug.drainReport());
+    }
+
+    @Test
+    void pollReportsPbrCountersWithoutAnyStageSample() {
+        GLSMPerfDebugHooks.setConfiguredEnabled(false);
+        GLSMPerfDebugHooks.setConfiguredEnabled(true);
+
+        // First call only starts the report clock.
+        assertEquals("", GLSMPerfDebug.pollCountersAt(10_000L));
+        DebugCounters.PBR_ANIM_UPDATES.add(6L);
+
+        // Still inside the interval: nothing is emitted and the window is left intact.
+        assertEquals("", GLSMPerfDebug.pollCountersAt(20_000L));
+        assertEquals("", GLSMPerfDebug.pollCountersAt(500_000_000L));
+
+        final String report = GLSMPerfDebug.pollCountersAt(1_500_000_000L);
+        assertTrue(report.contains("debugCounters[pbrAnimUpdates=6]"), report);
+        assertEquals("", GLSMPerfDebug.pollCountersAt(3_000_000_000L), "the window was consumed");
+    }
+
+    @Test
+    void pollStaysSilentWhenTheWindowRecordedNothing() {
+        GLSMPerfDebugHooks.setConfiguredEnabled(false);
+        GLSMPerfDebugHooks.setConfiguredEnabled(true);
+        GLSMPerfDebug.pollCountersAt(10_000L);
+
+        assertEquals("", GLSMPerfDebug.pollCountersAt(5_000_000_000L));
+    }
+
+    @Test
+    void disablingPerfDebugDropsCountersCollectedWhileEnabled() {
+        GLSMPerfDebugHooks.setConfiguredEnabled(false);
+        GLSMPerfDebugHooks.setConfiguredEnabled(true);
+        DebugCounters.PBR_ANIM_UPDATES.add(5L);
+
+        GLSMPerfDebugHooks.setConfiguredEnabled(false);
+        GLSMPerfDebugHooks.setConfiguredEnabled(true);
+
+        assertEquals("", GLSMPerfDebug.drainReport());
     }
 
     private static void primeNextSample(GLSMPerfDebug.Stage stage) {

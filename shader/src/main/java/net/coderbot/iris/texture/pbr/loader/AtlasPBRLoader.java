@@ -51,8 +51,8 @@ public class AtlasPBRLoader implements PBRTextureLoader<TextureMap> {
         PBRAtlasTexture specularAtlas = null;
         for (TextureAtlasSprite sprite : texMap.mapUploadedSprites.values()) {
             if (!(sprite.getIconName().equals("missingno"))) {
-                TextureAtlasSprite normalSprite = createPBRSprite(sprite, resourceManager, texMap, atlasWidth, atlasHeight, mipLevel, PBRType.NORMAL);
-                TextureAtlasSprite specularSprite = createPBRSprite(sprite, resourceManager, texMap, atlasWidth, atlasHeight, mipLevel, PBRType.SPECULAR);
+                PBRTextureAtlasSprite normalSprite = createPBRSprite(sprite, resourceManager, texMap, atlasWidth, atlasHeight, mipLevel, PBRType.NORMAL);
+                PBRTextureAtlasSprite specularSprite = createPBRSprite(sprite, resourceManager, texMap, atlasWidth, atlasHeight, mipLevel, PBRType.SPECULAR);
                 if (normalSprite != null) {
                     if (normalAtlas == null) {
                         normalAtlas = new PBRAtlasTexture(texMap, PBRType.NORMAL);
@@ -92,12 +92,12 @@ public class AtlasPBRLoader implements PBRTextureLoader<TextureMap> {
     }
 
     @Nullable
-    protected TextureAtlasSprite createPBRSprite(TextureAtlasSprite sprite, IResourceManager resourceManager, TextureMap texMap, int atlasWidth, int atlasHeight, int mipLevel, PBRType pbrType) {
+    protected PBRTextureAtlasSprite createPBRSprite(TextureAtlasSprite sprite, IResourceManager resourceManager, TextureMap texMap, int atlasWidth, int atlasHeight, int mipLevel, PBRType pbrType) {
         final ResourceLocation spriteName = new ResourceLocation(sprite.getIconName());
         final ResourceLocation imageLocation = completeResourceLocation(texMap, spriteName);
         final ResourceLocation pbrImageLocation = pbrType.appendToFileLocation(imageLocation);
 
-        TextureAtlasSprite pbrSprite = null;
+        PBRTextureAtlasSprite pbrSprite = null;
 
         try  {
             // This is no longer closable. Not sure about this.
@@ -158,7 +158,7 @@ public class AtlasPBRLoader implements PBRTextureLoader<TextureMap> {
 
             final int x = sprite.getOriginX();
             final int y = sprite.getOriginY();
-            pbrSprite = new PBRTextureAtlasSprite(pbrSpriteInfo, animationMetadata, atlasWidth, atlasHeight, x, y, nativeImage, mipLevel);
+            pbrSprite = new PBRTextureAtlasSprite(pbrSpriteInfo, animationMetadata, atlasWidth, atlasHeight, x, y, nativeImage, mipLevel, sprite);
             syncAnimation(sprite, pbrSprite);
             PBRDebug.spriteLoaded(pbrType, pbrImageLocation, pbrSprite);
         } catch (FileNotFoundException e) {
@@ -249,9 +249,13 @@ public class AtlasPBRLoader implements PBRTextureLoader<TextureMap> {
 	}
 
     public static class PBRTextureAtlasSprite extends TextureAtlasSprite implements CustomMipmapGenerator.Provider {
+        /** Atlas sprite this PBR map was generated for, used to inherit its animation visibility. */
+        protected final TextureAtlasSprite baseSprite;
+
         // This feels super janky
-        protected PBRTextureAtlasSprite(TextureAtlasSpriteInfo info, AnimationMetadataSection animationMetaDataSection, int atlasWidth, int atlasHeight, int x, int y, NativeImage nativeImage, int miplevel) {
+        protected PBRTextureAtlasSprite(TextureAtlasSpriteInfo info, AnimationMetadataSection animationMetaDataSection, int atlasWidth, int atlasHeight, int x, int y, NativeImage nativeImage, int miplevel, TextureAtlasSprite baseSprite) {
             super(info.name().toString());
+            this.baseSprite = baseSprite;
             super.setIconWidth(info.width());
             super.setIconHeight(info.height());
             super.initSprite(atlasWidth, atlasHeight, x, y, false);
@@ -280,6 +284,11 @@ public class AtlasPBRLoader implements PBRTextureLoader<TextureMap> {
                 NativeImage frameImage = copyFrame(nativeImage, frameY, info.width(), info.height());
                 this.framesTextureData.set(frameIndex, toMipmapData(mipmapGenerator.generateMipLevels(frameImage, miplevel)));
             }
+        }
+
+        /** Atlas sprite this PBR map was generated for. Its visibility marks are inherited. */
+        public TextureAtlasSprite getBaseSprite() {
+            return baseSprite;
         }
 
         @Override
