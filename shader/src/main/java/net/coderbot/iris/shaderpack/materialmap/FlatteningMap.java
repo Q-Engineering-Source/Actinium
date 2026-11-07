@@ -159,6 +159,7 @@ public final class FlatteningMap {
         meta("pink_tulip", "red_flower", 7);
         meta("oxeye_daisy", "red_flower", 8);
         metas("water_cauldron", "cauldron", 1, 2, 3);
+        meta("cauldron", "cauldron", 0);
         meta("mossy_cobblestone_wall", "cobblestone_wall", 1);
         pot("potted_oak_sapling", "sapling", 0);
         pot("potted_spruce_sapling", "sapling", 1);

@@ -129,7 +129,7 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         Block shaderBlock = waterloggedWater ? Blocks.WATER : state.getBlock();
         int shaderMetadata = waterloggedWater
                 ? 0
-                : applyShaderStateBits(state, pos, state.getBlock().getMetaFromState(state));
+                : BlockMaterialMapping.resolveShaderMetadata(state, pos, this.worldSlice, state.getBlock().getMetaFromState(state));
         int shaderBlockId = resolveShaderBlockStateId(shaderBlock, shaderMetadata);
         if (!waterloggedWater) {
             int nbtBlockId = resolveBlockNbtId(state, pos);
@@ -157,7 +157,7 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
             return;
         }
 
-        int effectiveMetadata = applyShaderStateBits(state, pos, state.getBlock().getMetaFromState(state));
+        int effectiveMetadata = BlockMaterialMapping.resolveShaderMetadata(state, pos, this.worldSlice, state.getBlock().getMetaFromState(state));
         extension.actinium$setActiveQuadContext(new VanillaQuadContext(
                 pos.getX() & 15,
                 pos.getY() & 15,
@@ -272,7 +272,8 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         );
         Block block = deferredState.getBlock();
         int metadata = block.getMetaFromState(deferredState);
-        int shaderBlockId = resolveShaderBlockStateId(block, applyShaderStateBits(deferredState, pos, metadata));
+        int shaderBlockId = resolveShaderBlockStateId(block,
+                BlockMaterialMapping.resolveShaderMetadata(deferredState, pos, this.worldSlice, metadata));
         byte lightValue = (byte) deferredState.getLightValue(this.worldSlice, pos);
         return context.withResolvedBlockState(shaderBlockId, lightValue);
     }
@@ -308,21 +309,6 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
     private static int resolveShaderBlockStateId(Block block, int metadata) {
         ShaderProvider provider = ShaderProviderHolder.getProvider();
         return provider != null ? provider.getBlockStateId(block, metadata) : Block.getIdFromBlock(block);
-    }
-
-    private int applyShaderStateBits(IBlockState state, BlockPos pos, int metadata) {
-        if (BlockRenderingSettings.INSTANCE.hasSnowyEntries()
-                && BlockRenderingSettings.INSTANCE.getSnowyBlocks().contains(state.getBlock())
-                && isSnowCovered(pos)) {
-            return metadata | BlockMaterialMapping.SNOWY_META_BIT;
-        }
-
-        return metadata;
-    }
-
-    private boolean isSnowCovered(BlockPos pos) {
-        Block topBlock = this.worldSlice.getBlockState(pos.up()).getBlock();
-        return topBlock == Blocks.SNOW_LAYER || topBlock == Blocks.SNOW;
     }
 
     private int resolveBlockNbtId(IBlockState state, BlockPos pos) {

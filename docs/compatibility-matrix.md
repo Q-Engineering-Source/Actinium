@@ -1,6 +1,6 @@
 # Actinium 兼容性矩阵
 
-最后更新：2026-11-05。
+最后更新：2026-11-07。
 
 状态定义：`已验证` 表示在记录的版本和场景中通过；`部分` 表示能运行但存在已知缺口；
 `无法启用` 表示光影包不能成功开启；`未验证` 不代表不兼容。更新记录时必须填写 Actinium commit、
@@ -8,6 +8,15 @@
 
 本轮验证环境：Actinium `30c7ffb`、Java 25.0.3、Cleanroom 0.5.12-alpha、Distant Horizons 3.1.2-b、
 Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
+
+> 2026-11-07 追加：Derivative Main d24.4.14 的普通草与部分单格花不摆动、双格高草上下段分离已修复。
+> ID 映射只在显式声明 `11202` 时使用旧版分支，其他包统一使用现代条目；修复条件块续行丢失
+> `short_grass` 的问题并保持规则声明顺序。双格植物上半格按实际状态的品种生成 `0x8 | variant`，
+> 不再使用朝向元数据。空锅与水锅水位分别映射，无 `water_cauldron` 时裸 `cauldron` 保留通配。
+> 原版缺失的现代名称可解析到唯一同 registry path 的模组方块，多个同名提供者时不建立映射。
+> `./gradlew build --no-daemon` 通过，用户在 crl_t 生产环境确认普通草、单格花、双格高草及
+> Farmer's Future Delight 1.5.1 蓝色矢车菊正常摆动，详见
+> [docs/compat/derivative.md](compat/derivative.md)。
 
 > 2026-11-04 追加：Farmers-Future-Delight 的含水方块在光影下按承载方块材质渲染（水面没有波浪/反射/
 > 折射，包侧的水下雾与水体合成不生效）已做兼容——模组自有方块在含水时 `getMaterial` 返回
@@ -306,7 +315,7 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 | iterationRP                        | 0.7.7 / 0.8.7 | 已验证  | 开启、世界渲染、Distant Horizons LOD、地形、实体、方块实体、水、天空、天气、阴影、手部、GUI、重载   | -         | `28d976d`   |
 | Photon                             | v1.3b         | 部分    | 开启、世界渲染、地形、水（2026-08-31 水面修复后）、GUI、LittleTiles/ArchitectureCraft 相邻方块光照（issue #193，2026-09-29） | IE Garden Cloche 玻璃发黑：1.12.2 配置禁用专用 `gbuffers_block_translucent` 程序并回退 solid block shader；阴影/实体/维度切换/重载等场景待补充验证；选项菜单部分元素缺失（GTAO 等 profile 项告警，与水面无关） | `fix/ie-cloche-transparency` (`c318ed54` 基线) |
 | Solas Shader                      | V3.7b         | 部分    | Immersive Engineering 0.12-98 Garden Cloche（泥土 + 种子）玻璃半透明，issue #197，用户确认（2026-09-30） | 其他渲染路径未验证 | `fix/ie-cloche-transparency` (`c318ed54` 基线) |
-| Derivative Main                  | d24.4.14      | 部分    | 开启、景深（DoF）开关与重复 Apply、维度切换、重载（2026-10-09 centerDepthSmooth 改写修复后用户实机确认）；手持动态光照（2026-10-18） | 地形/实体/水/天空等完整场景清单与 Distant Horizons 组合未验证 | `fix/composite-center-depth-smooth`（`b40e8427`）、`fix/held-light-source` |
+| Derivative Main                  | d24.4.14      | 部分    | 开启、景深（DoF）开关与重复 Apply、维度切换、重载；手持动态光照；普通草、单格花、双格高草与 Farmer's Future Delight 1.5.1 蓝色矢车菊摆动（2026-11-07 用户实机确认） | 地形/实体/水/天空等完整场景清单与 Distant Horizons 组合未验证 | `fix/derivative-plant-materials` |
 | SEUS PTGI HRR                      | Test 2.1      | 无法启用 | -                                                              | 光影包不能成功开启 | `f261611`   |
 
 ## 模组与环境

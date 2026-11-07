@@ -162,6 +162,7 @@ public class ExtendedChunkVertexEncoder implements ContextAwareChunkVertexEncode
                     LWJGL.memPutFloat(uvBase, vertexU + (vertexU < midU ? TEX_CENTROID_BIAS : -TEX_CENTROID_BIAS));
                     LWJGL.memPutFloat(uvBase + 4L, vertexV + (vertexV < midV ? TEX_CENTROID_BIAS : -TEX_CENTROID_BIAS));
                 }
+                logMidTextureSample(ptr, midU, midV);
                 this.uSum = 0.0f;
                 this.vSum = 0.0f;
             }
@@ -180,6 +181,32 @@ public class ExtendedChunkVertexEncoder implements ContextAwareChunkVertexEncode
         }
 
         return ptr + this.stride;
+    }
+
+    private void logMidTextureSample(long ptr, float midU, float midV) {
+        BlockRenderContext ctx = this.context;
+        if (ctx == null || !IrisGlDebug.shouldLogTerrainMidTex(ctx.blockId)) {
+            return;
+        }
+
+        float[] vertexUs = new float[4];
+        float[] vertexVs = new float[4];
+        for (int vertexIndex = 0; vertexIndex < 4; vertexIndex++) {
+            long uvBase = ptr - (long) (3 - vertexIndex) * this.stride + this.texCoordOffset;
+            vertexUs[vertexIndex] = LWJGL.memGetFloat(uvBase);
+            vertexVs[vertexIndex] = LWJGL.memGetFloat(uvBase + 4L);
+        }
+
+        IrisGlDebug.logTerrainMidTexSample(
+                ctx.blockId,
+                ctx.localPosX,
+                ctx.localPosY,
+                ctx.localPosZ,
+                midU,
+                midV,
+                vertexUs,
+                vertexVs
+        );
     }
 
     private int getOffset(TerrainVertexFormatRequirements.Attribute attribute, String name) {
