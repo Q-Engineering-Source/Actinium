@@ -317,15 +317,25 @@ public class RenderSystem {
 
     public static void texImage1D(int texture, int target, int level, int internalformat, int width, int border, int format, int type, ByteBuffer pixels) {
         GLStateManager.rejectExitCapture();
-        RENDER_BACKEND.bindTexture(target, texture);
-        RENDER_BACKEND.texImage1D(target, level, internalformat, width, border, format, type, pixels);
+        GLStateManager.glBindTexture(target, texture);
+        GLStateManager.suspendPixelUnpackBuffer();
+        try {
+            RENDER_BACKEND.texImage1D(target, level, internalformat, width, border, format, type, pixels);
+        } finally {
+            GLStateManager.restorePixelUnpackBuffer();
+        }
     }
 
     public static void texImage3D(int texture, int target, int level, int internalformat, int width, int height, int depth, int border, int format, int type, ByteBuffer pixels) {
         GLStateManager.rejectExitCapture();
         GLStateManager.recordGpuCommand(GpuCommandType.TEX_IMAGE_3D, GpuCommandPhase.BEGIN, texture, packDimensions(width, height));
-        RENDER_BACKEND.bindTexture(target, texture);
-        RENDER_BACKEND.texImage3D(target, level, internalformat, width, height, depth, border, format, type, pixels);
+        GLStateManager.glBindTexture(target, texture);
+        GLStateManager.suspendPixelUnpackBuffer();
+        try {
+            RENDER_BACKEND.texImage3D(target, level, internalformat, width, height, depth, border, format, type, pixels);
+        } finally {
+            GLStateManager.restorePixelUnpackBuffer();
+        }
         GLStateManager.recordGpuCommand(GpuCommandType.TEX_IMAGE_3D, GpuCommandPhase.END, texture, packDimensions(width, height));
         GLStateManager.gpuCheckpoint(GpuCommandType.TEX_IMAGE_3D);
     }
@@ -674,6 +684,14 @@ public class RenderSystem {
     /** Supplies a deterministic clip-distance capability for headless shader transformation tests. */
     public static void initializeClipCullDistanceSupportForTesting(boolean supported) {
         hasClipCullDistance = supported;
+    }
+
+    /**
+     * Supplies the immutable-storage capability the deferred texture release path reads. Driver-integration tests set it
+     * from the live context so the release path takes the same branch production does.
+     */
+    public static void initializeTextureStorageSupportForTesting(boolean supported) {
+        supportsTextureStorage = supported;
     }
 
     public static boolean supportsGpuShader4() {

@@ -1,7 +1,12 @@
 package com.gtnewhorizons.angelica.glsm.backend;
 
 import com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities;
+import com.gtnewhorizons.angelica.glsm.GLESFormatRemap;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.RenderSystem;
+import com.gtnewhorizons.angelica.glsm.texture.TextureStaging;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL20;
 
 import java.nio.ByteBuffer;
@@ -74,6 +79,11 @@ public abstract class RenderBackend {
     public abstract void flush();
     public abstract void finish();
 
+    /**
+     * Native blocks released by the client staging path, reused by the next request of the same
+     * capacity. Entries are chosen so a full cache keeps the larger blocks.
+     */
+    private final ByteBuffer[] clientStagingCache = new ByteBuffer[16];
     private VSyncMode effectiveVSyncMode = VSyncMode.ON;
     private VSyncMode preferredTearFreeMode;
     private boolean vsyncHonored = true;
@@ -382,6 +392,161 @@ public abstract class RenderBackend {
     public void texImage3D(int target, int level, int internalFormat, int width, int height, int depth, int border, int format, int type, IntBuffer pixels) {}
     public void texSubImage1D(int target, int level, int xoffset, int width, int format, int type, ByteBuffer pixels) {}
     public void texSubImage2D(int target, int level, int xoffset, int yoffset, int width, int height, int format, int type, long pboOffset) {}
+
+    /**
+     * Hands out a native block for one {@code width} x {@code height} BGRA region of mip level
+     * {@code level}, located at {@code (x, y)}, so the caller can fill the pixels without a GL call.
+     * The returned block stays owned by the caller until it is released exactly once through
+     * {@link #commitTextureStaging} or {@link #abandonTextureStaging}.
+     */
+    public TextureStaging beginTextureStaging(int level, int x, int y, int width, int height) {
+        final int size = Math.multiplyExact(Math.multiplyExact(width, height), 4);
+        ByteBuffer buffer = null;
+        for (int i = 0; i < clientStagingCache.length; i++) {
+            final ByteBuffer cached = clientStagingCache[i];
+            if (cached != null && cached.capacity() == size) {
+                clientStagingCache[i] = null;
+                buffer = cached;
+                break;
+            }
+        }
+        if (buffer == null) buffer = MemoryUtilities.memAlloc(size);
+        buffer.clear();
+        return new ClientTextureStaging(this, buffer, level, x, y, width, height);
+    }
+
+    /**
+     * Uploads a block from {@link #beginTextureStaging} as BGRA pixels over its whole capacity and
+     * returns the memory to the cache. The staging buffer position is reset first, so a producer that
+     * filled the block with relative writes still uploads from its first byte.
+     *
+     * @return whether the upload happened; the client path reports {@code true} once the pixels reached
+     *         the texture
+     */
+    public boolean commitTextureStaging(TextureStaging staging) {
+        final ClientTextureStaging client = claimStaging(staging);
+        final ByteBuffer upload = client.buffer;
+        try {
+            upload.clear();
+            texSubImage2D(GL11.GL_TEXTURE_2D, client.level, client.x, client.y, client.width, client.height, GL12.GL_BGRA, stagingBgraPixelType(), upload);
+        } finally {
+            recycleClientStaging(upload);
+        }
+        return true;
+    }
+
+    /**
+     * Pixel type the client staging upload declares for its BGRA bytes. A GLES driver rejects
+     * {@code GL_UNSIGNED_INT_8_8_8_8_REV} and takes the bytes through {@code GL_UNSIGNED_BYTE}.
+     */
+    protected int stagingBgraPixelType() {
+        return RenderSystem.isGLES() ? GLESFormatRemap.remapPixelType(GL12.GL_BGRA, GL12.GL_UNSIGNED_INT_8_8_8_8_REV) : GL12.GL_UNSIGNED_INT_8_8_8_8_REV;
+    }
+
+    /**
+     * Drops a block from {@link #beginTextureStaging} whose pixels are no longer wanted, keeping its
+     * memory for a later request.
+     */
+    public void abandonTextureStaging(TextureStaging staging) {
+        recycleClientStaging(claimStaging(staging).buffer);
+    }
+
+    /**
+     * Frees every block already returned to the cache. Blocks a caller still holds are untouched and
+     * must be released through {@link #commitTextureStaging} or {@link #abandonTextureStaging}.
+     */
+    public void trimTextureStaging() {
+        for (int i = 0; i < clientStagingCache.length; i++) {
+            MemoryUtilities.memFree(clientStagingCache[i]);
+            clientStagingCache[i] = null;
+        }
+    }
+
+    /**
+     * Rejects a block that this backend did not issue, was already released, or came from another
+     * backend. A successful claim marks the block released, so the memory can never be cached twice or
+     * freed while a caller still holds it.
+     */
+    private ClientTextureStaging claimStaging(TextureStaging staging) {
+        if (!(staging instanceof ClientTextureStaging client)) {
+            throw new IllegalArgumentException("Texture staging block is not backed by client memory: " + staging);
+        }
+        if (client.owner != this) {
+            throw new IllegalArgumentException("Texture staging block belongs to another render backend: " + staging);
+        }
+        if (client.released) {
+            throw new IllegalStateException("Texture staging block was already released: " + staging);
+        }
+        client.released = true;
+        return client;
+    }
+
+    /** Client-side block returned by {@link #beginTextureStaging}; {@code released} guards the single release. */
+    private static final class ClientTextureStaging implements TextureStaging {
+        private final RenderBackend owner;
+        private final ByteBuffer buffer;
+        private final int level;
+        private final int x;
+        private final int y;
+        private final int width;
+        private final int height;
+        private boolean released;
+
+        ClientTextureStaging(RenderBackend owner, ByteBuffer buffer, int level, int x, int y, int width, int height) {
+            this.owner = owner;
+            this.buffer = buffer;
+            this.level = level;
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+        }
+
+        @Override
+        public ByteBuffer buffer() {
+            return buffer;
+        }
+
+        @Override
+        public boolean bgra() {
+            return true;
+        }
+
+        @Override
+        public int level() {
+            return level;
+        }
+
+        @Override
+        public String toString() {
+            return "client staging block level " + level + " at (" + x + ", " + y + ") " + width + "x" + height;
+        }
+    }
+
+    /**
+     * Keeps the incoming block in a free slot first, then in place of the smallest cached block when
+     * that one is smaller; otherwise the incoming block is freed.
+     */
+    private void recycleClientStaging(ByteBuffer buffer) {
+        int victim = -1;
+        for (int i = 0; i < clientStagingCache.length; i++) {
+            final ByteBuffer cached = clientStagingCache[i];
+            if (cached == null) {
+                clientStagingCache[i] = buffer;
+                return;
+            }
+            if (cached.capacity() < buffer.capacity() && (victim < 0 || cached.capacity() < clientStagingCache[victim].capacity())) {
+                victim = i;
+            }
+        }
+        if (victim < 0) {
+            MemoryUtilities.memFree(buffer);
+            return;
+        }
+        MemoryUtilities.memFree(clientStagingCache[victim]);
+        clientStagingCache[victim] = buffer;
+    }
+
     public void texSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, int type, ByteBuffer pixels) {}
     public void copyTexImage1D(int target, int level, int internalFormat, int x, int y, int width, int border) {}
     public void copyTexImage2D(int target, int level, int internalFormat, int x, int y, int width, int height, int border) {}

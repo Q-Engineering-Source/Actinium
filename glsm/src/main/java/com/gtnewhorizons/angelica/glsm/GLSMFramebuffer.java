@@ -218,7 +218,9 @@ public final class GLSMFramebuffer {
     }
 
     public static void glNamedFramebufferTextureLayer(int framebuffer, int attachment, int texture, int level, int layer) {
-        RENDER_BACKEND.namedFramebufferTextureLayer(framebuffer, attachment, texture, level, layer);
+        final int previous = swapDrawFramebuffer(framebuffer);
+        glFramebufferTextureLayer(GL30.GL_DRAW_FRAMEBUFFER, attachment, texture, level, layer);
+        swapDrawFramebuffer(previous);
     }
 
     public static void glFramebufferTextureFace(int target, int attachment, int texture, int level, int face) {
@@ -281,7 +283,9 @@ public final class GLSMFramebuffer {
     public static void glRenderbufferStorageMultisample(int target, int samples, int internalformat, int width, int height) { rejectExitCapture(); RENDER_BACKEND.renderbufferStorageMultisample(target, samples, internalformat, width, height); }
 
     public static void glNamedFramebufferRenderbuffer(int framebuffer, int attachment, int renderbuffertarget, int renderbuffer) {
-        RENDER_BACKEND.namedFramebufferRenderbuffer(framebuffer, attachment, renderbuffertarget, renderbuffer);
+        final int previous = swapDrawFramebuffer(framebuffer);
+        glFramebufferRenderbuffer(GL30.GL_DRAW_FRAMEBUFFER, attachment, renderbuffertarget, renderbuffer);
+        swapDrawFramebuffer(previous);
     }
 
     public static int glGenRenderbuffers() { return RENDER_BACKEND.genRenderbuffers(); }
