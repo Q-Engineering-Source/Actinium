@@ -11,6 +11,8 @@ import com.gtnewhorizons.angelica.rendering.RenderingState;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.sugar.Local;
+import dhj.embeddedt.embeddium.impl.render.viewport.ViewportProvider;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.apiimpl.IrisApiV0Impl;
 import net.coderbot.iris.block_rendering.BlockRenderingSettings;
@@ -31,6 +33,7 @@ import net.minecraft.client.renderer.EntityRenderer;
 import net.minecraft.client.renderer.ItemRenderer;
 import net.minecraft.client.renderer.RenderGlobal;
 import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.client.renderer.culling.ICamera;
 import net.minecraft.client.renderer.debug.DebugRenderer;
 import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.client.resources.IResourceManagerReloadListener;
@@ -145,7 +148,8 @@ public abstract class EntityRendererIrisMixin implements IResourceManagerReloadL
         method = "renderWorldPass(IFJ)V",
         at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/RenderGlobal;setupTerrain(Lnet/minecraft/entity/Entity;DLnet/minecraft/client/renderer/culling/ICamera;IZ)V", shift = At.Shift.AFTER)
     )
-    private void actinium$renderIrisShadows(int pass, float partialTicks, long finishTimeNano, CallbackInfo ci) {
+    private void actinium$renderIrisShadows(int pass, float partialTicks, long finishTimeNano, CallbackInfo ci,
+                                            @Local ICamera playerCamera) {
         if (RenderWorldRecursionGuard.isNested()) {
             return;
         }
@@ -156,6 +160,14 @@ public abstract class EntityRendererIrisMixin implements IResourceManagerReloadL
         WorldRenderingPipeline pipeline = Iris.getPipelineManager().getPipelineNullable();
         if (pipeline == null) {
             return;
+        }
+
+        // The shadow pass only holds the shadow frustum, so hand it the player viewport the terrain pass just used.
+        if (playerCamera instanceof ViewportProvider viewportProvider) {
+            ActiniumWorldRenderer renderer = ActiniumWorldRenderer.instanceNullable();
+            if (renderer != null) {
+                renderer.setShadowPassPlayerViewport(viewportProvider.sodium$createViewport());
+            }
         }
 
         actinium$prepareRenderManagerForShadowPass(partialTicks);

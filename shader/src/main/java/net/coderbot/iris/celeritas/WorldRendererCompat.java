@@ -40,8 +40,17 @@ public interface WorldRendererCompat {
     void drawChunkLayersDeduplicated(Collection<BlockRenderLayer> renderLayers, double x, double y, double z,
                                      Consumer<BlockRenderLayer> beforePass);
 
-    /** Marks the terrain section graph dirty for re-culling (used by the shadow pass). */
-    void markSectionGraphDirty();
+    /**
+     * Marks the shadow render lists dirty so the next shadow pass searches again. The terrain lists keep the dirty
+     * state their own camera changes and build results maintain.
+     */
+    void markShadowGraphDirty();
+
+    /** Joins every in-flight terrain search, the shadow one included, and runs the tasks they deferred. */
+    void finishAllGraphUpdates();
+
+    /** @return how many shadow searches this renderer has submitted so far. */
+    int getShadowSearchSubmissions();
 
     void setupTerrain(Viewport viewport, SimpleWorldRenderer.CameraState cameraState, int frame, boolean spectator, boolean updateChunksImmediately);
 
@@ -53,4 +62,13 @@ public interface WorldRendererCompat {
      * @param shadowViewport the shadow frustum, centred on the player camera
      */
     void setupShadowTerrain(Viewport playerViewport, Viewport shadowViewport, SimpleWorldRenderer.CameraState cameraState, int frame, boolean spectator);
+
+    /**
+     * Shadow-pass entry that resolves the player camera viewport itself, through {@link #getLastViewport()}: the
+     * shadow pass holds only the shadow frustum, and the terrain search it runs is rooted at the player viewport the
+     * last terrain pass captured.
+     *
+     * @param shadowViewport the shadow frustum, centred on the player camera
+     */
+    void setupShadowTerrain(Viewport shadowViewport, SimpleWorldRenderer.CameraState cameraState, int frame, boolean spectator);
 }

@@ -318,13 +318,20 @@ bounded ByteBuffer 视图由 drawRaw 统一创建。此改动已通过自动化�
   统一在 `RenderSectionManager.updateForShadowPass` 提交任何搜索之前完成，因此
   `startShadowGraphUpdate` 不再自行准备窗口。
 
-两个 pass 的相机并不相同：阴影 pass 交给地形 pass 的是上一帧捕获的 viewport，两者相差一帧
-的相机位移。窗口因此按本帧全部搜索相机的跨度开窗（`RenderListManager.prepareSearchWindow`
+两个 pass 的相机并不相同：地形搜索使用主地形 setup 捕获的玩家 viewport，阴影搜索使用本轮
+阴影 frustum 的 viewport。窗口因此按全部搜索相机的跨度开窗（`RenderListManager.prepareSearchWindow`
 可传多个 viewport），保证两边的搜索 root 都落在 lattice 可安装区内；单相机时窗口尺寸与
 放置与原先一致，没有阴影 pass 的世界不受影响。
 
 阴影搜索（`ShadowOcclusionCuller`）消费地形搜索当帧写出的 `visibleCells` 根集，因此两次
 搜索之间不允许任何结构变化（含窗口重建）。
+
+本地主地形 setup 先于阴影渲染，阴影地形绘制先于主地形绘制。阴影渲染在重建 frustum 前 join
+上一轮的搜索，随后由 `SimpleWorldRenderer.setupShadowTerrain` 在提交新搜索之前上传构建结果。
+下一次主地形 setup 消费 `shadowPassRanThisFrame`，只在存在等待过且尚未上传的构建结果时补传，
+避免无结果的 `uploadChunks` 等待本轮搜索。阴影视口提交计数关联搜索结果与对应的光照角度，
+地形矩阵和 shadow uniform 使用该角度；主地形 setup 复用阴影 pass 的 `CameraState`，避免雾参数差异
+重复标记图 dirty。子类可通过 `canSubmitShadowGraphSearch` 保留上一轮阴影列表。
 
 ## glsm/ 子项目（GL 状态跟踪与渲染后端抽象）
 

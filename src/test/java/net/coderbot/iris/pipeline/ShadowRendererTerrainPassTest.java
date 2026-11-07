@@ -149,13 +149,29 @@ class ShadowRendererTerrainPassTest {
         }
 
         @Override
-        public void markSectionGraphDirty() {
+        public void markShadowGraphDirty() {
+            throw unsupported();
+        }
+
+        @Override
+        public void finishAllGraphUpdates() {
+            throw unsupported();
+        }
+
+        @Override
+        public int getShadowSearchSubmissions() {
             throw unsupported();
         }
 
         @Override
         public void setupTerrain(Viewport viewport, SimpleWorldRenderer.CameraState cameraState, int frame,
                                  boolean spectator, boolean updateChunksImmediately) {
+            throw unsupported();
+        }
+
+        @Override
+        public void setupShadowTerrain(Viewport shadowViewport, SimpleWorldRenderer.CameraState cameraState,
+                                       int frame, boolean spectator) {
             throw unsupported();
         }
 

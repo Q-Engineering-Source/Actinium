@@ -46,6 +46,7 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
     private static final double MAX_ENTITY_CHECK_VOLUME = 16 * 16 * 16 * 15;
     private boolean portalCamera;
     private ChunkRenderMatrices portalMatrices;
+    private Viewport shadowPassPlayerViewport;
 
     public record TileEntityRenderContext(Map<Integer, DestroyBlockProgress> damagedBlocks, float partialTicks) {}
 
@@ -156,8 +157,18 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
     }
 
     @Override
-    public void markSectionGraphDirty() {
-        getRenderSectionManager().markGraphDirty();
+    public void markShadowGraphDirty() {
+        getRenderSectionManager().markShadowGraphDirty();
+    }
+
+    @Override
+    public void finishAllGraphUpdates() {
+        getRenderSectionManager().finishAllGraphUpdates();
+    }
+
+    @Override
+    public int getShadowSearchSubmissions() {
+        return getRenderSectionManager().getShadowSearchSubmissions();
     }
 
     /**
@@ -170,7 +181,32 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
 
     @Override
     public void setupTerrain(Viewport viewport, CameraState cameraState, int frame, boolean spectator, boolean updateChunksImmediately) {
+        this.shadowPassPlayerViewport = null;
         super.setupTerrain(viewport, cameraState, frame, spectator, updateChunksImmediately);
+    }
+
+    /**
+     * Captured by the shadow-pass entry point before shadows are rendered: the shadow frustum's viewport cannot
+     * stand in for the player camera's, which the terrain search the shadow pass runs is rooted at.
+     */
+    public void setShadowPassPlayerViewport(Viewport viewport) {
+        this.shadowPassPlayerViewport = viewport;
+    }
+
+    @Override
+    public void setupShadowTerrain(Viewport shadowViewport, CameraState cameraState, int frame, boolean spectator) {
+        Viewport playerViewport = this.shadowPassPlayerViewport;
+        this.shadowPassPlayerViewport = null;
+
+        if (playerViewport == null) {
+            playerViewport = this.getLastViewport();
+        }
+
+        if (playerViewport == null) {
+            throw new IllegalStateException("Player viewport must be captured before shadow terrain setup");
+        }
+
+        this.setupShadowTerrain(playerViewport, shadowViewport, cameraState, frame, spectator);
     }
 
     @Override
