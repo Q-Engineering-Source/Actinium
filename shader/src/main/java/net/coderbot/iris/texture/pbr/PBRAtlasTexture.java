@@ -164,7 +164,7 @@ public class PBRAtlasTexture extends AutoClosableAbstractTexture {
 		bind();
 		int updated = alwaysAnimatedSprites.size();
 		for (int i = 0; i < gatedSprites.size(); i++) {
-			if (gatedSprites.get(i).tickAnimation(onlyVisible)) {
+			if (gatedSprites.get(i).angelica$tickAnimation(onlyVisible)) {
 				updated++;
 			}
 		}

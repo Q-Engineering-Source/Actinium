@@ -6,17 +6,17 @@ import net.coderbot.iris.texture.SpriteAnimationTicker;
  * Animation capability added to every atlas sprite by the texture mixins.
  *
  * <p>Sprites are marked visible when their UVs are sampled, and the atlas animation passes consume
- * that mark through {@link #tickAnimation(boolean)}. A sprite that was not marked keeps its frame
- * counters in step without uploading a frame.
+ * that mark through {@link #angelica$tickAnimation(boolean)}. A sprite that was not marked keeps its
+ * frame counters in step without uploading a frame.
  */
 @SuppressWarnings("unused")
 public interface IPatchedTextureAtlasSprite extends SpriteAnimationTicker {
-    void markNeedsAnimationUpdate();
+    void angelica$markNeedsAnimationUpdate();
 
-    boolean needsAnimationUpdate();
+    boolean angelica$needsAnimationUpdate();
 
-    void unmarkNeedsAnimationUpdate();
+    void angelica$unmarkNeedsAnimationUpdate();
 
     @Override
-    boolean tickAnimation(boolean onlyVisible);
+    boolean angelica$tickAnimation(boolean onlyVisible);
 }

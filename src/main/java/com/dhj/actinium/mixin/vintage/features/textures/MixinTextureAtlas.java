@@ -73,6 +73,6 @@ public class MixinTextureAtlas implements TextureMapExtension, SpriteAnimationGa
      */
     @Redirect(method = "updateAnimations", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/texture/TextureAtlasSprite;updateAnimation()V"))
     private void actinium$tickAnimation(TextureAtlasSprite sprite) {
-        ((IPatchedTextureAtlasSprite) sprite).tickAnimation(isAnimatingOnlyVisibleSprites());
+        ((IPatchedTextureAtlasSprite) sprite).angelica$tickAnimation(isAnimatingOnlyVisibleSprites());
     }
 }

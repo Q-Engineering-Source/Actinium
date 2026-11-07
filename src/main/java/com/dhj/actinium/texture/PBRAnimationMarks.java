@@ -36,7 +36,7 @@ public final class PBRAnimationMarks {
 
     private static void markSibling(TextureAtlasSprite sibling) {
         if (sibling != null) {
-            ((IPatchedTextureAtlasSprite) sibling).markNeedsAnimationUpdate();
+            ((IPatchedTextureAtlasSprite) sibling).angelica$markNeedsAnimationUpdate();
         }
     }
 }

@@ -42,6 +42,8 @@ public final class ProgramBinaryCache {
      */
     private static final String FOLDER_MARKERS = "/folders";
     private static final int PACKS_KEPT = 3;
+    /** Marker payload: the marker's presence is the signal, so the file carries no data. */
+    private static final byte[] EMPTY = new byte[0];
 
     private static volatile boolean enabled;
     private static volatile String packLayer;
@@ -60,6 +62,13 @@ public final class ProgramBinaryCache {
      * forgotten, or when the cache is cleared.
      */
     private static final Set<String> completedFolderMarkers = ConcurrentHashMap.newKeySet();
+    /**
+     * Hex digests of the whole-pack markers written by {@link #finishFullCompile(String)}. The marker file
+     * lands on a worker thread once the run's writes settle, so a reload issued right after a finished run
+     * would otherwise miss the marker and start the same run again. Entries are dropped when the marker
+     * write fails and when the cache is cleared.
+     */
+    private static final Set<String> completedSettingsMarkers = ConcurrentHashMap.newKeySet();
     private static final AtomicBoolean rejectWarned = new AtomicBoolean();
     private static final Object WRITE_LOCK = new Object();
     private static final Map<String, Object> compileGenerations = new HashMap<>();
@@ -190,39 +199,78 @@ public final class ProgramBinaryCache {
         return saveBinary(key, program);
     }
 
+    /**
+     * Opens a whole-pack compile session. A session that is still open is replaced: its collected keys and
+     * pending writes describe a run that will never be reported as complete, so keeping them would let a
+     * later run retain programs it never compiled.
+     */
     public static void beginFullCompile() {
-        fullCompileLayer = packLayer;
-        keysInUse = new HashSet<>();
-        fullCompileWrites = new ArrayList<>();
         synchronized (WRITE_LOCK) {
+            if (keysInUse != null) {
+                LOGGER.info("A new whole-pack compile replaced the unfinished one after {} programs", keysInUse.size());
+            }
+            fullCompileLayer = packLayer;
+            keysInUse = new HashSet<>();
+            fullCompileWrites = new ArrayList<>();
             fullCompileGeneration = new Object();
             if (fullCompileLayer != null) compileGenerations.put(fullCompileLayer, fullCompileGeneration);
         }
     }
 
+    /**
+     * Ends the session. Only a run that reached the end and had every program written gets the marker that
+     * lets a later load skip it; a cancelled or failed run writes none and leaves the cache entries alone.
+     *
+     * @param completedSettings fingerprint of the pack whose every folder compiled, or null when the run did
+     *                          not finish
+     */
     public static void finishFullCompile(@Nullable String completedSettings) {
-        final String layer = fullCompileLayer;
-        final Set<String> used = keysInUse;
-        final List<CompletableFuture<Boolean>> writes = fullCompileWrites;
-        final Object generation = fullCompileGeneration;
-        fullCompileLayer = null;
-        keysInUse = null;
-        fullCompileWrites = null;
-        fullCompileGeneration = null;
-        if (layer == null || used == null || writes == null) return;
+        final String layer;
+        final Set<String> used;
+        final List<CompletableFuture<Boolean>> writes;
+        final Object generation;
+        final ShaderDiskCache.Key marker;
+        synchronized (WRITE_LOCK) {
+            layer = fullCompileLayer;
+            used = keysInUse;
+            writes = fullCompileWrites;
+            generation = fullCompileGeneration;
+            fullCompileLayer = null;
+            keysInUse = null;
+            fullCompileWrites = null;
+            fullCompileGeneration = null;
+            if (layer == null || used == null || writes == null) return;
+            if (completedSettings == null) {
+                LOGGER.info("Whole-pack compile did not finish; {} programs were written without a completion marker", used.size());
+                return;
+            }
+            // A cache clear drops the generation, so this run's writes were discarded and its marker must not
+            // reappear in memory after deleteAll() removed the layer it describes.
+            if (compileGenerations.get(layer) != generation) {
+                LOGGER.info("Shader cache was cleared during the whole-pack compile; no completion marker written");
+                return;
+            }
+            marker = compiledSettingsKey(layer, completedSettings);
+            completedSettingsMarkers.add(marker.hex());
+        }
 
-        final ShaderDiskCache.Key marker = completedSettings != null ? compiledSettingsKey(layer, completedSettings) : null;
-        final String markerHex = marker != null ? marker.hex() : null;
+        final String markerHex = marker.hex();
         CompletableFuture.allOf(writes.toArray(new CompletableFuture<?>[0])).whenComplete((ignored, failure) -> {
             synchronized (WRITE_LOCK) {
                 if (compileGenerations.get(layer) != generation) return;
-                if (marker == null || failure != null) return;
+                if (failure != null) {
+                    completedSettingsMarkers.remove(markerHex);
+                    return;
+                }
                 for (CompletableFuture<Boolean> write : writes) {
-                    if (!write.join()) return;
+                    if (!write.join()) {
+                        completedSettingsMarkers.remove(markerHex);
+                        return;
+                    }
                 }
                 ShaderDiskCache.retainLayer(layer, used);
                 ShaderDiskCache.retainLayer(layer + "/settings", Collections.singleton(markerHex));
-                ShaderDiskCache.putString(marker, "");
+                if (!ShaderDiskCache.put(marker, EMPTY)) completedSettingsMarkers.remove(markerHex);
             }
         });
     }
@@ -232,13 +280,43 @@ public final class ProgramBinaryCache {
             deleteCount++;
             compileGenerations.clear();
             completedFolderMarkers.clear();
+            completedSettingsMarkers.clear();
             ShaderDiskCache.deleteLayer(LAYER);
         }
     }
 
+    /**
+     * Pins the driver identity and drops every piece of in-memory state so a test can drive the marker layer
+     * without a GL context. The driver strings are read from GL, which the test JVM cannot provide.
+     */
+    public static void resetForTesting() {
+        synchronized (WRITE_LOCK) {
+            enabled = false;
+            packLayer = null;
+            driverId = null;
+            fullCompileLayer = null;
+            keysInUse = null;
+            fullCompileWrites = null;
+            fullCompileGeneration = null;
+            folderSession = null;
+            compileGenerations.clear();
+            completedFolderMarkers.clear();
+            completedSettingsMarkers.clear();
+            rejectWarned.set(false);
+        }
+    }
+
+    /** Sets the driver identity the cache keys are salted with, so tests do not need GL. */
+    public static void useDriverIdForTesting(String id) {
+        driverId = id;
+    }
+
+    /** True when the pack, its options and this driver were fully compiled before. */
     public static boolean wasCompiledFor(String settings) {
         final String layer = packLayer;
-        return layer != null && ShaderDiskCache.getString(compiledSettingsKey(layer, settings)) != null;
+        if (layer == null) return false;
+        final ShaderDiskCache.Key marker = compiledSettingsKey(layer, settings);
+        return completedSettingsMarkers.contains(marker.hex()) || ShaderDiskCache.getString(marker) != null;
     }
 
     /** Whether a direct precompile session is active, so nested world tracking must not replace it. */
@@ -457,6 +535,11 @@ public final class ProgramBinaryCache {
         public Key attribute(String name, int index) {
             diskKey.str("attribute").str(name).i(index);
             return this;
+        }
+
+        /** The disk entry this key resolves to; tests seed and read it without a GL program. */
+        ShaderDiskCache.Key diskKey() {
+            return diskKey;
         }
     }
 }

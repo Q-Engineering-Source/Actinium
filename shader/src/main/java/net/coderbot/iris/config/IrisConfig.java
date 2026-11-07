@@ -135,6 +135,9 @@ public class IrisConfig {
 	public void setSaveCompiledShaders(boolean save) throws IOException {
 		this.saveCompiledShaders = save;
 		ProgramBinaryCache.setEnabled(save);
+		if (!save) {
+			ProgramBinaryCache.deleteAll();
+		}
 		save();
 	}
 

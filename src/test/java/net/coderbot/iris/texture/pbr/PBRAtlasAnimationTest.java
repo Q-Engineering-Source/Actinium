@@ -157,7 +157,7 @@ class PBRAtlasAnimationTest {
         private boolean marked;
 
         @Override
-        public boolean tickAnimation(boolean onlyVisible) {
+        public boolean angelica$tickAnimation(boolean onlyVisible) {
             ticks++;
             lastOnlyVisible = onlyVisible;
             if (!onlyVisible || marked) {
@@ -169,19 +169,19 @@ class PBRAtlasAnimationTest {
         }
 
         @Override
-        public void markNeedsAnimationUpdate() {
+        public void angelica$markNeedsAnimationUpdate() {
             marked = true;
         }
 
         @Override
-        public boolean needsAnimationUpdate() {
+        public boolean angelica$needsAnimationUpdate() {
             final boolean wasMarked = marked;
             marked = false;
             return wasMarked;
         }
 
         @Override
-        public void unmarkNeedsAnimationUpdate() {
+        public void angelica$unmarkNeedsAnimationUpdate() {
             marked = false;
         }
     }

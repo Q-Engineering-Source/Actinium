@@ -33,12 +33,12 @@ public abstract class MixinTextureAtlasSprite implements SpriteExtension, IPatch
     }
 
     @Override
-    public void markNeedsAnimationUpdate() {
+    public void angelica$markNeedsAnimationUpdate() {
         this.celeritas$isActive = true;
     }
 
     @Override
-    public boolean needsAnimationUpdate() {
+    public boolean angelica$needsAnimationUpdate() {
         if (this.celeritas$isActive) {
             this.celeritas$isActive = false;
             // PBR sprites are never sampled through sprite UVs, so they inherit the visibility their
@@ -50,13 +50,13 @@ public abstract class MixinTextureAtlasSprite implements SpriteExtension, IPatch
     }
 
     @Override
-    public void unmarkNeedsAnimationUpdate() {
+    public void angelica$unmarkNeedsAnimationUpdate() {
         this.celeritas$isActive = false;
     }
 
     @Override
-    public boolean tickAnimation(boolean onlyVisible) {
-        if (!onlyVisible || needsAnimationUpdate()) {
+    public boolean angelica$tickAnimation(boolean onlyVisible) {
+        if (!onlyVisible || angelica$needsAnimationUpdate()) {
             updateAnimation();
             return true;
         }

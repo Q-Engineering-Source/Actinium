@@ -409,7 +409,7 @@ public final class ShaderDiskCache {
             return this;
         }
 
-        public String hex() {
+        public synchronized String hex() {
             if (hex == null) {
                 final byte[] digest = md.digest();
                 final StringBuilder sb = new StringBuilder(digest.length * 2);
