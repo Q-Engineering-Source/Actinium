@@ -54,6 +54,7 @@ import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.math.BlockPos;
 import dhj.embeddedt.embeddium.impl.gl.device.RenderDevice;
+import dhj.embeddedt.embeddium.impl.render.viewport.Viewport;
 import dhj.embeddedt.embeddium.impl.render.viewport.ViewportProvider;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
@@ -86,6 +87,8 @@ public class ShadowRenderer {
 	public static final List<TileEntity> visibleTileEntities = new ArrayList<>();
 	public static final List<TileEntity> globalTileEntities = new ArrayList<>();
 	public static boolean ACTIVE = false;
+	/** Shadow angle the current pass draws at; the shadow matrix uniforms have to match the lists it draws. */
+	private static float activeShadowAngle = Float.NaN;
 
 	public static Frustum FRUSTUM;
 
@@ -123,6 +126,7 @@ public class ShadowRenderer {
 	private int renderedShadowEntities = 0;
 	private int renderedShadowTileEntities = 0;
 	private int celeritasShadowFrame = 0;
+	private final ShadowSearchTracker shadowSearchTracker = new ShadowSearchTracker();
 	private Profiler profiler;
 	private final List<Entity> renderedEntitiesList = new ArrayList<>(64);
 	private final MatrixStack shadowModelView = new MatrixStack();
@@ -144,6 +148,7 @@ public class ShadowRenderer {
 	public ShadowRenderer(ProgramSource shadow, PackDirectives directives, ShadowRenderTargets shadowRenderTargets, ShadowCompositeRenderer compositeRenderer) {
 
 		this.profiler = Minecraft.getMinecraft().profiler;
+		activeShadowAngle = Float.NaN;
 
 		final PackShadowDirectives shadowDirectives = directives.getShadowDirectives();
 		this.nearPlane = shadowDirectives.getNearPlane();
@@ -195,17 +200,19 @@ public class ShadowRenderer {
 	public static MatrixStack createShadowModelView(float sunPathRotation, float intervalSize) {
 		final Vector3d entityPos = getShadowCameraAnchor(CapturedRenderingState.INSTANCE.getTickDelta());
 
+		final float shadowAngle = Float.isNaN(activeShadowAngle) ? getShadowAngle() : activeShadowAngle;
+
 		final MatrixStack modelView = new MatrixStack();
-		ShadowMatrices.createModelViewMatrix(modelView, getShadowAngle(), intervalSize, sunPathRotation, entityPos.x, entityPos.y, entityPos.z);
+		ShadowMatrices.createModelViewMatrix(modelView, shadowAngle, intervalSize, sunPathRotation, entityPos.x, entityPos.y, entityPos.z);
 
 		return modelView;
 	}
 
-	private MatrixStack getShadowModelView() {
+	private MatrixStack getShadowModelView(float shadowAngle) {
 		final Vector3d entityPos = getShadowCameraAnchor(CapturedRenderingState.INSTANCE.getTickDelta());
 
 		shadowModelView.reset();
-		ShadowMatrices.createModelViewMatrix(shadowModelView, getShadowAngle(), this.intervalSize, this.sunPathRotation, entityPos.x, entityPos.y, entityPos.z);
+		ShadowMatrices.createModelViewMatrix(shadowModelView, shadowAngle, this.intervalSize, this.sunPathRotation, entityPos.x, entityPos.y, entityPos.z);
 		return shadowModelView;
 	}
 
@@ -764,6 +771,20 @@ public class ShadowRenderer {
 		this.profiler = Minecraft.getMinecraft().profiler;
 
 		profiler.endStartSection("shadows");
+
+		final WorldRendererCompat celeritasRenderer;
+		if (IrisDebugOptions.enableCeleritas()) {
+			celeritasRenderer = Objects.requireNonNull(WorldRendererCompatBridge.instance(),
+				"Shadow rendering requires the world renderer's terrain surface");
+		} else {
+			celeritasRenderer = null;
+		}
+		final Viewport savedTerrainViewport = celeritasRenderer != null ? celeritasRenderer.getLastViewport() : null;
+		if (celeritasRenderer != null) {
+			// The in-flight shadow search reads terrainFrustumHolder's frustum, which createShadowFrustum re-inits below.
+			celeritasRenderer.finishAllGraphUpdates();
+		}
+
 		ACTIVE = true;
 		CURRENT_TARGETS = this.targets;
 
@@ -773,7 +794,10 @@ public class ShadowRenderer {
 		visibleTileEntities.clear();
 		globalTileEntities.clear();
 
-		final MatrixStack modelView = getShadowModelView();
+		// The join above published the lists searched during the previous pass; draw them at the angle they were searched with.
+		final float currentShadowAngle = getShadowAngle();
+		activeShadowAngle = shadowSearchTracker.angleForFrame(currentShadowAngle);
+		final MatrixStack modelView = getShadowModelView(activeShadowAngle);
 		MODELVIEW.set(modelView.peek().getModel());
 
 		final Matrix4f shadowProjection;
@@ -835,17 +859,16 @@ public class ShadowRenderer {
 		// Mark the shadow graph as needing update before terrain setup
 		// Modern Celeritas does this to ensure the shadow render lists get populated
 		boolean celeritasManaged = false;
-		if (IrisDebugOptions.enableCeleritas()) {
+		if (celeritasRenderer != null) {
 			RenderDevice.enterManagedCode();
 			celeritasManaged = true;
-			WorldRendererCompat renderer = WorldRendererCompatBridge.instance();
-			var terrainViewport = ((ViewportProvider)terrainFrustumHolder.getFrustum()).sodium$createViewport();
-			renderer.markSectionGraphDirty();
+			final Viewport terrainViewport = ((ViewportProvider)terrainFrustumHolder.getFrustum()).sodium$createViewport();
+			celeritasRenderer.markShadowGraphDirty();
+			final int shadowSearchesBefore = celeritasRenderer.getShadowSearchSubmissions();
 			final long setupTerrainStart = perfDebugEnabled
 				? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.SHADOW_SETUP_TERRAIN) : 0L;
 			try {
-				renderer.setupShadowTerrain(
-					renderer.getLastViewport(),
+				celeritasRenderer.setupShadowTerrain(
 					terrainViewport,
 					new SimpleWorldRenderer.CameraState(
 						entityX,
@@ -863,11 +886,12 @@ public class ShadowRenderer {
 					GLSMPerfDebug.end(GLSMPerfDebug.Stage.SHADOW_SETUP_TERRAIN, setupTerrainStart);
 				}
 			}
-			renderer.setCurrentViewport(terrainViewport);
+			shadowSearchTracker.recordSubmissions(shadowSearchesBefore, celeritasRenderer.getShadowSearchSubmissions(), currentShadowAngle);
+			celeritasRenderer.setCurrentViewport(terrainViewport);
 		}
 
 		// Execute the vanilla terrain setup / culling routines using our shadow frustum.
-        // Celeritas marks the section graph dirty above; vanilla 1.12 has no public frustum-only recull entrypoint here.
+        // Celeritas marks the shadow graph dirty above; vanilla 1.12 has no public frustum-only recull entrypoint here.
 
 		// Don't forget to increment the frame counter! This variable is arbitrary and only used in terrain setup,
 		// and if it's not incremented, the vanilla culling code will get confused and think that it's already seen
@@ -913,8 +937,8 @@ public class ShadowRenderer {
 		entityShadowFrustum.setPosition(entityX, entityY, entityZ);
 
 		// Set viewport for entity visibility checks during shadow pass (matches modern Celeritas)
-		if (IrisDebugOptions.enableCeleritas()) {
-			WorldRendererCompatBridge.instance().setCurrentViewport(((ViewportProvider)entityShadowFrustum).sodium$createViewport());
+		if (celeritasRenderer != null) {
+			celeritasRenderer.setCurrentViewport(((ViewportProvider) entityShadowFrustum).sodium$createViewport());
 		}
 
 		cacheActiveRenderInfo(mc, tickDelta);
@@ -1018,6 +1042,9 @@ public class ShadowRenderer {
 			InternalShadowRenderingState.end();
 			ACTIVE = false;
 			CURRENT_TARGETS = null;
+			if (savedTerrainViewport != null) {
+				celeritasRenderer.setCurrentViewport(savedTerrainViewport);
+			}
 		}
 	}
 

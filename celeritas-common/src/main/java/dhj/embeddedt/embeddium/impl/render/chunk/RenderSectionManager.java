@@ -137,6 +137,9 @@ public abstract class RenderSectionManager {
     // pass of the same frame then skips re-running the search.
     private boolean shadowPassRanThisFrame;
 
+    // Set when updateChunks waited on rebuilds; cleared by the upload that applies their results.
+    private boolean blockingResultsPending;
+
     // Shared by every section (one allocation, not one per section); installed on each RenderSection so its
     // packedMetadata changes fan out to the list manager mirror(s).
     private final RenderSection.MetadataSink metadataSink = this::pushSectionMetadata;
@@ -293,9 +296,9 @@ public abstract class RenderSectionManager {
         this.shadowPassRanThisFrame = true;
 
         // Both passes search one shared lattice and a search reads it for its whole duration, so every viewport this
-        // frame searches is prepared here, before its first search is submitted. The shadow manager cannot prepare
-        // its own: by the time it runs, the terrain search is already in flight. The two viewports are a frame apart
-        // — the terrain pass is handed the viewport captured last frame — so the prepared window covers both.
+        // pass searches is prepared here, before its first search is submitted. The shadow manager cannot prepare
+        // its own: by the time it runs, the terrain search is already in flight. The window covers the player viewport
+        // captured during terrain setup and the shadow viewport built for this shadow pass.
         final float searchDistance = this.getSearchDistance(null);
         this.renderListManager.prepareSearchWindow(searchDistance, playerViewport, shadowViewport);
 
@@ -303,14 +306,27 @@ public abstract class RenderSectionManager {
             this.createTerrainRenderList(playerViewport, null, frame, spectator);
         }
 
+        if (this.canSubmitShadowGraphSearch()) {
+            this.submitShadowGraphSearch(shadowViewport, frame);
+        }
+    }
+
+    /** When false, {@link #updateForShadowPass} keeps the previous shadow lists instead of searching again. */
+    protected boolean canSubmitShadowGraphSearch() {
+        return true;
+    }
+
+    protected void submitShadowGraphSearch(Viewport shadowViewport, int frame) {
         Vector3fc lightVector = null;
 
         if (shadowViewport.getFrustum() instanceof ShadowSearchFrustum searchFrustum && searchFrustum.supportsOcclusionSearch()) {
             lightVector = new Vector3f(searchFrustum.shadowLightX(), searchFrustum.shadowLightY(), searchFrustum.shadowLightZ());
         }
 
+        // The window prepared above covers both viewports of this frame, so the distance this search runs with has
+        // to be the one it was prepared for.
         this.shadowRenderListManager.startShadowGraphUpdate(shadowViewport, frame, this.regions.getRegionIdsLength(),
-                searchDistance, lightVector, this.getTargetQueueSize());
+                this.getSearchDistance(null), lightVector, this.getTargetQueueSize());
     }
 
     /**
@@ -445,7 +461,9 @@ public abstract class RenderSectionManager {
         }
 
         section.setPendingUpdate(update);
-        this.getCurrentRenderListManager().getRebuildLists().byUpdateType().get(update).add(section);
+        // Sorts order geometry for the player camera, so they go to the terrain queue even when build results are
+        // processed during the shadow pass.
+        this.renderListManager.getRebuildLists().byUpdateType().get(update).add(section);
     }
 
     /**
@@ -669,11 +687,19 @@ public abstract class RenderSectionManager {
         this.submitRebuildTasks(updateImmediately ? blockingRebuilds : deferredSorts, ChunkUpdateType.SORT);
 
         blockingRebuilds.awaitCompletion(this.builder);
+        this.blockingResultsPending |= blockingRebuilds.hasSubmittedJobs();
 
         this.builder.tick();
     }
 
+    /** Whether updateChunks waited on rebuilds whose results have not been uploaded yet. */
+    public boolean hasBlockingResultsPending() {
+        return this.blockingResultsPending;
+    }
+
     public void uploadChunks() {
+        this.blockingResultsPending = false;
+
         var results = this.collectChunkBuildResults();
 
         if (results.isEmpty()) {
@@ -692,8 +718,11 @@ public abstract class RenderSectionManager {
         }
 
         // Forcefully mark the graph as needing updates if the previous render list detected an overflow of the
-        // update queue. This is necessary to queue those additional chunks.
-        if (this.getCurrentRenderListManager().getRebuildLists().hasAdditionalUpdates()) {
+        // update queue. This is necessary to queue those additional chunks. The terrain pass skips its upload after a
+        // shadow pass, so the terrain lists are checked here too.
+        if (this.renderListManager.getRebuildLists().hasAdditionalUpdates()
+                || (this.isInShadowPass() && this.shadowRenderListManager != null
+                    && this.shadowRenderListManager.getRebuildLists().hasAdditionalUpdates())) {
             this.markGraphDirty();
         }
     }

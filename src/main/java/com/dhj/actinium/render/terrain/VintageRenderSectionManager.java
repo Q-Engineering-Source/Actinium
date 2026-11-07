@@ -47,6 +47,7 @@ public class VintageRenderSectionManager extends RenderSectionManager {
     private final WorldClient world;
     @Getter
     private final ClonedChunkSectionCache sectionCache;
+    private int shadowSearchSubmissions;
 
     public VintageRenderSectionManager(RenderPassConfiguration<?> configuration, WorldClient world, int renderDistance, CommandList commandList, int minSection, int maxSection) {
         super(configuration, () -> new VintageChunkBuildContext(world, configuration), ChunkRenderer::new, renderDistance, commandList, minSection, maxSection, ActiniumRuntime.options().performance.chunkBuilderThreads, true);
@@ -197,6 +198,29 @@ public class VintageRenderSectionManager extends RenderSectionManager {
     @Override
     public boolean isInShadowPass() {
         return ShaderProviderHolder.isShadowPass();
+    }
+
+    /** Marks only the shadow lists dirty: the shadow pass searches again, the terrain lists keep their own state. */
+    public void markShadowGraphDirty() {
+        if (this.shadowRenderListManager != null) {
+            this.shadowRenderListManager.setNeedsUpdate(true);
+        }
+    }
+
+    @Override
+    protected boolean canSubmitShadowGraphSearch() {
+        return super.canSubmitShadowGraphSearch() && this.shadowRenderListManager.isNeedsUpdate();
+    }
+
+    @Override
+    protected void submitShadowGraphSearch(Viewport viewport, int frame) {
+        super.submitShadowGraphSearch(viewport, frame);
+        this.shadowSearchSubmissions++;
+    }
+
+    /** @return how many shadow searches this manager has submitted; a change across a shadow pass means new lists. */
+    public int getShadowSearchSubmissions() {
+        return this.shadowSearchSubmissions;
     }
 
     @Override
