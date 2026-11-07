@@ -77,6 +77,15 @@ public class GLSMRedirector {
     private static final String EXT_SECONDARY_COLOR = "org/lwjgl/opengl/EXTSecondaryColor";
     private static final String EXT_FOG_COORD = "org/lwjgl/opengl/EXTFogCoord";
     private static final String ARB_MULTI_TEXTURE = "org/lwjgl/opengl/ARBMultitexture";
+    private static final String ARB_MULTI_BIND = "org/lwjgl/opengl/ARBMultiBind";
+    private static final String ARB_DIRECT_STATE_ACCESS = "org/lwjgl/opengl/ARBDirectStateAccess";
+    private static final String EXT_DIRECT_STATE_ACCESS = "org/lwjgl/opengl/EXTDirectStateAccess";
+    private static final String ARB_GEOMETRY_SHADER_4 = "org/lwjgl/opengl/ARBGeometryShader4";
+    private static final String EXT_GEOMETRY_SHADER_4 = "org/lwjgl/opengl/EXTGeometryShader4";
+    private static final String NV_GEOMETRY_PROGRAM_4 = "org/lwjgl/opengl/NVGeometryProgram4";
+    private static final String EXT_TEXTURE_ARRAY = "org/lwjgl/opengl/EXTTextureArray";
+    private static final String ARB_SHADER_IMAGE_LOAD_STORE = "org/lwjgl/opengl/ARBShaderImageLoadStore";
+    private static final String EXT_SHADER_IMAGE_LOAD_STORE = "org/lwjgl/opengl/EXTShaderImageLoadStore";
     private static final String ARB_SHADER_OBJECTS = "org/lwjgl/opengl/ARBShaderObjects";
     private static final String ARB_INSTANCED_ARRAYS = "org/lwjgl/opengl/ARBInstancedArrays";
     private static final String ARB_DRAW_INSTANCED = "org/lwjgl/opengl/ARBDrawInstanced";
@@ -512,12 +521,16 @@ public class GLSMRedirector {
             .add("glMultiDrawElementsIndirect");
         Map<String, String> gl44 = RedirectMap.newMap()
             .add("glBufferStorage")
-            .add("glClearTexImage");
+            .add("glBindSamplers")
+            .add("glClearTexImage")
+            .add("glBindTextures")
+            .add("glBindImageTextures");
         Map<String, String> gl45 = RedirectMap.newMap()
             .add("glCreateBuffers")
             .add("glNamedBufferData")
             .add("glNamedBufferSubData")
             .add("glBindTextureUnit")
+            .add("glCreateTextures")
             .add("glGenerateTextureMipmap")
             .add("glGetTextureLevelParameterf")
             .add("glGetTextureLevelParameteri")
@@ -816,6 +829,34 @@ public class GLSMRedirector {
             .add("glClientActiveTextureARB", "glClientActiveTexture")
             .add("glMultiTexCoord2fARB", "glMultiTexCoord2f")
         );
+        METHOD_REDIRECTS.put(ARB_MULTI_BIND, RedirectMap.newMap()
+            .add("glBindSamplers")
+            .add("glBindTextures")
+            .add("glBindImageTextures")
+        );
+        METHOD_REDIRECTS.put(ARB_DIRECT_STATE_ACCESS, RedirectMap.newMap()
+            .add("glBindTextureUnit")
+            .add("glCreateTextures")
+            .add("glNamedFramebufferTexture")
+            .add("glNamedFramebufferTextureLayer")
+            .add("glNamedFramebufferRenderbuffer")
+        );
+        METHOD_REDIRECTS.put(EXT_DIRECT_STATE_ACCESS, RedirectMap.newMap()
+            .add("glNamedFramebufferTexture1DEXT")
+            .add("glNamedFramebufferTexture2DEXT")
+            .add("glNamedFramebufferTexture3DEXT")
+            .add("glNamedFramebufferTextureEXT")
+            .add("glNamedFramebufferTextureLayerEXT", "glNamedFramebufferTextureLayer")
+            .add("glNamedFramebufferTextureFaceEXT")
+            .add("glNamedFramebufferRenderbufferEXT", "glNamedFramebufferRenderbuffer")
+            .add("glBindMultiTextureEXT")
+        );
+        METHOD_REDIRECTS.put(ARB_SHADER_IMAGE_LOAD_STORE, RedirectMap.newMap()
+            .add("glBindImageTexture")
+        );
+        METHOD_REDIRECTS.put(EXT_SHADER_IMAGE_LOAD_STORE, RedirectMap.newMap()
+            .add("glBindImageTextureEXT", "glBindImageTexture")
+        );
         METHOD_REDIRECTS.put(ARB_VERTEX_SHADER, RedirectMap.newMap()
             .add("glGetAttribLocationARB", "glGetAttribLocation")
             .add("glBindAttribLocationARB", "glBindAttribLocation")
@@ -861,6 +902,22 @@ public class GLSMRedirector {
             .add("glRenderbufferStorageEXT", "glRenderbufferStorage")
             .add("glFramebufferRenderbufferEXT", "glFramebufferRenderbuffer")
             .add("glGenerateMipmapEXT", "glGenerateMipmap")
+        );
+        // Geometry shader and texture array extensions expose the framebuffer texture attachment under
+        // their own names; they are the same GL30 attachment with a layer/face selector.
+        METHOD_REDIRECTS.put(ARB_GEOMETRY_SHADER_4, RedirectMap.newMap()
+            .add("glFramebufferTextureARB", "glFramebufferTexture")
+            .add("glFramebufferTextureLayerARB", "glFramebufferTextureLayer")
+            .add("glFramebufferTextureFaceARB", "glFramebufferTextureFace")
+        );
+        Map<String, String> geometryShader4Attachments = RedirectMap.newMap()
+            .add("glFramebufferTextureEXT", "glFramebufferTexture")
+            .add("glFramebufferTextureLayerEXT", "glFramebufferTextureLayer")
+            .add("glFramebufferTextureFaceEXT", "glFramebufferTextureFace");
+        METHOD_REDIRECTS.put(EXT_GEOMETRY_SHADER_4, geometryShader4Attachments);
+        METHOD_REDIRECTS.put(NV_GEOMETRY_PROGRAM_4, geometryShader4Attachments);
+        METHOD_REDIRECTS.put(EXT_TEXTURE_ARRAY, RedirectMap.newMap()
+            .add("glFramebufferTextureLayerEXT", "glFramebufferTextureLayer")
         );
         METHOD_REDIRECTS.put(ARB_OCCLUSION_QUERY, RedirectMap.newMap()
             .add("glGenQueriesARB", "glGenQueries")
@@ -1036,7 +1093,6 @@ public class GLSMRedirector {
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL20 glUniform2fv(ILjava/nio/FloatBuffer;)V", "glUniform2");
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL20 glUniformMatrix2fv(IZLjava/nio/FloatBuffer;)V", "glUniformMatrix2");
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL43 glMultiDrawArraysIndirect(IJII)V", "glMultiDrawArraysIndirect");
-        GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL45 glCreateTextures(I)I", "glCreateTextures");
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL45 glTextureSubImage3D(IIIIIIIIIILjava/nio/ByteBuffer;)V", "glTextureSubImage3D");
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL45 glCompressedTextureSubImage3D(IIIIIIIIILjava/nio/ByteBuffer;)V", "glCompressedTextureSubImage3D");
         GL_DESC_REDIRECTS.put("org/lwjgl/opengl/GL45C glClearTexSubImage(IIIIIIIIIILjava/nio/ByteBuffer;)V", "glClearTexSubImage");

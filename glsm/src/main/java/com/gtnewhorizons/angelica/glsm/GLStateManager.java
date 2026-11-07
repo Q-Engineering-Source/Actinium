@@ -47,6 +47,7 @@ import com.gtnewhorizons.angelica.glsm.stacks.StackIdAllocator;
 import com.gtnewhorizons.angelica.glsm.stacks.StencilStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.TextureUnitBooleanStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.Vec3fStack;
+import com.gtnewhorizons.angelica.glsm.stacks.TextureBindingStack;
 import com.gtnewhorizons.angelica.glsm.stacks.Vec4fStack;
 import com.gtnewhorizons.angelica.glsm.stacks.ViewPortStateStack;
 import com.gtnewhorizons.angelica.glsm.states.AlphaState;
@@ -58,6 +59,7 @@ import com.gtnewhorizons.angelica.glsm.states.ImageUnitBinding;
 import com.gtnewhorizons.angelica.glsm.states.PixelStoreState;
 import com.gtnewhorizons.angelica.glsm.states.TextureBinding;
 import com.gtnewhorizons.angelica.glsm.states.TextureUnitArray;
+import com.gtnewhorizons.angelica.glsm.texture.TextureStaging;
 import com.gtnewhorizons.angelica.glsm.streaming.LineQuads;
 import com.gtnewhorizons.angelica.glsm.ffp.VAOManager;
 import com.gtnewhorizons.angelica.glsm.ffp.VertexKey;
@@ -392,11 +394,6 @@ public class GLStateManager {
     // Lock guard for texture bind callback (prevents recursion from RenderSystem.bindTextureToUnit)
     static boolean lockBindCallback;
 
-    // Deferred texture deletion: names kept valid until glGenTextures recycles them.
-    // Emulates Mesa/compat-profile behavior where delete-then-bind doesn't error.
-    // The state machine lives in GLSMTextureLifetime; deferDeleteTexture/flushDeferredTextureDeletes delegate to it.
-    private static long loggedUncachedTextureTargets = 0;
-
     @Getter private static Vendor VENDOR;
 
     // This setting varies depending on driver, so it gets queried at runtime
@@ -445,15 +442,17 @@ public class GLStateManager {
             public static int getActiveTextureUnitForServerState() { return GLSMTextures.getActiveTextureUnitForServerState(); }
 
     /**
-     * Get the texture bound to the current texture unit for server-side state operations.
-     * If caching is enabled, returns cached value.
+     * Get the 2D texture bound to the current texture unit for server-side state operations.
+     * If caching is enabled, returns the cached name while the unit's slot holds a 2D target, otherwise the 2D binding
+     * the driver keeps for that unit.
      * If caching is disabled (SharedDrawable), queries actual GL state.
      */
             public static int getBoundTextureForServerState() { return GLSMTextures.getBoundTextureForServerState(); }
 
     /**
-     * Get the texture bound to a specific texture unit for server-side state operations.
-     * If caching is enabled, returns cached value.
+     * Get the 2D texture bound to a specific texture unit for server-side state operations.
+     * If caching is enabled, returns the cached name while that unit's slot holds a 2D target, otherwise the 2D
+     * binding the driver keeps for that unit; the unit is made active for the query and the previous unit is restored.
      * If caching is disabled (SharedDrawable), returns -1 to force operations to proceed
      */
             public static int getBoundTextureForServerState(int unit) { return GLSMTextures.getBoundTextureForServerState(unit); }
@@ -593,10 +592,20 @@ public class GLStateManager {
     }
 
     static int getBoundTextureForGpuDiagnostics() {
-        if (!isGpuDiagnosticCacheTrusted()) {
+        if (!hasGpuCommandRecorder() || !isGpuDiagnosticCacheTrusted()) {
             return GpuCommandDiagnostics.UNKNOWN;
         }
         return getBoundTexture();
+    }
+
+    /**
+     * Reports whether a recorder is installed, which is the precondition for every command-metadata value the upload
+     * paths compute. Skipping the probe when diagnostics are off also keeps them independent of the capability facade,
+     * which the SDL integration harness cannot load.
+     */
+    private static boolean hasGpuCommandRecorder() {
+        final GLSMInitConfig config = initConfig;
+        return config != null && config.getGpuCommandRecorder() != null;
     }
 
     static boolean isGpuDiagnosticCacheTrusted() {
@@ -1246,23 +1255,6 @@ public class GLStateManager {
         if (!RenderSystem.isGLES()) return type;
         if (!GLESFormatRemap.isGenericPixelType(type)) return type;
         return GLESFormatRemap.typeForInternalFormatES32(internalformat, type);
-    }
-
-    static void logUncachedTextureTarget(int target) {
-        final int bit = switch (target) {
-            case GL11.GL_TEXTURE_1D -> 0;
-            case GL30.GL_TEXTURE_2D_ARRAY -> 1;
-            case GL12.GL_TEXTURE_3D -> 2;
-            case GL13.GL_TEXTURE_CUBE_MAP -> 3;
-            case GL31.GL_TEXTURE_RECTANGLE -> 4;
-            case GL32.GL_TEXTURE_2D_MULTISAMPLE -> 5;
-            default -> 6;
-        };
-        final long mask = 1L << bit;
-        if ((loggedUncachedTextureTargets & mask) == 0) {
-            loggedUncachedTextureTargets |= mask;
-            LOGGER.debug("glBindTexture target {} not cached by GLSM, passing through", target);
-        }
     }
 
     public static void glTexImage2D(int target, int level, int internalformat, int width, int height, int border, int format, int type, IntBuffer pixels) { GLSMTextures.glTexImage2D(target, level, internalformat, width, height, border, format, type, pixels); }
@@ -2586,12 +2578,14 @@ public class GLStateManager {
 
     /**
      * Resolves the TextureInfo of the currently bound 2D texture, preferring the per-context
-     * binding cache when caching is enabled.
+     * binding cache when caching is enabled. A non-2D bind owns the unit's single slot, so it cannot answer for 2D;
+     * the hidden 2D binding the driver keeps for that unit is the texture the 2D calls edit.
      */
     static TextureInfo getBoundTextureInfo() {
         final GLContextState glCtx = ctx();
         if (isCachingEnabled()) {
-            return glCtx.textures.getTextureUnitBindings(glCtx.activeTextureUnit.getValue()).getOrResolveInfo();
+            final TextureBindingStack binding = glCtx.textures.getTextureUnitBindings(glCtx.activeTextureUnit.getValue());
+            if (GLSMTextureLifetime.is2D(binding.getTarget())) return binding.getOrResolveInfo();
         }
         return TextureInfoCache.INSTANCE.getInfo(getBoundTextureForServerState());
     }
@@ -2777,7 +2771,19 @@ public class GLStateManager {
 
             public static int glCreateTextures(int target) { return GLSMTextures.glCreateTextures(target); }
 
+    public static void glCreateTextures(int target, IntBuffer textures) { GLSMTextures.glCreateTextures(target, textures); }
+
+    public static void glCreateTextures(int target, int[] textures) { GLSMTextures.glCreateTextures(target, textures); }
+
+    public static void glBindTextures(int first, int count, IntBuffer textures) { GLSMTextures.glBindTextures(first, count, textures); }
+
+    public static void glBindTextures(int first, IntBuffer textures) { GLSMTextures.glBindTextures(first, textures); }
+
+    public static void glBindTextures(int first, int[] textures) { GLSMTextures.glBindTextures(first, textures); }
+
     public static void glBindTextureUnit(int unit, int texture) { GLSMTextures.glBindTextureUnit(unit, texture); }
+
+    public static void glBindMultiTextureEXT(int texunit, int target, int texture) { GLSMTextures.glBindMultiTextureEXT(texunit, target, texture); }
 
     /** DSA texture parameter paths recover the target from the GLSM-side cache (set at glCreateTextures). */
     private static int dsaTargetOf(int texture) {
@@ -2937,6 +2943,9 @@ public class GLStateManager {
             public static int glGenSamplers() { return GLSMTextures.glGenSamplers(); }
             public static void glDeleteSamplers(int sampler) { GLSMTextures.glDeleteSamplers(sampler); }
             public static void glBindSampler(int unit, int sampler) { GLSMTextures.glBindSampler(unit, sampler); }
+            public static void glBindSamplers(int first, int count, IntBuffer samplers) { GLSMTextures.glBindSamplers(first, count, samplers); }
+            public static void glBindSamplers(int first, IntBuffer samplers) { GLSMTextures.glBindSamplers(first, samplers); }
+            public static void glBindSamplers(int first, int[] samplers) { GLSMTextures.glBindSamplers(first, samplers); }
     public static void glSamplerParameteri(int sampler, int pname, int param) { GLSMTextures.glSamplerParameteri(sampler, pname, param); }
     public static void glSamplerParameterf(int sampler, int pname, float param) { GLSMTextures.glSamplerParameterf(sampler, pname, param); }
 
@@ -3104,6 +3113,14 @@ public class GLStateManager {
     public static void glTexSubImage2D(int target, int level, int xoffset, int yoffset, int width, int height, int format, int type, IntBuffer pixels) { GLSMTextures.glTexSubImage2D(target, level, xoffset, yoffset, width, height, format, type, pixels); }
 
     public static void glTexSubImage2D(int target, int level, int xoffset, int yoffset, int width, int height, int format, int type, long pixels_buffer_offset) { GLSMTextures.glTexSubImage2D(target, level, xoffset, yoffset, width, height, format, type, pixels_buffer_offset); }
+
+    public static TextureStaging beginTextureStaging(int level, int x, int y, int width, int height) { return GLSMTextures.beginTextureStaging(level, x, y, width, height); }
+
+    public static boolean commitTextureStaging(TextureStaging staging) { return GLSMTextures.commitTextureStaging(staging); }
+
+    public static void abandonTextureStaging(TextureStaging staging) { GLSMTextures.abandonTextureStaging(staging); }
+
+    public static void trimTextureStaging() { GLSMTextures.trimTextureStaging(); }
 
             public static void glTexSubImage3D(int target, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, int format, int type, ByteBuffer pixels) { GLSMTextures.glTexSubImage3D(target, level, xoffset, yoffset, zoffset, width, height, depth, format, type, pixels); }
 
@@ -3463,6 +3480,8 @@ public class GLStateManager {
 
     public static void glFramebufferTexture2D(int target, int attachment, int textarget, int texture, int level) { GLSMFramebuffer.glFramebufferTexture2D(target, attachment, textarget, texture, level); }
 
+    public static void glFramebufferTextureFace(int target, int attachment, int texture, int level, int face) { GLSMFramebuffer.glFramebufferTextureFace(target, attachment, texture, level, face); }
+
     public static void glFramebufferTexture1D(int target, int attachment, int textarget, int texture, int level) { GLSMFramebuffer.glFramebufferTexture1D(target, attachment, textarget, texture, level); }
 
     public static void glFramebufferTexture3D(int target, int attachment, int textarget, int texture, int level, int zoffset) { GLSMFramebuffer.glFramebufferTexture3D(target, attachment, textarget, texture, level, zoffset); }
@@ -3472,6 +3491,16 @@ public class GLStateManager {
     public static void glNamedFramebufferTexture(int framebuffer, int attachment, int texture, int level) { GLSMFramebuffer.glNamedFramebufferTexture(framebuffer, attachment, texture, level); }
 
     public static void glNamedFramebufferTextureLayer(int framebuffer, int attachment, int texture, int level, int layer) { GLSMFramebuffer.glNamedFramebufferTextureLayer(framebuffer, attachment, texture, level, layer); }
+
+    public static void glNamedFramebufferTextureEXT(int framebuffer, int attachment, int texture, int level) { GLSMFramebuffer.glNamedFramebufferTextureEXT(framebuffer, attachment, texture, level); }
+
+    public static void glNamedFramebufferTexture1DEXT(int framebuffer, int attachment, int textarget, int texture, int level) { GLSMFramebuffer.glNamedFramebufferTexture1DEXT(framebuffer, attachment, textarget, texture, level); }
+
+    public static void glNamedFramebufferTexture2DEXT(int framebuffer, int attachment, int textarget, int texture, int level) { GLSMFramebuffer.glNamedFramebufferTexture2DEXT(framebuffer, attachment, textarget, texture, level); }
+
+    public static void glNamedFramebufferTexture3DEXT(int framebuffer, int attachment, int textarget, int texture, int level, int zoffset) { GLSMFramebuffer.glNamedFramebufferTexture3DEXT(framebuffer, attachment, textarget, texture, level, zoffset); }
+
+    public static void glNamedFramebufferTextureFaceEXT(int framebuffer, int attachment, int texture, int level, int face) { GLSMFramebuffer.glNamedFramebufferTextureFaceEXT(framebuffer, attachment, texture, level, face); }
 
     public static void glNamedFramebufferRenderbuffer(int framebuffer, int attachment, int renderbuffertarget, int renderbuffer) { GLSMFramebuffer.glNamedFramebufferRenderbuffer(framebuffer, attachment, renderbuffertarget, renderbuffer); }
 
@@ -3935,6 +3964,9 @@ public class GLStateManager {
     public static void glGetProgramInfoLog(int program, int[] length, ByteBuffer infoLog) { GLSMPrograms.glGetProgramInfoLog(program, length, infoLog); }
 
             public static void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) { GLSMTextures.glBindImageTexture(unit, texture, level, layered, layer, access, format); }
+            public static void glBindImageTextures(int first, int count, IntBuffer textures) { GLSMTextures.glBindImageTextures(first, count, textures); }
+            public static void glBindImageTextures(int first, IntBuffer textures) { GLSMTextures.glBindImageTextures(first, textures); }
+            public static void glBindImageTextures(int first, int[] textures) { GLSMTextures.glBindImageTextures(first, textures); }
     public static void glMemoryBarrier(int barriers) { GLSMBuffers.glMemoryBarrier(barriers); }
     public static void glCopyImageSubData(int srcName, int srcTarget, int srcLevel, int srcX, int srcY, int srcZ, int dstName, int dstTarget, int dstLevel, int dstX, int dstY, int dstZ, int srcWidth, int srcHeight, int srcDepth) { GLSMTextures.glCopyImageSubData(srcName, srcTarget, srcLevel, srcX, srcY, srcZ, dstName, dstTarget, dstLevel, dstX, dstY, dstZ, srcWidth, srcHeight, srcDepth); }
 

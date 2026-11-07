@@ -11,16 +11,26 @@ import com.gtnewhorizons.angelica.glsm.states.TextureUnitArray;
 import org.lwjgl.opengl.EXTTextureFilterAnisotropic;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL14;
+import org.lwjgl.opengl.GL15;
+import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GL31;
+import org.lwjgl.opengl.GL32;
+import org.lwjgl.opengl.GL33;
+import org.lwjgl.opengl.GL40;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandPhase;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandType;
+import com.gtnewhorizons.angelica.glsm.recording.CommandRecorder;
 import com.gtnewhorizons.angelica.glsm.recording.commands.TexImage2DCmd;
 import com.gtnewhorizons.angelica.glsm.recording.commands.TexSubImage2DCmd;
+import com.gtnewhorizons.angelica.glsm.stacks.TextureBindingStack;
 import com.gtnewhorizons.angelica.glsm.states.PixelStoreState;
 import com.gtnewhorizons.angelica.glsm.states.TextureBinding;
 import com.gtnewhorizons.angelica.glsm.texture.TextureInfo;
 import com.gtnewhorizons.angelica.glsm.texture.TextureInfoCache;
+import com.gtnewhorizons.angelica.glsm.texture.TextureStaging;
+import com.gtnewhorizons.angelica.glsm.texture.TextureTargets;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 
@@ -47,7 +57,6 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.handleRemovedTexPar
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.isCachingEnabled;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.isRecordingDisplayList;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.lockBindCallback;
-import static com.gtnewhorizons.angelica.glsm.GLStateManager.logUncachedTextureTarget;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.maybeGenerateMipmap;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.mod;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.onDeleteTexture;
@@ -69,7 +78,6 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.updateTexParameterf
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.updateTexParameteriCache;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.warnOnce;
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
-import static com.gtnewhorizons.angelica.glsm.GLStateManager.getBoundTexture;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.postTextureUnitState;
 
 public final class GLSMTextures {
@@ -106,7 +114,13 @@ public final class GLSMTextures {
         glCtx.clientActiveTextureUnit = unit;
     }
 
+    /**
+     * Binds a texture on the active unit. Every target shares the unit's single cached slot, so a 3D or array name is
+     * tracked exactly like a 2D one; a zero bind also re-targets the slot when the previous name belonged to another
+     * target. Rebinding a deferred-delete name rescues it, which resets its storage and parameters.
+     */
     public static void glBindTexture(int target, int texture) {
+        if (TextureTargets.isProxyTarget(target)) return;
         final GLContextState glCtx = ctx();
         recordExitTextureBind(glCtx, target, glCtx.activeTextureUnit.getValue());
         final RecordMode mode = DisplayListManager.getRecordMode();
@@ -123,36 +137,28 @@ public final class GLSMTextures {
             TextureInfoCache.INSTANCE.getInfo(texture).setTarget(target);
         }
 
-        if (target != GL11.GL_TEXTURE_2D) {
-            // Non-2D targets (e.g. GL_TEXTURE_2D_ARRAY) pass through without caching
-            logUncachedTextureTarget(target);
-            recordGpuCommand(GpuCommandType.TEXTURE_BIND, target, texture);
-            RENDER_BACKEND.bindTexture(target, texture);
-            GLSMTextureLifetime.finishRescue(target, texture, claim);
-            return;
-        }
-
         if (!isCachingEnabled()) {
             final int activeUnit = getActiveTextureUnitForServerState();
             recordGpuCommand(GpuCommandType.TEXTURE_BIND, target, texture);
             RENDER_BACKEND.bindTexture(target, texture);
-            GLSMHooks.notifyTextureBindSync(activeUnit, texture);
+            notifyTextureBindSync(target, activeUnit, texture);
             GLSMTextureLifetime.finishRescue(target, texture, claim);
             return;
         }
 
-        final int activeUnit = ctx().activeTextureUnit.getValue();
-        final TextureBinding textureUnit = ctx().textures.getTextureUnitBindings(activeUnit);
+        final int activeUnit = glCtx.activeTextureUnit.getValue();
+        final TextureBindingStack textureUnit = glCtx.textures.getTextureUnitBindings(activeUnit);
         final int cachedBinding = textureUnit.getBinding();
+        final int cachedTarget = textureUnit.getTarget();
 
-        if (cachedBinding != texture) {
+        if (cachedBinding != texture || (texture == 0 && cachedTarget != target)) {
             recordGpuCommand(GpuCommandType.TEXTURE_BIND, target, texture);
             RENDER_BACKEND.bindTexture(target, texture);
-            mod(ctx().textures.getTextureUnitBindings(activeUnit)).setBinding(texture, target);
-            if (texture != 0 && activeUnit > ctx().maxBoundTextureUnit) {
-                ctx().maxBoundTextureUnit = activeUnit;
+            mod(textureUnit).setBinding(texture, target);
+            if (texture != 0 && activeUnit > glCtx.maxBoundTextureUnit) {
+                glCtx.maxBoundTextureUnit = activeUnit;
             }
-            if (!lockBindCallback && ctx().activeTextureUnit.getValue() == 0) {
+            if (!lockBindCallback && target == GL11.GL_TEXTURE_2D && activeUnit == 0) {
                 lockBindCallback = true;
                 if (GLSMHooks.TEXTURE_BIND.hasListeners()) {
                     GLSMHooks.textureBindEvent.textureId = texture;
@@ -163,8 +169,13 @@ public final class GLSMTextures {
             }
         }
         // Mirror executed binds even during GL_COMPILE_AND_EXECUTE recording and on cache hits.
-        GLSMHooks.notifyTextureBindSync(activeUnit, texture);
+        notifyTextureBindSync(target, activeUnit, texture);
         GLSMTextureLifetime.finishRescue(target, texture, claim);
+    }
+
+    /** Reports a 2D bind to the pipeline host; other targets stay outside the fixed-function texture model. */
+    private static void notifyTextureBindSync(int target, int unit, int texture) {
+        if (target == GL11.GL_TEXTURE_2D) GLSMHooks.notifyTextureBindSync(unit, texture);
     }
 
     public static void glTexImage2D(int target, int level, int internalformat, int width, int height, int border, int format, int type, IntBuffer pixels) {
@@ -470,12 +481,31 @@ public final class GLSMTextures {
     }
 
     public static void glBindTextureUnit(int unit, int texture) {
-        if (GLStateManager.getBoundTextureForServerState(unit) == texture) return;
-        recordGpuCommand(GpuCommandType.TEXTURE_BIND, 0, texture);
-        RENDER_BACKEND.bindTextureUnit(unit, texture);
-        mod(ctx().textures.getTextureUnitBindings(unit)).setBinding(texture);
-        if (texture != 0 && unit > ctx().maxBoundTextureUnit) {
-            ctx().maxBoundTextureUnit = unit;
+        if (isValidTextureUnit(unit, GL13.GL_TEXTURE0 + unit, "glBindTextureUnit")) bindTextureUnitByName(unit, texture);
+    }
+
+    /**
+     * Binds a texture to a unit by name: the target comes from the texture itself, so a 3D or array name lands on its
+     * own target instead of the 2D slot. A deferred name is rejected, and the unit switch is kept out of any display
+     * list being recorded.
+     */
+    private static void bindTextureUnitByName(int unit, int texture) {
+        if (GLSMTextureLifetime.isDeferredDelete(texture)) return;
+        final CommandRecorder paused = DisplayListManager.pauseRecording();
+        final int saved = getActiveTextureUnit();
+        try {
+            glActiveTexture(GL13.GL_TEXTURE0 + unit);
+            if (texture == 0) {
+                // Read the target before the 2D unbind, which overwrites the unit's cached target.
+                final int target = ctx().textures.getTextureUnitBindings(unit).getTarget();
+                glBindTexture(GL11.GL_TEXTURE_2D, 0);
+                if (!GLSMTextureLifetime.is2D(target)) glBindTexture(target, 0);
+            } else {
+                glBindTexture(GLSMTextureLifetime.targetOf(texture), texture);
+            }
+        } finally {
+            glActiveTexture(GL13.GL_TEXTURE0 + saved);
+            if (paused != null) DisplayListManager.resumeRecording(paused);
         }
     }
 
@@ -545,6 +575,55 @@ public final class GLSMTextures {
         TextureInfoCache.INSTANCE.onTexSubImage2D(target, level);
         maybeGenerateMipmap(target, level);
 
+    }
+
+    /**
+     * Hands out a native block for one packed BGRA upload of {@code width} x {@code height} pixels into the texture
+     * bound to the active unit. Returns {@code null} when the tracked unpack state is not the default, because a padded
+     * or offset upload cannot be described by this rectangle alone; the caller then uploads through
+     * {@link #glTexSubImage2D}. Throws while a display list is recorded, since the block is released after the commit
+     * and could not be replayed later.
+     */
+    public static TextureStaging beginTextureStaging(int level, int x, int y, int width, int height) {
+        if (DisplayListManager.isRecording()) {
+            throw new UnsupportedOperationException("beginTextureStaging in display lists not supported");
+        }
+        if (!ctx().pixelUnpackState.isDefault()) return null;
+        return RENDER_BACKEND.beginTextureStaging(level, x, y, width, height);
+    }
+
+    /**
+     * Uploads the staged pixels and releases the block. The unpack buffer binding is suspended for the duration of the
+     * upload so a producer's packed upload never lands in a bound pixel-unpack buffer.
+     *
+     * @return whether the backend issued the upload
+     */
+    public static boolean commitTextureStaging(TextureStaging staging) {
+        if (DisplayListManager.isRecording()) {
+            throw new UnsupportedOperationException("commitTextureStaging in display lists not supported");
+        }
+        suspendPixelUnpackBuffer();
+        final boolean committed;
+        try {
+            committed = RENDER_BACKEND.commitTextureStaging(staging);
+        } finally {
+            restorePixelUnpackBuffer();
+        }
+        if (committed) {
+            TextureInfoCache.INSTANCE.onTexSubImage2D(GL11.GL_TEXTURE_2D, staging.level());
+            maybeGenerateMipmap(GL11.GL_TEXTURE_2D, staging.level());
+        }
+        return committed;
+    }
+
+    /** Drops a staged block whose pixels are no longer wanted. */
+    public static void abandonTextureStaging(TextureStaging staging) {
+        RENDER_BACKEND.abandonTextureStaging(staging);
+    }
+
+    /** Frees every block the backend keeps for reuse. */
+    public static void trimTextureStaging() {
+        RENDER_BACKEND.trimTextureStaging();
     }
 
     public static void glCopyTexImage2D(int target, int level, int internalFormat, int x, int y, int width, int height, int border) {
@@ -622,16 +701,31 @@ public final class GLSMTextures {
 
     public static int getBoundTextureForServerState() {
             if (isCachingEnabled()) {
-                return getBoundTexture();
+                // Every target shares the unit's single slot, so the cached name answers for 2D only while the slot
+                // holds a 2D target. After a 1D/3D/array bind the driver keeps a separate 2D binding that the vanilla
+                // per-unit name cache can leave in place without a rebind reaching GLSM.
+                final GLContextState glCtx = ctx();
+                final TextureBindingStack unit = glCtx.textures.getTextureUnitBindings(glCtx.activeTextureUnit.getValue());
+                if (GLSMTextureLifetime.is2D(unit.getTarget())) return unit.getBinding();
             }
             return RENDER_BACKEND.getInteger(GL11.GL_TEXTURE_BINDING_2D);
         }
 
     public static int getBoundTextureForServerState(int unit) {
-            if (isCachingEnabled()) {
-                return GLStateManager.getBoundTexture(unit);
+            if (!isCachingEnabled()) return -1;
+            final TextureBindingStack binding = ctx().textures.getTextureUnitBindings(unit);
+            if (GLSMTextureLifetime.is2D(binding.getTarget())) return binding.getBinding();
+            // A non-2D bind owns the unit's single slot, so the driver keeps the 2D binding that a vanilla name cache can
+            // leave in place. Reading it needs the unit active; the switch stays out of any display list being recorded.
+            final CommandRecorder paused = DisplayListManager.pauseRecording();
+            final int saved = getActiveTextureUnit();
+            try {
+                glActiveTexture(GL13.GL_TEXTURE0 + unit);
+                return RENDER_BACKEND.getInteger(GL11.GL_TEXTURE_BINDING_2D);
+            } finally {
+                glActiveTexture(GL13.GL_TEXTURE0 + saved);
+                if (paused != null) DisplayListManager.resumeRecording(paused);
             }
-            return -1;
         }
 
     public static void glActiveTextureARB(int texture) {
@@ -896,7 +990,7 @@ public final class GLSMTextures {
     public static void glBindTextures(int first, int count, IntBuffer textures) {
         if (first < 0 || !isValidTextureUnit(first + count - 1, GL13.GL_TEXTURE0 + first + count - 1, "glBindTextures")) return;
         if (textures != null) requireRemaining(textures, count);
-        for (int i = 0; i < count; i++) glBindTextureUnit(first + i, textures == null ? 0 : textures.get(textures.position() + i));
+        for (int i = 0; i < count; i++) bindTextureUnitByName(first + i, textures == null ? 0 : textures.get(textures.position() + i));
     }
 
     public static void glBindTextures(int first, int[] textures) {
@@ -1073,6 +1167,53 @@ public final class GLSMTextures {
             if (texture != 0 && unit > glCtx.maxBoundImageUnit) glCtx.maxBoundImageUnit = unit;
         }
         RENDER_BACKEND.bindImageTexture(unit, texture, level, layered, layer, access, format);
+    }
+
+    public static void glBindImageTextures(int first, int count, IntBuffer textures) {
+        if (first < 0 || count < 0) return;
+        // Reading the last unit allocates the lazily sized table, so the range check also sizes it.
+        if (count > 0 && ctx().imageUnits.get(first + count - 1) == null) return;
+        if (textures != null) requireRemaining(textures, count);
+        for (int i = 0; i < count; i++) bindImageUnitByName(first + i, textures == null ? 0 : textures.get(textures.position() + i));
+    }
+
+    public static void glBindImageTextures(int first, IntBuffer textures) {
+        if (textures != null) glBindImageTextures(first, textures.remaining(), textures);
+    }
+
+    public static void glBindImageTextures(int first, int[] textures) {
+        if (textures != null) glBindImageTextures(first, textures.length, IntBuffer.wrap(textures));
+    }
+
+    /**
+     * Binds a whole texture to an image unit: level 0, layered for array, cube and multisample-array targets, and
+     * read-write access in the texture's own internal format. A deferred name is rejected, and a format the driver
+     * cannot bind as an image is skipped.
+     */
+    private static void bindImageUnitByName(int unit, int texture) {
+        if (texture == 0) {
+            glBindImageTexture(unit, 0, 0, false, 0, GL15.GL_READ_ONLY, GL30.GL_R8);
+            return;
+        }
+        if (GLSMTextureLifetime.isDeferredDelete(texture)) return;
+        final int format = TextureInfoCache.INSTANCE.getInfo(texture).getInternalFormat();
+        if (!isImageFormat(format)) return;
+        final boolean layered = switch (GLSMTextureLifetime.targetOf(texture)) {
+            case GL30.GL_TEXTURE_1D_ARRAY, GL30.GL_TEXTURE_2D_ARRAY, GL12.GL_TEXTURE_3D, GL13.GL_TEXTURE_CUBE_MAP, GL40.GL_TEXTURE_CUBE_MAP_ARRAY, GL32.GL_TEXTURE_2D_MULTISAMPLE_ARRAY -> true;
+            default -> false;
+        };
+        glBindImageTexture(unit, texture, 0, layered, 0, GL15.GL_READ_WRITE, format);
+    }
+
+    private static boolean isImageFormat(int format) {
+        return switch (format) {
+            case GL30.GL_RGBA32F, GL30.GL_RGBA16F, GL30.GL_RG32F, GL30.GL_RG16F, GL30.GL_R11F_G11F_B10F, GL30.GL_R32F, GL30.GL_R16F,
+                 GL30.GL_RGBA32UI, GL30.GL_RGBA16UI, GL33.GL_RGB10_A2UI, GL30.GL_RGBA8UI, GL30.GL_RG32UI, GL30.GL_RG16UI, GL30.GL_RG8UI, GL30.GL_R32UI, GL30.GL_R16UI, GL30.GL_R8UI,
+                 GL30.GL_RGBA32I, GL30.GL_RGBA16I, GL30.GL_RGBA8I, GL30.GL_RG32I, GL30.GL_RG16I, GL30.GL_RG8I, GL30.GL_R32I, GL30.GL_R16I, GL30.GL_R8I,
+                 GL11.GL_RGBA16, GL11.GL_RGB10_A2, GL11.GL_RGBA8, GL30.GL_RG16, GL30.GL_RG8, GL30.GL_R16, GL30.GL_R8,
+                 GL31.GL_RGBA16_SNORM, GL31.GL_RGBA8_SNORM, GL31.GL_RG16_SNORM, GL31.GL_RG8_SNORM, GL31.GL_R16_SNORM, GL31.GL_R8_SNORM -> true;
+            default -> false;
+        };
     }
 
     public static ImageUnitBinding getImageUnitBinding(int unit) {

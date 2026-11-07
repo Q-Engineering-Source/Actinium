@@ -300,6 +300,98 @@ class GLSMRedirectorTest {
     }
 
     /**
+     * The multi-bind, sampler-bind and DSA texture entry points keep the call-site descriptor through the
+     * rewrite, so every IntBuffer, array and count-parameter overload shape has to land on a tracked entry
+     * point of the same shape. GL44/ARBMultiBind cover multi-unit bind, GL45/ARBDirectStateAccess the
+     * texture-object and named-framebuffer paths that kirino's font atlas and GUI renderer reach.
+     */
+    @Test
+    void rewritesMultiBindAndDsaTextureOverloadsToGlsm() {
+        String[][] cases = {
+            {"org/lwjgl/opengl/GL44", "glBindSamplers", "(IILjava/nio/IntBuffer;)V", "glBindSamplers"},
+            {"org/lwjgl/opengl/GL44C", "glBindSamplers", "(ILjava/nio/IntBuffer;)V", "glBindSamplers"},
+            {"org/lwjgl/opengl/GL44", "glBindSamplers", "(I[I)V", "glBindSamplers"},
+            {"org/lwjgl/opengl/ARBMultiBind", "glBindSamplers", "(IILjava/nio/IntBuffer;)V", "glBindSamplers"},
+            {"org/lwjgl/opengl/ARBMultiBind", "glBindSamplers", "(ILjava/nio/IntBuffer;)V", "glBindSamplers"},
+            {"org/lwjgl/opengl/ARBMultiBind", "glBindSamplers", "(I[I)V", "glBindSamplers"},
+            {"org/lwjgl/opengl/GL44", "glBindTextures", "(IILjava/nio/IntBuffer;)V", "glBindTextures"},
+            {"org/lwjgl/opengl/GL44C", "glBindTextures", "(ILjava/nio/IntBuffer;)V", "glBindTextures"},
+            {"org/lwjgl/opengl/GL44", "glBindTextures", "(I[I)V", "glBindTextures"},
+            {"org/lwjgl/opengl/ARBMultiBind", "glBindTextures", "(IILjava/nio/IntBuffer;)V", "glBindTextures"},
+            {"org/lwjgl/opengl/ARBMultiBind", "glBindTextures", "(ILjava/nio/IntBuffer;)V", "glBindTextures"},
+            {"org/lwjgl/opengl/ARBMultiBind", "glBindTextures", "(I[I)V", "glBindTextures"},
+            {"org/lwjgl/opengl/GL44", "glBindImageTextures", "(IILjava/nio/IntBuffer;)V", "glBindImageTextures"},
+            {"org/lwjgl/opengl/GL44C", "glBindImageTextures", "(ILjava/nio/IntBuffer;)V", "glBindImageTextures"},
+            {"org/lwjgl/opengl/GL44", "glBindImageTextures", "(I[I)V", "glBindImageTextures"},
+            {"org/lwjgl/opengl/ARBMultiBind", "glBindImageTextures", "(IILjava/nio/IntBuffer;)V", "glBindImageTextures"},
+            {"org/lwjgl/opengl/ARBMultiBind", "glBindImageTextures", "(ILjava/nio/IntBuffer;)V", "glBindImageTextures"},
+            {"org/lwjgl/opengl/ARBMultiBind", "glBindImageTextures", "(I[I)V", "glBindImageTextures"},
+            {"org/lwjgl/opengl/GL45", "glBindTextureUnit", "(II)V", "glBindTextureUnit"},
+            {"org/lwjgl/opengl/GL45", "glCreateTextures", "(I)I", "glCreateTextures"},
+            {"org/lwjgl/opengl/GL45C", "glCreateTextures", "(ILjava/nio/IntBuffer;)V", "glCreateTextures"},
+            {"org/lwjgl/opengl/GL45C", "glCreateTextures", "(I[I)V", "glCreateTextures"},
+            {"org/lwjgl/opengl/ARBDirectStateAccess", "glCreateTextures", "(I)I", "glCreateTextures"},
+            {"org/lwjgl/opengl/ARBDirectStateAccess", "glCreateTextures", "(ILjava/nio/IntBuffer;)V", "glCreateTextures"},
+            {"org/lwjgl/opengl/ARBDirectStateAccess", "glCreateTextures", "(I[I)V", "glCreateTextures"},
+            {"org/lwjgl/opengl/ARBDirectStateAccess", "glBindTextureUnit", "(II)V", "glBindTextureUnit"},
+            {"org/lwjgl/opengl/GL45", "glNamedFramebufferTexture", "(IIII)V", "glNamedFramebufferTexture"},
+            {"org/lwjgl/opengl/GL45", "glNamedFramebufferTextureLayer", "(IIIII)V", "glNamedFramebufferTextureLayer"},
+            {"org/lwjgl/opengl/GL45", "glNamedFramebufferRenderbuffer", "(IIII)V", "glNamedFramebufferRenderbuffer"},
+            {"org/lwjgl/opengl/ARBDirectStateAccess", "glNamedFramebufferTexture", "(IIII)V", "glNamedFramebufferTexture"},
+            {"org/lwjgl/opengl/ARBDirectStateAccess", "glNamedFramebufferTextureLayer", "(IIIII)V", "glNamedFramebufferTextureLayer"},
+            {"org/lwjgl/opengl/ARBDirectStateAccess", "glNamedFramebufferRenderbuffer", "(IIII)V", "glNamedFramebufferRenderbuffer"},
+            {"org/lwjgl/opengl/GL30", "glFramebufferTexture1D", "(IIIII)V", "glFramebufferTexture1D"},
+            {"org/lwjgl/opengl/GL30", "glFramebufferTexture3D", "(IIIIII)V", "glFramebufferTexture3D"},
+            {"org/lwjgl/opengl/GL30", "glFramebufferTextureLayer", "(IIIII)V", "glFramebufferTextureLayer"},
+            {"org/lwjgl/opengl/GL30C", "glDeleteFramebuffers", "([I)V", "glDeleteFramebuffers"},
+            {"org/lwjgl/opengl/GL11C", "glDeleteTextures", "([I)V", "glDeleteTextures"},
+            {"org/lwjgl/opengl/GL11C", "glGenTextures", "([I)V", "glGenTextures"},
+        };
+        for (String[] c : cases) {
+            assertRedirectedToGlsm(c[0], c[1], c[2], c[3]);
+        }
+    }
+
+    /**
+     * Vendor alias owners for framebuffer attachment and image binding must land on the same GLSM entry
+     * point as the promoted GL30/GL42/GL45 name they alias. Descriptors are preserved, so the alias owner
+     * can only be retargeted by name.
+     */
+    @Test
+    void rewritesFramebufferTextureAliasesToGlsm() {
+        String[][] cases = {
+            {"org/lwjgl/opengl/EXTFramebufferObject", "glFramebufferTexture1DEXT", "(IIIII)V", "glFramebufferTexture1D"},
+            {"org/lwjgl/opengl/EXTFramebufferObject", "glFramebufferTexture3DEXT", "(IIIIII)V", "glFramebufferTexture3D"},
+            {"org/lwjgl/opengl/ARBFramebufferObject", "glFramebufferTexture1D", "(IIIII)V", "glFramebufferTexture1D"},
+            {"org/lwjgl/opengl/ARBFramebufferObject", "glFramebufferTexture3D", "(IIIIII)V", "glFramebufferTexture3D"},
+            {"org/lwjgl/opengl/ARBFramebufferObject", "glFramebufferTextureLayer", "(IIIII)V", "glFramebufferTextureLayer"},
+            {"org/lwjgl/opengl/ARBGeometryShader4", "glFramebufferTextureARB", "(IIII)V", "glFramebufferTexture"},
+            {"org/lwjgl/opengl/ARBGeometryShader4", "glFramebufferTextureLayerARB", "(IIIII)V", "glFramebufferTextureLayer"},
+            {"org/lwjgl/opengl/ARBGeometryShader4", "glFramebufferTextureFaceARB", "(IIIII)V", "glFramebufferTextureFace"},
+            {"org/lwjgl/opengl/EXTGeometryShader4", "glFramebufferTextureEXT", "(IIII)V", "glFramebufferTexture"},
+            {"org/lwjgl/opengl/EXTGeometryShader4", "glFramebufferTextureLayerEXT", "(IIIII)V", "glFramebufferTextureLayer"},
+            {"org/lwjgl/opengl/EXTGeometryShader4", "glFramebufferTextureFaceEXT", "(IIIII)V", "glFramebufferTextureFace"},
+            {"org/lwjgl/opengl/NVGeometryProgram4", "glFramebufferTextureEXT", "(IIII)V", "glFramebufferTexture"},
+            {"org/lwjgl/opengl/NVGeometryProgram4", "glFramebufferTextureLayerEXT", "(IIIII)V", "glFramebufferTextureLayer"},
+            {"org/lwjgl/opengl/NVGeometryProgram4", "glFramebufferTextureFaceEXT", "(IIIII)V", "glFramebufferTextureFace"},
+            {"org/lwjgl/opengl/EXTTextureArray", "glFramebufferTextureLayerEXT", "(IIIII)V", "glFramebufferTextureLayer"},
+            {"org/lwjgl/opengl/EXTDirectStateAccess", "glNamedFramebufferTexture1DEXT", "(IIIII)V", "glNamedFramebufferTexture1DEXT"},
+            {"org/lwjgl/opengl/EXTDirectStateAccess", "glNamedFramebufferTexture2DEXT", "(IIIII)V", "glNamedFramebufferTexture2DEXT"},
+            {"org/lwjgl/opengl/EXTDirectStateAccess", "glNamedFramebufferTexture3DEXT", "(IIIIII)V", "glNamedFramebufferTexture3DEXT"},
+            {"org/lwjgl/opengl/EXTDirectStateAccess", "glNamedFramebufferTextureEXT", "(IIII)V", "glNamedFramebufferTextureEXT"},
+            {"org/lwjgl/opengl/EXTDirectStateAccess", "glNamedFramebufferTextureLayerEXT", "(IIIII)V", "glNamedFramebufferTextureLayer"},
+            {"org/lwjgl/opengl/EXTDirectStateAccess", "glNamedFramebufferTextureFaceEXT", "(IIIII)V", "glNamedFramebufferTextureFaceEXT"},
+            {"org/lwjgl/opengl/EXTDirectStateAccess", "glNamedFramebufferRenderbufferEXT", "(IIII)V", "glNamedFramebufferRenderbuffer"},
+            {"org/lwjgl/opengl/EXTDirectStateAccess", "glBindMultiTextureEXT", "(III)V", "glBindMultiTextureEXT"},
+            {"org/lwjgl/opengl/ARBShaderImageLoadStore", "glBindImageTexture", "(IIIZIII)V", "glBindImageTexture"},
+            {"org/lwjgl/opengl/EXTShaderImageLoadStore", "glBindImageTextureEXT", "(IIIZIII)V", "glBindImageTexture"},
+        };
+        for (String[] c : cases) {
+            assertRedirectedToGlsm(c[0], c[1], c[2], c[3]);
+        }
+    }
+
+    /**
      * OpenGlHelper's uniform upload paths (LWJGL2 GL20 + ARBShaderObjects owners) must reach the
      * tracked uniform entry points.
      */

@@ -233,7 +233,7 @@
 | 5 | `2a8c8756`、`8e180962` | `BackendOptions`、`BackendStartGuard` 与测试，`ActiniumConfig` 增加后端选择项与 GL 版本请求，`Actinium.onConstruct` 记录选项 | PR #261；`BackendStartGuard` 的 `arm` 与 `disarm` 等 SDL 后端接线，单后端下 `tripped()` 恒为 false |
 | 6 | `482dece0` 前置 | `3b4ebcf6`（上游范围外）的 `glsm/loading` 五件套与 `GLSMRedirector` 的四参 `transformClassNode`，之后才能落 `GlsmRedirectAgent` | 待做；本地 `glsm/loading` 结构与上游不同，需按 `AngelicaRedirector` 与 `AngelicaClassDump` 重写，并给 `glIntegrationTest` 加 `javaagent` 配置 |
 | 7 | `12857006` | `RenderBackend.isBufferImmutable`；`onPersistentBufferWrite` 已在顺序 1 落地 | PR #261 |
-| 8 | `e84c8c8d` 阶段二 | 延迟纹理删除状态机，前置是 G02 的 draw lock 与帧结束钩子 | 待做 |
+| 8 | `e84c8c8d` 阶段二 | 延迟纹理删除状态机，前置是 G02 的 draw lock 与帧结束钩子 | 已在 `feat/texture-staging` 落地，见批次一第 7 项 |
 | — | `1587a12c` | `MainThreadPump` 与 `MainThreadPumpTest` | 待做；唯一驱动方是 SDL 的 presenter，且 `RenderBackend` 缺 `pumpDisplayMessages` 与 `parkNanos`，前置是 F09 的 `2845c9e0` |
 | — | `49db8e11` | `SamplerAliasDeduplicator` 与其测试 | 待做；该类由 `8da561d3` 引入，测试还依赖 `TransformTestSupport`，真正消费点在 SDL 采样器搬运，随 S05 的 `ShaderIndex` 一并做 |
 
@@ -264,6 +264,8 @@ SDL 后端暂缓期间可推进的全部工作，共 38 个 PR，分三批。批
 
 `GLSM_ExitCaptureCoverage_UnitTest` 按上游语义重写：枚举 17 个门面的 `gl*` 公开静态方法，检查每个方法直接或经门面调用间接到达 `ExitStateCapture`。`GLSM_ExitState_GLTest.untrackedCallsAndStateQueriesReject` 的 6 个分支与 `GLSM_ExitTextureFilter_GLTest.textureParameterReadsAndWritesStillReject` 已恢复。
 
+第 7 项已在 `feat/texture-staging` 落地：`TextureStaging` 的默认 CPU 路径使用 16 槽精确容量缓存，提交 BGRA 上传或放弃后回收；同一块只能归还一次，重复归还与跨后端使用直接抛异常。`GLSMTextures` 缓存全部纹理 target，按名称绑定 2D 与非 2D 纹理，批量 image/sampler 绑定及 `glCreateTextures` 重载接入统一门面。1D/3D 上传经过 GLSM 绑定并恢复 pixel-unpack buffer，命名 framebuffer layer/renderbuffer 复用普通挂接以维持引用计数，通用纹理、附件、DSA 与 EXT 重定向已补齐。最近 target 非 2D 时，2D 对象与 `TextureInfo` 查询读取驱动保留的 2D 绑定，跨单元查询恢复 active unit，DSA 三参绑定保留调用方 target，避免影响上传、uniform 与 mipmap。延迟删除复用第 6 项状态机，帧结束仍由 `MixinMinecraft` 驱动；未引入 SDL 或 `EntityTextureAtlas` 回调。新增 GL 覆盖延迟释放、immutable 纹理、3D 绑定、暂存像素与缓冲生命周期、批量 image/sampler 调用及上述 2D/PBO 回归，另以无 GL 测试覆盖缓存淘汰和非法重复归还。
+
 | # | 范围 | 覆盖上游 | 规模 | 前置 |
 |---|---|---|---|---|
 | 1 | `GLSMRedirector` 的 `Util.checkGLError` 表项与 `glGenerateMipmapEXT` 别名、`ImageUnitBinding` 的 `reset` 与默认值、`glBindImageTexture` 跟踪、`MultiListenerNotifier` | `b6a4497f`、`6dfb0312`、`e98c927a`、`85892c0f` | 5 改 1 新，约 200 行 | 无 |
@@ -272,7 +274,7 @@ SDL 后端暂缓期间可推进的全部工作，共 38 个 PR，分三批。批
 | 4 | 门面补齐（334 个无调用方方法），用架构测试防回退 | `91e67f8d` 部分 | 17 改，约 1200 行 | 1、2 |
 | 5 | `ExitStateCapture`、`ExitState`、`hooks/BatchStateGuard`，`GLStateManager` 入口按门面重定向 | `102c6cad` | 3 新 21 改，约 2300 行 | 已完成；Tracy no-op 门面不在此提交内，留给需要它的 `GLSMTextureLifetime` |
 | 6 | 门面收尾（补齐公开方法并逐方法插入 `rejectExitCapture` 守卫）与 `GLSMTextureLifetime` 拆出 | `91e67f8d` 剩余 | 17 改 1 新，约 1600 行 | 5；`GLSMTextureLifetime` 拆出已完成（`feat/glsm-texture-lifetime`）；门面方法补齐与守卫已在 `feat/glsm-facade-guards` 完成，见下方小节 |
-| 7 | 延迟纹理删除状态机与 `TextureStaging` | `e84c8c8d` 阶段二 | 1 新 8 改，约 700 行 | 6，且需 S02 的 `TextureStaging` |
+| 7 | 延迟纹理删除入口与 `TextureStaging` | `e84c8c8d` 阶段二、`c10d30b2` 的 CPU 暂存 | 已完成（`feat/texture-staging`）：4 新 7 改 | 6；复用第 6 项状态机，补齐纹理目标缓存与外围入口 |
 | 8 | 宽线 `LineQuads` 与 `LineDrawHandler`，`ImmediateModeRecorder.processDrawElementsFromAttribs`，删除 `GeometryShaderGenerator` | `2f1f380e` | 已完成（`feat/glsm-line-quads`）：2 新 11 改 1 删 | 7；`WideLineClipGLTest` 依赖 `GLStateManagerIntegrationFixture.routeVertexFormats` 覆盖 `VertexFormat.setupBufferState`，因为集成测试环境没有 ASM redirector |
 | 9 | 逐顶点实体 ID：`TessellatorEntityIds`、`ImmediateExtendedAttribHandler`、`setFfpInstancing` | `ab3bf176` | 2 新 12 改，约 800 行 | 8，且需 F02 的 `FfpExtendedAttribs` 与 `InstancedAttribs` |
 

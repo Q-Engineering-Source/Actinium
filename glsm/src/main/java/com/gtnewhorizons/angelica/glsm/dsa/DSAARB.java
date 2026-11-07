@@ -1,6 +1,7 @@
 package com.gtnewhorizons.angelica.glsm.dsa;
 
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import org.lwjgl.opengl.GL11;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
@@ -89,19 +90,22 @@ public class DSAARB extends DSAUnsupported {
     public void bindTextureToUnit(int unit, int texture) {
         if(GLStateManager.getBoundTextureForServerState(unit) == texture) return;
 
+        // This is the fixed-function entry point, which only ever binds GL_TEXTURE_2D.
+        bindTextureToUnit(GL11.GL_TEXTURE_2D, unit, texture);
+    }
+
+    @Override
+    public void bindTextureToUnit(int target, int unit, int texture) {
         if (texture == 0) {
             super.bindTextureToUnit(unit, texture);
         } else {
             RENDER_BACKEND.bindTextureUnit(unit, texture);
             final var binding = GLStateManager.getTextures().getTextureUnitBindings(unit);
             binding.beforeModify();
-            binding.setBinding(texture);
+            // The unit keeps one slot for every target, so the slot has to remember which target it holds; otherwise
+            // the 2D queries read a 3D or array name as the unit's 2D binding.
+            binding.setBinding(texture, target);
         }
-    }
-
-    @Override
-    public void bindTextureToUnit(int target, int unit, int texture) {
-        bindTextureToUnit(unit, texture);
     }
 
     @Override
