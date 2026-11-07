@@ -18,7 +18,17 @@ public interface CommandList extends AutoCloseable {
 
     void uploadData(GlMutableBuffer glBuffer, ByteBuffer byteBuffer, GlBufferUsage usage);
 
+    /**
+     * Uploads from {@code ptr} into {@code glBuffer} while it is bound to {@link GlBufferTarget#ARRAY_BUFFER}.
+     */
     void uploadData(GlMutableBuffer glBuffer, long ptr, long bytes, GlBufferUsage usage);
+
+    /**
+     * Uploads {@code bytes} from {@code ptr} into {@code glBuffer} while it is bound to {@code target}. Callers that
+     * draw through another target, such as indirect multidraw, must name it: the target the data lands in has to be
+     * the one the draw call binds.
+     */
+    void uploadData(GlMutableBuffer glBuffer, long ptr, long bytes, GlBufferUsage usage, GlBufferTarget target);
 
     void copyBufferSubData(GlBuffer src, GlBuffer dst, long readOffset, long writeOffset, long bytes);
 

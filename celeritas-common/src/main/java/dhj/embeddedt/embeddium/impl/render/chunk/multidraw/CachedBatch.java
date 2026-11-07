@@ -1,5 +1,6 @@
 package dhj.embeddedt.embeddium.impl.render.chunk.multidraw;
 
+import dhj.embeddedt.embeddium.impl.gl.buffer.GlMutableBuffer;
 import dhj.embeddedt.embeddium.impl.gl.device.MultiDrawBatch;
 import org.jetbrains.annotations.Nullable;
 
@@ -39,6 +40,16 @@ public class CachedBatch {
 
     public @Nullable MultiDrawBatch getBatch() {
         return this.batch;
+    }
+
+    /**
+     * Takes the GL buffer this batch uploaded into away from it, so a rebuilt batch can take it over and
+     * {@link #delete()} leaves it alive.
+     *
+     * @return the buffer, or {@code null} when this cached batch has no GL buffer of its own
+     */
+    public @Nullable GlMutableBuffer detachBuffer() {
+        return this.batch != null ? this.batch.detachBuffer() : null;
     }
 
     public void delete() {

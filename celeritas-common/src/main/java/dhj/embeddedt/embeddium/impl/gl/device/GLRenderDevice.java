@@ -106,9 +106,14 @@ public class GLRenderDevice implements RenderDevice {
 
         @Override
         public void uploadData(GlMutableBuffer glBuffer, long ptr, long bytes, GlBufferUsage usage) {
-            this.bindBuffer(GlBufferTarget.ARRAY_BUFFER, glBuffer);
+            this.uploadData(glBuffer, ptr, bytes, usage, GlBufferTarget.ARRAY_BUFFER);
+        }
 
-            LWJGL.glBufferData(GlBufferTarget.ARRAY_BUFFER.getTargetParameter(), bytes, ptr, usage.getId());
+        @Override
+        public void uploadData(GlMutableBuffer glBuffer, long ptr, long bytes, GlBufferUsage usage, GlBufferTarget target) {
+            this.bindBuffer(target, glBuffer);
+
+            LWJGL.glBufferData(target.getTargetParameter(), bytes, ptr, usage.getId());
             glBuffer.setSize(bytes);
         }
 
