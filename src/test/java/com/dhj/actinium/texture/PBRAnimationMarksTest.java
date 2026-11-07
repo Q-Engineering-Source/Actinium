@@ -80,21 +80,21 @@ class PBRAnimationMarksTest {
         }
 
         @Override
-        public void markNeedsAnimationUpdate() {
+        public void angelica$markNeedsAnimationUpdate() {
             marks++;
         }
 
         @Override
-        public boolean needsAnimationUpdate() {
+        public boolean angelica$needsAnimationUpdate() {
             return false;
         }
 
         @Override
-        public void unmarkNeedsAnimationUpdate() {
+        public void angelica$unmarkNeedsAnimationUpdate() {
         }
 
         @Override
-        public boolean tickAnimation(boolean onlyVisible) {
+        public boolean angelica$tickAnimation(boolean onlyVisible) {
             return false;
         }
     }

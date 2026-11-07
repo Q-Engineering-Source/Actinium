@@ -1,6 +1,7 @@
 package net.irisshaders.iris.compat.sodium;
 
 import net.coderbot.iris.Iris;
+import net.coderbot.iris.config.IrisConfig;
 import net.coderbot.iris.gui.option.IrisVideoSettings;
 import net.coderbot.iris.gui.screen.PrecompileScreen;
 import net.coderbot.iris.gui.screen.ShaderPackScreen;
@@ -145,8 +146,13 @@ public final class IrisConfigEntryPoint {
     }
 
     private static void setSaveCompiledShaders(boolean save) {
+        applySaveCompiledShaders(save, Iris.getIrisConfig());
+    }
+
+    /** Saves the cache preference. Disabling clears every cached program through IrisConfig. */
+    static void applySaveCompiledShaders(boolean save, IrisConfig config) {
         try {
-            Iris.getIrisConfig().setSaveCompiledShaders(save);
+            config.setSaveCompiledShaders(save);
         } catch (IOException exception) {
             LOGGER.error("Failed to save the compiled shader cache setting", exception);
         }

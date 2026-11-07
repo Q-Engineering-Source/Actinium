@@ -942,6 +942,9 @@ public class Iris {
      * Destroys and deallocates all created OpenGL resources. Useful as part of a reload.
      */
     private static void destroyEverything() {
+        // The running precompile queue belongs to the pack being replaced: abandon it before the pack layer
+        // and the cached pack previews it compiles against are cleared.
+        PrecompileQueue.abandon();
         final boolean preservePack = currentPack != null && currentPackState != null;
         if (preservePack) {
             preparedPack = new SoftReference<>(new PreparedPack(currentPackState, currentPack, zipFileSystem));
@@ -1112,6 +1115,12 @@ public class Iris {
                 ProgramBinaryCache.isFolderCompiledFor(packName, preview.settings, folderKey(folder))));
         }
         return entries;
+    }
+
+    /** Fingerprint used by a selected whole-pack cache session, or null when the pack cannot be read. */
+    public static @Nullable String packSettings(String packName) {
+        final PackPreview preview = previewOf(packName);
+        return preview != null ? preview.settings : null;
     }
 
     public static boolean isPackFolderCompiled(String packName, @Nullable String folder) {

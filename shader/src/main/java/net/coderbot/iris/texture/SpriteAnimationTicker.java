@@ -15,5 +15,5 @@ public interface SpriteAnimationTicker {
      *                    advance their frame counters
      * @return true when the new frame was uploaded, false when the tick was a dry run
      */
-    boolean tickAnimation(boolean onlyVisible);
+    boolean angelica$tickAnimation(boolean onlyVisible);
 }

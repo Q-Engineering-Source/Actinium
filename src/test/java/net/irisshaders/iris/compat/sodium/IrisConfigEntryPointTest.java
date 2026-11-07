@@ -1,21 +1,37 @@
 package net.irisshaders.iris.compat.sodium;
 
+import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
+import com.gtnewhorizons.angelica.glsm.shader.ShaderDiskCache;
+import net.coderbot.iris.PrecompileQueue;
+import net.coderbot.iris.config.IrisConfig;
 import net.coderbot.iris.gui.option.IrisVideoSettings;
 import dhj.embeddedt.embeddium.api.options.structure.ExternalPage;
 import dhj.embeddedt.embeddium.api.options.structure.Option;
 import dhj.embeddedt.embeddium.api.options.structure.OptionPage;
 import dhj.embeddedt.embeddium.impl.gui.framework.TextComponent;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IrisConfigEntryPointTest {
+    @AfterEach
+    void resetCaches() {
+        PrecompileQueue.cancel();
+        ProgramBinaryCache.resetForTesting();
+        ShaderDiskCache.resetForTesting();
+    }
+
     @Test
     void buildsShadowOptionPageAndExternalPageAndAppliesInjectedBinding() {
         AtomicInteger persisted = new AtomicInteger(32);
@@ -88,5 +104,42 @@ class IrisConfigEntryPointTest {
         saveCompiled.setValue(true);
         saveCompiled.applyChanges();
         assertTrue(persisted.get());
+    }
+
+    @Test
+    void turningTheCacheOnOnlySavesTheSetting(@TempDir Path dir) throws IOException {
+        final IrisConfig config = enabledConfig(dir, true);
+
+        IrisConfigEntryPoint.applySaveCompiledShaders(true, config);
+
+        assertTrue(config.shouldSaveCompiledShaders());
+        assertFalse(PrecompileQueue.isRunning(), "enabling the cache must not queue any compilation");
+        assertFalse(ProgramBinaryCache.isFullCompileRunning());
+    }
+
+    @Test
+    void turningTheCacheOffDeletesCompiledPrograms(@TempDir Path dir) throws IOException {
+        final IrisConfig config = enabledConfig(dir, true);
+        ShaderDiskCache.configure(dir.resolve("cache"), "cache-toggle-test");
+        ProgramBinaryCache.useDriverIdForTesting("test-driver");
+        ProgramBinaryCache.setEnabled(true);
+        ProgramBinaryCache.usePackForPrecompile("pack");
+        ProgramBinaryCache.beginFullCompile();
+        ProgramBinaryCache.finishFullCompile("settings");
+        assertTrue(ProgramBinaryCache.wasCompiledFor("settings"));
+
+        IrisConfigEntryPoint.applySaveCompiledShaders(false, config);
+
+        assertFalse(config.shouldSaveCompiledShaders());
+        assertFalse(ProgramBinaryCache.wasCompiledFor("settings"));
+    }
+
+    private static IrisConfig enabledConfig(Path dir, boolean shadersEnabled) throws IOException {
+        final IrisConfig config = new IrisConfig(dir.resolve("shaders.properties"));
+        config.setShaderPackName("pack");
+        config.setShadersEnabled(shadersEnabled);
+        config.save();
+        config.initialize();
+        return config;
     }
 }
