@@ -41,6 +41,7 @@ public final class IrisGlDebug {
 	private static final Map<String, Integer> FRAMEBUFFER_SAMPLE_COUNTS = new ConcurrentHashMap<>();
 	private static final Map<String, Integer> TEXTURE_SAMPLE_COUNTS = new ConcurrentHashMap<>();
 	private static final Map<String, Integer> MATERIAL_SAMPLE_COUNTS = new ConcurrentHashMap<>();
+	private static final Map<Integer, Integer> TERRAIN_MID_TEX_COUNTS = new ConcurrentHashMap<>();
 	private static final Map<String, Integer> ENTITY_PHASE_SAMPLE_COUNTS = new ConcurrentHashMap<>();
 	private static final Map<String, Integer> SAMPLER_INIT_COUNTS = new ConcurrentHashMap<>();
 	private static final Map<String, Integer> GLSM_EVENT_COUNTS = new ConcurrentHashMap<>();
@@ -1179,6 +1180,43 @@ public final class IrisGlDebug {
             localZ,
             u,
             v
+        );
+    }
+
+    public static boolean shouldLogTerrainMidTex(int blockId) {
+        if (!shouldCaptureGlState()) {
+            return false;
+        }
+
+        return TERRAIN_MID_TEX_COUNTS.merge(blockId, 1, Integer::sum) <= 8;
+    }
+
+    public static void logTerrainMidTexSample(
+        int blockId,
+        int localX,
+        int localY,
+        int localZ,
+        float midU,
+        float midV,
+        float[] vertexUs,
+        float[] vertexVs
+    ) {
+        logDebugInfo(
+            "terrain-mid-tex blockId={} local=[{},{},{}] midU={} midV={} vertices=[v0=({},{}), v1=({},{}), v2=({},{}), v3=({},{})]",
+            blockId,
+            localX,
+            localY,
+            localZ,
+            midU,
+            midV,
+            vertexUs[0],
+            vertexVs[0],
+            vertexUs[1],
+            vertexVs[1],
+            vertexUs[2],
+            vertexVs[2],
+            vertexUs[3],
+            vertexVs[3]
         );
     }
 

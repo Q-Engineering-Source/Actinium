@@ -1,5 +1,6 @@
 package net.coderbot.iris.shaderpack;
 
+import it.unimi.dsi.fastutil.ints.Int2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
@@ -27,10 +28,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,8 +56,6 @@ public class IdMap {
 
     private static final Pattern LEGACY_DIRECTIVE_PATTERN = Pattern.compile(
             "(?m)^\\s*#\\s*(?:if|elif|ifdef|ifndef)\\b[^\\n]*\\bMC_VERSION\\b[^\\n]*\\b11202\\b");
-    private static final Pattern MC_VERSION_CONDITIONAL_PATTERN = Pattern.compile(
-            "(?m)^\\s*#\\s*(?:if|elif|ifdef|ifndef)\\b[^\\n]*\\bMC_VERSION\\b");
 
     record ParsedIdMap(Object2IntMap<NamespacedId> simpleMap, Int2ObjectMap<List<BlockEntry>> nbtEntries) {}
 
@@ -88,7 +85,7 @@ public class IdMap {
             resolvedDefines = McVersionDefines.withMcVersion(environmentDefines, 260101);
         }
 
-        blockTagMap = new Int2ObjectOpenHashMap<>();
+        blockTagMap = new Int2ObjectLinkedOpenHashMap<>();
         loadProperties(shaderPath, "block.properties", shaderPackOptions, resolvedDefines).ifPresent(blockProperties -> {
             blockPropertiesMap = parseBlockMap(blockProperties, "block.", "block.properties", blockTagMap);
             blockRenderTypeMap = parseRenderTypeMap(blockProperties, "layer.", "block.properties");
@@ -107,7 +104,7 @@ public class IdMap {
         entityNbtEntries = parsedEntities.nbtEntries();
 
         if (blockPropertiesMap == null) {
-            blockPropertiesMap = new Int2ObjectOpenHashMap<>();
+            blockPropertiesMap = new Int2ObjectLinkedOpenHashMap<>();
             LegacyIdMap.addLegacyValues(blockPropertiesMap);
         }
 
@@ -117,79 +114,7 @@ public class IdMap {
     }
 
     static boolean hasLegacySection(String rawBlockProperties) {
-        if (rawBlockProperties == null) {
-            return false;
-        }
-
-        if (LEGACY_DIRECTIVE_PATTERN.matcher(rawBlockProperties).find()) {
-            return true;
-        }
-
-        Deque<Boolean> mcVersionConditionals = new ArrayDeque<>();
-        String[] lines = rawBlockProperties.split("\\R");
-        for (int i = 0; i < lines.length; i++) {
-            String trimmed = lines[i].trim();
-            if (!trimmed.startsWith("#")) {
-                continue;
-            }
-
-            String directive = trimmed.substring(1).trim();
-            if (directive.startsWith("if ") || directive.startsWith("ifdef ") || directive.startsWith("ifndef ")) {
-                mcVersionConditionals.push(MC_VERSION_CONDITIONAL_PATTERN.matcher(lines[i]).find());
-            } else if (directive.startsWith("elif ")) {
-                if (!mcVersionConditionals.isEmpty()
-                        && (mcVersionConditionals.peek() || MC_VERSION_CONDITIONAL_PATTERN.matcher(lines[i]).find())) {
-                    return true;
-                }
-            } else if (directive.startsWith("else")) {
-                // An MC_VERSION conditional whose fallback branch carries actual mappings (e.g.
-                // Complementary's 1.8-1.12 numeric-ID section) requires legacy evaluation on 1.12.2.
-                // Photon v1.3b instead ships an EMPTY 1.12 #else section: with legacy evaluation the
-                // jcpp preprocessor would strip the whole modern mapping section and leave the ID map
-                // empty, so those packs must stay on the modern path (forced MC_VERSION 260101).
-                if (!mcVersionConditionals.isEmpty() && mcVersionConditionals.peek()
-                        && hasSubstantiveLines(lines, i)) {
-                    return true;
-                }
-            } else if (directive.startsWith("endif")) {
-                if (!mcVersionConditionals.isEmpty()) {
-                    mcVersionConditionals.pop();
-                }
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Scans forward from an {@code #else} line to its matching {@code #endif} and reports whether the
-     * branch body contains any substantive properties line. Comment lines ({@code #...}) and blank
-     * lines are ignored; nested conditionals inside the branch are tracked so the scan stops at the
-     * right boundary.
-     */
-    private static boolean hasSubstantiveLines(String[] lines, int elseIndex) {
-        int depth = 1;
-        for (int i = elseIndex + 1; i < lines.length; i++) {
-            String trimmed = lines[i].trim();
-            if (!trimmed.startsWith("#")) {
-                if (!trimmed.isEmpty()) {
-                    return true;
-                }
-                continue;
-            }
-
-            String directive = trimmed.substring(1).trim();
-            if (directive.startsWith("if ") || directive.startsWith("ifdef ") || directive.startsWith("ifndef ")) {
-                depth++;
-            } else if (directive.startsWith("endif")) {
-                depth--;
-                if (depth == 0) {
-                    return false;
-                }
-            }
-        }
-
-        return false;
+        return rawBlockProperties != null && LEGACY_DIRECTIVE_PATTERN.matcher(rawBlockProperties).find();
     }
 
     public boolean hasLegacySection() {
@@ -207,7 +132,15 @@ public class IdMap {
             return Optional.empty();
         }
 
-        String processed = PropertiesPreprocessor.preprocessSource(fileContents, shaderPackOptions, environmentDefines);
+        // A line continuation that runs straight into a conditional block leaves the selected branch on a
+        // line of its own: Derivative writes "block.10001 = fern \" followed by #if MC_VERSION < 12003, and
+        // after preprocessing the backslash continues onto a blank line, so Properties drops the branch
+        // (short_grass for modern versions). Collapsing the blank run keeps the branch in the same value.
+        // When the run reaches the next "key=" line, the continuation has to end there instead, otherwise
+        // the following rule is appended to the current value and its own key disappears.
+        String processed = PropertiesPreprocessor.preprocessSource(fileContents, shaderPackOptions, environmentDefines)
+                .replaceAll("\\\\\n(?:[^\\S\n]*\n)+(?=[^\\S\n]*[\\w.-]+[^\\S\n]*=)", "\n")
+                .replaceAll("\\\\\n(?:[^\\S\n]*\n)+", " ");
         StringReader propertiesReader = new StringReader(processed);
 
         Properties properties = new OrderBackedProperties();
@@ -365,7 +298,7 @@ public class IdMap {
 
     private static Int2ObjectMap<List<BlockEntry>> parseBlockMap(Properties properties, String keyPrefix, String fileName,
                                                                  Int2ObjectMap<List<TagEntry>> tagsById) {
-        Int2ObjectMap<List<BlockEntry>> entriesById = new Int2ObjectOpenHashMap<>();
+        Int2ObjectMap<List<BlockEntry>> entriesById = new Int2ObjectLinkedOpenHashMap<>();
 
         properties.forEach((keyObject, valueObject) -> {
             String key = (String) keyObject;

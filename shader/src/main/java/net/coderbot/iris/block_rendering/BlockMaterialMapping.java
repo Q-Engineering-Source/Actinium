@@ -18,8 +18,11 @@ import net.coderbot.iris.shaderpack.materialmap.NamespacedId;
 import net.coderbot.iris.shaderpack.materialmap.TagEntry;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockDoublePlant;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.init.Blocks;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.IBlockAccess;
 
 import java.util.List;
 import java.util.Map;
@@ -58,13 +61,16 @@ public class BlockMaterialMapping {
 			new it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap<>();
 		final NbtConditionalIdMap<Block> blockNbtMap = new NbtConditionalIdMap<>();
 		final ReferenceSet<Block> snowyBlocks = new ReferenceOpenHashSet<>();
+		final boolean retainBareCauldronWildcard = !hasWaterCauldronEntry(blockPropertiesMap);
 
 		blockPropertiesMap.forEach((intId, entries) -> {
 			for (BlockEntry entry : entries) {
 				if (entry.hasNbtProperties()) {
 					addTileEntityEntry(entry, blockNbtMap, intId);
 				} else {
-					addBlockMetas(entry, blockMatches, blockNbtMap, intId, skipFlattening, snowyBlocks);
+					final boolean entrySkipFlattening = skipFlattening
+							|| (retainBareCauldronWildcard && isBareCauldronEntry(entry));
+					addBlockMetas(entry, blockMatches, blockNbtMap, intId, entrySkipFlattening, snowyBlocks);
 				}
 			}
 		});
@@ -131,6 +137,32 @@ public class BlockMaterialMapping {
 		blockNbtMap.addCondition(block, entry.getNbtProperties(), intId, entry.getMetas());
 	}
 
+	private static boolean hasWaterCauldronEntry(Int2ObjectMap<List<BlockEntry>> blockPropertiesMap) {
+		for (List<BlockEntry> entries : blockPropertiesMap.values()) {
+			for (BlockEntry entry : entries) {
+				if ("water_cauldron".equals(entry.getId().getName())
+						&& "minecraft".equals(entry.getId().getNamespace())) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Detects the bare {@code minecraft:cauldron} rule that has no state properties and no explicit
+	 * metadata. Pack authors write it to cover every cauldron state; the flattening entry narrows it
+	 * to metadata 0, so the caller keeps it on the direct registry path unless the pack also declares
+	 * {@code minecraft:water_cauldron} for the filled levels.
+	 */
+	private static boolean isBareCauldronEntry(BlockEntry entry) {
+		return "cauldron".equals(entry.getId().getName())
+				&& "minecraft".equals(entry.getId().getNamespace())
+				&& entry.getStateProperties().isEmpty()
+				&& entry.getMetas().isEmpty();
+	}
+
 	private static void addBlockMetas(BlockEntry entry,
 	                                  it.unimi.dsi.fastutil.objects.Reference2ObjectMap<Block, Int2IntMap> idMap,
 	                                  NbtConditionalIdMap<Block> blockNbtMap,
@@ -144,7 +176,8 @@ public class BlockMaterialMapping {
 		final boolean wantsDoublePlantTop = "upper".equals(stateProperties.get("half"));
 
 		List<BlockEntry> targets = null;
-		if (!skipFlattening && "minecraft".equals(id.getNamespace()) && (!stateProperties.isEmpty() || entry.getMetas().isEmpty())) {
+		if ("minecraft".equals(id.getNamespace())
+				&& (!stateProperties.isEmpty() || (!skipFlattening && entry.getMetas().isEmpty()))) {
 			targets = FlatteningMap.toLegacy(id.getName(), stateProperties);
 		}
 
@@ -204,12 +237,61 @@ public class BlockMaterialMapping {
 	private static Block resolveBlockOrNull(NamespacedId id) {
 		final ResourceLocation resourceLocation = new ResourceLocation(id.getNamespace(), id.getName());
 		final Block block = Block.getBlockFromName(resourceLocation.toString());
-		return block == null || block == Blocks.AIR ? null : block;
+		if (block != null && block != Blocks.AIR) {
+			return block;
+		}
+		if (!"minecraft".equals(id.getNamespace())) {
+			return null;
+		}
+
+		Block match = null;
+		for (Block candidate : Block.REGISTRY) {
+			ResourceLocation candidateName = candidate.getRegistryName();
+			if (candidate == Blocks.AIR || candidateName == null || !id.getName().equals(candidateName.getPath())) {
+				continue;
+			}
+			if (match != null) {
+				return null;
+			}
+			match = candidate;
+		}
+		return match;
 	}
 
 	public static int resolveId(Int2IntMap metaMap, int metaKey) {
 		int id = metaMap.get(metaKey);
 		return id != -1 ? id : metaMap.get(WILDCARD_META_KEY | (metaKey & SNOWY_META_BIT));
+	}
+
+	/**
+	 * Applies the metadata bits that the shader material map keys on but that vanilla metadata
+	 * cannot express: the snowy bit and the double plant variant carried by the upper half.
+	 *
+	 * <p>The upper half of a double plant stores only its facing in the low four bits, so the
+	 * variant is read back from the lower half through {@link IBlockState#getActualState} and
+	 * written into those bits while the high bits stay untouched.</p>
+	 */
+	public static int resolveShaderMetadata(IBlockState state, BlockPos pos, IBlockAccess blockAccess, int metadata) {
+		int resolved = metadata;
+
+		if (BlockRenderingSettings.INSTANCE.hasSnowyEntries()
+				&& BlockRenderingSettings.INSTANCE.getSnowyBlocks().contains(state.getBlock())
+				&& isSnowCovered(blockAccess, pos)) {
+			resolved |= SNOWY_META_BIT;
+		}
+
+		if (state.getBlock() instanceof BlockDoublePlant
+				&& state.getValue(BlockDoublePlant.HALF) == BlockDoublePlant.EnumBlockHalf.UPPER) {
+			int variant = state.getActualState(blockAccess, pos).getValue(BlockDoublePlant.VARIANT).getMeta();
+			resolved = (resolved & ~0xF) | DOUBLE_PLANT_TOP_BIT | variant;
+		}
+
+		return resolved;
+	}
+
+	private static boolean isSnowCovered(IBlockAccess blockAccess, BlockPos pos) {
+		Block topBlock = blockAccess.getBlockState(pos.up()).getBlock();
+		return topBlock == Blocks.SNOW_LAYER || topBlock == Blocks.SNOW;
 	}
 
 	private static BlockRenderLayer convertBlockToRenderLayer(BlockRenderType type) {

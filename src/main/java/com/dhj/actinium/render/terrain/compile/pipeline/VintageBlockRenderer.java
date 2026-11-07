@@ -141,7 +141,7 @@ public class VintageBlockRenderer {
         }
         this.currentBlockAccess = blockAccess;
         this.currentMetadata = state.getBlock().getMetaFromState(state);
-        this.currentShaderMetadata = applyShaderStateBits(state, pos, blockAccess, this.currentMetadata);
+        this.currentShaderMetadata = BlockMaterialMapping.resolveShaderMetadata(state, pos, blockAccess, this.currentMetadata);
         state = state.getBlock().getExtendedState(state, blockAccess, pos);
         this.currentState = state;
         this.currentWaterloggedWater = FarmersFutureDelightCompat.usesWaterIdentity(state, model, layer);
@@ -332,16 +332,6 @@ public class VintageBlockRenderer {
                 || this.currentState.getMaterial() == LAVA;
     }
 
-    private int applyShaderStateBits(IBlockState state, BlockPos pos, ActiniumBlockAccess blockAccess, int metadata) {
-        if (BlockRenderingSettings.INSTANCE.hasSnowyEntries()
-                && BlockRenderingSettings.INSTANCE.getSnowyBlocks().contains(state.getBlock())
-                && isSnowCovered(blockAccess, pos)) {
-            return metadata | BlockMaterialMapping.SNOWY_META_BIT;
-        }
-
-        return metadata;
-    }
-
     private int resolveShaderBlockId(IBlockState state, BlockPos pos) {
         Block block = state.getBlock();
         ShaderProvider provider = ShaderProviderHolder.getProvider();
@@ -369,11 +359,6 @@ public class VintageBlockRenderer {
         );
 
         return shaderBlockId;
-    }
-
-    private boolean isSnowCovered(ActiniumBlockAccess blockAccess, BlockPos pos) {
-        Block topBlock = blockAccess.getBlockState(pos.up()).getBlock();
-        return topBlock == Blocks.SNOW_LAYER || topBlock == Blocks.SNOW;
     }
 
     private void writeGeometry(int localX, int localY, int localZ, ChunkModelBuilder builder,
