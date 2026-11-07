@@ -286,7 +286,7 @@ SDL 后端暂缓期间可推进的全部工作，共 38 个 PR，分三批。批
 | 11 | 着色器降级迁入 `ShaderLoader` 与 GLES 护栏 | `c64f4225`、`98c1af33`、`c9d46e70` 的 `MixinShaderLoader` | 5 改 1 新，约 90 行 | 无。已完成 |
 | 12 | 移除 `FogService` 的 SPI 登记，改走 `ChunkShaderEnvironment` | `7e5e9d7e` | 8 改 1 新 1 删，约 90 行 | 无 |
 | 13 | 移除 `GLRenderDevice.VANILLA_STATE_RESETTER` | `8883da78` | 3 改，约 10 行 | 无。已完成 |
-| 14 | `BatchBufferRecycler` 与 `BatchCacheParams` 的视口分键 | `69e91690`、`6bf6a433` | 6 改 3 新，约 320 行 | 无 |
+| 14 | `BatchBufferRecycler` 与 `BatchCacheParams` 的视口分键 | `69e91690`、`6bf6a433` | 已完成（`feat/chunk-batch-recycling`）：旧批次先退休并转移缓冲所有权，重建复用同一 GL 名称；view 0/1 共享预建缓存键，间接上传显式绑定 `DRAW_INDIRECT_BUFFER`，本地 `MultiDrawMode` 与动画路径不变 | 无 |
 | 15 | `TerrainDrawStats` 计数与两个埋点 mixin、`CubeStatusTracker` 继承改造 | `c9d46e70` 部分 | 1 改 4 新，约 160 行 | 无。已完成计数与两个 mixin；`CubeStatusTracker` 已移植但本地无构造点 |
 | 16 | 阴影 pass 的搜索门控与上传时机 | `77aec052`、`14cb5f7f` | 4 改，约 130 行 | 14 |
 | 17 | `GLContextState` 的索引缓冲绑定跟踪 | `cfc6e12e` 通用半 | 3 改 1 新，约 180 行 | 无 |

@@ -1,6 +1,7 @@
 package dhj.embeddedt.embeddium.impl.render.chunk.data;
 
 import dhj.embeddedt.embeddium.impl.gl.arena.GlBufferSegment;
+import dhj.embeddedt.embeddium.impl.gl.buffer.GlMutableBuffer;
 import dhj.embeddedt.embeddium.impl.gl.util.VertexRange;
 import dhj.embeddedt.embeddium.impl.model.quad.properties.ModelQuadFacing;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.sorting.ChunkPrimitiveType;
@@ -21,14 +22,41 @@ public class SectionRenderDataStorage {
 
     private int numAllocations;
 
-    public record BatchCacheParams(boolean useBlockFaceCulling) {}
+    /**
+     * Cache key of one batch slot: the culling mode plus the view it is drawn from.
+     *
+     * @param useBlockFaceCulling whether the batch was built with block face culling
+     * @param view               which view draws the batch; views 0 and 1 share pre-built keys because they are
+     *                           drawn every frame and would otherwise allocate one key per region
+     */
+    public record BatchCacheParams(boolean useBlockFaceCulling, int view) {
+        private static final BatchCacheParams[] SHARED = {
+                new BatchCacheParams(false, 0), new BatchCacheParams(true, 0),
+                new BatchCacheParams(false, 1), new BatchCacheParams(true, 1)
+        };
 
-    // we only need to cache two batches in practice (shadow pass for shaders disables block face culling), so we unroll
-    // what would otherwise be an LRU for simplicity
+        public static BatchCacheParams of(boolean useBlockFaceCulling, int view) {
+            if (view == 0 || view == 1) {
+                return SHARED[view * 2 + (useBlockFaceCulling ? 1 : 0)];
+            }
+            return new BatchCacheParams(useBlockFaceCulling, view);
+        }
+    }
+
+    // Two slots cover the batches drawn every frame: a key is the (culling, view) pair, so the main view and the
+    // shadow view, whose passes differ in block face culling, fit side by side. Any further key replaces the key
+    // stored in the second slot, so a third key in use keeps evicting the previous second-slot batch until the next
+    // mesh update invalidates both slots.
     private BatchCacheParams firstBatchParams;
     private CachedBatch firstCachedBatch;
     private BatchCacheParams secondBatchParams;
     private CachedBatch secondCachedBatch;
+
+    /**
+     * Holds the GL buffers of discarded batches until the rebuild for the same slot takes them over, so a rebuilt
+     * batch uploads into a buffer that already has the right name and layout.
+     */
+    private final BatchBufferRecycler<GlMutableBuffer> batchBufferRecycler = new BatchBufferRecycler<>();
 
     /**
      * Creates FULL metadata for compatibility with the existing Actinium render-region construction path.
@@ -189,34 +217,68 @@ public class SectionRenderDataStorage {
     public void storeCachedMultiDrawBatch(BatchCacheParams params, CachedBatch batch) {
         if (params.equals(firstBatchParams) || firstBatchParams == null) {
             if (firstCachedBatch != null) {
-                firstCachedBatch.delete();
+                this.discardCachedBatch(firstCachedBatch);
             }
             firstBatchParams = params;
             firstCachedBatch = batch;
         } else {
             if (secondCachedBatch != null) {
-                secondCachedBatch.delete();
+                this.discardCachedBatch(secondCachedBatch);
             }
             secondBatchParams = params;
             secondCachedBatch = batch;
         }
     }
 
-    private void invalidateCachedBatches() {
+    public void invalidateCachedBatches() {
         if (firstCachedBatch != null) {
-            firstCachedBatch.delete();
+            this.discardCachedBatch(firstCachedBatch);
             firstCachedBatch = null;
         }
         if (secondCachedBatch != null) {
-            secondCachedBatch.delete();
+            this.discardCachedBatch(secondCachedBatch);
             secondCachedBatch = null;
         }
         firstBatchParams = null;
         secondBatchParams = null;
     }
 
+    /**
+     * {@return the buffer of a discarded batch for a new batch to upload into, or {@code null} when none is held}
+     */
+    public @Nullable GlMutableBuffer takeSpareBatchBuffer() {
+        return this.batchBufferRecycler.take();
+    }
+
+    /**
+     * Discards the cached batch of {@code params} ahead of its rebuild so that the new batch can take over its
+     * buffer. The params stay in place, so {@link #storeCachedMultiDrawBatch} puts the new batch in the same slot.
+     */
+    public void retireCachedMultiDrawBatch(BatchCacheParams params) {
+        if (params.equals(firstBatchParams)) {
+            if (firstCachedBatch != null) {
+                this.discardCachedBatch(firstCachedBatch);
+                firstCachedBatch = null;
+            }
+        } else if (params.equals(secondBatchParams)) {
+            if (secondCachedBatch != null) {
+                this.discardCachedBatch(secondCachedBatch);
+                secondCachedBatch = null;
+            }
+        }
+    }
+
+    /**
+     * Deletes a batch while keeping its GL buffer alive for the next batch in the same slot.
+     */
+    private void discardCachedBatch(CachedBatch batch) {
+        this.batchBufferRecycler.retire(batch.detachBuffer(), GlMutableBuffer::delete);
+        batch.delete();
+    }
+
     public void delete() {
         this.invalidateCachedBatches();
+        this.batchBufferRecycler.drain(GlMutableBuffer::delete);
 
         for (var allocation : this.allocations) {
             if (allocation != null) {

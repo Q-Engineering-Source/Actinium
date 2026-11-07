@@ -24,6 +24,7 @@ import dhj.embeddedt.embeddium.impl.render.chunk.fog.FogService;
 import dhj.embeddedt.embeddium.impl.render.chunk.lists.ChunkRenderListIterable;
 import dhj.embeddedt.embeddium.impl.render.chunk.lists.ChunkRenderList;
 import dhj.embeddedt.embeddium.impl.render.chunk.multidraw.BatchAssembler;
+import dhj.embeddedt.embeddium.impl.render.chunk.multidraw.CachedBatch;
 import dhj.embeddedt.embeddium.impl.render.chunk.multidraw.IndividualDrawEmitter;
 import dhj.embeddedt.embeddium.impl.render.chunk.region.RenderRegion;
 import dhj.embeddedt.embeddium.impl.render.chunk.shader.ChunkShaderInterface;
@@ -109,6 +110,14 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
         return true;
     }
 
+    /**
+     * {@return the cache key of the batch slot this pass draws from} Overrides bind additional views to their own
+     * slot so that each view keeps its own assembled batch.
+     */
+    protected SectionRenderDataStorage.BatchCacheParams batchCacheParams(boolean useBlockFaceCulling) {
+        return SectionRenderDataStorage.BatchCacheParams.of(useBlockFaceCulling, 0);
+    }
+
     protected final SharedQuadIndexBuffer getSharedIndexBuffer(ChunkPrimitiveType type, CommandList commandList) {
         var buffer = this.sharedIndexBuffers.get(type);
         if (buffer == null) {
@@ -167,7 +176,7 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
             float[] animationOffsetBuffer = animationProvider != null ? new float[3] : null;
 
             useBlockFaceCulling = useBlockFaceCulling && !renderPass.isSorted();
-            var cacheParams = new SectionRenderDataStorage.BatchCacheParams(useBlockFaceCulling);
+            var cacheParams = this.batchCacheParams(useBlockFaceCulling);
 
             while (iterator.hasNext()) {
                 ChunkRenderList renderList = iterator.next();
@@ -207,17 +216,8 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
                         batch.upload(commandList);
                     }
                 } else {
-                    var cached = storage.getCachedMultiDrawBatch(cacheParams);
-
-                    if (cached == null || !cached.isValidFor(renderList.getSectionsWithGeometry(), renderList.getSectionsWithGeometryCount(),
-                            occlusionCamera.intX, occlusionCamera.intY, occlusionCamera.intZ)) {
-                        cached = BatchAssembler.createCachedBatch(region, storage, renderList, occlusionCamera, renderPass,
-                                useBlockFaceCulling, commandList, this.multiDrawMode);
-
-                        storage.storeCachedMultiDrawBatch(cacheParams, cached);
-                    }
-
-                    batch = cached.getBatch();
+                    batch = this.getRegionBatch(commandList, region, storage, renderList, occlusionCamera, renderPass,
+                            cacheParams).getBatch();
                 }
 
                 if (fillStartNanos != 0L) {
@@ -302,6 +302,40 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
         }
 
         this.end(renderPass);
+    }
+
+    /**
+     * {@return the batch of one region for {@code cacheParams}, rebuilt and re-stored when the cached batch no
+     * longer matches the render list or the camera} The rebuilt batch takes over the buffer of the retired one, so
+     * the rebuild does not have to create a buffer name. The batch is assembled with
+     * {@link SectionRenderDataStorage.BatchCacheParams#useBlockFaceCulling() the culling mode of its key}, so the
+     * culling mode a batch was built with and the key it is stored under cannot disagree.
+     */
+    protected CachedBatch getRegionBatch(CommandList commandList,
+                                         RenderRegion region,
+                                         SectionRenderDataStorage storage,
+                                         ChunkRenderList renderList,
+                                         CameraTransform occlusionCamera,
+                                         TerrainRenderPass renderPass,
+                                         SectionRenderDataStorage.BatchCacheParams cacheParams) {
+        CachedBatch cached = storage.getCachedMultiDrawBatch(cacheParams);
+
+        if (cached != null && cached.isValidFor(renderList.getSectionsWithGeometry(),
+                renderList.getSectionsWithGeometryCount(),
+                occlusionCamera.intX, occlusionCamera.intY, occlusionCamera.intZ)) {
+            return cached;
+        }
+
+        if (cached != null) {
+            storage.retireCachedMultiDrawBatch(cacheParams);
+        }
+
+        cached = BatchAssembler.createCachedBatch(region, storage, renderList, occlusionCamera, renderPass,
+                cacheParams.useBlockFaceCulling(), commandList, this.multiDrawMode);
+
+        storage.storeCachedMultiDrawBatch(cacheParams, cached);
+
+        return cached;
     }
 
     /**

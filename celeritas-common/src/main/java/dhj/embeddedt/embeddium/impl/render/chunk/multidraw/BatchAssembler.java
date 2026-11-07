@@ -1,10 +1,12 @@
 package dhj.embeddedt.embeddium.impl.render.chunk.multidraw;
 
 import dhj.embeddedt.embeddium.api.render.chunk.ChunkAnimationProvider;
+import dhj.embeddedt.embeddium.impl.gl.buffer.GlMutableBuffer;
 import dhj.embeddedt.embeddium.impl.gl.device.CommandList;
 import dhj.embeddedt.embeddium.impl.gl.device.DirectMultiDrawBatch;
 import dhj.embeddedt.embeddium.impl.gl.device.IndirectMultiDrawBatch;
 import dhj.embeddedt.embeddium.impl.gl.device.MultiDrawBatch;
+import dhj.embeddedt.embeddium.impl.gl.device.MultiDrawBatchFactory;
 import dhj.embeddedt.embeddium.impl.model.quad.properties.ModelQuadFacing;
 import dhj.embeddedt.embeddium.impl.render.chunk.LocalSectionIndex;
 import dhj.embeddedt.embeddium.impl.render.chunk.MultiDrawMode;
@@ -35,10 +37,39 @@ public final class BatchAssembler {
     private static final boolean DEBUG_BLOCK_FACE_CULLING = false;
     private static final int RUN_COUNT_SHIFT = 32;
 
+    /**
+     * Batch-kind override installed by {@link #setBatchFactory}; {@code null} follows the mode.
+     */
+    private static volatile @Nullable MultiDrawBatchFactory batchFactory;
+
     private BatchAssembler() {
     }
 
+    /**
+     * Overrides the batch kind the {@link MultiDrawMode} would select, so a GL integration test can pin indirect
+     * multidraw regardless of the configured mode. {@code null} restores the mode-driven default.
+     *
+     * <p>{@link MultiDrawMode#INDIVIDUAL} shares the direct storage layout and executes a batch by casting it to
+     * {@link DirectMultiDrawBatch}, so an indirect factory cannot be combined with that mode.
+     */
+    public static void setBatchFactory(@Nullable MultiDrawBatchFactory factory) {
+        batchFactory = factory;
+    }
+
+    /**
+     * {@return the factory installed by {@link #setBatchFactory}, or {@code null} when batches follow the mode}
+     */
+    public static @Nullable MultiDrawBatchFactory getBatchFactory() {
+        return batchFactory;
+    }
+
     private static MultiDrawBatch createBatch(MultiDrawMode mode, int capacity) {
+        MultiDrawBatchFactory factory = batchFactory;
+
+        if (factory != null) {
+            return factory.create(capacity);
+        }
+
         // INDIVIDUAL shares the direct storage layout; only execution differs.
         return mode == MultiDrawMode.INDIRECT ? new IndirectMultiDrawBatch(capacity) : new DirectMultiDrawBatch(capacity);
     }
@@ -178,6 +209,14 @@ public final class BatchAssembler {
         var batch = fillRegion(region, storage, renderList, camera, pass, useBlockFaceCulling, mode);
 
         if (batch != null) {
+            if (batch.usesGpuBuffer()) {
+                GlMutableBuffer spare = storage.takeSpareBatchBuffer();
+
+                if (spare != null) {
+                    batch.adoptBuffer(spare);
+                }
+            }
+
             batch.upload(commandList);
         }
 
