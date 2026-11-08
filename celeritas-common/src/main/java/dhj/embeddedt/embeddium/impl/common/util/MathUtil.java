@@ -8,6 +8,20 @@ public class MathUtil {
         return ((n & (n - 1)) == 0);
     }
 
+    public static int gcd(int a, int b) {
+        while (b != 0) {
+            int t = b;
+            b = a % b;
+            a = t;
+        }
+
+        return a;
+    }
+
+    public static int lcm(int a, int b) {
+        return a / gcd(a, b) * b;
+    }
+
     public static long toMib(long bytes) {
         return bytes / (1024L * 1024L); // 1 MiB = 1048576 (2^20) bytes
     }

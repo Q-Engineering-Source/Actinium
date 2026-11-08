@@ -3,11 +3,13 @@ package dhj.embeddedt.embeddium.impl.render.chunk.region;
 import dhj.embeddedt.embeddium.impl.render.chunk.ChunkUpdateType;
 import dhj.embeddedt.embeddium.impl.render.chunk.PackedSectionMetadata;
 import dhj.embeddedt.embeddium.impl.render.chunk.RenderSection;
+import dhj.embeddedt.embeddium.impl.render.chunk.compile.sorting.QuadPrimitiveType;
 import dhj.embeddedt.embeddium.impl.render.chunk.data.BuiltRenderSectionData;
 import dhj.embeddedt.embeddium.impl.render.chunk.lists.VisibleChunkCollector;
 import dhj.embeddedt.embeddium.impl.render.chunk.occlusion.SectionLattice;
 import dhj.embeddedt.embeddium.impl.render.chunk.occlusion.SectionLattice.VisibilitySnapshot;
 import dhj.embeddedt.embeddium.impl.render.chunk.occlusion.VisibilityEncoding;
+import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.impl.CompactChunkVertex;
 import dhj.embeddedt.embeddium.impl.render.viewport.Viewport;
 import org.joml.Vector3d;
 import org.joml.Vector3i;
@@ -18,9 +20,16 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class VisibleChunkCollectorSchedulingTest {
+    /**
+     * Element size of a region's geometry arena for the compact quad format. These sections never upload geometry, so
+     * the region never allocates the arena; the value only states which layout the region was configured for.
+     */
+    private static final int ARENA_STRIDE =
+            CompactChunkVertex.VERTEX_FORMAT.getStride() * QuadPrimitiveType.TRIANGULATED.getVerticesPerPrimitive();
+
     @Test
     void capsInitialBuildQueueAndReportsOverflow() {
-        RenderRegion region = new RenderRegion(0, 0, 0, 0, null);
+        RenderRegion region = new RenderRegion(0, 0, 0, 0, null, ARENA_STRIDE);
         SectionLattice lattice = createLattice();
         RenderSection first = attach(lattice, region, 0, 0, 0, ChunkUpdateType.INITIAL_BUILD);
         RenderSection second = attach(lattice, region, 1, 0, 0, ChunkUpdateType.INITIAL_BUILD);
@@ -40,7 +49,7 @@ class VisibleChunkCollectorSchedulingTest {
 
     @Test
     void keepsRebuildQueueWhenTargetIsZero() {
-        RenderRegion region = new RenderRegion(0, 0, 0, 0, null);
+        RenderRegion region = new RenderRegion(0, 0, 0, 0, null, ARENA_STRIDE);
         SectionLattice lattice = createLattice();
         RenderSection first = attach(lattice, region, 0, 0, 0, ChunkUpdateType.REBUILD);
         RenderSection second = attach(lattice, region, 1, 0, 0, ChunkUpdateType.REBUILD);
@@ -61,7 +70,7 @@ class VisibleChunkCollectorSchedulingTest {
     @Test
     void visibilitySnapshotRejectsEmptyAndUnvisitedCells() {
         SectionLattice lattice = createLattice();
-        RenderRegion region = new RenderRegion(0, 0, 0, 0, null);
+        RenderRegion region = new RenderRegion(0, 0, 0, 0, null, ARENA_STRIDE);
         RenderSection loaded = attach(lattice, region, 0, 0, 0, null);
         RenderSection unvisited = attach(lattice, region, 1, 0, 0, null);
         BuiltRenderSectionData data = new BuiltRenderSectionData();

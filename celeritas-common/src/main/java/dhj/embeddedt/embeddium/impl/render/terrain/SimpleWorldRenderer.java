@@ -8,6 +8,7 @@ import dhj.embeddedt.embeddium.impl.gl.device.CommandList;
 import dhj.embeddedt.embeddium.impl.gl.device.RenderDevice;
 import dhj.embeddedt.embeddium.impl.render.chunk.ChunkRenderMatrices;
 import dhj.embeddedt.embeddium.impl.render.chunk.RenderPassConfiguration;
+import dhj.embeddedt.embeddium.impl.render.chunk.RenderSection;
 import dhj.embeddedt.embeddium.impl.render.chunk.RenderSectionManager;
 import dhj.embeddedt.embeddium.impl.render.chunk.data.MinecraftBuiltRenderSectionData;
 import dhj.embeddedt.embeddium.impl.render.chunk.lists.ChunkRenderList;
@@ -247,7 +248,7 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         this.renderSectionManager.updateChunks(updateChunksImmediately);
     }
 
-    private void processChunkEvents() {
+    protected void processChunkEvents() {
         Objects.requireNonNull(
             this.chunkTrackerSubscription,
             "Loaded world must have a chunk tracker subscription"
@@ -324,6 +325,21 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         this.renderBlockEntityList(list, context);
     }
 
+    /**
+     * Draws the block entities of one section. Receives the section so that implementations can replace drawing with
+     * their own per-section handling, such as collecting the lists for a shadow pass.
+     *
+     * @return the number of block entities handled
+     */
+    protected int renderSectionBlockEntities(RenderSection section, List<BLOCKENTITY> blockEntities, boolean culled, BLOCKENTITY_RENDER_CONTEXT renderContext) {
+        if (culled) {
+            this.renderBlockEntityList(blockEntities, renderContext);
+        } else {
+            this.renderGlobalBlockEntityList(blockEntities, renderContext);
+        }
+        return blockEntities.size();
+    }
+
     private int renderCulledBlockEntities(BLOCKENTITY_RENDER_CONTEXT renderContext) {
         int count = 0;
         SortedRenderLists renderLists = this.renderSectionManager.getRenderLists();
@@ -359,9 +375,7 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
                     continue;
                 }
 
-                count += blockEntities.size();
-
-                this.renderBlockEntityList(blockEntities, renderContext);
+                count += this.renderSectionBlockEntities(renderSection, blockEntities, true, renderContext);
             }
         }
 
@@ -383,9 +397,7 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
                 continue;
             }
 
-            count += blockEntities.size();
-
-            this.renderGlobalBlockEntityList(blockEntities, renderContext);
+            count += this.renderSectionBlockEntities(renderSection, blockEntities, false, renderContext);
         }
 
         return count;

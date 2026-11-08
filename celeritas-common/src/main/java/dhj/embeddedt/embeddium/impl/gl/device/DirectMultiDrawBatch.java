@@ -7,7 +7,7 @@ import dhj.embeddedt.embeddium.impl.gl.tessellation.GlTessellation;
 import static com.mitchej123.lwjgl.LWJGLServiceProvider.LWJGL;
 import com.mitchej123.lwjgl.LWJGLServiceProvider;
 
-public final class DirectMultiDrawBatch extends MultiDrawBatch {
+public class DirectMultiDrawBatch extends MultiDrawBatch {
     public final long pElementPointer;
     public final long pElementCount;
     public final long pBaseVertex;

@@ -3,6 +3,7 @@ package dhj.embeddedt.embeddium.impl.render.chunk.terrain;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
+import dhj.embeddedt.embeddium.impl.gl.attribute.GlVertexFormat;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.sorting.ChunkPrimitiveType;
 import dhj.embeddedt.embeddium.impl.render.chunk.terrain.material.Material;
 import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.ChunkVertexType;
@@ -79,6 +80,15 @@ public class TerrainRenderPass {
 
     private final @NotNull ChunkPrimitiveType primitiveType;
     private final @NotNull ChunkVertexType vertexType;
+
+    /**
+     * Identifies the vertex array one tessellation is built from. Passes that agree on it reuse the same tessellation
+     * even though they draw different materials.
+     */
+    public record TessellationKey(GlVertexFormat vertexFormat, ChunkPrimitiveType primitiveType, boolean sorted) {}
+
+    @EqualsAndHashCode.Exclude
+    private final TessellationKey tessellationKey;
 
     private final Map<String, String> extraDefines;
 
@@ -174,6 +184,7 @@ public class TerrainRenderPass {
         this.hasNoLightmap = hasNoLightmap;
         this.primitiveType = primitiveType;
         this.vertexType = vertexType;
+        this.tessellationKey = new TessellationKey(vertexType.getVertexFormat(), primitiveType, useTranslucencySorting);
         this.extraDefines = extraDefines != null ? Map.copyOf(extraDefines) : Map.of();
     }
 
@@ -229,6 +240,10 @@ public class TerrainRenderPass {
 
     public ChunkVertexType vertexType() {
         return this.vertexType;
+    }
+
+    public TessellationKey tessellationKey() {
+        return this.tessellationKey;
     }
 
     public Map<String, String> extraDefines() {

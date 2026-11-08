@@ -30,7 +30,9 @@ import org.junit.jupiter.api.Test;
 import org.lwjgl.opengl.GL;
 
 import java.nio.ByteBuffer;
+import java.util.Collection;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -63,6 +65,13 @@ class SectionRenderDataStorageMetaGLTest extends GLStateManagerIntegrationFixtur
     private static final TerrainRenderPass SECOND_SORTED_PASS = pass("meta-storage-translucent-2", true);
     private static final RenderPassConfiguration<Object> CONFIGURATION = configuration();
 
+    /**
+     * Vertices one element of the region's geometry arena holds. Every pass of the fixture uses the compact quad
+     * format, so the arena's common stride is one whole quad and the storage scales arena offsets by the vertices of
+     * a quad.
+     */
+    private static final int VERTICES_PER_ARENA_ELEMENT = PRIMITIVE_TYPE.getVerticesPerPrimitive();
+
     private CommandList commandList;
     private RenderRegionManager regionManager;
     private RenderRegion region;
@@ -90,7 +99,7 @@ class SectionRenderDataStorageMetaGLTest extends GLStateManagerIntegrationFixtur
         this.commandList = RenderDevice.INSTANCE.createCommandList();
         this.regionManager = new RenderRegionManager(this.commandList, CONFIGURATION);
         this.region = this.regionManager.createForChunk(REGION_CHUNK_X, REGION_CHUNK_Y, REGION_CHUNK_Z);
-        this.resources = this.region.createResources(UNSORTED_PASS.vertexType().getVertexFormat(), this.commandList);
+        this.resources = this.region.createResources(this.commandList);
         this.unsortedStorage = this.region.createStorage(UNSORTED_PASS, CONFIGURATION);
         this.sortedStorage = this.region.createStorage(SORTED_PASS, CONFIGURATION);
     }
@@ -281,11 +290,12 @@ class SectionRenderDataStorageMetaGLTest extends GLStateManagerIntegrationFixtur
 
         int slot = this.sortedStorage.getSlotCache()[localSectionIndex];
         int slotBase = slot * SectionMetaBuffer.BYTES_PER_SECTION;
-        int publishedOffset = geometry.getOffset();
+        int publishedOffset = geometry.getOffset() * VERTICES_PER_ARENA_ELEMENT;
 
         // Growing the arena moves every live segment to the tail of the new buffer.
         upload(this.resources.getGeometryArena(), 600 * 1024);
-        assertNotEquals(publishedOffset, geometry.getOffset(), "arena growth relocates the live segment");
+        assertNotEquals(publishedOffset, geometry.getOffset() * VERTICES_PER_ARENA_ELEMENT,
+                "arena growth relocates the live segment");
         assertEquals(publishedOffset,
                 GpuCulling.sectionMeta()
                         .getMirrorForReadOnly()
@@ -295,10 +305,10 @@ class SectionRenderDataStorageMetaGLTest extends GLStateManagerIntegrationFixtur
         this.sortedStorage.onBufferResized();
 
         SectionRenderDataUnsafe.Strategy strategy = this.sortedStorage.getStrategy();
-        assertEquals(geometry.getOffset(),
+        assertEquals(geometry.getOffset() * VERTICES_PER_ARENA_ELEMENT,
                 strategy.getVertexOffset(this.sortedStorage.getDataPointer(localSectionIndex), 0),
                 "the resize rebases the row onto the relocated segment");
-        assertEquals(geometry.getOffset(),
+        assertEquals(geometry.getOffset() * VERTICES_PER_ARENA_ELEMENT,
                 GpuCulling.sectionMeta()
                         .getMirrorForReadOnly()
                         .getInt(slotBase + SectionMetaBuffer.OFFSET_POSTS),
@@ -355,7 +365,8 @@ class SectionRenderDataStorageMetaGLTest extends GLStateManagerIntegrationFixtur
         ranges.put(ModelQuadFacing.POS_X, new VertexRange(0, 8));
 
         // Attached by hand so the region keeps no reference to it: deleting the storage is the only cleanup it gets.
-        SectionRenderDataStorage detached = new SectionRenderDataStorage(PRIMITIVE_TYPE, false);
+        SectionRenderDataStorage detached = new SectionRenderDataStorage(PRIMITIVE_TYPE, false,
+                VERTICES_PER_ARENA_ELEMENT);
         detached.attachRegion(this.region, RenderPassIndex.indexOf(UNSORTED_PASS));
 
         int firstSection = LocalSectionIndex.pack(0, 0, 0);
@@ -393,7 +404,7 @@ class SectionRenderDataStorageMetaGLTest extends GLStateManagerIntegrationFixtur
         this.unsortedStorage.setMeshes(localSectionIndex, upload(this.resources.getGeometryArena(), 8 * 16), null,
                 ranges);
         GlBufferSegment neighbourGeometry = upload(
-                neighbour.createResources(UNSORTED_PASS.vertexType().getVertexFormat(), this.commandList)
+                neighbour.createResources(this.commandList)
                         .getGeometryArena(), 8 * 16);
         neighbourStorage.setMeshes(localSectionIndex, neighbourGeometry, null, ranges);
 
@@ -543,7 +554,8 @@ class SectionRenderDataStorageMetaGLTest extends GLStateManagerIntegrationFixtur
         Map<ModelQuadFacing, VertexRange> ranges = new EnumMap<>(ModelQuadFacing.class);
         ranges.put(ModelQuadFacing.POS_X, new VertexRange(0, 8));
 
-        SectionRenderDataStorage detached = new SectionRenderDataStorage(PRIMITIVE_TYPE, false);
+        SectionRenderDataStorage detached = new SectionRenderDataStorage(PRIMITIVE_TYPE, false,
+                VERTICES_PER_ARENA_ELEMENT);
         detached.attachRegion(this.region, RenderPassIndex.indexOf(UNSORTED_PASS));
         int removedSection = LocalSectionIndex.pack(0, 1, 0);
         int deletedSection = LocalSectionIndex.pack(1, 1, 0);
@@ -602,7 +614,11 @@ class SectionRenderDataStorageMetaGLTest extends GLStateManagerIntegrationFixtur
 
     private static RenderPassConfiguration<Object> configuration() {
         Material material = new Material(UNSORTED_PASS, AlphaCutoffParameter.ZERO, true);
+        // The pass set is what a region's common vertex stride is derived from, so the fixture declares every pass it
+        // creates a storage for.
+        Map<Object, Collection<TerrainRenderPass>> stages = Map.of("meta-storage",
+                List.of(UNSORTED_PASS, SORTED_PASS, SECOND_SORTED_PASS));
 
-        return new RenderPassConfiguration<>(Map.of(), Map.of(), material, material, material);
+        return new RenderPassConfiguration<>(Map.of(), stages, material, material, material);
     }
 }

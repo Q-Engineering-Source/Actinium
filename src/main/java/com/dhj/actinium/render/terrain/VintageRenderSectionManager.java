@@ -414,7 +414,9 @@ public class VintageRenderSectionManager extends RenderSectionManager {
             private MultiDrawBatch batch;
 
             ReusableCachedBatch() {
-                super(null, NO_SECTIONS, 0, 0, 0, 0, 0, 0, 0);
+                // The culler owns the draw ranges and this wrapper carries none of the CPU-side buffers, so the batch
+                // has no tessellation of its own. The render loop prepares the pass's tessellation when it is null.
+                super(null, null, NO_SECTIONS, 0, 0, 0, 0, 0, 0, 0);
             }
 
             CachedBatch wrap(@Nullable MultiDrawBatch batch) {

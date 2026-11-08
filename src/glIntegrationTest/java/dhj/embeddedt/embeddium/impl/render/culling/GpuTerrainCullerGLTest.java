@@ -160,7 +160,8 @@ class GpuTerrainCullerGLTest extends GLStateManagerIntegrationFixture {
         this.commandList = RenderDevice.INSTANCE.createCommandList();
         this.program = createFlatProgram();
 
-        this.region = RenderRegionTestFactory.create(0, 0, 0, 0);
+        this.region = RenderRegionTestFactory.create(0, 0, 0, 0,
+            new CompactChunkVertex().getVertexFormat().getStride());
         final TerrainRenderPass water = sortedPass("water", TerrainRenderPass.Semantic.WATER);
         final TerrainRenderPass translucent = sortedPass("translucent", TerrainRenderPass.Semantic.TRANSLUCENT);
         final TerrainRenderPass solid = unsortedPass("solid", TerrainRenderPass.Semantic.SOLID);

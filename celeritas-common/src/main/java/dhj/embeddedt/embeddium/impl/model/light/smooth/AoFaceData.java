@@ -6,7 +6,7 @@ import dhj.embeddedt.embeddium.impl.model.light.debug.AODebug;
 
 import static dhj.embeddedt.embeddium.impl.model.light.data.LightDataAccess.*;
 
-class AoFaceData {
+public class AoFaceData {
     public final int[] lm = new int[4];
 
     public final float[] ao = new float[4];

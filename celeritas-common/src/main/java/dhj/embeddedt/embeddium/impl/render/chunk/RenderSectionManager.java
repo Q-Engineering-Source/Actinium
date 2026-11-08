@@ -600,10 +600,12 @@ public abstract class RenderSectionManager {
             timer.startProfiling();
         }
 
-        this.chunkRenderer.render(matrices, commandList, this.getCurrentRenderListManager().getRenderLists(), pass, occlusionCamera, camera);
-
-        if (shouldProfile) {
-            timer.finishProfiling();
+        try {
+            this.chunkRenderer.render(matrices, commandList, this.getCurrentRenderListManager().getRenderLists(), pass, occlusionCamera, camera);
+        } finally {
+            if (shouldProfile) {
+                timer.finishProfiling();
+            }
         }
 
         commandList.flush();
@@ -1244,36 +1246,60 @@ public abstract class RenderSectionManager {
 
     protected final Supplier<Object2LongMap<TerrainRenderPass>> renderPassTimingsDebounced = new ExpiringSupplier<>(this::computeRenderPassTimingsMap, 1, TimeUnit.SECONDS);
 
+    /**
+     * Device memory held by the terrain arenas of every loaded region. The single instance owned by the manager is
+     * rewritten on each stats call.
+     */
+    public static final class DeviceMemoryStats {
+        /** Geometry bytes in use and allocated on the device. */
+        public long deviceUsed, deviceAllocated;
+        /** Index bytes in use and allocated on the device. */
+        public long indexUsed, indexAllocated;
+        /** Number of regions currently holding device resources. */
+        public int bufferCount;
+    }
+
+    private final DeviceMemoryStats deviceMemoryStats = new DeviceMemoryStats();
+
+    public DeviceMemoryStats getDeviceMemoryStats() {
+        var stats = this.deviceMemoryStats;
+        stats.deviceUsed = 0;
+        stats.deviceAllocated = 0;
+        stats.indexUsed = 0;
+        stats.indexAllocated = 0;
+        stats.bufferCount = 0;
+
+        for (var region : this.regions.getLoadedRegions()) {
+            var resources = region.getResources();
+
+            if (resources == null) {
+                continue;
+            }
+
+            var buffer = resources.getGeometryArena();
+
+            stats.deviceUsed += buffer.getDeviceUsedMemoryL();
+            stats.deviceAllocated += buffer.getDeviceAllocatedMemoryL();
+
+            var indexBuffer = resources.getIndexArena();
+
+            if (indexBuffer != null) {
+                stats.indexUsed += indexBuffer.getDeviceUsedMemoryL();
+                stats.indexAllocated += indexBuffer.getDeviceAllocatedMemoryL();
+            }
+
+            stats.bufferCount++;
+        }
+
+        return stats;
+    }
+
     public Collection<String> getDebugStrings() {
         List<String> list = new ArrayList<>();
 
-        int count = 0, indexCount = 0;
+        var mem = this.getDeviceMemoryStats();
 
-        long deviceUsed = 0;
-        long deviceAllocated = 0;
-
-        long indexUsed = 0, indexAllocated = 0;
-
-        for (var region : this.regions.getLoadedRegions()) {
-            for (var resources : region.getAllResources()) {
-                var buffer = resources.getGeometryArena();
-
-                deviceUsed += buffer.getDeviceUsedMemoryL();
-                deviceAllocated += buffer.getDeviceAllocatedMemoryL();
-
-                var indexBuffer = resources.getIndexArena();
-
-                if (indexBuffer != null) {
-                    indexUsed += indexBuffer.getDeviceUsedMemoryL();
-                    indexAllocated += indexBuffer.getDeviceAllocatedMemoryL();
-                    indexCount++;
-                }
-
-                count++;
-            }
-        }
-
-        list.add(String.format("G: %d/%d, I: %d/%d MiB (%d buffers)", MathUtil.toMib(deviceUsed), MathUtil.toMib(deviceAllocated), MathUtil.toMib(indexUsed), MathUtil.toMib(indexAllocated), count));
+        list.add(String.format("G: %d/%d, I: %d/%d MiB (%d buffers)", MathUtil.toMib(mem.deviceUsed), MathUtil.toMib(mem.deviceAllocated), MathUtil.toMib(mem.indexUsed), MathUtil.toMib(mem.indexAllocated), mem.bufferCount));
         list.add(String.format("Transfer Queue: %s", this.regions.getStagingBuffer().toString()));
 
         var rebuildLists = this.getCurrentRenderListManager().getRebuildLists();

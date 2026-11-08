@@ -15,9 +15,7 @@ import com.gtnewhorizons.angelica.rendering.RenderingState;
 import com.dhj.actinium.compat.ichunutil.PortalChunkRenderMatrices;
 import dhj.embeddedt.embeddium.impl.gl.device.CommandList;
 import dhj.embeddedt.embeddium.impl.render.chunk.ChunkRenderMatrices;
-import dhj.embeddedt.embeddium.impl.render.chunk.data.MinecraftBuiltRenderSectionData;
-import dhj.embeddedt.embeddium.impl.render.chunk.lists.ChunkRenderList;
-import dhj.embeddedt.embeddium.impl.render.chunk.lists.SortedRenderLists;
+import dhj.embeddedt.embeddium.impl.render.chunk.RenderSection;
 import dhj.embeddedt.embeddium.impl.render.chunk.terrain.TerrainRenderPass;
 import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.ChunkMeshFormats;
 import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.ChunkVertexType;
@@ -48,7 +46,16 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
     private ChunkRenderMatrices portalMatrices;
     private Viewport shadowPassPlayerViewport;
 
-    public record TileEntityRenderContext(Map<Integer, DestroyBlockProgress> damagedBlocks, float partialTicks) {}
+    /**
+     * @param shadowCollect when true, block entities are collected for the shadow pass instead of being drawn
+     */
+    public record TileEntityRenderContext(Map<Integer, DestroyBlockProgress> damagedBlocks, float partialTicks, boolean shadowCollect) {
+        public TileEntityRenderContext(Map<Integer, DestroyBlockProgress> damagedBlocks, float partialTicks) {
+            this(damagedBlocks, partialTicks, false);
+        }
+    }
+
+    private final TileEntityRenderContext shadowCollectContext = new TileEntityRenderContext(Map.of(), 0.0f, true);
 
     /**
      * @return The ActiniumWorldRenderer based on the current dimension
@@ -229,50 +236,8 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
     @Override
     public void setupShadowTerrain(Viewport playerViewport, Viewport shadowViewport, CameraState cameraState, int frame, boolean spectator) {
         super.setupShadowTerrain(playerViewport, shadowViewport, cameraState, frame, spectator);
-        collectTileEntitiesForShadow();
-        RenderDebugHooksHolder.logShadowTerrainLayer(
-            "culling",
-            "fogOcclusion=false,occlusionCulling=false",
-            this.renderSectionManager.getVisibleChunkCount()
-        );
-    }
-
-    @SuppressWarnings("unchecked")
-    private void collectTileEntitiesForShadow() {
-        final SortedRenderLists renderLists = this.renderSectionManager.getRenderLists();
-        final Iterator<ChunkRenderList> renderListIterator = renderLists.iterator();
-
-        while (renderListIterator.hasNext()) {
-            final ChunkRenderList renderList = renderListIterator.next();
-            final var renderRegion = renderList.getRegion();
-            final var renderSectionIterator = renderList.sectionsWithEntitiesIterator();
-
-            if (renderSectionIterator == null) {
-                continue;
-            }
-
-            while (renderSectionIterator.hasNext()) {
-                final int renderSectionId = renderSectionIterator.nextByteAsInt();
-                final var renderSection = renderRegion.getSection(renderSectionId);
-
-                if (renderSection == null) {
-                    continue;
-                }
-
-                final var context = renderSection.getBuiltContext();
-                if (context instanceof MinecraftBuiltRenderSectionData<?, ?> mcData) {
-                    ShadowRenderer.visibleTileEntities.addAll((List<TileEntity>) mcData.culledBlockEntities);
-                }
-            }
-        }
-
-        for (var renderSection : this.renderSectionManager.getSectionsWithGlobalEntities()) {
-            final var context = renderSection.getBuiltContext();
-            if (context instanceof MinecraftBuiltRenderSectionData<?, ?> mcData) {
-                ShadowRenderer.globalTileEntities.addAll((List<TileEntity>) mcData.globalBlockEntities);
-            }
-        }
-
+        // Bypass this class's renderBlockEntities so collecting the lists does not touch the TESR GL guard or draw batch.
+        super.renderBlockEntities(this.shadowCollectContext);
         RenderDebugHooksHolder.logShadowPassState(
             "collect-block-entities",
             true,
@@ -284,6 +249,21 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
             -1,
             ShadowRenderer.visibleTileEntities.size() + ShadowRenderer.globalTileEntities.size()
         );
+        RenderDebugHooksHolder.logShadowTerrainLayer(
+            "culling",
+            "fogOcclusion=false,occlusionCulling=false",
+            this.renderSectionManager.getVisibleChunkCount()
+        );
+    }
+
+    @Override
+    protected int renderSectionBlockEntities(RenderSection section, List<TileEntity> blockEntities, boolean culled, TileEntityRenderContext renderContext) {
+        if (renderContext.shadowCollect()) {
+            (culled ? ShadowRenderer.visibleTileEntities : ShadowRenderer.globalTileEntities).addAll(blockEntities);
+            return blockEntities.size();
+        }
+
+        return super.renderSectionBlockEntities(section, blockEntities, culled, renderContext);
     }
 
     public static CameraState captureCameraState(Entity viewEntity, double ticks) {
