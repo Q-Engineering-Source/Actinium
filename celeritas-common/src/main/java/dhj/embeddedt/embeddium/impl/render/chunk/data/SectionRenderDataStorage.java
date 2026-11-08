@@ -21,6 +21,13 @@ public class SectionRenderDataStorage {
     private final ChunkPrimitiveType primitiveType;
     private final SectionRenderDataUnsafe.Strategy storageStrategy;
 
+    /**
+     * Number of vertices one element of the region's geometry arena holds. The arena allocates in elements of the
+     * region's common vertex stride, while the metadata rows address vertices, so every arena offset is scaled by this
+     * factor when it is written into a row.
+     */
+    private final int verticesPerArenaElement;
+
     private int numAllocations;
 
     /**
@@ -82,22 +89,18 @@ public class SectionRenderDataStorage {
     private final BatchBufferRecycler<GlMutableBuffer> batchBufferRecycler = new BatchBufferRecycler<>();
 
     /**
-     * Creates FULL metadata for compatibility with the existing Actinium render-region construction path.
-     */
-    public SectionRenderDataStorage(ChunkPrimitiveType primitiveType) {
-        this(primitiveType, true);
-    }
-
-    /**
      * Creates FULL metadata for sorted passes and COMPACT metadata for unsorted passes.
+     *
+     * @param verticesPerArenaElement number of vertices one element of the owning region's geometry arena holds
      */
-    public SectionRenderDataStorage(ChunkPrimitiveType primitiveType, boolean sorted) {
+    public SectionRenderDataStorage(ChunkPrimitiveType primitiveType, boolean sorted, int verticesPerArenaElement) {
         this.storageStrategy = sorted ? SectionRenderDataUnsafe.Strategy.FULL : SectionRenderDataUnsafe.Strategy.COMPACT;
         this.pMeshDataArray = this.storageStrategy.allocateHeap();
         if (this.pMeshDataArray == 0) {
             throw new OutOfMemoryError("Failed to allocate mesh data array");
         }
         this.primitiveType = primitiveType;
+        this.verticesPerArenaElement = verticesPerArenaElement;
     }
 
     public boolean isEmpty() {
@@ -172,7 +175,7 @@ public class SectionRenderDataStorage {
         this.indexAllocations[localSectionIndex] = indexAllocation;
         this.numAllocations++;
 
-        int vertexOffset = allocation.getOffset();
+        int vertexOffset = allocation.getOffset() * this.verticesPerArenaElement;
         int indexOffset = indexAllocation != null ? indexAllocation.getOffset() * 4 : 0;
 
         this.storageStrategy.writeMeshesAndSliceMask(this.pMeshDataArray, localSectionIndex,
@@ -242,7 +245,7 @@ public class SectionRenderDataStorage {
         }
 
         var indexAllocation = this.indexAllocations[sectionIndex];
-        int vertexOffset = allocation.getOffset();
+        int vertexOffset = allocation.getOffset() * this.verticesPerArenaElement;
         int indexOffset = indexAllocation != null ? indexAllocation.getOffset() * 4 : 0;
 
         this.storageStrategy.rebase(this.getDataPointer(sectionIndex), vertexOffset, indexOffset, this.primitiveType);

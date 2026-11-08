@@ -70,8 +70,10 @@ class BatchBufferRecyclingGLTest extends GLStateManagerIntegrationFixture {
         // Known baseline: an indirect upload must not leave an array buffer bound behind it.
         GL15C.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
 
-        this.region = new RenderRegion(0, 0, 0, 0, null);
-        this.storage = new SectionRenderDataStorage(QuadPrimitiveType.TRIANGULATED, false);
+        this.region = RenderRegionTestFactory.create(0, 0, 0, 0,
+                new CompactChunkVertex().getVertexFormat().getStride());
+        // The fixture feeds the storage no arena segments, so one arena element is one vertex.
+        this.storage = new SectionRenderDataStorage(QuadPrimitiveType.TRIANGULATED, false, 1);
         this.renderList = new ChunkRenderList(this.region);
         this.renderList.add(0, BLOCK_GEOMETRY_FLAG);
         this.pass = TerrainRenderPass.builder()

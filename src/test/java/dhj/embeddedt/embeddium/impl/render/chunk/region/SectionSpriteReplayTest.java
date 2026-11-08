@@ -1,9 +1,11 @@
 package dhj.embeddedt.embeddium.impl.render.chunk.region;
 
 import dhj.embeddedt.embeddium.impl.render.chunk.RenderSection;
+import dhj.embeddedt.embeddium.impl.render.chunk.compile.sorting.QuadPrimitiveType;
 import dhj.embeddedt.embeddium.impl.render.chunk.data.MinecraftBuiltRenderSectionData;
 import dhj.embeddedt.embeddium.impl.render.chunk.lists.ChunkRenderList;
 import dhj.embeddedt.embeddium.impl.render.chunk.sprite.GenericSectionSpriteTicker;
+import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.impl.CompactChunkVertex;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -19,11 +21,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class SectionSpriteReplayTest {
 
+    /**
+     * Element size of a region's geometry arena for the compact quad format. These sections never upload geometry, so
+     * the region never allocates the arena; the value only states which layout the region was configured for.
+     */
+    private static final int ARENA_STRIDE =
+            CompactChunkVertex.VERTEX_FORMAT.getStride() * QuadPrimitiveType.TRIANGULATED.getVerticesPerPrimitive();
+
     @Test
     void spriteSharedBySeveralSectionsIsNotifiedOncePerFrame() {
         final Object stone = new Object();
         final Object dirt = new Object();
-        final RenderRegion region = new RenderRegion(0, 0, 0, 0, null);
+        final RenderRegion region = new RenderRegion(0, 0, 0, 0, null, ARENA_STRIDE);
         final RenderSection first = sectionWithSprites(region, 0, 0, 0, stone, dirt);
         final RenderSection second = sectionWithSprites(region, 1, 0, 0, stone);
         final ChunkRenderList renderList = renderListOf(region, first, second);
@@ -41,7 +50,7 @@ class SectionSpriteReplayTest {
     @Test
     void cachedMeshNotifiesItsSpritesOnEveryFrame() {
         final Object stone = new Object();
-        final RenderRegion region = new RenderRegion(0, 0, 0, 0, null);
+        final RenderRegion region = new RenderRegion(0, 0, 0, 0, null, ARENA_STRIDE);
         final ChunkRenderList renderList = renderListOf(region, sectionWithSprites(region, 0, 0, 0, stone));
 
         final List<Object> notified = new ArrayList<>();
@@ -59,7 +68,7 @@ class SectionSpriteReplayTest {
     void rebuiltSectionReplacesTheSpritesOfItsPreviousMesh() {
         final Object stone = new Object();
         final Object gravel = new Object();
-        final RenderRegion region = new RenderRegion(0, 0, 0, 0, null);
+        final RenderRegion region = new RenderRegion(0, 0, 0, 0, null, ARENA_STRIDE);
         final RenderSection section = sectionWithSprites(region, 0, 0, 0, stone);
         final ChunkRenderList renderList = renderListOf(region, section);
 
@@ -78,14 +87,14 @@ class SectionSpriteReplayTest {
     @Test
     void renderListWithoutSpriteSourcesStopsNotifyingThePreviousFrame() {
         final Object stone = new Object();
-        final RenderRegion region = new RenderRegion(0, 0, 0, 0, null);
+        final RenderRegion region = new RenderRegion(0, 0, 0, 0, null, ARENA_STRIDE);
         final ChunkRenderList renderList = renderListOf(region, sectionWithSprites(region, 0, 0, 0, stone));
 
         final List<Object> notified = new ArrayList<>();
         final GenericSectionSpriteTicker<Object> ticker = new GenericSectionSpriteTicker<>(notified::add);
         ticker.onRenderListUpdated(List.of(renderList));
 
-        final RenderRegion plainRegion = new RenderRegion(0, 0, 1, 1, null);
+        final RenderRegion plainRegion = new RenderRegion(0, 0, 1, 1, null, ARENA_STRIDE);
         final RenderSection plainSection = new RenderSection(plainRegion, 0, 0, 8);
         plainRegion.addSection(plainSection);
         plainSection.setInfo(new MinecraftBuiltRenderSectionData<>());

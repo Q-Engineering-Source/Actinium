@@ -9,7 +9,11 @@ public final class RenderRegionTestFactory {
     private RenderRegionTestFactory() {
     }
 
-    public static RenderRegion create(int chunkX, int chunkY, int chunkZ, int id) {
-        return new RenderRegion(chunkX, chunkY, chunkZ, id, null);
+    /**
+     * @param commonVertexStride element size of the region's geometry arena; pass the vertex stride of the pass whose
+     *                           geometry the fixture builds itself, which makes one arena element one vertex
+     */
+    public static RenderRegion create(int chunkX, int chunkY, int chunkZ, int id, int commonVertexStride) {
+        return new RenderRegion(chunkX, chunkY, chunkZ, id, null, commonVertexStride);
     }
 }

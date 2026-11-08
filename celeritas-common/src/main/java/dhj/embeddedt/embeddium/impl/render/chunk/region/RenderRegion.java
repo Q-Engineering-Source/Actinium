@@ -1,10 +1,10 @@
 package dhj.embeddedt.embeddium.impl.render.chunk.region;
 
+import it.unimi.dsi.fastutil.objects.Object2ReferenceOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
 import lombok.Getter;
 import dhj.embeddedt.embeddium.impl.gl.arena.GlBufferArena;
 import dhj.embeddedt.embeddium.impl.gl.arena.staging.StagingBuffer;
-import dhj.embeddedt.embeddium.impl.gl.attribute.GlVertexFormat;
 import dhj.embeddedt.embeddium.impl.gl.buffer.GlBuffer;
 import dhj.embeddedt.embeddium.impl.gl.device.CommandList;
 import dhj.embeddedt.embeddium.impl.gl.tessellation.GlTessellation;
@@ -16,7 +16,6 @@ import dhj.embeddedt.embeddium.impl.render.culling.RenderPassIndex;
 import dhj.embeddedt.embeddium.impl.common.util.MathUtil;
 import dhj.embeddedt.embeddium.impl.util.PositionUtil;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.*;
 
@@ -49,6 +48,13 @@ public class RenderRegion {
     private static final int MINIMUM_INDEX_ARENA_BYTES = 64 * 1024;
 
     private final StagingBuffer stagingBuffer;
+
+    /**
+     * Element size of this region's geometry arena. Every pass of the region allocates from the one arena in elements
+     * of this size, so an element holds a whole number of primitives of every pass.
+     */
+    private final int commonVertexStride;
+
     private final int x, y, z;
 
     @Getter
@@ -64,8 +70,7 @@ public class RenderRegion {
 
     private final Map<TerrainRenderPass, SectionRenderDataStorage> sectionRenderData = new Reference2ReferenceOpenHashMap<>();
 
-    @Unmodifiable
-    private List<DeviceResources> allDeviceResources = List.of();
+    private @Nullable DeviceResources resources;
 
     /**
      * Incremented each time the set of render passes in the region is changed.
@@ -81,13 +86,14 @@ public class RenderRegion {
     @Getter
     private int dataRevision = 0;
 
-    RenderRegion(int x, int y, int z, int id, StagingBuffer stagingBuffer) {
+    RenderRegion(int x, int y, int z, int id, StagingBuffer stagingBuffer, int commonVertexStride) {
         this.x = x;
         this.y = y;
         this.z = z;
 
         this.id = id;
         this.stagingBuffer = stagingBuffer;
+        this.commonVertexStride = commonVertexStride;
     }
 
     public static long key(int x, int y, int z) {
@@ -137,8 +143,10 @@ public class RenderRegion {
 
         this.sectionRenderData.clear();
 
-        this.allDeviceResources.forEach(resources -> resources.delete(commandList));
-        this.allDeviceResources = List.of();
+        if (this.resources != null) {
+            this.resources.delete(commandList);
+            this.resources = null;
+        }
 
         Arrays.fill(this.sections, null);
         Arrays.fill(this.sectionLoadTimes, 0);
@@ -160,8 +168,16 @@ public class RenderRegion {
         var storage = this.sectionRenderData.get(pass);
 
         if (storage == null) {
-            storage = new SectionRenderDataStorage(
-                    renderPassConfiguration.getPrimitiveTypeForPass(pass), pass.isSorted());
+            int stride = pass.vertexType().getVertexFormat().getStride();
+
+            if (this.commonVertexStride % stride != 0) {
+                throw new IllegalStateException("Pass " + pass + " uses a vertex stride of " + stride
+                        + ", which does not divide the region's common vertex stride of " + this.commonVertexStride
+                        + "; its vertex format was not declared by the render pass configuration");
+            }
+
+            storage = new SectionRenderDataStorage(renderPassConfiguration.getPrimitiveTypeForPass(pass), pass.isSorted(),
+                    this.commonVertexStride / stride);
             storage.attachRegion(this, RenderPassIndex.indexOf(pass));
             this.sectionRenderData.put(pass, storage);
             this.passSetUpdateCount++;
@@ -207,10 +223,21 @@ public class RenderRegion {
     }
 
     public void refresh(CommandList commandList) {
-        this.allDeviceResources.forEach(resources -> resources.deleteTessellations(commandList));
+        if (this.resources != null) {
+            this.resources.deleteTessellations(commandList);
+        }
 
         for (var storage : this.sectionRenderData.values()) {
             storage.onBufferResized();
+        }
+    }
+
+    /**
+     * Drops the cached batches of every pass, because the buffers they draw from are gone or moved.
+     */
+    private void invalidateCachedBatches() {
+        for (var storage : this.sectionRenderData.values()) {
+            storage.invalidateCachedBatches();
         }
     }
 
@@ -259,105 +286,75 @@ public class RenderRegion {
         return this.sections[id];
     }
 
-    public Collection<DeviceResources> getAllResources() {
-        return this.allDeviceResources;
+    /**
+     * {@return the device resources of this region, or {@code null} while the region holds no uploaded geometry} Every
+     * pass of the region shares these resources.
+     */
+    @Nullable
+    public DeviceResources getResources() {
+        return this.resources;
     }
 
-    public DeviceResources getResources(GlVertexFormat format) {
-        var stride = format.getStride();
-        var list = this.allDeviceResources;
-        //noinspection ForLoopReplaceableByForEach
-        for (int i = 0; i < list.size(); i++) {
-            var resources = list.get(i);
-            if (resources.stride == stride) {
-                return resources;
-            }
-        }
-        return null;
-    }
-
-    public DeviceResources createResources(GlVertexFormat format, CommandList commandList) {
-        var resources = getResources(format);
-        if (resources == null) {
-            resources = new DeviceResources(commandList, this.stagingBuffer, format.getStride());
-
-            var newList = new ArrayList<>(this.allDeviceResources);
-            newList.add(resources);
-            this.allDeviceResources = List.copyOf(newList);
+    public DeviceResources createResources(CommandList commandList) {
+        if (this.resources == null) {
+            this.resources = new DeviceResources(commandList, this.stagingBuffer, this.commonVertexStride);
         }
 
-        return resources;
+        return this.resources;
     }
 
     public void update(CommandList commandList) {
-        var oldList = this.allDeviceResources;
-        boolean needListUpdate = false;
-        //noinspection ForLoopReplaceableByForEach
-        for (int i = 0; i < oldList.size(); i++) {
-            var resources = oldList.get(i);
-            if (resources.shouldDelete()) {
-                resources.delete(commandList);
-                needListUpdate = true;
-            } else {
-                resources.deleteIndexArenaIfPossible(commandList);
-            }
+        var resources = this.resources;
+
+        if (resources == null) {
+            return;
         }
-        // Skip the list copy in the common case that nothing was deleted.
-        if (needListUpdate) {
-            var newList = new ArrayList<>(this.allDeviceResources);
-            newList.removeIf(DeviceResources::isDeleted);
-            this.allDeviceResources = List.copyOf(newList);
+
+        if (resources.shouldDelete()) {
+            resources.delete(commandList);
+            this.resources = null;
+            this.invalidateCachedBatches();
+        } else if (resources.deleteIndexArenaIfPossible(commandList)) {
+            this.invalidateCachedBatches();
         }
     }
 
     public static class DeviceResources {
         private final GlBufferArena geometryArena;
         private final StagingBuffer stagingBuffer;
-        private final int stride;
         private GlBufferArena indexArena;
-        private GlTessellation tessellation;
-        private GlTessellation indexedTessellation;
 
-        public DeviceResources(CommandList commandList, StagingBuffer stagingBuffer, int stride) {
-            this.geometryArena = new GlBufferArena(commandList, stride, MINIMUM_GEOMETRY_ARENA_BYTES, stagingBuffer);
+        /**
+         * Tessellations of the vertex arrays the region is drawn with, keyed by {@link TerrainRenderPass.TessellationKey}.
+         */
+        private final Map<TerrainRenderPass.TessellationKey, GlTessellation> tessellations = new Object2ReferenceOpenHashMap<>();
+
+        public DeviceResources(CommandList commandList, StagingBuffer stagingBuffer, int commonVertexStride) {
+            this.geometryArena = new GlBufferArena(commandList, commonVertexStride, MINIMUM_GEOMETRY_ARENA_BYTES, stagingBuffer);
             this.stagingBuffer = stagingBuffer;
-            this.stride = stride;
         }
 
-        public void updateTessellation(CommandList commandList, GlTessellation tessellation) {
-            if (this.tessellation != null) {
-                this.tessellation.delete(commandList);
+        /**
+         * {@return the tessellation cached for {@code key}, or {@code null} when that vertex array was never built}
+         */
+        public GlTessellation getTessellation(TerrainRenderPass.TessellationKey key) {
+            return this.tessellations.get(key);
+        }
+
+        public void updateTessellation(CommandList commandList, TerrainRenderPass.TessellationKey key, GlTessellation tessellation) {
+            var previous = this.tessellations.put(key, tessellation);
+
+            if (previous != null) {
+                previous.delete(commandList);
             }
-
-            this.tessellation = tessellation;
-        }
-
-        public GlTessellation getTessellation() {
-            return this.tessellation;
-        }
-
-        public void updateIndexedTessellation(CommandList commandList, GlTessellation tessellation) {
-            if (this.indexedTessellation != null) {
-                this.indexedTessellation.delete(commandList);
-            }
-
-            this.indexedTessellation = tessellation;
-        }
-
-        public GlTessellation getIndexedTessellation() {
-            return this.indexedTessellation;
         }
 
         public void deleteTessellations(CommandList commandList) {
-            if (this.tessellation != null) {
-                this.tessellation.delete(commandList);
-                this.tessellation = null;
+            for (var tessellation : this.tessellations.values()) {
+                tessellation.delete(commandList);
             }
 
-            if (this.indexedTessellation != null) {
-                this.indexedTessellation.delete(commandList);
-                this.indexedTessellation = null;
-            }
+            this.tessellations.clear();
         }
 
         public GlBuffer getVertexBuffer() {
@@ -379,14 +376,9 @@ public class RenderRegion {
             }
         }
 
-        public boolean isDeleted() {
-            return this.geometryArena.isDeleted();
-        }
-
         public GlBufferArena getGeometryArena() {
             return this.geometryArena;
         }
-
 
         public GlBufferArena getIndexArena() {
             return this.indexArena;
@@ -403,12 +395,22 @@ public class RenderRegion {
             return this.geometryArena.isEmpty();
         }
 
-        public void deleteIndexArenaIfPossible(CommandList commandList) {
-            if (this.indexArena != null && this.indexArena.isEmpty()) {
-                this.updateIndexedTessellation(commandList, null);
-                this.indexArena.delete(commandList);
-                this.indexArena = null;
+        /**
+         * Releases the index arena when it holds no allocation any more. The tessellations of the sorted passes bind
+         * that buffer, so they are dropped with it.
+         *
+         * @return whether the index arena was released
+         */
+        public boolean deleteIndexArenaIfPossible(CommandList commandList) {
+            if (this.indexArena == null || !this.indexArena.isEmpty()) {
+                return false;
             }
+
+            this.deleteTessellations(commandList);
+            this.indexArena.delete(commandList);
+            this.indexArena = null;
+
+            return true;
         }
     }
 }

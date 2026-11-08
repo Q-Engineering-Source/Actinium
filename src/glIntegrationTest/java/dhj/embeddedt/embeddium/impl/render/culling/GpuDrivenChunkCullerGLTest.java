@@ -141,7 +141,8 @@ class GpuDrivenChunkCullerGLTest extends GLStateManagerIntegrationFixture {
     private static final class CullFixture implements AutoCloseable {
         private final GpuDrivenChunkCuller culler = new GpuDrivenChunkCuller();
         private final SectionMetaBuffer meta = new SectionMetaBuffer();
-        private final SectionRenderDataStorage storage = new SectionRenderDataStorage(PRIMITIVE_TYPE, false);
+        // The fixture hands the storage vertex offsets of its own segment, so one arena element is one vertex.
+        private final SectionRenderDataStorage storage = new SectionRenderDataStorage(PRIMITIVE_TYPE, false, 1);
         private final int visibleBuffer = GLSMBuffers.glGenBuffers();
         private final int indirectBuffer = GLSMBuffers.glGenBuffers();
         private final ByteBuffer frustumUbo = FrustumExtractor.allocateUboByteBuffer();

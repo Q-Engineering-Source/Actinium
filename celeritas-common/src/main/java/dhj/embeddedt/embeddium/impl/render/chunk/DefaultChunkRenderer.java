@@ -64,6 +64,11 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
 
     private final Reference2ReferenceMap<ChunkPrimitiveType, SharedQuadIndexBuffer> sharedIndexBuffers;
 
+    /**
+     * Resolves the tessellation a region batch draws through.
+     */
+    private final BatchAssembler.TessellationProvider tessellationProvider = this::prepareTessellation;
+
     private TerrainRenderPass currentRenderPass;
     private GlVertexFormat currentVertexFormat;
 
@@ -176,6 +181,7 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
                 long fillStartNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
 
                 MultiDrawBatch batch;
+                GlTessellation tessellation;
                 boolean ephemeralBatch = false;
                 List<AnimatedSectionDraw> animatedSections = null;
 
@@ -183,6 +189,7 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
                     // Animated sections are diverted every frame, so the region batch cannot be cached.
                     List<AnimatedSectionDraw> diverted = new ArrayList<>();
                     animatedSections = diverted;
+                    tessellation = null;
                     if (this.multiDrawMode == MultiDrawMode.INDIRECT) {
                         // Indirect batches are one-shot: upload() releases the CPU-side command storage,
                         // so each per-frame rebuild needs a fresh batch.
@@ -200,15 +207,16 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
                         batch.upload(commandList);
                     }
                 } else {
-                    batch = this.getRegionBatch(commandList, region, storage, renderList, occlusionCamera, renderPass,
-                            cacheParams).getBatch();
+                    var cached = this.getRegionBatch(commandList, region, storage, renderList, occlusionCamera,
+                            renderPass, cacheParams);
+                    batch = cached.getBatch();
+                    tessellation = cached.getTessellation();
                 }
 
                 if (fillStartNanos != 0L) {
                     fillNanos += System.nanoTime() - fillStartNanos;
                 }
 
-                GlTessellation tessellation = null;
                 if (batch != null && !batch.isEmpty()) {
                     batches++;
                     commands += batch.size();
@@ -217,10 +225,12 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
                        getSharedIndexBuffer(renderPassConfiguration.getPrimitiveTypeForPass(renderPass), commandList).ensureCapacity(commandList, batch.getIndexBufferSize());
                     }
 
-                    long tessellationStartNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
-                    tessellation = this.prepareTessellation(commandList, region);
-                    if (tessellationStartNanos != 0L) {
-                        tessellationNanos += System.nanoTime() - tessellationStartNanos;
+                    if (tessellation == null) {
+                        long tessellationStartNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
+                        tessellation = this.prepareTessellation(commandList, region, renderPass);
+                        if (tessellationStartNanos != 0L) {
+                            tessellationNanos += System.nanoTime() - tessellationStartNanos;
+                        }
                     }
 
                     long uniformsStartNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
@@ -231,12 +241,7 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
                     }
 
                     long drawStartNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
-                    if (this.multiDrawMode == MultiDrawMode.INDIVIDUAL) {
-                        // INDIVIDUAL batches use the direct storage layout.
-                        this.individualEmitter.executeBatch(commandList, tessellation, primitiveType, (DirectMultiDrawBatch) batch);
-                    } else {
-                        batch.execute(commandList, tessellation, primitiveType);
-                    }
+                    this.executeBatch(commandList, batch, tessellation, primitiveType);
                     if (checkDrawErrors) {
                         RenderDebugHooksHolder.checkDrawError("chunk-region:after-draw", renderPass.name(), primitiveType.getId(),
                             0, 0, batch.size(), null, -1, -1);
@@ -255,7 +260,7 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
                 if (animatedSections != null && !animatedSections.isEmpty()) {
                     long animatedStartNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
                     if (tessellation == null) {
-                        tessellation = this.prepareTessellation(commandList, region);
+                        tessellation = this.prepareTessellation(commandList, region, renderPass);
                     }
                     setModelMatrixUniforms(shader, region, camera);
                     shader.setSectionAges(timestamp, region.getSectionLoadTimes());
@@ -315,11 +320,27 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
         }
 
         cached = BatchAssembler.createCachedBatch(region, storage, renderList, occlusionCamera, renderPass,
-                cacheParams.useBlockFaceCulling(), commandList, this.multiDrawMode);
+                cacheParams.useBlockFaceCulling(), commandList, this.multiDrawMode, this.tessellationProvider);
 
         storage.storeCachedMultiDrawBatch(cacheParams, cached);
 
         return cached;
+    }
+
+    /**
+     * Draws one assembled region batch. INDIVIDUAL mode issues one draw call per command through the individual
+     * emitter, the other modes hand the batch to its own execute. Subclasses with a different command shape override
+     * this.
+     */
+    protected void executeBatch(CommandList commandList, MultiDrawBatch batch, GlTessellation tessellation,
+                                GlPrimitiveType primitiveType) {
+        if (this.multiDrawMode == MultiDrawMode.INDIVIDUAL) {
+            // INDIVIDUAL batches use the direct storage layout.
+            this.individualEmitter.executeBatch(commandList, tessellation, primitiveType, (DirectMultiDrawBatch) batch);
+            return;
+        }
+
+        batch.execute(commandList, tessellation, primitiveType);
     }
 
     /**
@@ -373,17 +394,18 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
         return (chunkBlockPos - cameraBlockPos) - cameraPos;
     }
 
-    protected GlTessellation prepareTessellation(CommandList commandList, RenderRegion region) {
-        var resources = region.getResources(this.currentVertexFormat);
-        var tessellation = this.currentRenderPass.isSorted() ? resources.getIndexedTessellation() : resources.getTessellation();
+    /**
+     * {@return the tessellation this region draws {@code pass} through}
+     */
+    protected GlTessellation prepareTessellation(CommandList commandList, RenderRegion region, TerrainRenderPass pass) {
+        var resources = region.getResources();
+        var key = pass.tessellationKey();
+
+        var tessellation = resources.getTessellation(key);
 
         if (tessellation == null) {
             tessellation = this.createRegionTessellation(commandList, resources);
-            if (this.currentRenderPass.isSorted()) {
-                resources.updateIndexedTessellation(commandList, tessellation);
-            } else {
-                resources.updateTessellation(commandList, tessellation);
-            }
+            resources.updateTessellation(commandList, key, tessellation);
         }
 
         return tessellation;

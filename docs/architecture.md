@@ -1,6 +1,6 @@
 # Actinium 架构说明
 
-最后更新：2026-10-08。
+最后更新：2026-11-08。
 
 ## 概述
 
@@ -262,6 +262,13 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
 fence。环绕刷新按实际复制字节数计算，避免满环时起止位置相等的歧义。
 环绕复制使用源 buffer 当前 position 加相对偏移，不创建 slice；连续复制在入队时合并，
 累计字节数同时维护。fallback storage 仅实际使用后释放，空刷新不再重新分配。
+
+每个 `RenderRegion` 的不同顶点格式共用一份 geometry/index arena。公共元素大小取各 pass
+`stride * verticesPerPrimitive` 的最小公倍数，保证 base vertex 位于完整图元边界；保留 512 KiB
+geometry arena 最小容量。tessellation 按 `TerrainRenderPass.TessellationKey` 缓存并随批次保存，
+arena 刷新、空 index arena 释放或 region 资源销毁时同步失效。`RenderSectionManager` 的
+`DeviceMemoryStats` 按 region 汇总共享资源，方块实体经 `renderSectionBlockEntities` 分派，
+阴影收集复用该入口但不执行 TESR 绘制。
 
 `NativeBuffer` 的显式 free 同时撤销 phantom 回收登记，未显式释放的分配仍由回收队列处理；
 分配字节使用原子计数，适配 worker 分配与主线程释放。纯内存操作依赖 GTNHLib 的
