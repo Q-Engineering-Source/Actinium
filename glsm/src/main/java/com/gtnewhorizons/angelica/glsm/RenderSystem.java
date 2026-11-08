@@ -614,7 +614,11 @@ public class RenderSystem {
     }
 
     public static void bindBufferBase(int target, int index, int buffer) {
-        RENDER_BACKEND.bindBufferBase(target, index, buffer);
+        GLStateManager.glBindBufferBase(target, index, buffer);
+    }
+
+    public static int getIndexedBufferBinding(int target, int index) {
+        return GLStateManager.getIndexedBufferBinding(target, index);
     }
 
     public static void bufferStorage(int target, long size, int flags) {
@@ -629,7 +633,7 @@ public class RenderSystem {
     }
 
     public static void deleteBuffers(int buffer) {
-        RENDER_BACKEND.deleteBuffers(buffer);
+        GLStateManager.glDeleteBuffers(buffer);
     }
 
     public static long getVRAM() {

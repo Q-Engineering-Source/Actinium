@@ -480,14 +480,17 @@ public class GLSMRedirector {
             .add("glUniform2ui")
             .add("glUniform3ui")
             .add("glUniform4ui")
-            .add("glBindBufferBase");
+            .add("glBindBufferBase")
+            .add("glBindBufferRange");
         Map<String, String> gl31 = RedirectMap.newMap()
             .add("glDrawElementsInstanced")
             .add("glDrawArraysInstanced")
             .add("glCopyBufferSubData")
             .add("glPrimitiveRestartIndex")
             .add("glGetUniformBlockIndex")
-            .add("glUniformBlockBinding");
+            .add("glUniformBlockBinding")
+            .add("glBindBufferBase")
+            .add("glBindBufferRange");
         Map<String, String> gl32 = RedirectMap.newMap()
             .add("glFramebufferTexture")
             .add("glDrawRangeElementsBaseVertex")
@@ -518,7 +521,9 @@ public class GLSMRedirector {
             .add("glVertexAttribIFormat")
             .add("glVertexAttribBinding")
             .add("glCopyImageSubData")
-            .add("glMultiDrawElementsIndirect");
+            .add("glMultiDrawElementsIndirect")
+            .add("glBindBufferBase")
+            .add("glBindBufferRange");
         Map<String, String> gl44 = RedirectMap.newMap()
             .add("glBufferStorage")
             .add("glBindSamplers")
@@ -997,6 +1002,7 @@ public class GLSMRedirector {
         );
         Map<String, String> uniformBufferObject = RedirectMap.newMap()
             .add("glBindBufferBase")
+            .add("glBindBufferRange")
             .add("glGetUniformBlockIndex")
             .add("glUniformBlockBinding");
         METHOD_REDIRECTS.put(ARB_UNIFORM_BUFFER_OBJECT, uniformBufferObject);

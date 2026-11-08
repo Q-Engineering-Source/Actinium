@@ -11,11 +11,13 @@ import java.nio.ShortBuffer;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL21;
 import org.lwjgl.opengl.GL31;
+import org.lwjgl.opengl.GL43;
 
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.copyOf;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.invalidateDeletedBuffer;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.shouldBypassCache;
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
 
 public final class GLSMBuffers {
@@ -427,15 +429,37 @@ public final class GLSMBuffers {
 
     public static void glBindBufferBase(int target, int index, int buffer) {
         rejectExitCapture();
+        trackIndexedBufferBinding(ctx(), target, index, buffer);
         RENDER_BACKEND.bindBufferBase(target, index, buffer);
     }
 
     public static void glBindBufferRange(int target, int index, int buffer, long offset, long size) {
         rejectExitCapture();
+        trackIndexedBufferBinding(ctx(), target, index, buffer);
         RENDER_BACKEND.bindBufferRange(target, index, buffer, offset, size);
     }
 
+    /**
+     * Returns the slot array that holds {@code index} for {@code target}, or {@code null} when the target is not an
+     * indexed buffer target or the index lies outside the tracked slots.
+     */
+    private static int[] indexedBufferBindings(GLContextState glCtx, int target, int index) {
+        if (index < 0 || index >= GLStateManager.INDEXED_BUFFER_SLOTS) return null;
+        if (target == GL31.GL_UNIFORM_BUFFER) return glCtx.uniformBufferBindings;
+        if (target == GL43.GL_SHADER_STORAGE_BUFFER) return glCtx.storageBufferBindings;
+        return null;
+    }
+
+    private static void trackIndexedBufferBinding(GLContextState glCtx, int target, int index, int buffer) {
+        final int[] bindings = indexedBufferBindings(glCtx, target, index);
+        if (bindings != null) bindings[index] = buffer;
+    }
+
     public static int getIndexedBufferBinding(int target, int index) {
+        if (!shouldBypassCache()) {
+            final int[] bindings = indexedBufferBindings(ctx(), target, index);
+            if (bindings != null) return bindings[index];
+        }
         return RENDER_BACKEND.getIndexedBufferBinding(target, index);
     }
 

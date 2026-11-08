@@ -242,6 +242,10 @@ public class GLContextState {
     public int boundPixelPackBuffer;
     public int boundCopyReadBuffer;
     public int boundCopyWriteBuffer;
+    /** Buffer bound to each indexed uniform buffer slot by {@code glBindBufferBase} and {@code glBindBufferRange}. */
+    public final int[] uniformBufferBindings = new int[GLStateManager.INDEXED_BUFFER_SLOTS];
+    /** Buffer bound to each indexed shader storage buffer slot, tracked the same way as the uniform slots. */
+    public final int[] storageBufferBindings = new int[GLStateManager.INDEXED_BUFFER_SLOTS];
     public PixelStoreState pixelUnpackState = PixelStoreState.DEFAULT;
     public PixelStoreState pixelPackState = PixelStoreState.DEFAULT;
     public int drawFramebuffer;

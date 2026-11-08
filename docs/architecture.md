@@ -347,6 +347,12 @@ bounded ByteBuffer 视图由 drawRaw 统一创建。此改动已通过自动化�
   `CompatProgramUniformState(s)`（旧 GLSL/uniform 兼容，`actinium_renamed_` 前缀重命名）、
   `Feature`/`GLFeatureSet`、`FeedbackManager`、`GpuCommandDiagnostics`、`Vendor`、`GLDebug`、
   `ITessellatorData`。
+
+`GLContextState` 按上下文保存 UBO/SSBO 索引绑定。`GLSMBuffers` 记录 base/range 绑定的槽位，
+索引查询优先读取缓存，超出跟踪范围或禁用缓存时查询驱动。`invalidateDeletedBuffer` 统一清理
+删除缓冲的命名绑定、索引槽与 VAO 记录；`GlUniformBlock`、`RenderSystem` 和 ASM 重定向均接入该路径。
+splash 迁移时清空旧上下文的索引绑定，普通状态重放保留缓存。
+
 - **`backend/`**：渲染后端抽象 —— `RenderBackend`、`BackendManager`、`DebugMessageHandler`。
 - **`compat/`**：`FogHelper`（雾色状态捕获）；`compat/lwjgl/`：`AngelicaCylinder/Disk/
   PartialDisk/Sphere`（替代 LWJGL2 GLU quadric 形状）。

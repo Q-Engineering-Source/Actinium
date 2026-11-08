@@ -48,7 +48,7 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.glGetBooleani_v;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.glIsEnabled;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.hasContext;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.hintMode;
-import static com.gtnewhorizons.angelica.glsm.GLStateManager.imageBindingOrBackend;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.indexedIntegerOrBackend;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.initConfig;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.isCachingEnabled;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.isEnableCap;
@@ -556,7 +556,7 @@ public final class GLSMQueries {
 
     public static int glGetInteger(int pname, int index) {
         rejectExitCapture();
-        return imageBindingOrBackend(pname, index);
+        return indexedIntegerOrBackend(pname, index);
     }
 
     public static void glGetBoolean(int pname, int index, ByteBuffer params) {
@@ -584,7 +584,7 @@ public final class GLSMQueries {
 
     public static int glGetIntegeri(int pname, int index) {
         rejectExitCapture();
-            return imageBindingOrBackend(pname, index);
+            return indexedIntegerOrBackend(pname, index);
         }
 
     public static void glGetIntegeri(int pname, int index, IntBuffer params) {
@@ -593,20 +593,20 @@ public final class GLSMQueries {
 
     public static void glGetIntegeri_v(int pname, int index, IntBuffer params) {
         rejectExitCapture();
-            params.put(params.position(), imageBindingOrBackend(pname, index));
+            params.put(params.position(), indexedIntegerOrBackend(pname, index));
         }
 
     public static void glGetIntegeri_v(int pname, int index, int[] params) {
-            params[0] = imageBindingOrBackend(pname, index);
+            params[0] = indexedIntegerOrBackend(pname, index);
         }
 
     public static void glGetBooleani_v(int pname, int index, ByteBuffer params) {
         rejectExitCapture();
-            params.put(params.position(), (byte) (imageBindingOrBackend(pname, index) != 0 ? GL11.GL_TRUE : GL11.GL_FALSE));
+            params.put(params.position(), (byte) (indexedIntegerOrBackend(pname, index) != 0 ? GL11.GL_TRUE : GL11.GL_FALSE));
         }
 
     public static boolean glGetBooleani(int pname, int index) {
-            return imageBindingOrBackend(pname, index) != 0;
+            return indexedIntegerOrBackend(pname, index) != 0;
         }
 
     public static void glGetBooleani(int pname, int index, ByteBuffer params) {
