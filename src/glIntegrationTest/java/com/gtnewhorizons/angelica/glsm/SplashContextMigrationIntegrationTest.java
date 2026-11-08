@@ -10,6 +10,8 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GL31;
+import org.lwjgl.opengl.GL43;
 import org.lwjgl.system.MemoryUtil;
 
 import java.nio.FloatBuffer;
@@ -19,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.lwjgl.sdl.SDLVideo.SDL_GL_CreateContext;
 import static org.lwjgl.sdl.SDLVideo.SDL_GL_DestroyContext;
 import static org.lwjgl.sdl.SDLVideo.SDL_GL_MakeCurrent;
@@ -100,6 +103,71 @@ class SplashContextMigrationIntegrationTest extends GLStateManagerIntegrationFix
             GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
             GLSMBuffers.glDeleteBuffers(initialEbo);
         }
+    }
+
+    @Test
+    void splashMigrationDropsIndexedBufferBindingsOfTheReplacedContext() {
+        assumeTrue(GL.getCapabilities().OpenGL31, "no uniform buffer objects on this context");
+        final boolean storageBuffers = GL.getCapabilities().OpenGL43;
+        WindowBackends.useSdl();
+        final Object initialDisplayToken = new Object();
+        final Object replacementDisplayToken = new Object();
+        bindDisplay(initialDisplayToken, context);
+        GLStateManager.recreateDefaultVertexArray();
+
+        final int uboIndex = 4;
+        final int ssboIndex = 5;
+        final int ubo = makeIndexedBufferBound(GL31.GL_UNIFORM_BUFFER, uboIndex, 64);
+        final int ssbo = storageBuffers ? makeIndexedBufferBound(GL43.GL_SHADER_STORAGE_BUFFER, ssboIndex, 64) : 0;
+        assertEquals(ubo, GLSMBuffers.getIndexedBufferBinding(GL31.GL_UNIFORM_BUFFER, uboIndex),
+            "the initial context records the uniform buffer base binding");
+        if (storageBuffers) {
+            assertEquals(ssbo, GLSMBuffers.getIndexedBufferBinding(GL43.GL_SHADER_STORAGE_BUFFER, ssboIndex),
+                "the initial context records the shader storage buffer base binding");
+        }
+
+        final long replacement = SDL_GL_CreateContext(window);
+        assertNotEquals(MemoryUtil.NULL, replacement);
+        try {
+            bindDisplay(replacementDisplayToken, replacement);
+            assertTrue(GLStateManager.displayContextMigrated());
+
+            GLStateManager.recreateDefaultVertexArray();
+            assertEquals(0, GLSMBuffers.getIndexedBufferBinding(GL31.GL_UNIFORM_BUFFER, uboIndex),
+                "the replacement context has no uniform buffer binding for the name recorded by the old context");
+            assertEquals(0, GL30.glGetIntegeri(GL31.GL_UNIFORM_BUFFER_BINDING, uboIndex),
+                "the replacement context driver never held that uniform buffer binding");
+            if (storageBuffers) {
+                assertEquals(0, GLSMBuffers.getIndexedBufferBinding(GL43.GL_SHADER_STORAGE_BUFFER, ssboIndex),
+                    "the replacement context has no storage buffer binding for the name recorded by the old context");
+                assertEquals(0, GL30.glGetIntegeri(GL43.GL_SHADER_STORAGE_BUFFER_BINDING, ssboIndex),
+                    "the replacement context driver never held that storage buffer binding");
+            }
+        } finally {
+            assertTrue(SDL_GL_MakeCurrent(window, MemoryUtil.NULL));
+            GL.setCapabilities(null);
+            GLStateManager.releaseBoundContext();
+            assertTrue(SDL_GL_DestroyContext(replacement));
+            bindDisplay(initialDisplayToken, context);
+            GLStateManager.recreateDefaultVertexArray();
+            GLSMBuffers.glBindBufferBase(GL31.GL_UNIFORM_BUFFER, uboIndex, 0);
+            if (storageBuffers) {
+                GLSMBuffers.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, ssboIndex, 0);
+            }
+            GLSMBuffers.glDeleteBuffers(ubo);
+            if (storageBuffers) {
+                GLSMBuffers.glDeleteBuffers(ssbo);
+            }
+        }
+    }
+
+    private static int makeIndexedBufferBound(int target, int index, long size) {
+        final int buffer = GLSMBuffers.glGenBuffers();
+        GLSMBuffers.glBindBuffer(target, buffer);
+        GLSMBuffers.glBufferData(target, size, GL15.GL_STREAM_DRAW);
+        GLSMBuffers.glBindBuffer(target, 0);
+        GLSMBuffers.glBindBufferBase(target, index, buffer);
+        return buffer;
     }
 
     private static void drawTriangle() {

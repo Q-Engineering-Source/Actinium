@@ -1,7 +1,7 @@
 package dhj.embeddedt.embeddium.impl.gl.shader.uniform;
 
+import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.mitchej123.lwjgl.GL32;
-import static com.mitchej123.lwjgl.LWJGLServiceProvider.LWJGL;
 
 import dhj.embeddedt.embeddium.impl.gl.buffer.GlBuffer;
 
@@ -13,7 +13,6 @@ public class GlUniformBlock {
     }
 
     public void bindBuffer(GlBuffer buffer) {
-        LWJGL.glBindBufferBase(GL32.GL_UNIFORM_BUFFER, this.binding, buffer.handle());
+        RenderSystem.bindBufferBase(GL32.GL_UNIFORM_BUFFER, this.binding, buffer.handle());
     }
 }
-

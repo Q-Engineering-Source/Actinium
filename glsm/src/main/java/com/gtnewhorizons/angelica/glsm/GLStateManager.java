@@ -103,6 +103,7 @@ import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL31;
 import org.lwjgl.opengl.GL32;
 import org.lwjgl.opengl.GL42;
+import org.lwjgl.opengl.GL43;
 import org.lwjgl.opengl.GLContext;
 import org.lwjgl.opengl.KHRDebugCallback;
 import org.lwjgl.system.Callback;
@@ -121,6 +122,7 @@ import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -331,6 +333,11 @@ public class GLStateManager {
     public static final int MAX_TEXTURE_STACK_DEPTH = 4;
     public static final int MAX_COLOR_STACK_DEPTH = 4;
     public static final int MAX_CLIP_PLANES = 8;
+    /**
+     * Indexed uniform and shader storage buffer binding slots tracked per context. Queries beyond this range are
+     * answered by the driver.
+     */
+    public static final int INDEXED_BUFFER_SLOTS = 64;
     public static final int MAX_TEXTURE_UNITS = RENDER_BACKEND.getInteger(GL20.GL_MAX_TEXTURE_IMAGE_UNITS);
     /** Fixed-function texture units the FFP shader consumes; larger unit counts fall back to the core profile. */
     public static final int MAX_LEGACY_TEXTURE_UNITS = Math.min(VertexKey.MAX_UNITS, MAX_TEXTURE_UNITS);
@@ -1933,6 +1940,10 @@ public class GLStateManager {
         glCtx.vaos.init(glCtx.defaultVAO);
         glCtx.streamingVaos.reset();
         glCtx.ffp.resetForContextMigration();
+        // Indexed bindings are per-context driver state, so the slots recorded by the previous context must not
+        // survive the swap; the replacement context has no base or range binding for those names.
+        Arrays.fill(glCtx.uniformBufferBindings, 0);
+        Arrays.fill(glCtx.storageBufferBindings, 0);
         if (boundDisplayContextHandle == 0) {
             boundDisplayContextHandle = RENDER_BACKEND.getContextHandle();
         }
@@ -3258,6 +3269,14 @@ public class GLStateManager {
         if (glCtx.boundVBO == buffer) {
             glCtx.boundVBO = 0;
         }
+        if (glCtx.boundPixelUnpackBuffer == buffer) glCtx.boundPixelUnpackBuffer = 0;
+        if (glCtx.boundPixelPackBuffer == buffer) glCtx.boundPixelPackBuffer = 0;
+        if (glCtx.boundCopyReadBuffer == buffer) glCtx.boundCopyReadBuffer = 0;
+        if (glCtx.boundCopyWriteBuffer == buffer) glCtx.boundCopyWriteBuffer = 0;
+        for (int i = 0; i < INDEXED_BUFFER_SLOTS; i++) {
+            if (glCtx.uniformBufferBindings[i] == buffer) glCtx.uniformBufferBindings[i] = 0;
+            if (glCtx.storageBufferBindings[i] == buffer) glCtx.storageBufferBindings[i] = 0;
+        }
         glCtx.vaos.onDeleteBuffer(buffer);
     }
 
@@ -3591,6 +3610,10 @@ public class GLStateManager {
     }
 
             public static void glBindBufferBase(int target, int index, int buffer) { GLSMBuffers.glBindBufferBase(target, index, buffer); }
+
+    public static void glBindBufferRange(int target, int index, int buffer, long offset, long size) { GLSMBuffers.glBindBufferRange(target, index, buffer, offset, size); }
+
+    public static int getIndexedBufferBinding(int target, int index) { return GLSMBuffers.getIndexedBufferBinding(target, index); }
 
     public static int glGetUniformBlockIndex(int program, CharSequence name) { return RENDER_BACKEND.getUniformBlockIndex(program, name); }
 
@@ -4360,7 +4383,11 @@ public class GLStateManager {
 
             public static ImageUnitBinding getImageUnitBinding(int unit) { return GLSMTextures.getImageUnitBinding(unit); }
 
-    static int imageBindingOrBackend(int pname, int index) {
+    static int indexedIntegerOrBackend(int pname, int index) {
+        if (pname == GL31.GL_UNIFORM_BUFFER_BINDING) return getIndexedBufferBinding(GL31.GL_UNIFORM_BUFFER, index);
+        if (pname == GL43.GL_SHADER_STORAGE_BUFFER_BINDING) {
+            return getIndexedBufferBinding(GL43.GL_SHADER_STORAGE_BUFFER, index);
+        }
         final ImageUnitBinding binding = !isCachingEnabled() ? null : ctx().imageUnits.get(index);
         if (binding == null) return RENDER_BACKEND.getIntegerIndexed(pname, index);
         return switch (pname) {

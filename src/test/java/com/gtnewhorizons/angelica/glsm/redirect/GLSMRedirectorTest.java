@@ -446,6 +446,28 @@ class GLSMRedirectorTest {
         assertRedirectedToGlsm("org/lwjgl/opengl/GL11", "glGetTexImage", "(IIIIJ)V", "glGetTexImage");
     }
 
+    /**
+     * Uniform-block and shader-storage bindings made through the GL30/GL31/GL43 owners and the ARB alias must land on
+     * the tracked GLStateManager entry points; a driver-only call would leave the GLSM indexed-binding cache stale and
+     * the next binding query would report the wrong buffer. Both the base and the ranged overload are covered.
+     */
+    @Test
+    void rewritesIndexedBufferBindingCallsToGlsm() {
+        String[][] cases = {
+            {"org/lwjgl/opengl/GL30", "glBindBufferBase", "(III)V", "glBindBufferBase"},
+            {"org/lwjgl/opengl/GL30", "glBindBufferRange", "(IIIJJ)V", "glBindBufferRange"},
+            {"org/lwjgl/opengl/GL31", "glBindBufferBase", "(III)V", "glBindBufferBase"},
+            {"org/lwjgl/opengl/GL31", "glBindBufferRange", "(IIIJJ)V", "glBindBufferRange"},
+            {"org/lwjgl/opengl/GL43", "glBindBufferBase", "(III)V", "glBindBufferBase"},
+            {"org/lwjgl/opengl/GL43", "glBindBufferRange", "(IIIJJ)V", "glBindBufferRange"},
+            {"org/lwjgl/opengl/ARBUniformBufferObject", "glBindBufferBase", "(III)V", "glBindBufferBase"},
+            {"org/lwjgl/opengl/ARBUniformBufferObject", "glBindBufferRange", "(IIIJJ)V", "glBindBufferRange"},
+        };
+        for (String[] c : cases) {
+            assertRedirectedToGlsm(c[0], c[1], c[2], c[3]);
+        }
+    }
+
     private static void assertRedirectedToGlsm(String owner, String name, String desc, String expectedName) {
         final String label = owner + "." + name + desc;
         byte[] classBytes = generateClassCallingGl(owner, name, desc);
