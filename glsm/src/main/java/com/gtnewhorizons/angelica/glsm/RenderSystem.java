@@ -10,12 +10,14 @@ import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandPhase;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandType;
 import com.gtnewhorizons.angelica.glsm.texture.TextureInfoCache;
+import com.mitchej123.lwjgl.GLExtension;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import org.joml.Vector3i;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.ARBShaderImageLoadStore;
 import org.lwjgl.opengl.ARBShaderStorageBufferObject;
+import org.lwjgl.opengl.ContextCapabilities;
 import org.lwjgl.opengl.EXTShaderImageLoadStore;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
@@ -32,6 +34,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
+import static com.mitchej123.lwjgl.LWJGLServiceProvider.LWJGL;
 
 /**
  * This class is responsible for abstracting calls to OpenGL and asserting that calls are run on the render thread.
@@ -600,13 +603,18 @@ public class RenderSystem {
         return dsaState.createTexture(target);
     }
 
-    // TODO: Proper notification of compute support
+    /**
+     * {@return whether the context can run compute shaders} The tracked capability view is authoritative once the state
+     * manager has initialised; before that, the driver answers, so a query made during startup still describes the
+     * context instead of reporting no support. Compute shaders are core in GL 4.3, and {@code ARB_compute_shader}
+     * exposes them on a 4.2 context.
+     */
     public static boolean supportsCompute() {
-        try {
-            return GLStateManager.capabilities.GL_ARB_compute_shader;
-        } catch (Exception ignored) {
-            return false;
+        final ContextCapabilities capabilities = GLStateManager.capabilities;
+        if (capabilities != null) {
+            return capabilities.GL_ARB_compute_shader;
         }
+        return LWJGL.isOpenGLVersionSupported(4, 3) || LWJGL.isExtensionSupported(GLExtension.ARB_compute_shader);
     }
 
     public static int createBuffers() {

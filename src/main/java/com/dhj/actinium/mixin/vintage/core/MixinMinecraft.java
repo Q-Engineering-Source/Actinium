@@ -13,6 +13,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mitchej123.lwjgl.LWJGLServiceProvider;
 import net.minecraft.client.Minecraft;
+import dhj.embeddedt.embeddium.impl.render.culling.GpuCulling;
 import dhj.embeddedt.embeddium.impl.render.frame.RenderAheadManager;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -128,6 +129,11 @@ public class MixinMinecraft {
     @Inject(method = "shutdownMinecraftApplet", at = @At("RETURN"))
     private void actinium$closeFlightRecorder(CallbackInfo ci) {
         GlFlightRecording.closeNormally();
+    }
+
+    @Inject(method = "shutdownMinecraftApplet", at = @At("RETURN"))
+    private void actinium$shutdownGpuCulling(CallbackInfo ci) {
+        GpuCulling.shutdown();
     }
 
     @Unique

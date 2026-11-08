@@ -34,6 +34,11 @@ public class SortedRenderLists implements ChunkRenderListIterable {
     }
 
     @Override
+    public ChunkRenderList getRegion(int index) {
+        return this.lists.get(index);
+    }
+
+    @Override
     public ReversibleObjectArrayIterator<ChunkRenderList> iterator(boolean reverse) {
         return new ReversibleObjectArrayIterator<>(this.lists, reverse);
     }

@@ -64,6 +64,21 @@ public abstract class RenderBackend {
     public boolean framebufferCompletenessIsMeaningful() { return true; }
 
     /**
+     * Reports whether this backend can run the compute-driven terrain culling path. A backend that cannot dispatch
+     * compute work keeps terrain on the CPU emitter, whatever the driver advertises.
+     */
+    public boolean supportsGpuDrivenCulling() { return RenderSystem.supportsCompute(); }
+
+    /**
+     * Opens a batch of compute dispatches. Backends that must serialize the dispatches of one frame against their own
+     * command stream bracket them here; a backend that maps compute onto the driver's queue needs no bracket.
+     */
+    public void beginComputeDispatchBatch() {}
+
+    /** Closes the batch opened by {@link #beginComputeDispatchBatch()}. Must stay paired with it. */
+    public void endComputeDispatchBatch() {}
+
+    /**
      * Reports a write into a persistently mapped buffer so a backend that tracks the mapping can
      * keep its own view of the buffer coherent. Backends that map through the GL driver ignore it.
      */

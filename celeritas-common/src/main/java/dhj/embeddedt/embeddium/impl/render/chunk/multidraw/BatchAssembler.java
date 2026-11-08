@@ -24,7 +24,10 @@ import org.jetbrains.annotations.Nullable;
  * Assembles the visible sections of one region into the shared multi-draw command arrays.
  */
 public final class BatchAssembler {
-    private static final int MASK_NOT_UNIFORM = -1;
+    /**
+     * Returned by {@link #uniformCullMask} when the sections of a region need a different cull mask each.
+     */
+    public static final int MASK_NOT_UNIFORM = -1;
 
     private static final int MODEL_UNASSIGNED = ModelQuadFacing.UNASSIGNED.ordinal();
     private static final int MODEL_POS_X = ModelQuadFacing.POS_X.ordinal();
@@ -314,7 +317,7 @@ public final class BatchAssembler {
     /**
      * Returns one cull mask for the entire region when the two monotonic region corners agree.
      */
-    private static int uniformCullMask(RenderRegion region, CameraTransform camera) {
+    public static int uniformCullMask(RenderRegion region, CameraTransform camera) {
         int minX = region.getChunkX();
         int minY = region.getChunkY();
         int minZ = region.getChunkZ();
@@ -331,7 +334,7 @@ public final class BatchAssembler {
     /**
      * Packs maximal consecutive set-bit runs as two four-bit facing values per run, followed by the run count.
      */
-    private static long packRuns(int mask) {
+    public static long packRuns(int mask) {
         long runs = 0L;
         int count = 0;
 
@@ -350,15 +353,15 @@ public final class BatchAssembler {
         return runs | ((long) count << RUN_COUNT_SHIFT);
     }
 
-    private static int runCount(long runs) {
+    public static int runCount(long runs) {
         return (int) (runs >>> RUN_COUNT_SHIFT) & 0xF;
     }
 
-    private static int runFirst(long runs, int run) {
+    public static int runFirst(long runs, int run) {
         return (int) (runs >>> (run << 3)) & 0xF;
     }
 
-    private static int runLast(long runs, int run) {
+    public static int runLast(long runs, int run) {
         return (int) (runs >>> ((run << 3) + 4)) & 0xF;
     }
 

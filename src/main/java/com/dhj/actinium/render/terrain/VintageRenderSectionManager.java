@@ -7,16 +7,26 @@ import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.chunk.Chunk;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import dhj.embeddedt.embeddium.impl.gl.device.CommandList;
+import dhj.embeddedt.embeddium.impl.gl.device.MultiDrawBatch;
 import dhj.embeddedt.embeddium.impl.gl.device.RenderDevice;
 import dhj.embeddedt.embeddium.impl.gl.shader.GlProgram;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.ChunkBuildOutput;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.tasks.ChunkBuilderTask;
 import dhj.embeddedt.embeddium.impl.render.chunk.data.BuiltRenderSectionData;
 import dhj.embeddedt.embeddium.impl.render.chunk.data.MinecraftBuiltRenderSectionData;
+import dhj.embeddedt.embeddium.impl.render.chunk.data.SectionRenderDataStorage;
 import dhj.embeddedt.embeddium.impl.render.chunk.fog.FogService;
+import dhj.embeddedt.embeddium.impl.render.chunk.lists.ChunkRenderList;
+import dhj.embeddedt.embeddium.impl.render.chunk.lists.ChunkRenderListIterable;
 import dhj.embeddedt.embeddium.impl.render.chunk.lists.SectionTicker;
+import dhj.embeddedt.embeddium.impl.render.chunk.multidraw.CachedBatch;
 import dhj.embeddedt.embeddium.impl.render.chunk.occlusion.AsyncOcclusionMode;
+import dhj.embeddedt.embeddium.impl.render.chunk.region.RenderRegion;
+import dhj.embeddedt.embeddium.impl.render.culling.GpuCulling;
+import dhj.embeddedt.embeddium.impl.render.culling.GpuTerrainCuller;
 import dhj.embeddedt.embeddium.impl.render.chunk.shader.ChunkShaderInterface;
 import dhj.embeddedt.embeddium.impl.render.chunk.shader.ChunkShaderTextureSlot;
 import dhj.embeddedt.embeddium.impl.render.chunk.shader.ChunkFogMode;
@@ -48,6 +58,7 @@ public class VintageRenderSectionManager extends RenderSectionManager {
     @Getter
     private final ClonedChunkSectionCache sectionCache;
     private int shadowSearchSubmissions;
+    private final TerrainPassPreparation terrainPassPreparation = new TerrainPassPreparation();
 
     public VintageRenderSectionManager(RenderPassConfiguration<?> configuration, WorldClient world, int renderDistance, CommandList commandList, int minSection, int maxSection) {
         super(configuration, () -> new VintageChunkBuildContext(world, configuration), ChunkRenderer::new, renderDistance, commandList, minSection, maxSection, ActiniumRuntime.options().performance.chunkBuilderThreads, true);
@@ -231,9 +242,43 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         super.renderLayer(matrices, pass, occlusionCamera, camera);
     }
 
+    /**
+     * Marks the render lists of the terrain setup that just ran as needing their compute culling preparation.
+     *
+     * <p>The preparation waits for the first main terrain draw of the frame instead of running during the setup: the
+     * shadow pass draws after the setup, and its walk over the shadow render lists discards prepared command ranges.
+     */
+    public void markTerrainPreparationPending() {
+        this.terrainPassPreparation.markPending();
+    }
+
+    /**
+     * Prepares the compute culling ranges of every pass of the current render lists, once per terrain setup.
+     *
+     * <p>Shadow draws leave the preparation pending, because they draw the shadow render lists and the next main draw
+     * searches its own. A preparation that throws leaves it pending as well, so the next draw prepares again instead
+     * of drawing ranges that were never culled.
+     */
+    public void prepareTerrainPasses(ChunkRenderMatrices matrices, CameraTransform occlusionCamera, CameraTransform camera) {
+        this.terrainPassPreparation.prepareIfPending(this.isInShadowPass(),
+            () -> this.dispatchTerrainPasses(matrices, occlusionCamera, camera));
+    }
+
+    /**
+     * Runs the culling preparation of every pass of the current render lists through the chunk renderer of this
+     * manager, which owns the culling backend.
+     */
+    private void dispatchTerrainPasses(ChunkRenderMatrices matrices, CameraTransform occlusionCamera, CameraTransform camera) {
+        ((ChunkRenderer) this.chunkRenderer).prepareTerrainPasses(this.getRenderLists(), matrices, occlusionCamera, camera);
+    }
+
     private static class ChunkRenderer extends DefaultChunkRenderer {
+        private static final Logger LOGGER = LogManager.getLogger("ActiniumChunkRenderer");
+
         private GlProgram<? extends ChunkShaderInterface> actiniumProgram;
         private boolean usingActiniumProgram;
+        private final GpuTerrainCuller culler = createCuller();
+        private final ReusableCachedBatch gpuBatch = new ReusableCachedBatch();
 
         public ChunkRenderer(RenderDevice device, RenderPassConfiguration<?> renderPassConfiguration) {
             super(device, renderPassConfiguration, GLStateManagerFogService.INSTANCE);
@@ -241,6 +286,72 @@ public class VintageRenderSectionManager extends RenderSectionManager {
             ShaderProvider provider = ShaderProviderHolder.getProvider();
             if (provider != null) {
                 provider.setRenderPassConfiguration(renderPassConfiguration);
+            }
+        }
+
+        private static @Nullable GpuTerrainCuller createCuller() {
+            GpuCulling.Availability availability = GpuCulling.availability();
+            if (availability != GpuCulling.Availability.AVAILABLE) {
+                LOGGER.info("GPU chunk culling unavailable ({}), terrain stays on CPU culling", availability);
+                // The renderer this call belongs to never reaches the compute path, so nothing may keep the mirror and
+                // the compute program of an earlier renderer alive. The selected mode stays as configured.
+                GpuCulling.shutdown();
+                return null;
+            }
+
+            LOGGER.info("GPU chunk culling available, mode={}", GpuCulling.mode());
+            return new GpuTerrainCuller(GpuCulling.culler(), GpuCulling.sectionMeta());
+        }
+
+        /**
+         * Prepares the command ranges of every pass of {@code renderLists} for the draw that is about to start.
+         */
+        void prepareTerrainPasses(ChunkRenderListIterable renderLists, ChunkRenderMatrices matrices,
+                                  CameraTransform occlusionCamera, CameraTransform camera) {
+            if (this.culler == null) {
+                return;
+            }
+
+            this.culler.prepareAllPasses(matrices, renderLists, occlusionCamera, camera, this.useBlockFaceCulling());
+        }
+
+        @Override
+        public void render(ChunkRenderMatrices matrices, CommandList commandList, ChunkRenderListIterable renderLists,
+                           TerrainRenderPass renderPass, CameraTransform occlusionCamera, CameraTransform camera) {
+            if (this.culler != null) {
+                this.culler.beginRenderPass(matrices, renderLists, renderPass, occlusionCamera, camera, this.useBlockFaceCulling());
+            }
+
+            try {
+                super.render(matrices, commandList, renderLists, renderPass, occlusionCamera, camera);
+            } finally {
+                if (this.culler != null) {
+                    this.culler.endPass();
+                }
+            }
+        }
+
+        @Override
+        protected @Nullable CachedBatch getRegionBatch(CommandList commandList,
+                                                       RenderRegion region,
+                                                       SectionRenderDataStorage storage,
+                                                       ChunkRenderList renderList,
+                                                       CameraTransform occlusionCamera,
+                                                       TerrainRenderPass renderPass,
+                                                       SectionRenderDataStorage.BatchCacheParams cacheParams) {
+            if (this.culler != null && this.culler.isComputeActiveThisPass()) {
+                return this.gpuBatch.wrap(this.culler.batchForRegion(region));
+            }
+
+            return super.getRegionBatch(commandList, region, storage, renderList, occlusionCamera, renderPass, cacheParams);
+        }
+
+        @Override
+        public void delete(CommandList commandList) {
+            super.delete(commandList);
+
+            if (this.culler != null) {
+                this.culler.delete();
             }
         }
 
@@ -291,6 +402,30 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         protected void configureShaderInterface(ChunkShaderInterface shader) {
             shader.setTextureSlot(ChunkShaderTextureSlot.BLOCK, 0);
             shader.setTextureSlot(ChunkShaderTextureSlot.LIGHT, 1);
+        }
+
+        /**
+         * Carries the compute culler's per-region indirect draw range into the CPU renderer's batch loop. The batch
+         * object is reused for every region, since the culler owns the ranges and this wrapper only hands them over.
+         */
+        private static final class ReusableCachedBatch extends CachedBatch {
+            private static final byte[] NO_SECTIONS = new byte[0];
+
+            private MultiDrawBatch batch;
+
+            ReusableCachedBatch() {
+                super(null, NO_SECTIONS, 0, 0, 0, 0, 0, 0, 0);
+            }
+
+            CachedBatch wrap(@Nullable MultiDrawBatch batch) {
+                this.batch = batch;
+                return this;
+            }
+
+            @Override
+            public @Nullable MultiDrawBatch getBatch() {
+                return this.batch;
+            }
         }
     }
 }

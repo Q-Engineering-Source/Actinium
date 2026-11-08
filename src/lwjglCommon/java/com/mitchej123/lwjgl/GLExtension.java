@@ -6,6 +6,7 @@ public enum GLExtension {
     ARB_draw_elements_base_vertex,
     ARB_direct_state_access,
     ARB_shader_storage_buffer_object,
+    ARB_compute_shader,
     ARB_sync,
     ARB_timer_query,
     ARB_debug_output,

@@ -13,6 +13,7 @@ import dhj.embeddedt.embeddium.impl.gui.framework.TextComponent;
 import dhj.embeddedt.embeddium.impl.gui.options.TextProvider;
 import dhj.embeddedt.embeddium.impl.render.chunk.MultiDrawMode;
 import dhj.embeddedt.embeddium.impl.render.chunk.occlusion.AsyncOcclusionMode;
+import dhj.embeddedt.embeddium.impl.render.culling.GpuCullingMode;
 
 import java.io.FileReader;
 import java.io.IOException;
@@ -92,6 +93,7 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         public boolean useFastBlockRenderer = true;
         public AsyncOcclusionMode asyncOcclusionMode = AsyncOcclusionMode.ONLY_SHADOW;
         public boolean useRasterOcclusionCulling = true;
+        public GpuCullingMode gpuCullingMode = GpuCullingMode.CPU_ONLY;
     }
 
     public static class AdvancedSettings {

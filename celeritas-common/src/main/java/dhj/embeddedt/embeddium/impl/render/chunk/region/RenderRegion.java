@@ -12,6 +12,7 @@ import dhj.embeddedt.embeddium.impl.render.chunk.RenderPassConfiguration;
 import dhj.embeddedt.embeddium.impl.render.chunk.RenderSection;
 import dhj.embeddedt.embeddium.impl.render.chunk.data.SectionRenderDataStorage;
 import dhj.embeddedt.embeddium.impl.render.chunk.terrain.TerrainRenderPass;
+import dhj.embeddedt.embeddium.impl.render.culling.RenderPassIndex;
 import dhj.embeddedt.embeddium.impl.common.util.MathUtil;
 import dhj.embeddedt.embeddium.impl.util.PositionUtil;
 import org.jetbrains.annotations.Nullable;
@@ -159,8 +160,10 @@ public class RenderRegion {
         var storage = this.sectionRenderData.get(pass);
 
         if (storage == null) {
-            this.sectionRenderData.put(pass, storage = new SectionRenderDataStorage(
-                    renderPassConfiguration.getPrimitiveTypeForPass(pass), pass.isSorted()));
+            storage = new SectionRenderDataStorage(
+                    renderPassConfiguration.getPrimitiveTypeForPass(pass), pass.isSorted());
+            storage.attachRegion(this, RenderPassIndex.indexOf(pass));
+            this.sectionRenderData.put(pass, storage);
             this.passSetUpdateCount++;
         }
 

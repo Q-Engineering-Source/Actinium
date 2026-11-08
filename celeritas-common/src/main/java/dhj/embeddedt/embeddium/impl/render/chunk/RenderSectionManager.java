@@ -96,7 +96,11 @@ public abstract class RenderSectionManager {
     private final ConcurrentLinkedDeque<ChunkJobResult<? extends ChunkTaskOutput>> buildResults = new ConcurrentLinkedDeque<>();
     private final ConcurrentLinkedDeque<Runnable> asyncSubmittedTasks = new ConcurrentLinkedDeque<>();
 
-    private final ChunkRenderer chunkRenderer;
+    /**
+     * The chunk render backend of this manager. Subclasses extend it with backend state of their own, which they have
+     * to reach through the instance this manager searched the frame for.
+     */
+    protected final ChunkRenderer chunkRenderer;
 
     private final int renderDistance;
 

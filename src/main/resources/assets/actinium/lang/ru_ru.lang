@@ -37,3 +37,7 @@ sodium.options.actinium.biome_color_noise.foliage.name=Шум биомов: Ли
 sodium.options.actinium.biome_color_noise.foliage.tooltip=Интенсивность шума цвета, основанного на позиции, применяемого к оттенкам листвы, в процентах. Более высокие значения делают пятнистость более заметной.
 sodium.options.actinium.biome_color_noise.water.name=Шум биомов: Вода
 sodium.options.actinium.biome_color_noise.water.tooltip=Интенсивность шума цвета, основанного на позиции, применяемого к оттенкам воды, в процентах. Более высокие значения делают пятнистость более заметной.
+options.actinium.gpuCullingMode=Режим отсечения GPU
+options.actinium.gpuCullingMode.tooltip=Выбирает способ отсечения секций чанков перед отрисовкой. «Только CPU» использует сборку и кэшированные пакеты регионов на CPU. «Compute» выполняет отсечение секций на GPU и отправляет их через косвенную множественную отрисовку, что требует вычислительных шейдеров GL 4.3, буферов хранения шейдеров и косвенной множественной отрисовки; при отсутствии поддержки драйвером опция остаётся недоступной.
+options.actinium.gpuCullingMode.cpu_only=Только CPU
+options.actinium.gpuCullingMode.compute=Вычисления GPU

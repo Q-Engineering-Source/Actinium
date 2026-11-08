@@ -304,6 +304,21 @@ bounded ByteBuffer 视图由 drawRaw 统一创建。此改动已通过自动化�
   - 其它：`asm.ProxyClassGenerator`、`biome.BiomeColorCache`、`runtime.EmbeddiumRuntimeOptions`、
     `texture.MipmapHelper`、`util.*`（集合、颜色、迭代器、随机、排序、任务）。
 
+### GPU 地形剔除
+
+`render.culling` 为区块 pass 准备可见条目、section metadata 与间接绘制命令。仅当计算着色器、SSBO、
+GL 4.2、indirect multidraw 与 `MultiDrawMode.INDIRECT` 均可用且选择 `COMPUTE` 时，存储才发布
+section metadata 并执行 compute；`CPU_ONLY` 与能力不足时沿用 `DefaultChunkRenderer` 的 CPU 批次。
+系统属性 `actinium.chunkMultiDrawMode` 与 GUI 的 MultiDraw 设置走同一解析路径。
+
+每个地形 pass 都有独立的可见条目与 indirect 命令区间，本地的 `water` 和 `translucent` 排序 pass
+分别准备、派发和选择，避免漏画或重复绘制。阴影 pass 使用自身列表并跳过玩家视锥的第二次剔除。
+`VintageRenderSectionManager` 持有剔除器并负责其生命周期，主地形 setup 只标记待准备状态，阴影后的
+首次主地形绘制再执行一次全 pass 准备，避免阴影列表使命中准备失效。compute 调用保存并恢复 program
+与 UBO/SSBO 索引绑定；世界卸载和客户端退出、切回 `CPU_ONLY`、以及新渲染器构造时能力探测失败，
+都释放镜像、暂存区和 GL 缓冲。切回 `CPU_ONLY` 后再次选择 `COMPUTE` 时，`GpuCulling.culler()`
+重建 compute 程序与缓冲，镜像从空表重新分配槽位。
+
 ### 遮挡搜索的并发契约
 
 地形 pass 与阴影 pass 共享同一个 `occlusion.SectionLattice` 与单条搜索线程

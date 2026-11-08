@@ -13,6 +13,7 @@ import com.dhj.actinium.debug.ActiniumDiagnostics;
 import com.dhj.actinium.mixin.vintage.core.terrain.AccessorEntityRenderer;
 import com.dhj.actinium.render.FastLitItemDisplayListCache;
 import com.dhj.actinium.render.terrain.ActiniumWorldRenderer;
+import com.dhj.actinium.render.terrain.GpuCullingSettings;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.gtnewhorizons.angelica.proxy.ClientProxy;
 import com.gtnewhorizon.gtnhlib.compat.Mods;
@@ -78,6 +79,7 @@ public class Actinium {
         RuntimeOptionsBridge.setAllowDirectMemoryAccess(ActiniumRuntimeOptions::allowDirectMemoryAccess);
         FogDistanceModeBridge.setCircularFogEnabledProvider(() -> ActiniumRuntime.options().quality.circularFog);
         EmbeddiumRuntimeOptions.setChunkMultiDrawMode(() -> ActiniumRuntime.options().advanced.multiDrawMode);
+        GpuCullingSettings.apply(ActiniumRuntime.options());
         PostProcessingBridge.setDepthTextureProvider(framebuffer -> ((IRenderTargetExt) framebuffer).iris$getDepthTextureId());
         PostProcessingBridge.setLightmapColorAccessor(renderer -> ((AccessorEntityRenderer) renderer).getLightmapColors());
         PostProcessingBridge.setLightmapTextureAccessor(renderer -> ((AccessorEntityRenderer) renderer).getLightmapTexture());
