@@ -113,6 +113,8 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
      * Performs a render pass for the given {@link BlockRenderLayer} and draws all visible chunks for it.
      */
     public void drawChunkLayer(BlockRenderLayer renderLayer, double x, double y, double z) {
+        this.prepareTerrainPasses(createChunkRenderMatrices(), x, y, z);
+
         RenderDebugHooksHolder.check("actinium:draw-chunk-layer:" + renderLayer + ":before-super");
         super.drawChunkLayer(renderLayer, x, y, z);
         RenderDebugHooksHolder.check("actinium:draw-chunk-layer:" + renderLayer + ":after-super");
@@ -124,6 +126,7 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
     public void drawChunkLayersDeduplicated(Collection<BlockRenderLayer> renderLayers, double x, double y, double z,
                                             Consumer<BlockRenderLayer> beforePass) {
         ChunkRenderMatrices matrices = createChunkRenderMatrices();
+        this.prepareTerrainPasses(matrices, x, y, z);
         Map<TerrainRenderPass, BlockRenderLayer> passes = new LinkedHashMap<>();
 
         for (BlockRenderLayer renderLayer : renderLayers) {
@@ -183,6 +186,20 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
     public void setupTerrain(Viewport viewport, CameraState cameraState, int frame, boolean spectator, boolean updateChunksImmediately) {
         this.shadowPassPlayerViewport = null;
         super.setupTerrain(viewport, cameraState, frame, spectator, updateChunksImmediately);
+
+        // The first main terrain draw prepares the compute culling ranges of these render lists. Doing it here would
+        // be discarded: the shadow pass draws between the setup and that draw, and its walk over the shadow render
+        // lists replaces everything prepared for the terrain lists.
+        this.renderSectionManager.markTerrainPreparationPending();
+    }
+
+    /**
+     * Prepares the compute culling ranges of the frame's terrain passes on the first main terrain draw that needs
+     * them. The section manager owns the culling backend and keeps the preparation pending across the shadow pass.
+     */
+    private void prepareTerrainPasses(ChunkRenderMatrices matrices, double x, double y, double z) {
+        this.renderSectionManager.prepareTerrainPasses(matrices, this.getLastViewport().getTransform(),
+            new CameraTransform(x, y, z));
     }
 
     /**

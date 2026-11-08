@@ -129,3 +129,7 @@ sodium.console.core_shaders_warn=The following resource packs may be incompatibl
 sodium.console.core_shaders_info=Check the game log for detailed information.
 sodium.options.biomeBlendRadius=Biome Blend
 sodium.options.open_external_page_button=Open
+options.actinium.gpuCullingMode=GPU Culling Mode
+options.actinium.gpuCullingMode.tooltip=Selects how chunk sections are culled before they are drawn. CPU Only uses the CPU emitter and its cached region batches. Compute culls sections on the GPU and submits them with indirect multi-draw, which requires GL 4.3 compute shaders, shader storage buffers and indirect multi-draw; the option stays disabled when the driver cannot provide them.
+options.actinium.gpuCullingMode.cpu_only=CPU Only
+options.actinium.gpuCullingMode.compute=Compute

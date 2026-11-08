@@ -15,6 +15,7 @@ import dhj.embeddedt.embeddium.impl.render.chunk.lists.SortedRenderLists;
 import dhj.embeddedt.embeddium.impl.render.chunk.map.ChunkTracker;
 import dhj.embeddedt.embeddium.impl.render.chunk.map.ChunkTrackerHolder;
 import dhj.embeddedt.embeddium.impl.render.chunk.terrain.TerrainRenderPass;
+import dhj.embeddedt.embeddium.impl.render.culling.GpuCulling;
 import dhj.embeddedt.embeddium.impl.render.viewport.CameraTransform;
 import dhj.embeddedt.embeddium.impl.render.viewport.Viewport;
 import dhj.embeddedt.embeddium.impl.util.*;
@@ -81,6 +82,8 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
     }
 
     protected void unloadWorld() {
+        GpuCulling.onWorldUnload();
+
         try {
             if (this.renderSectionManager != null) {
                 this.renderSectionManager.destroy();

@@ -123,3 +123,7 @@ sodium.console.core_shaders_warn=Следующие ресурспаки мог�
 sodium.console.core_shaders_info=Подробную информацию смотрите в логе игры.
 sodium.options.biomeBlendRadius=Смешение биомов
 sodium.options.open_external_page_button=Открыть
+options.actinium.gpuCullingMode=Режим отсечения GPU
+options.actinium.gpuCullingMode.tooltip=Выбирает способ отсечения секций чанков перед отрисовкой. «Только CPU» использует сборку и кэшированные пакеты регионов на CPU. «Compute» выполняет отсечение секций на GPU и отправляет их через косвенную множественную отрисовку, что требует вычислительных шейдеров GL 4.3, буферов хранения шейдеров и косвенной множественной отрисовки; при отсутствии поддержки драйвером опция остаётся недоступной.
+options.actinium.gpuCullingMode.cpu_only=Только CPU
+options.actinium.gpuCullingMode.compute=Вычисления GPU

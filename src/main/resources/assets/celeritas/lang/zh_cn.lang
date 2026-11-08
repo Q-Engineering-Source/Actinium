@@ -129,3 +129,7 @@ celeritas.options.fullscreen_mode.borderless=无边框
 sodium.options.open_external_page_button=打开
 sodium.options.enable_deferred_batching.name=延迟粒子批处理
 sodium.options.enable_deferred_batching.tooltip=将粒子绘制调用合并为更少的混合绘制批次。如果粒子渲染异常，请关闭此选项。
+options.actinium.gpuCullingMode=GPU 剔除模式
+options.actinium.gpuCullingMode.tooltip=选择区块区段在绘制前的剔除方式。CPU Only 使用 CPU 装配与缓存的分区批次；Compute 在 GPU 上完成区段剔除，并用间接多重绘制提交，需要 GL 4.3 计算着色器、着色器存储缓冲与间接多重绘制，驱动不支持时该选项会保持不可选。
+options.actinium.gpuCullingMode.cpu_only=仅 CPU
+options.actinium.gpuCullingMode.compute=GPU 计算

@@ -93,6 +93,33 @@ DEBUG 页原先与高级/性能页重复的 5 项（模型渲染器批处理、�
 **维护提示**：`fovModifierHand` 的写入点一旦被上游或其它补丁挪出
 `updateFovModifierHand()`，该 Mixin 会静默失去作用（不会报错），需同步检查。
 
+## GPU 剔除模式（`performance.gpuCullingMode`）
+
+高级页的 `actinium:gpu_culling_mode` 绑定 `SodiumGameOptions.performance.gpuCullingMode`
+（枚举 `dhj.embeddedt.embeddium.impl.render.culling.GpuCullingMode`：`CPU_ONLY` 默认、
+`COMPUTE`），标签键为 `options.actinium.gpuCullingMode` 与
+`options.actinium.gpuCullingMode.{tooltip,cpu_only,compute}`，六份 lang 文件均已登记。
+
+选项只影响写入点，两条路径共用同一份持久化字段：`Actinium.onConstruct` 在
+`EmbeddiumRuntimeOptions.setChunkMultiDrawMode` 之后调用 `GpuCullingSettings.apply`，高级页的
+binding 写入字段后同样调用该方法。两者都把模式推给 `GpuCulling.setMode`，因此配置装载与 GUI
+切换不会出现两处状态不一致。选项带 `REQUIRES_RENDERER_RELOAD`，切换后重载区块渲染器让
+`VintageRenderSectionManager.ChunkRenderer` 重新决定是否创建 `GpuTerrainCuller`。
+
+选项的可选性由 `GpuCulling::isAvailable` 决定：间接多重绘制、计算着色器与 SSBO 任一缺失时
+整项禁用，`CPU_ONLY` 不受影响。`CPU_ONLY` 下 `getRegionBatch` 仍走
+`DefaultChunkRenderer` 的缓存批次，`MultiDrawMode`、ChunkAnimator 的逐区段偏移绘制与阴影调度
+都不经过剔除器。
+
+section metadata 仅在 compute 可用且启用时发布，CPU 路径不为每个 section 分配镜像槽。主地形 setup
+只记录待准备状态，阴影后的首次主地形绘制再准备全部 pass 的 GPU 命令区间；每个排序 pass 独立保存
+这些区间，DIRECT、INDIVIDUAL 和 ChunkAnimator 路径不经过 compute。
+
+`GpuCulling.setMode` 在切到 `CPU_ONLY` 时释放 section 镜像与共享 compute 程序/缓冲，再次切回
+`COMPUTE` 时由 `GpuCulling.culler()` 重新创建，因此两个模式之间来回切换不会累积 GPU 资源。
+`ChunkRenderer.createCuller` 在能力探测失败时同样调用 `GpuCulling.shutdown()`，释放上一个渲染器
+留下的镜像与程序，已选中的模式保持不变。
+
 ## 圆形雾（`quality.circularFog`）
 
 默认关闭。开启后，无光影包时的原版雾使用相机到顶点的径向距离：固定管线着色器通过

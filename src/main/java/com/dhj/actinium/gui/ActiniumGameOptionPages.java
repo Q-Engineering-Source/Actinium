@@ -20,6 +20,9 @@ import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
 import dhj.embeddedt.embeddium.impl.gui.framework.TextComponent;
 import com.dhj.actinium.render.frame.FramePacer;
 import dhj.embeddedt.embeddium.impl.render.chunk.MultiDrawMode;
+import dhj.embeddedt.embeddium.impl.render.culling.GpuCulling;
+import dhj.embeddedt.embeddium.impl.render.culling.GpuCullingMode;
+import com.dhj.actinium.render.terrain.GpuCullingSettings;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import dhj.embeddedt.embeddium.api.options.structure.OptionFlag;
 import dhj.embeddedt.embeddium.api.options.structure.OptionGroup;
@@ -480,6 +483,22 @@ public class ActiniumGameOptionPages {
                         .setBinding((opts, value) -> opts.advanced.multiDrawMode = value, opts -> opts.advanced.multiDrawMode)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .setDefaultValue(MultiDrawMode.DIRECT)
+                        .build()
+                )
+                .add(OptionImpl.createBuilder(GpuCullingMode.class, sodiumOpts)
+                        .setId(OptionIdentifier.create("actinium", "gpu_culling_mode", GpuCullingMode.class))
+                        .setName(TextComponent.translatable("options.actinium.gpuCullingMode"))
+                        .setTooltip(TextComponent.translatable("options.actinium.gpuCullingMode.tooltip"))
+                        .setControl(option -> new CyclingControl<>(option, GpuCullingMode.class,
+                                new GpuCullingMode[] { GpuCullingMode.CPU_ONLY, GpuCullingMode.COMPUTE }))
+                        .setBinding((opts, value) -> {
+                            opts.performance.gpuCullingMode = value;
+                            GpuCullingSettings.apply(opts);
+                        }, opts -> opts.performance.gpuCullingMode)
+                        .setEnabledPredicate(GpuCulling::isAvailable)
+                        .setImpact(OptionImpact.HIGH)
+                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .setDefaultValue(GpuCullingMode.CPU_ONLY)
                         .build()
                 )
                 .add(OptionImpl.createBuilder(SodiumGameOptions.StreamingUploadStrategy.class, sodiumOpts)

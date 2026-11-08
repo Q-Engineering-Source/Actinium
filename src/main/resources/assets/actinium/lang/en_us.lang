@@ -39,3 +39,7 @@ sodium.options.actinium.biome_color_noise.foliage.name=Biome Noise: Foliage
 sodium.options.actinium.biome_color_noise.foliage.tooltip=Intensity of the position-based color noise applied to foliage tints, in percent. Higher values make the mottling more visible.
 sodium.options.actinium.biome_color_noise.water.name=Biome Noise: Water
 sodium.options.actinium.biome_color_noise.water.tooltip=Intensity of the position-based color noise applied to water tints, in percent. Higher values make the mottling more visible.
+options.actinium.gpuCullingMode=GPU Culling Mode
+options.actinium.gpuCullingMode.tooltip=Selects how chunk sections are culled before they are drawn. CPU Only uses the CPU emitter and its cached region batches. Compute culls sections on the GPU and submits them with indirect multi-draw, which requires GL 4.3 compute shaders, shader storage buffers and indirect multi-draw; the option stays disabled when the driver cannot provide them.
+options.actinium.gpuCullingMode.cpu_only=CPU Only
+options.actinium.gpuCullingMode.compute=Compute

@@ -33,14 +33,11 @@ import dhj.embeddedt.embeddium.impl.render.viewport.CameraTransform;
 import dhj.embeddedt.embeddium.api.debug.RenderDebugHooksHolder;
 import dhj.embeddedt.embeddium.api.render.chunk.ChunkAnimationProvider;
 import dhj.embeddedt.embeddium.api.render.chunk.ChunkAnimationProviderHolder;
-import com.mitchej123.lwjgl.GLExtension;
-import dhj.embeddedt.embeddium.impl.runtime.EmbeddiumRuntimeOptions;
+import dhj.embeddedt.embeddium.impl.render.culling.MultiDrawModeResolver;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-
-import static com.mitchej123.lwjgl.LWJGLServiceProvider.LWJGL;
 
 public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
     private static final Logger LOGGER = LogManager.getLogger("EmbeddiumChunkRenderer");
@@ -49,7 +46,7 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
     /**
      * Resolved multidraw mode; selects the storage format of assembled batches and how they are executed.
      */
-    private final MultiDrawMode multiDrawMode;
+    protected final MultiDrawMode multiDrawMode;
 
     /**
      * Scratch batch used only when a chunk animation provider is active: animated sections are diverted
@@ -78,28 +75,15 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
     }
 
     private static MultiDrawMode selectMultiDrawMode(RenderDevice device) {
-        String override = System.getProperty("actinium.chunkMultiDrawMode", "").trim();
-        MultiDrawMode configuredMode = EmbeddiumRuntimeOptions.chunkMultiDrawMode();
-        MultiDrawMode mode = override.isEmpty() ? configuredMode : MultiDrawMode.fromProperty(override);
-        boolean gl32 = LWJGL.isOpenGLVersionSupported(3, 2);
-        boolean gl43 = LWJGL.isOpenGLVersionSupported(4, 3);
-        boolean arbIndirect = LWJGL.isExtensionSupported(GLExtension.ARB_multi_draw_indirect);
-
-        if (mode == MultiDrawMode.INDIRECT && !gl43 && !arbIndirect) {
-            LOGGER.warn("Indirect chunk multidraw is not supported, falling back to direct (GL43={}, ARB_multi_draw_indirect={})", gl43, arbIndirect);
-            mode = MultiDrawMode.DIRECT;
-        }
+        MultiDrawMode mode = MultiDrawModeResolver.resolve();
 
         if (!loggedMultiDrawMode) {
             loggedMultiDrawMode = true;
             LOGGER.info(
-                "Chunk multidraw mode: requested={}, selected={}, directFunction={}, GL32={}, GL43={}, ARB_multi_draw_indirect={}",
-                override.isEmpty() ? configuredMode.id() : override,
+                "Chunk multidraw mode: selected={}, directFunction={}, indirectSupported={}",
                 mode.id(),
                 device.getDeviceFunctions().multidrawFunctions(),
-                gl32,
-                gl43,
-                arbIndirect
+                MultiDrawModeResolver.supportsMultiDrawIndirect()
             );
         }
 
@@ -389,7 +373,7 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
         return (chunkBlockPos - cameraBlockPos) - cameraPos;
     }
 
-    private GlTessellation prepareTessellation(CommandList commandList, RenderRegion region) {
+    protected GlTessellation prepareTessellation(CommandList commandList, RenderRegion region) {
         var resources = region.getResources(this.currentVertexFormat);
         var tessellation = this.currentRenderPass.isSorted() ? resources.getIndexedTessellation() : resources.getTessellation();
 
