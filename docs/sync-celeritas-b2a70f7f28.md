@@ -14,7 +14,7 @@
 | 附加前置 | 1（`2334caab0`，范围外，单列成节） |
 | `未分配` 条目 | 0 |
 
-统计（主表 36 行）：待同步 23、分 hunk 同步 2、已有等价 1、不适用 10。
+统计（主表 36 行）：待同步 2、分 hunk 同步 0、已有等价 1、不适用 10、已同步 23（C05 四行计入已同步，待实机验证）。
 
 ## 边界
 
@@ -45,11 +45,11 @@
 | 8 | `26ab21758` | Route the fast block renderer through BlockRendererDispatcher | 2026-10-01 | 待同步 | C08 | 快速方块渲染器改走 `BlockRendererDispatcher`；本地 `VintageBlockRenderer.renderBlock` 仍自行 `getActualState` 加 `shapes.getModelForState`，无 `ChunkBufferBuilder` 与 dispatcher mixin |
 | 9 | `6150f9694` | Fix Oculus ShaderChunkRenderer init mixin after FogService constructor change | 2026-10-01 | 不适用 | — | 修的是 modern 源集里 Oculus 的 `MixinShaderChunkRenderer`，本地无该 Mixin |
 | 10 | `48eb54f5c` | Don't treat vertices past the far plane as needing a near clip | 2026-10-01 | 已同步 | C01 | 已核实 `AbstractRasterizer.needsNearClip` 与 `PerspectiveRasterizer` 仅接受 `w > 0 && tz > 0`，远平面外顶点不再触发近平面裁剪，避免边界覆盖误判 |
-| 11 | `7818b3317` | Relax SectionLattice restrictions on world height | 2026-10-11 | 待同步 | C05 | 放宽 `SectionLattice` 的世界高度限制（Y 也参与窗口化）；本地 `SectionLattice` 的 Y 维固定为全世界高度，`dimY` 超 `MAX_DIM` 直接抛异常 |
+| 11 | `7818b3317` | Relax SectionLattice restrictions on world height | 2026-10-11 | 已同步（`feat/c05-shadow-lattice`） | C05 | `SectionLattice` 以 `worldDimY` 记录世界高度加两侧哨兵，`allocate` 取 `dimY = min(worldDimY, dimXZ)` 并由 `windowedY` 决定 Y 是否随相机窗口化；`shiftRebase`、`dropLeaving`、`fillNewBand` 扩为三轴，新增 `shiftContentsWithY` 与 `moveCells` 搬运全部平行数组（含 `shadowVisitState`）。构造函数不再因世界高度超过 `MAX_DIM` 抛异常 |
 | 12 | `ff6331466` | Add project docs | 2026-10-13 | 不适用 | — | 新增 `CLAUDE.md`，属治理文件 |
 | 13 | `d94ec1e59` | Avoid carrying the transparency level enum through pixel loops | 2026-10-13 | 已有等价 | — | 本地 `MixinTextureAtlasSprite.embeddium$processTransparentImages` 已用 ordinal 累积替代逐像素 `chooseNextLevel` 调用（`src/main/java/com/dhj/actinium/mixin/vintage/features/mipmaps/MixinTextureAtlasSprite.java:73` 起），并保留 `chooseNextLevel` 于 `SpriteTransparencyLevel`；上游新增的 `SpriteTransparencyLevel.of(boolean, boolean)` 静态 helper 是可评估项，本次不引入 |
-| 14 | `d3946af4e` | Move the shadow window update onto the search thread | 2026-10-22 | 分 hunk 同步 | C05 | 只取并发语义：窗口准备不得与执行中的搜索重叠。本地已用 `SectionGraph.prepareWindow`（`celeritas-common/src/main/java/dhj/embeddedt/embeddium/impl/render/chunk/lists/SectionGraph.java:72`）加 `assertSearchNotRunning` 在提交搜索前统一准备所有视口，比上游把 `ensureWindowCovers` 移进搜索线程更早；不采用后者 |
-| 15 | `c2823be43` | Remap the shadow search roots when the lattice window moves | 2026-10-22 | 待同步 | C05 | 窗口移动后重映射阴影搜索根；本地 `SectionLattice` 无 `remapVisibleCells`，`visibleCells` 仅在 `OcclusionCuller` 写入后由 `ShadowOcclusionCuller` 直接读取 |
+| 14 | `d3946af4e` | Move the shadow window update onto the search thread | 2026-10-22 | 已同步（`feat/c05-shadow-lattice`） | C05 | 只取并发语义：窗口准备不得与执行中的搜索重叠。本地已用 `SectionGraph.prepareWindow`（`celeritas-common/src/main/java/dhj/embeddedt/embeddium/impl/render/chunk/lists/SectionGraph.java:72`）加 `assertSearchNotRunning` 在提交搜索前统一准备所有视口，比上游把 `ensureWindowCovers` 移进搜索线程更早；不采用后者 |
+| 15 | `c2823be43` | Remap the shadow search roots when the lattice window moves | 2026-10-22 | 已同步（`feat/c05-shadow-lattice`） | C05 | `SectionLattice.remapVisibleCells` 在 `rebase`/`shiftRebase` 之后按旧原点解出根的世界坐标，用新窗口重解析槽位并重写打包坐标，落出窗口的根被丢弃，`visibleCount` 同步收缩；窗口未变化时提前返回。`ShadowOcclusionCuller.seed` 的注释同步说明根集会被重映射 |
 | 16 | `625b6f40f` | Stop translucent sorting hanging on non-finite quads | 2026-10-22 | 已同步 | C01 | 已核实 `TranslucentQuadRecorder` 将非有限四边形记为退化，`QuadSet.union` 与 `TranslucentSorter` 的共面/包围盒分析跳过退化四边形，排序索引仍保留 |
 | 17 | `86d4cfe7b` | Align geometry arena elements to whole primitives | 2026-10-27 | 已同步（`feat/shared-chunk-infrastructure`） | C03 | `computeCommonVertexStride` 对各 pass 的 `stride * verticesPerPrimitive` 求 `lcm`，arena 的每次分配从完整图元边界开始，避免 `gl_VertexID` 取错 quad 角点；真实 GL 测试覆盖跨格式上传与 arena 搬移 |
 | 18 | `b34b76ae2` | [modern] treat blended equal-depth render types as decals | 2026-10-27 | 不适用 | — | 改的是 `modern/src/main/batching_java` 的 Iris 渲染类型，本地无 modern 源集 |
@@ -66,7 +66,7 @@
 | 29 | `77aec052d` | Let subclasses gate the shadow-pass search | 2026-09-08 | 已同步（`feat/shadow-pass-scheduling`） | C06 | `RenderSectionManager` 拆出 `canSubmitShadowGraphSearch` 与 `submitShadowGraphSearch`，保留统一窗口准备与地形搜索顺序；`VintageRenderSectionManager` 仅在阴影列表 dirty 时提交并累计提交次数 |
 | 30 | `14cb5f7f0` | Upload build results in the shadow pass instead of joining its searches | 2026-09-27 | 已同步（`feat/shadow-pass-scheduling`） | C06 | 阴影搜索提交前上传构建结果，主地形 setup 只补传 `blockingResultsPending`；树排序始终进入地形队列，上传时检查两边 `hasAdditionalUpdates`，`updateChunksImmediately` 的末尾上传保留。真实 GL 测试覆盖调度顺序、子类门控与阻塞结果补传 |
 | 31 | `f33e50ce0` | Test that a non-finite quad can't stall translucent sorting | 2026-10-21 | 已同步 | C01 | `src/test/java/dhj/embeddedt/embeddium/impl/render/chunk/sorting/TranslucentQuadRecorderTest.java` 覆盖非有限四边形的退化记录、有限值、共面快捷路径与包围盒判定 |
-| 32 | `408881f27` | Test shadow search roots across a lattice window move | 2026-10-21 | 待同步 | C05 | 窗口移动后阴影搜索根的测试；本地无 `SectionLatticeWindowTest` 与 `TestRegions`，按 Actinium 现有结构落在根项目 `src/test` |
+| 32 | `408881f27` | Test shadow search roots across a lattice window move | 2026-10-21 | 已同步（`feat/c05-shadow-lattice`） | C05 | `src/test/java/dhj/embeddedt/embeddium/impl/render/chunk/occlusion/SectionLatticeWindowTest.java` 覆盖窗口移动后的根集与超高世界的近相机搜索；fixture 经 `region/TestRegions.java` 构造 compact stride 的 region |
 | 33 | `9a731e9b6` | Bump GTNH build to 2.5.13 | 2026-10-21 | 不适用 | — | `common/build.gradle` 的 GTNH 构建版本号提升 |
 | 34 | `69e91690d` | Reuse the indirect command buffer when a region batch is rebuilt | 2026-10-25 | 已同步（`feat/chunk-batch-recycling`） | C04 | `BatchBufferRecycler` 保存至多两个待复用缓冲，重建前先退休旧批次，`BatchAssembler` 在上传前接管其缓冲；`IndirectMultiDrawBatch` 延迟创建、分离并判空删除缓冲，`SectionRenderDataStorage.delete` 清理全部 spare。`CommandList` 与 `GLRenderDevice` 新增显式 target 上传，indirect 固定走 `DRAW_INDIRECT_BUFFER`，旧重载继续使用 `ARRAY_BUFFER`。保留本地 `MultiDrawMode`，`MultiDrawBatchFactory` 仅作为覆盖入口，默认 DIRECT/INDIVIDUAL 行为不变；真实 GL 测试验证缓冲名复用与最终释放 |
 | 35 | `6bf6a433f` | Key cached batches by view | 2026-10-28 | 已同步（`feat/chunk-batch-recycling`） | C04 | `BatchCacheParams` 包含 `useBlockFaceCulling` 与 `view`，view 0/1 复用四个共享键，其余视口按值比较。`DefaultChunkRenderer.batchCacheParams` 提供覆写入口，默认仍为 view 0；目标 Angelica 未提供阴影视口的 view 1 覆写，C06 已核对并保持默认值，阴影批次由自身面剔除配置的缓存键区分。`getRegionBatch` 集中缓存查询与重建，两个视口交替时各自保留批次和缓冲 |

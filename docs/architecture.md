@@ -333,7 +333,7 @@ section metadata 并执行 compute；`CPU_ONLY` 与能力不足时沿用 `Defaul
 （`visitState`/`sectionMeta`/`regionOfCell`/`latticeSection`），因此自搜索提交到 join 期间
 这些数组必须保持结构稳定：
 
-- `attach/detach` 由 `SectionGraph.assertSearchNotRunning()` 兜底（在飞即抛异常）；
+- `attach/detach` 由 `SectionGraph.assertSearchNotRunning()` 拦截，搜索在飞时抛异常；
 - 元数据更新由 `SectionGraph.submitUpdateTask` 延迟到所有搜索 join 后执行；
 - 窗口准备（`SectionLattice.ensureWindowCovers`，可能触发 allocate/shiftRebase/rebase 就地
   改写数组）只能经 `SectionGraph.prepareWindow` 在无搜索在飞时执行。两个 pass 的窗口准备
@@ -342,11 +342,20 @@ section metadata 并执行 compute；`CPU_ONLY` 与能力不足时沿用 `Defaul
 
 两个 pass 的相机并不相同：地形搜索使用主地形 setup 捕获的玩家 viewport，阴影搜索使用本轮
 阴影 frustum 的 viewport。窗口因此按全部搜索相机的跨度开窗（`RenderListManager.prepareSearchWindow`
-可传多个 viewport），保证两边的搜索 root 都落在 lattice 可安装区内；单相机时窗口尺寸与
-放置与原先一致，没有阴影 pass 的世界不受影响。
+可传多个 viewport），保证两边的搜索 root 都落在 lattice 可安装区内；单相机时 X/Z 尺寸与放置与原先
+一致，Y 轴是否窗口化只取决于世界高度。
 
-阴影搜索（`ShadowOcclusionCuller`）消费地形搜索当帧写出的 `visibleCells` 根集，因此两次
-搜索之间不允许任何结构变化（含窗口重建）。
+窗口的 Y 轴由世界高度决定：`worldDimY` 取世界高度加两侧哨兵（`maxSectionY - minSectionY + 2`），
+`allocate` 令 `dimY = min(worldDimY, dimXZ)` 并据此设置 `windowedY`。`worldDimY <= dimXZ` 时 Y 覆盖整个
+世界高度，`baseY` 固定为 `minSectionY - 1`；`worldDimY > dimXZ` 时 Y 与 X/Z 一样随相机移动，构造函数不再
+因高度超过 `MAX_DIM` 抛异常。原版 18 段高的世界在 radius 2/3（`dimXZ` 15/17）下同样满足后一条件，低渲染
+距离的原版世界因此也走 Y 窗口，这是 `newDimY = min(worldDimY, dimXZ)` 的直接结果。多相机开窗同时统计三轴
+跨度，Y 跨度并入同一个 `SLACK` 余量，Y 原点取所有相机的中心。
+
+阴影搜索（`ShadowOcclusionCuller`）消费地形搜索当帧写出的 `visibleCells` 根集。两次搜索之间仍不允许
+`attach/detach` 与元数据改写；窗口实际移动时，`ensureWindowCovers` 在 `rebase` 或 `shiftRebase` 之后调用
+`remapVisibleCells`：按旧原点把每个根解回世界坐标，用新窗口重新解析槽位并按新原点重写打包坐标，落出
+窗口的根被丢弃，`visibleCount` 同步收缩。窗口没有变化时提前返回，根集保持原样。
 
 本地主地形 setup 先于阴影渲染，阴影地形绘制先于主地形绘制。阴影渲染在重建 frustum 前 join
 上一轮的搜索，随后由 `SimpleWorldRenderer.setupShadowTerrain` 在提交新搜索之前上传构建结果。
