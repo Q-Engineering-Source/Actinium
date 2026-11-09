@@ -47,7 +47,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import dhj.embeddedt.embeddium.api.debug.RenderDebugHooksHolder;
 import com.dhj.actinium.render.entity.EntityGatherer;
 import com.dhj.actinium.render.terrain.ActiniumWorldRenderer;
+import com.dhj.actinium.render.terrain.LeafRenderQuality;
 import com.dhj.actinium.render.terrain.TileEntityGlStateGuard;
+import com.dhj.actinium.runtime.ActiniumRuntime;
 
 import java.util.*;
 
@@ -276,11 +278,17 @@ public abstract class MixinRenderGlobal implements SimpleWorldRenderer.Provider<
         return true;
     }
 
+    @Inject(method = "loadRenderers", at = @At("HEAD"))
+    private void actinium$takeOverGraphicsQuality(CallbackInfo ci) {
+        LeafRenderQuality.pinFancyGraphics(this.mc.gameSettings);
+    }
+
     @Inject(method = "loadRenderers", at = @At("RETURN"))
     private void onReload(CallbackInfo ci) {
         ManagedCodeBoundary.enter();
 
         try {
+            LeafRenderQuality.apply(ActiniumRuntime.options().quality.leavesQuality, this.mc.gameSettings.fancyGraphics);
             this.renderer.reload();
         } finally {
             ManagedCodeBoundary.exit();

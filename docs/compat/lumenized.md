@@ -1,7 +1,7 @@
 # Lumenized / GTCEu Bloom 兼容性说明
 
 兼容状态：**兼容**（Lumenized 动态光源 + Bloom 泛光、GTCEu Bloom 泛光均通过同一兼容层工作）
-最后更新：2026-10-08
+最后更新：2026-11-09
 
 ## 模组信息
 
@@ -69,8 +69,20 @@
 - **GTCEu 共存启动崩溃（EntityRenderer invalid classes）**：GregTechTransformer ASM
   替换 translucent 调用点导致 Actinium 侧 ordinal=3 调试标记注入 0 命中，已放宽为
   `require=0`（commit `2e61e73b`）。
+- **Derivative 水体厚度丢失**：Lumenized 的 `BloomEffectUtil.renderBloomBlockLayer` 再次调用
+  `RenderGlobal.renderBlockLayer`，使 `beginTranslucents()` 第二次执行并把水面深度写入
+  `depthtex1`。Derivative 比较 `depthtex0` 与 `depthtex1` 时得到接近零的水体厚度。
+  `RenderTargets` 现在每个 level render pass 只复制一次半透明前深度，在下一 pass 或深度纹理
+  重建后重新复制。Lumenized 的 depth hook 与 Bloom 保持启用。
 
 ## 验证记录
+
+- `RenderTargetsTranslucentDepthGLTest` 使用真实 `RenderTargets`、深度纹理与 framebuffer，
+  覆盖 `DEPTH24`、`DEPTH24_STENCIL8` 两种格式，验证重复复制、纹理重建和下一 pass 更新。
+  用户已在 NovaEngineering-World (1) 的 Derivative + Lumenized 环境确认水体厚度恢复，
+  并在 Cleanroom 实例确认 FAST 树叶填隙、FANCY 树叶镂空。
+
+## 历史验证
 
 - 2026-09-08：手部/所持物品全黑与泛光效果在 GTCEu 与 Lumenized 两条路径下实机验证均正常。
 - 2026-08-28：GTCEu 2.8.10-beta（curse 557242:5519022）+ CubicChunks 共存启动不再崩溃

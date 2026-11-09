@@ -236,20 +236,6 @@ public class ActiniumGameOptionPages {
         List<OptionGroup> groups = new ArrayList<>();
 
         groups.add(OptionGroup.createBuilder()
-                .setId(StandardOptions.Group.GRAPHICS)
-                .add(OptionImpl.createBuilder(boolean.class, vanillaOpts)
-                        .setId(StandardOptions.Option.GRAPHICS_MODE.cast())
-                        .setName(TextComponent.translatable("options.graphics"))
-                        .setTooltip(TextComponent.translatable("sodium.options.graphics_quality.tooltip"))
-                        .setControl(TickBoxControl::new)
-                        .setBinding((opts, value) -> opts.fancyGraphics = value, opts -> opts.fancyGraphics)
-                        .setImpact(OptionImpact.HIGH)
-                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
-                        .setDefaultValue(true)
-                        .build())
-                .build());
-
-        groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.DETAILS)
                 .add(OptionImpl.createBuilder(int.class, vanillaOpts)
                         .setId(StandardOptions.Option.CLOUDS.cast())

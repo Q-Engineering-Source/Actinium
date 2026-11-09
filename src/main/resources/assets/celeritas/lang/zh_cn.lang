@@ -48,7 +48,6 @@ sodium.options.fps_limit.tooltip=限制每秒最大帧数。在多任务场景�
 sodium.options.view_bobbing.tooltip=启用后，玩家移动时视角会晃动。若你游玩时容易晕动，关闭此选项会更舒服。
 sodium.options.attack_indicator.tooltip=控制攻击指示器在屏幕上的显示位置。
 sodium.options.autosave_indicator.tooltip=启用后，游戏将会在保存世界到磁盘时显示提示。
-sodium.options.graphics_quality.tooltip=默认图像质量会控制部分旧版图形选项，并且对模组兼容性很重要。如果下面的选项保持为“默认”，它们将继承此设置。
 sodium.options.clouds_quality.tooltip=控制天空中云层的渲染显示。
 sodium.options.weather_quality.tooltip=控制雨雪效果的显示质量。
 sodium.options.leaves_quality.name=树叶

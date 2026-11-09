@@ -52,6 +52,7 @@ public class RenderTargets {
     private boolean fullClearRequired;
 	private boolean translucentDepthDirty;
 	private boolean handDepthDirty;
+	private boolean preTranslucentDepthCopied;
 
 	private int cachedDepthBufferVersion;
 
@@ -197,10 +198,19 @@ public class RenderTargets {
             fullClearRequired = true;
         }
 
+        if (recreateDepth || depthFormatChanged || sizeChanged) {
+            preTranslucentDepthCopied = false;
+        }
+
         return sizeChanged;
     }
 
 	public void copyPreTranslucentDepth() {
+		if (preTranslucentDepthCopied) {
+			return;
+		}
+		preTranslucentDepthCopied = true;
+
 		if (translucentDepthDirty) {
 			translucentDepthDirty = false;
 			GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, noTranslucents.getTextureId());
@@ -224,6 +234,16 @@ public class RenderTargets {
 
     public void onFullClear() {
 		fullClearRequired = false;
+	}
+
+	/**
+	 * Marks the start of one level render pass, the point where depthtex1 is allowed to be copied again. Bloom
+	 * compatibility layers re-enter {@code beginTranslucents} after translucent geometry is already in the depth
+	 * buffer; without this marker those repeats would replace the pre-translucent depth that shader packs use to
+	 * measure water thickness.
+	 */
+	public void onLevelRenderStart() {
+		preTranslucentDepthCopied = false;
 	}
 
 	public GlFramebuffer createFramebufferWritingToMain(int[] drawBuffers) {

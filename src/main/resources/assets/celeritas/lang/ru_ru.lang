@@ -53,7 +53,6 @@ sodium.options.fps_limit.tooltip=Ограничивает максимально
 sodium.options.view_bobbing.tooltip=Если включено, вид игрока будет покачиваться при передвижении. Игроки, испытывающие укачивание, могут отключить эту опцию.
 sodium.options.attack_indicator.tooltip=Определяет, где на экране отображается индикатор атаки.
 sodium.options.autosave_indicator.tooltip=Если включено, будет отображаться индикатор, когда игра сохраняет мир на диск.
-sodium.options.graphics_quality.tooltip=Общее качество графики управляет некоторыми устаревшими опциями и необходимо для совместимости с модами. Если опции ниже оставлены как "По умолчанию", они будут использовать эту настройку.
 sodium.options.clouds_quality.tooltip=Управляет наличием облаков в небе.
 sodium.options.weather_quality.tooltip=Управляет качеством эффектов дождя и снега.
 sodium.options.leaves_quality.name=Листва

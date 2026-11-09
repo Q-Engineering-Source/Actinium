@@ -29,4 +29,9 @@ public class MixinEntityRenderer {
     private boolean redirectGetFancyWeather(GameSettings instance) {
         return ActiniumRuntime.options().quality.weatherQuality.isFancy(Minecraft.getMinecraft().gameSettings.fancyGraphics);
     }
+
+    @Redirect(method = "addRainParticles", at = @At(value = "FIELD", target = "Lnet/minecraft/client/settings/GameSettings;fancyGraphics:Z", opcode = Opcodes.GETFIELD))
+    private boolean redirectGetFancyWeatherParticles(GameSettings instance) {
+        return ActiniumRuntime.options().quality.weatherQuality.isFancy(Minecraft.getMinecraft().gameSettings.fancyGraphics);
+    }
 }
