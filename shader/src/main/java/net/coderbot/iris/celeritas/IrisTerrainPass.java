@@ -27,6 +27,15 @@ public enum IrisTerrainPass {
         return this == SHADOW || this == SHADOW_CUTOUT || this == SHADOW_TRANSLUCENT;
     }
 
+    /**
+     * Whether the pass keeps vanilla's opaque alpha semantics. Vanilla draws the solid layer with
+     * the alpha test disabled, so these passes must neither enable an alpha test nor discard
+     * fragments by atlas alpha.
+     */
+    public boolean usesOpaqueAlpha() {
+        return this == GBUFFER_SOLID || this == SHADOW;
+    }
+
     public TerrainRenderPass toTerrainPass(RenderPassConfiguration<?> config) {
         return switch (this) {
             case SHADOW, GBUFFER_SOLID -> config.defaultSolidMaterial().pass;

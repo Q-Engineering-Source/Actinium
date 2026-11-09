@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -55,6 +56,7 @@ public class CeleritasTerrainPipeline {
     @Getter
     @Accessors(fluent = true)
     public static final class PassInfo {
+        private final IrisTerrainPass pass;
         private final EnumMap<PatchShaderType, Optional<String>> sources = new EnumMap<>(PatchShaderType.class);
         private GlFramebuffer framebuffer;
         private AlphaTestOverride alphaTestOverride;
@@ -62,7 +64,8 @@ public class CeleritasTerrainPipeline {
         private List<BufferBlendOverride> bufferBlendOverrides;
         private float alphaReference;
 
-        private PassInfo() {
+        private PassInfo(IrisTerrainPass pass) {
+            this.pass = pass;
             for (PatchShaderType type : PatchShaderType.VALUES) {
                 sources.put(type, Optional.empty());
             }
@@ -109,7 +112,7 @@ public class CeleritasTerrainPipeline {
 
         // Initialize PassInfo, framebuffers, blend modes, and alpha in single pass
         for (IrisTerrainPass pass : IrisTerrainPass.VALUES) {
-            PassInfo passInfo = new PassInfo();
+            PassInfo passInfo = new PassInfo(pass);
             passInfoMap.put(pass, passInfo);
 
             // Set up framebuffer, blend mode, and buffer blend overrides
@@ -180,14 +183,21 @@ public class CeleritasTerrainPipeline {
         try {
             final Map<PatchShaderType, String> result = future.join();
             final String vertexSource = result.get(PatchShaderType.VERTEX);
+            final String geometrySource = result.get(PatchShaderType.GEOMETRY);
+            final String fragmentSource = result.get(PatchShaderType.FRAGMENT);
             transformedVertexSources.add(vertexSource == null ? "" : vertexSource);
             for (PassInfo target : targets) {
+                final String targetFragment = SolidPassAlphaDiscardTransformer.forPass(target.pass(), fragmentSource);
                 target.setSource(PatchShaderType.VERTEX, vertexSource);
-                target.setSource(PatchShaderType.GEOMETRY, result.get(PatchShaderType.GEOMETRY));
-                target.setSource(PatchShaderType.FRAGMENT, result.get(PatchShaderType.FRAGMENT));
+                target.setSource(PatchShaderType.GEOMETRY, geometrySource);
+                target.setSource(PatchShaderType.FRAGMENT, targetFragment);
+                if (targetFragment != null && !targetFragment.equals(fragmentSource)) {
+                    PatchedShaderPrinter.debugPatchedShaders(sourceName + "_celeritas_" + target.pass().name().toLowerCase(Locale.ROOT),
+                        null, null, targetFragment);
+                }
             }
             PatchedShaderPrinter.debugPatchedShaders(sourceName + "_celeritas",
-                result.get(PatchShaderType.VERTEX), result.get(PatchShaderType.GEOMETRY), result.get(PatchShaderType.FRAGMENT));
+                vertexSource, geometrySource, fragmentSource);
         } catch (Exception e) {
             Iris.logger.error("Failed to transform shader for Celeritas: {}", sourceName, e);
             throw new RuntimeException("Shader transformation failed for " + sourceName, e);
@@ -236,6 +246,9 @@ public class CeleritasTerrainPipeline {
     }
 
     static AlphaTestOverride resolveAlphaTestOverride(Optional<AlphaTestOverride> shaderPackOverride, IrisTerrainPass pass) {
+        if (pass.usesOpaqueAlpha()) {
+            return AlphaTestOverride.OFF;
+        }
         return shaderPackOverride.orElseGet(() -> switch (pass) {
             case GBUFFER_CUTOUT, SHADOW_CUTOUT -> new AlphaTestOverride(new AlphaTest(AlphaTestFunction.GREATER, 0.1f));
             case GBUFFER_TRANSLUCENT, SHADOW_TRANSLUCENT -> new AlphaTestOverride(new AlphaTest(AlphaTestFunction.GREATER, 0.0001f));

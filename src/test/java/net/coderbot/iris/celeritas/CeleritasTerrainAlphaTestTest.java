@@ -31,6 +31,30 @@ class CeleritasTerrainAlphaTestTest {
     }
 
     @Test
+    void opaquePassesIgnoreShaderPackAlphaTest() {
+        AlphaTestOverride override = new AlphaTestOverride(new AlphaTest(AlphaTestFunction.GREATER, 0.5f));
+
+        assertSame(AlphaTestOverride.OFF, CeleritasTerrainPipeline.resolveAlphaTestOverride(
+                Optional.of(override),
+                IrisTerrainPass.GBUFFER_SOLID));
+        assertSame(AlphaTestOverride.OFF, CeleritasTerrainPipeline.resolveAlphaTestOverride(
+                Optional.of(override),
+                IrisTerrainPass.SHADOW));
+    }
+
+    @Test
+    void cutoutPassesStillFollowShaderPackAlphaTest() {
+        AlphaTestOverride override = new AlphaTestOverride(new AlphaTest(AlphaTestFunction.GREATER, 0.5f));
+
+        assertSame(override, CeleritasTerrainPipeline.resolveAlphaTestOverride(
+                Optional.of(override),
+                IrisTerrainPass.GBUFFER_CUTOUT));
+        assertSame(override, CeleritasTerrainPipeline.resolveAlphaTestOverride(
+                Optional.of(override),
+                IrisTerrainPass.SHADOW_CUTOUT));
+    }
+
+    @Test
     void fallbacksMatchIrisSodiumTerrainDefaults() {
         assertEquals(0.0001f, CeleritasTerrainPipeline.resolveAlphaTestOverride(
                 Optional.empty(),

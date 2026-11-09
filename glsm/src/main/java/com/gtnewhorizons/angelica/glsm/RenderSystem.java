@@ -66,6 +66,9 @@ public class RenderSystem {
     private static volatile boolean isLTW;
     private static volatile boolean ltwDetected;
 
+    private static volatile Boolean snormFormatsForTesting;
+    private static volatile Boolean packedFloatRenderableForTesting;
+
     // Sampler object state tracking (null if unsupported)
     private static int[] samplers;
 
@@ -712,11 +715,23 @@ public class RenderSystem {
 
     public static boolean supportsSnormFormats() {
         if (isGLES()) return false;
-        return GLStateManager.capabilities.OpenGL31;
+        final Boolean forTesting = snormFormatsForTesting;
+        return forTesting != null ? forTesting : GLStateManager.capabilities.OpenGL31;
     }
 
     public static boolean supportsPackedFloatRenderable() {
-        return GLStateManager.capabilities.OpenGL30 && maxGlslVersion >= 130;
+        final Boolean forTesting = packedFloatRenderableForTesting;
+        return forTesting != null ? forTesting : GLStateManager.capabilities.OpenGL30 && maxGlslVersion >= 130;
+    }
+
+    /**
+     * Supplies the two capability answers that the render-target format fallback reads. The SDL integration harness runs
+     * without the LWJGL2 capability facade behind {@link GLStateManager#capabilities}, so driver-integration tests pass
+     * the live context's answers instead.
+     */
+    public static void initializeFormatFallbackSupportForTesting(boolean snormFormats, boolean packedFloatRenderable) {
+        snormFormatsForTesting = snormFormats;
+        packedFloatRenderableForTesting = packedFloatRenderable;
     }
 
     public static boolean supportsTesselation() {

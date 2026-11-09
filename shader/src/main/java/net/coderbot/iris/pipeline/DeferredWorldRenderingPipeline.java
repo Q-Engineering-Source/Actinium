@@ -1826,6 +1826,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
         this.customUniforms.update();
 
+		renderTargets.onLevelRenderStart();
 		prepareRenderTargets();
 
 		for (GlImage image : imagesToClear) {

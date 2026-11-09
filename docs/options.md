@@ -58,11 +58,65 @@ DEBUG 页原先与高级/性能页重复的 5 项（模型渲染器批处理、�
 
 | 选项 | 字段 | 实现落点 |
 | --- | --- | --- |
-| 天气质量 | `quality.weatherQuality` | `mixin.vintage.features.options.MixinEntityRenderer`（`renderRainSnow` 重定向 `fancyGraphics`） |
-| 树叶质量 | `quality.leavesQuality` | 资源重载路径 |
+| 天气质量 | `quality.weatherQuality` | `mixin.vintage.features.options.MixinEntityRenderer`（`renderRainSnow` 与 `addRainParticles` 重定向 `fancyGraphics`） |
+| 树叶质量 | `quality.leavesQuality` | `render/terrain/LeafRenderQuality`（由 `MixinRenderGlobal.onReload` 在 `loadRenderers` 返回后套用） |
 | 生物群系颜色噪声 | `quality.useBiomeColorNoise` 等 | 生物群系染色计算 |
 | 暗角 | `quality.enableVignette` | `mixin.vintage.features.options.MixinGuiIngameForge` |
 | 动态视野 | `quality.dynamicFov` | `mixin.vintage.features.options.MixinEntityRendererDynamicFov` |
+
+## 质量页总开关
+
+质量页不再提供原版 `options.graphics`（`StandardOptions.Option.GRAPHICS_MODE`，绑定
+`GameSettings.fancyGraphics`）的入口，承载它的 GRAPHICS 分组一并移除；`GRAPHICS_MODE` 标识仍保留在
+`StandardOptions`，`sodium.options.graphics_quality.tooltip` 因全仓无其它引用一并删除。总开关默认由
+Actinium 接管：`MixinRenderGlobal` 在 `loadRenderers` 的 HEAD 注入把 `mc.gameSettings.fancyGraphics`
+置为 `true`，vanilla 方法体随后按 fancy 初始化全部质量效果（树叶、雨雪等），选择原版 fast 路径的
+入口不再存在。
+
+## 树叶质量（`quality.leavesQuality`）
+
+原版 `RenderGlobal.loadRenderers()` 只用 `gameSettings.fancyGraphics` 调 `Blocks.LEAVES.setGraphicsLevel`
+与 `Blocks.LEAVES2.setGraphicsLevel`，`BlockLeaves.getRenderLayer()` 据此返回 `CUTOUT_MIPPED` 或
+`SOLID`，`BlockLeaves.isOpaqueCube` 同步取反。选项在 `MixinRenderGlobal` 的 `loadRenderers` 返回处、
+`this.renderer.reload()` 之前调用 `LeafRenderQuality.apply`，对 `Blocks.LEAVES` 与
+`Blocks.LEAVES2` 覆写这一结果：
+
+| 选项值 | 写入 `setGraphicsLevel` 的值 | 结果 |
+| --- | --- | --- |
+| `DEFAULT` | `fancyGraphics`（加载时已被钉为 `true`） | 默认镂空 |
+| `FANCY` | `true` | 始终镂空 |
+| `FAST` | `false` | 始终实心 |
+
+选项带 `REQUIRES_RENDERER_RELOAD`，切换后经 `ActiniumApplyActionsImpl.reloadRenderer()` 触发
+`loadRenderers`，因此不需要额外的重建入口。区块构建读取同一判定：`ChunkBuilderMeshingTask` 用
+`block.canRenderInLayer`（Forge 补丁方法，等价于 `getRenderLayer() == layer`）把方块分派到
+`SOLID` 或 `CUTOUT_MIPPED` 材质，`isOpaqueCube` 决定是否写入遮挡图。
+
+## 快速方块渲染器
+
+质量页 SORTING 组的 `celeritas:fast_block_renderer`（`performance.useFastBlockRenderer`，默认开）
+决定 `EnumBlockRenderType.MODEL` 的方块走哪条构建路径：开启时由 `VintageBlockRenderer` 接管，
+关闭时回落到 vanilla `BlockRendererDispatcher`。这是有意的兼容入口，用于在快速渲染器与模组
+模型行为不一致时退回原版路径，切换带 `REQUIRES_RENDERER_RELOAD`。
+
+`SnowRealMagicCompat` 与 `ArchitectureCraftCompat` 声明必须走原版路径的方块不受该开关影响，
+始终落到 dispatcher；非 `MODEL` 渲染类型（流体、`ENTITYBLOCK_ANIMATED` 等）同样只走 dispatcher。
+`ActiniumConfig.enableCeleritas` 是 debug bridge 的能力标记，与这个开关无关。
+
+## 地形 alpha 语义（`CeleritasTerrainPipeline`）
+
+原版在 `EntityRenderer.renderWorld` 里先用 `disableAlpha()` 画 `SOLID` 层，之后 `enableAlpha()`
+再画 `CUTOUT_MIPPED` 与 `CUTOUT`。因此 `GBUFFER_SOLID` 与 `SHADOW`（共享 terrain/shadow 源的
+非镂空半边）必须保持不透明语义：
+
+- `resolveAlphaTestOverride` 对这两个 pass 恒返回 `AlphaTestOverride.OFF`，包为
+  `gbuffers_terrain` / `gbuffers_shadow` 声明的 `alphaTest` 只在 CUTOUT 侧生效。
+- `SolidPassAlphaDiscardTransformer` 在 `CeleritasTerrainPipeline.processShaderFuture` 中对这两个
+  pass 的 fragment 做 AST 变换，删除条件读 alpha 且分支只有 `discard` 与裸 `return` 的选择语句。
+  Derivative 的 `shaders/program/Gbuffers/Terrain.frag` 在 `albedo *= ReadTexture(tex)` 之后执行
+  `if (albedo.a < 0.1) { discard; return; }`，仅关闭 GL alpha test 无法阻止它掏空 fast 树叶。
+- `GBUFFER_CUTOUT` 与 `SHADOW_CUTOUT` 的源码与阈值保持不变，继续按包的 `alphaTest` 指令剪纸。
+- 非 alpha 的 `discard`、含其它语句的分支、带非 discard `else` 的选择语句都不改动。
 
 ## 动态视野（`quality.dynamicFov`）
 
