@@ -166,9 +166,19 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
 - **`render/terrain/`**：`ActiniumWorldRenderer`（`SimpleWorldRenderer` 扩展，区块渲染主入口，
   implements Iris `WorldRendererCompat`）、`CameraHelper`、`TileEntityBatchDrawGuard`、
   `VintageRenderPassConfigurationBuilder`、`VintageRenderSectionManager`。
-- **`render/terrain/compile/`**：`VintageChunkBuildContext`；`compile/light/`：`LightDataCache`、
+- **`render/terrain/compile/`**：`VintageChunkBuildContext`、`ChunkBufferBuilder`（交给
+  `BlockRendererDispatcher` 的区块构建 buffer，携带构建上下文、render layer 与原版回退标记）、
+  `ChunkBlockRendererRouter`（dispatcher 快速路径的资格判定）；`compile/light/`：`LightDataCache`、
   `VintageDiffuseProvider`；`compile/pipeline/`：`VintageBlockRenderer`；`compile/task/`：
-  `ChunkBuilderMeshingTask`（区块网格构建任务）。
+  `ChunkBuilderMeshingTask`（区块网格构建任务）。普通 `LAYERS` 分支由
+  `ChunkBuilderMeshingTask` 统一调用 `BlockRendererDispatcher.renderBlock`，
+  `MixinBlockRendererDispatcher` 只包裹该方法内部的 `BlockModelRenderer.renderModel` 调用点：
+  谓词命中时交给 `VintageBlockRenderer.renderModel` 用 dispatcher 已选模型渲染，否则原样调用；
+  shader layer override 不经 dispatcher，直接调用 `renderBlock(..., false)` 保留
+  `allowRenderPassOptimization=false`。Snow Real Magic、ArchitectureCraft 与 Fluidlogged 的状态经
+  `beginVanillaBlockRender` / `beginVanillaFluidRender` 写在 buffer 上，把该次渲染留在原版路径；
+  Better Foliage 快速路径适配器在调用其 Hook 前写入外层优化标志，复用同一 buffer 渲染基础方块，
+  并在 `finally` 恢复。
 - **`render/terrain/fog/`**：`GLStateManagerFogService` —— FogService SPI 实现。
 - **`render/terrain/sprite/`**：`SpriteUtil`。
 
@@ -559,7 +569,8 @@ Mixin 组织约定：
 - Gibbed：模型渲染快速路径及条件 Mixin。
 - ModernUI 和若干 HUD/地图模组：GUI scale 或编译期兼容接口。
 - Celeritas 系 addon：直接适配 Actinium 主实现（选项 API 位于 `dhj.embeddedt.embeddium.api`，
-  renderer 绑定面由 `VintageBlockRendererBindingContractTest` 锁定）。
+  renderer 绑定面由 `VintageBlockRendererBindingContractTest` 锁定：`renderModel` 只把 dispatcher
+  已选的模型交给现有 `renderBlock`，不新增渲染主体，也不移动 addon 绑定的字段、方法与调用点）。
   - **类路径重构（2026）**：`celeritas-common` 的 `org.embeddedt.embeddium.{api,impl}.*` 已整体
     迁至 `dhj.embeddedt.embeddium.*`，打包时 joml 的 relocate 目标同步为
     `dhj.embeddedt.embeddium.impl.shadow.joml`，以免与同一 classpath 上上游

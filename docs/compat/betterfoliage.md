@@ -1,7 +1,7 @@
 # Better Foliage 兼容性说明
 
-兼容状态：**代码支持，dev 运行验证通过**
-最后更新：2026-09-26
+兼容状态：**代码支持；C08 dispatcher 路由已通过用户验收，BF/RLF 未安装于本次测试实例**
+最后更新：2026-11-09
 
 ## 模组信息
 
@@ -13,7 +13,7 @@
 
 - 原版 Better Foliage 的 `BetterFoliageTransformer` 会改写 vanilla `RenderChunk.rebuildChunk`：把 `BlockRendererDispatcher.renderBlock` 转为 `Hooks.renderWorldBlock`，并把方块层检查转为 `Hooks.canRenderBlockInLayer`。
 - Actinium 使用自己的 `ChunkBuilderMeshingTask.execute`，不会经过上述 vanilla 调用点；已有适配器调用的是 RLFoliage 的 `RenderingHandler`，原版 Better Foliage 不包含这个类。
-- 原版适配现在在快速路径中只对可处理的 Better Foliage feature renderer 调用原版 Hook；普通方块仍走 Actinium 快速 renderer。走 vanilla dispatcher 的分支直接经过原版 Hook。RLFoliage 保留独立适配和独立条件。
+- 原版适配现在只在 dispatcher 调用点介入：`ChunkBuilderMeshingTask` 的普通方块层统一调用 `BlockRendererDispatcher.renderBlock`，适配器包裹该调用并转给原版 `Hooks.renderWorldBlock`，快速 renderer 只接管其内部的模型渲染；shader layer override 的直接快速路径仍由适配器按 feature renderer 判定后决定是否自行渲染。RLFoliage 保留独立适配和独立条件。
 - HBM 2.5.0.5 的必需 `MixinRenderChunk` 也包裹 vanilla `BlockRendererDispatcher.renderBlock`。Better Foliage 的 coremod 先把该调用换成 `Hooks.renderWorldBlock`，使 HBM 的注入命中数变为 0。Actinium 在这两个 mod 同时存在时，于 Better Foliage 转换之后恢复该 vanilla 调用点；Actinium 自己的 meshing task 仍走上面的 Better Foliage Hook。
 
 ## 验证记录

@@ -57,42 +57,6 @@ public abstract class MixinChunkBuilderMeshingTaskRLFoliage {
                     target = "Lcom/dhj/actinium/render/terrain/compile/pipeline/VintageBlockRenderer;renderBlock("
                             + "Lnet/minecraft/block/state/IBlockState;Lnet/minecraft/util/math/BlockPos;"
                             + "Lcom/dhj/actinium/world/cloned/ActiniumBlockAccess;"
-                            + "Lnet/minecraft/util/BlockRenderLayer;)V",
-                    remap = false
-            )
-    )
-    private void actinium$betterFoliageWrapNewRenderBlock(
-            VintageBlockRenderer dispatcher,
-            IBlockState state,
-            BlockPos pos,
-            ActiniumBlockAccess blockAccess,
-            BlockRenderLayer layer,
-            Operation<Void> original,
-            @Local(name = "buildContext") VintageChunkBuildContext buildContext
-    ) {
-        Boolean result = RenderingHandler.wrapRenderBlock(
-                () -> {
-                    original.call(dispatcher, state, pos, blockAccess, layer);
-                    return Boolean.TRUE;
-                },
-                state,
-                pos,
-                blockAccess,
-                () -> buildContext.getBufferForLayer(layer),
-                layer
-        );
-        if (result == null) {
-            original.call(dispatcher, state, pos, blockAccess, layer);
-        }
-    }
-
-    @WrapOperation(
-            method = EXECUTE_METHOD,
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lcom/dhj/actinium/render/terrain/compile/pipeline/VintageBlockRenderer;renderBlock("
-                            + "Lnet/minecraft/block/state/IBlockState;Lnet/minecraft/util/math/BlockPos;"
-                            + "Lcom/dhj/actinium/world/cloned/ActiniumBlockAccess;"
                             + "Lnet/minecraft/util/BlockRenderLayer;Z)V",
                     remap = false
             )

@@ -1,5 +1,6 @@
 package com.dhj.actinium.compat.betterfoliage;
 
+import com.dhj.actinium.render.terrain.compile.ChunkBufferBuilder;
 import com.dhj.actinium.render.terrain.compile.VintageChunkBuildContext;
 import com.dhj.actinium.world.cloned.ActiniumBlockAccess;
 import java.util.List;
@@ -51,25 +52,41 @@ public final class BetterFoliageCompatImpl implements BetterFoliageCompat {
             BlockPos pos,
             ActiniumBlockAccess blockAccess,
             VintageChunkBuildContext buildContext,
-            BlockRenderLayer layer
+            BlockRenderLayer layer,
+            boolean allowRenderPassOptimization
     ) {
         if (!hasEligibleRenderer(state, pos, blockAccess, layer)) {
             return false;
         }
 
         BufferBuilder buffer = buildContext.getBufferForLayer(layer);
-        buildContext.beginVanillaBlockRender(buffer, pos, state, layer);
+        // Better Foliage renders the block again through the vanilla dispatcher on this same
+        // buffer, so the dispatcher hook must see the render pass rule of the outer call.
+        ChunkBufferBuilder chunkBuffer = buffer instanceof ChunkBufferBuilder value ? value : null;
+        boolean previousOptimization = false;
+        if (chunkBuffer != null) {
+            previousOptimization = chunkBuffer.isAllowRenderPassOptimization();
+            chunkBuffer.setAllowRenderPassOptimization(allowRenderPassOptimization);
+        }
+
         try {
-            Hooks.renderWorldBlock(
-                    Minecraft.getMinecraft().getBlockRendererDispatcher(),
-                    state,
-                    pos,
-                    blockAccess,
-                    buffer,
-                    layer
-            );
+            buildContext.beginVanillaBlockRender(buffer, pos, state, layer);
+            try {
+                Hooks.renderWorldBlock(
+                        Minecraft.getMinecraft().getBlockRendererDispatcher(),
+                        state,
+                        pos,
+                        blockAccess,
+                        buffer,
+                        layer
+                );
+            } finally {
+                buildContext.endVanillaRender(buffer);
+            }
         } finally {
-            buildContext.endVanillaRender(buffer);
+            if (chunkBuffer != null) {
+                chunkBuffer.setAllowRenderPassOptimization(previousOptimization);
+            }
         }
         return true;
     }

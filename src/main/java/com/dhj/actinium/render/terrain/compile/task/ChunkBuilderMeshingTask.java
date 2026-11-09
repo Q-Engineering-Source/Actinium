@@ -145,6 +145,8 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                                 if (blockState.getRenderType() == EnumBlockRenderType.MODEL && ActiniumRuntime.options().performance.useFastBlockRenderer
                                         && !SnowRealMagicCompat.shouldForceVanillaRender(block)
                                         && !ArchitectureCraftCompat.shouldForceVanillaRender(block)) {
+                                    // A shader pack moved this block onto another layer, so it takes the
+                                    // fast renderer directly and keeps render pass optimization off.
                                     buildContext.getBlockRenderer().renderBlock(blockState, blockPos, slice, layer, false);
                                 } else {
                                     var buffer = buildContext.getBufferForLayer(layer);
@@ -160,18 +162,15 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                                     if (block.canRenderInLayer(blockState, layer)
                                             || FarmersFutureDelightCompat.shouldForceTranslucentLayer(blockState, layer)) {
                                         ForgeHooksClient.setRenderLayer(layer);
-                                        if (blockState.getRenderType() == EnumBlockRenderType.MODEL && ActiniumRuntime.options().performance.useFastBlockRenderer
-                                                && !SnowRealMagicCompat.shouldForceVanillaRender(block)
-                                                && !ArchitectureCraftCompat.shouldForceVanillaRender(block)) {
-                                            buildContext.getBlockRenderer().renderBlock(blockState, blockPos, slice, layer);
-                                        } else {
-                                            var buffer = buildContext.getBufferForLayer(layer);
-                                            buildContext.beginVanillaBlockRender(buffer, blockPos, blockState, layer);
-                                            try {
-                                                dispatcher.renderBlock(blockState, blockPos, slice, buffer);
-                                            } finally {
-                                                buildContext.endVanillaRender(buffer);
-                                            }
+                                        // The dispatcher hook sends model blocks to the fast renderer. Snow
+                                        // Real Magic, ArchitectureCraft and Fluidlogged blocks are marked on
+                                        // the buffer by beginVanillaBlockRender and keep the vanilla path.
+                                        var buffer = buildContext.getBufferForLayer(layer);
+                                        buildContext.beginVanillaBlockRender(buffer, blockPos, blockState, layer);
+                                        try {
+                                            dispatcher.renderBlock(blockState, blockPos, slice, buffer);
+                                        } finally {
+                                            buildContext.endVanillaRender(buffer);
                                         }
                                     }
                                 }
