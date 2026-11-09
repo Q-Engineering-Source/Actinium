@@ -25,7 +25,7 @@ import java.util.Arrays;
  * <ul>
  *   <li>{@code sections} is the authoritative set of every attached section.
  *       It is used for world-coordinate lookup and for rebuilding the window.</li>
- *   <li>The lattice is a dense X/Z window containing the attached sections
+ *   <li>The lattice is a dense window containing the attached sections
  *       that can participate in the current search. A section outside that
  *       window remains attached, but has no lattice slot until a rebase brings
  *       it inside the window.</li>
@@ -36,14 +36,16 @@ import java.util.Arrays;
  *
  * <p>The arrays are parallel: for a given lattice index,
  * {@code latticeSection}, {@code sectionMeta}, and {@code regionOfCell}
- * describe the same cell. X and Z are camera-windowed, while Y covers the
- * entire world height. The window is allocated lazily by
- * {@link #ensureWindowCovers}. The first call allocates the arrays and then
- * establishes their base coordinates. If a later camera position no longer
- * fits, a same-sized window is normally slid in place: the overlapping cells
- * are copied, and only the newly exposed X/Z band is looked up in
- * {@code sections}. A resize or a move with no overlap falls back to a full
- * {@link #rebase}.
+ * describe the same cell. X and Z are camera-windowed. Y keeps the entire
+ * world height only while that height is no taller than the X/Z window, which
+ * is what a vanilla-sized world gets at an ordinary render distance; a
+ * narrower window, or a taller world, windows Y like X and Z. The window is
+ * allocated lazily by {@link #ensureWindowCovers}. The first call
+ * allocates the arrays and then establishes their base coordinates. If a later
+ * camera position no longer fits, a same-sized window is normally slid in
+ * place: the overlapping cells are copied, and only the newly exposed band is
+ * looked up in {@code sections}. A resize or a move with no overlap falls back
+ * to a full {@link #rebase}.
  *
  * <p>The installable interior ({@code [1, dim-2]} on each axis) is wrapped by
  * a permanent one-cell ring of sentinel cells (index {@code 0} and
@@ -119,11 +121,11 @@ public final class SectionLattice {
     // Whether the raster occluder is in use; gates maintenance of occluderData/occluderBounds, which only it reads.
     private final boolean rasterOcclusion;
 
-    private final int minSectionY, maxSectionY;
+    private final int minSectionY;
 
     /*
      * Parallel primitive/object arrays, allocated lazily once the search
-     * distance determines the X/Z dimensions. The linear index is
+     * distance determines the window dimensions. The linear index is
      * (lx * dimZ + lz) * dimY + ly, where local coordinates are relative to
      * (baseX, baseY, baseZ). Package-private visibility lets OcclusionCuller
      * read these arrays directly on its hot path.
@@ -148,17 +150,19 @@ public final class SectionLattice {
     RenderSection[] latticeSection;
 
     // Queue entries ((packedLocalXYZ << 32) | latticeIndex) of the cells the last main search reported visible, in
-    // traversal order; the root set of the shadow search. Written by OcclusionCuller, read by
-    // ShadowOcclusionCuller on the same search thread.
+    // traversal order; the root set of the shadow search. Written by OcclusionCuller, remapped by ensureWindowCovers,
+    // read by ShadowOcclusionCuller on the same search thread.
     long[] visibleCells = new long[0];
     int visibleCount;
 
-    // Y is never windowed: the complete world height plus one sentinel cell at each vertical edge.
-    final int dimY;
-    final int baseY;
-    int dimX, dimZ;
-    // baseX/baseZ become meaningful after the first rebase; baseY is fixed by the world-height bounds.
-    int baseX, baseZ;
+    // The complete world height plus one sentinel cell at each vertical edge.
+    private final int worldDimY;
+    // True when dimY is smaller than worldDimY, so Y slides with the camera like X/Z; otherwise baseY stays at the
+    // world's lower bound and the camera's height never forces a rebase.
+    private boolean windowedY;
+    int dimX, dimY, dimZ;
+    // Meaningful after the first rebase.
+    int baseX, baseY, baseZ;
     // Linear offset for one neighbour step in each direction; the sentinel border makes every step safe.
     final int[] delta = new int[GraphDirection.COUNT];
     private int strideX, strideZ;
@@ -201,16 +205,10 @@ public final class SectionLattice {
      */
     public SectionLattice(int minSectionY, int maxSectionY, boolean hasShadowPass, boolean rasterOcclusion) {
         this.minSectionY = minSectionY;
-        this.maxSectionY = maxSectionY;
-        this.baseY = minSectionY - 1;
-        this.dimY = (maxSectionY - minSectionY) + 2;
+        this.worldDimY = Math.toIntExact((long) maxSectionY - minSectionY + 2);
         this.culler = new OcclusionCuller(this, minSectionY, maxSectionY, rasterOcclusion);
         this.shadowCuller = hasShadowPass ? new ShadowOcclusionCuller(this) : null;
         this.rasterOcclusion = rasterOcclusion;
-
-        if (this.dimY > MAX_DIM) {
-            throw new IllegalStateException("World height " + this.dimY + " exceeds occlusion lattice limit " + MAX_DIM);
-        }
     }
 
     /**
@@ -418,9 +416,10 @@ public final class SectionLattice {
      * retained and only the newly exposed band is resolved through the
      * authoritative section map.
      *
-     * <p>Call this on the render thread before dispatching a search. The
-     * asynchronous search must not observe allocation, rebasing, attachment,
-     * detachment, or metadata updates while it is running.
+     * <p>Call this on the render thread before submitting the search rooted at
+     * {@code cameraSectionPos}; {@code SectionGraph} coordinates it. It must
+     * not overlap a running search, which must not observe allocation,
+     * rebasing, attachment, detachment, or metadata updates.
      */
     public void ensureWindowCovers(Vector3ic cameraSectionPos, float searchDistance) {
         this.ensureWindowCovers(searchDistance, cameraSectionPos);
@@ -436,7 +435,9 @@ public final class SectionLattice {
      * window holding just one of them would leave the other pass rooting its
      * search outside the addressable interior. The window is sized and placed
      * to hold all of them, which for a single camera is exactly the placement
-     * {@link #ensureWindowCovers(Vector3ic, float)} computes.
+     * {@link #ensureWindowCovers(Vector3ic, float)} computes. When the world is
+     * taller than the window, Y is windowed as well and the cameras' vertical
+     * spread enters the same placement.
      *
      * <p>Call this for every viewport of the frame before submitting any of its
      * searches: see {@link #findVisible}.
@@ -453,27 +454,38 @@ public final class SectionLattice {
 
         int minX = cameraSectionPositions[0].x();
         int maxX = minX;
+        int minY = cameraSectionPositions[0].y();
+        int maxY = minY;
         int minZ = cameraSectionPositions[0].z();
         int maxZ = minZ;
 
         for (Vector3ic camera : cameraSectionPositions) {
             minX = Math.min(minX, camera.x());
             maxX = Math.max(maxX, camera.x());
+            minY = Math.min(minY, camera.y());
+            maxY = Math.max(maxY, camera.y());
             minZ = Math.min(minZ, camera.z());
             maxZ = Math.max(maxZ, camera.z());
         }
 
-        // A base-sized window already holds cameras spanning SLACK sections; only a wider spread needs extra width,
-        // rounded up so a camera stepping one section at a time does not reallocate on every step.
+        int baseDimXZ = 2 * (radius + SLACK) + 3;
         int spread = Math.max(maxX - minX, maxZ - minZ);
-        int spreadAllowance = spread <= SLACK ? 0 : (spread + SLACK - 1) / SLACK * SLACK;
-        int neededDimXZ = 2 * (radius + SLACK) + 3 + spreadAllowance;
+        int neededDimXZ = baseDimXZ + spreadAllowance(spread);
+
+        // Y is windowed only when the world is taller than this window. The vertical axis then shares the X/Z width,
+        // so the cameras' vertical spread has to fit in that window as well and enlarges the same allowance.
+        if (this.worldDimY > Math.max(neededDimXZ, this.dimX)) {
+            neededDimXZ = baseDimXZ + spreadAllowance(Math.max(spread, maxY - minY));
+        }
+
+        int oldBaseX = this.baseX, oldBaseY = this.baseY, oldBaseZ = this.baseZ;
 
         if (this.visitState == null || neededDimXZ > this.dimX) {
             this.allocate(neededDimXZ);
         }
 
-        // Include the neighbour of the outermost section the traversal can visit.
+        // Include the neighbour of the outermost section the traversal can visit. The search distance is tested
+        // independently on the vertical axis, so the vertical reach is the same.
         int reach = radius + 1;
 
         if (this.established && this.windowHoldsEveryCamera(cameraSectionPositions, reach)) {
@@ -481,17 +493,22 @@ public final class SectionLattice {
         }
 
         int newBaseX = minX + (maxX - minX) / 2 - this.dimX / 2;
+        // Without a windowed Y axis the base stays at the world's lower bound, which covers every camera.
+        int newBaseY = this.windowedY
+                ? minY + (maxY - minY) / 2 - this.dimY / 2
+                : this.minSectionY - 1;
         int newBaseZ = minZ + (maxZ - minZ) / 2 - this.dimZ / 2;
 
         if (this.established) {
             // The current window is valid to slide from: reuse its retained
             // contents and only resolve the newly exposed cells.
-            this.shiftRebase(newBaseX, newBaseZ);
+            this.shiftRebase(newBaseX, newBaseY, newBaseZ);
         } else {
             // Fresh or resized arrays have no reusable contents.
-            this.rebase(newBaseX, newBaseZ);
+            this.rebase(newBaseX, newBaseY, newBaseZ);
         }
 
+        this.remapVisibleCells(oldBaseX, oldBaseY, oldBaseZ);
         this.established = true;
     }
 
@@ -505,9 +522,40 @@ public final class SectionLattice {
                     || lz - reach < 1 || lz + reach > this.dimZ - 2) {
                 return false;
             }
+
+            int ly = camera.y() - this.baseY;
+
+            if (this.windowedY && (ly - reach < 1 || ly + reach > this.dimY - 2)) {
+                return false;
+            }
         }
 
         return true;
+    }
+
+    // Extra width beyond a base-sized window that a camera spread needs: whole SLACK steps, so a camera stepping one
+    // section at a time does not grow the window every step, and nothing for a spread a base-sized window holds.
+    private static int spreadAllowance(int spread) {
+        return spread <= SLACK ? 0 : (spread + SLACK - 1) / SLACK * SLACK;
+    }
+
+    // The shadow search seeds from these terrain roots, which still index the old window.
+    private void remapVisibleCells(int oldBaseX, int oldBaseY, int oldBaseZ) {
+        int retained = 0;
+
+        for (int i = 0; i < this.visibleCount; i++) {
+            int xyz = (int) (this.visibleCells[i] >>> 32);
+            int x = oldBaseX + ((xyz >>> (2 * XYZ_SHIFT)) & XYZ_LOCAL_MASK);
+            int y = oldBaseY + ((xyz >>> XYZ_SHIFT) & XYZ_LOCAL_MASK);
+            int z = oldBaseZ + (xyz & XYZ_LOCAL_MASK);
+            int idx = this.installedIndex(x, y, z);
+
+            if (idx >= 0) {
+                this.visibleCells[retained++] = ((long) this.packXyz(x, y, z) << 32) | (idx & 0xFFFFFFFFL);
+            }
+        }
+
+        this.visibleCount = retained;
     }
 
     /**
@@ -598,15 +646,18 @@ public final class SectionLattice {
     }
 
     private void allocate(int newDimXZ) {
-        long slotsLong = (long) newDimXZ * newDimXZ * this.dimY;
+        int newDimY = Math.min(this.worldDimY, newDimXZ);
+        long slotsLong = (long) newDimXZ * newDimXZ * newDimY;
 
         if (newDimXZ > MAX_DIM || slotsLong >= MAX_LATTICE_SLOTS) {
             throw new IllegalStateException("Occlusion lattice window too large (dimXZ=" + newDimXZ
-                    + ", slots=" + slotsLong + "); this render distance is not supported");
+                    + ", dimY=" + newDimY + ", slots=" + slotsLong + "); this render distance is not supported");
         }
 
         this.dimX = newDimXZ;
+        this.dimY = newDimY;
         this.dimZ = newDimXZ;
+        this.windowedY = newDimY < this.worldDimY;
         this.strideZ = this.dimY;
         this.strideX = this.dimY * this.dimZ;
 
@@ -634,7 +685,7 @@ public final class SectionLattice {
      * Rebuilds the lattice from scratch after allocation, resizing, or a
      * non-overlapping camera jump.
      */
-    private void rebase(int newBaseX, int newBaseZ) {
+    private void rebase(int newBaseX, int newBaseY, int newBaseZ) {
         Arrays.fill(this.visitState, SENTINEL);
         if (this.shadowVisitState != null) {
             Arrays.fill(this.shadowVisitState, SENTINEL);
@@ -648,6 +699,7 @@ public final class SectionLattice {
         }
 
         this.baseX = newBaseX;
+        this.baseY = newBaseY;
         this.baseZ = newBaseZ;
         this.installedCount = 0;
 
@@ -657,10 +709,10 @@ public final class SectionLattice {
     }
 
     /**
-     * Slide the existing window to a new X/Z origin without rebuilding it.
+     * Slide the existing window to a new origin without rebuilding it.
      *
-     * <p>{@code dX} and {@code dZ} are the changes in world-space base
-     * coordinates.
+     * <p>{@code dX}, {@code dY} and {@code dZ} are the changes in world-space
+     * base coordinates; {@code dY} is always zero unless Y is windowed.
      *
      * <p>Before overwriting the old array cells, {@link #dropLeaving} removes
      * the installed-count contribution of cells outside that intersection.
@@ -672,27 +724,33 @@ public final class SectionLattice {
      * <p>When the old and new interiors do not intersect, there is no useful
      * data to preserve and this method delegates to {@link #rebase}.
      */
-    private void shiftRebase(int newBaseX, int newBaseZ) {
+    private void shiftRebase(int newBaseX, int newBaseY, int newBaseZ) {
         int dX = newBaseX - this.baseX;
+        int dY = newBaseY - this.baseY;
         int dZ = newBaseZ - this.baseZ;
 
         int interiorXHi = this.dimX - 2;
+        int interiorYHi = this.dimY - 2;
         int interiorZHi = this.dimZ - 2;
 
         int xLo = Math.max(1, 1 - dX);
         int xHi = Math.min(interiorXHi, interiorXHi - dX);
+        int yLo = Math.max(1, 1 - dY);
+        int yHi = Math.min(interiorYHi, interiorYHi - dY);
         int zLo = Math.max(1, 1 - dZ);
         int zHi = Math.min(interiorZHi, interiorZHi - dZ);
 
-        if (xLo > xHi || zLo > zHi) {
+        if (xLo > xHi || yLo > yHi || zLo > zHi) {
             // No overlap: sliding would move nothing, so reinstall wholesale.
-            this.rebase(newBaseX, newBaseZ);
+            this.rebase(newBaseX, newBaseY, newBaseZ);
             return;
         }
 
-        this.dropLeaving(xLo + dX, xHi + dX, zLo + dZ, zHi + dZ);
+        this.dropLeaving(xLo + dX, xHi + dX, yLo + dY, yHi + dY, zLo + dZ, zHi + dZ);
 
-        if (dZ == 0) {
+        if (dY != 0) {
+            this.shiftContentsWithY(dX, dY, dZ, xLo, xHi, yLo, yHi, zLo, zHi);
+        } else if (dZ == 0) {
             this.shiftContentsXOnly(dX, xLo, xHi);
         } else {
             this.shiftContents(dX, dZ, xLo, xHi, zLo, zHi);
@@ -700,9 +758,10 @@ public final class SectionLattice {
 
         // The arrays now describe cells relative to the new origin.
         this.baseX = newBaseX;
+        this.baseY = newBaseY;
         this.baseZ = newBaseZ;
 
-        this.fillNewBand(xLo, xHi, zLo, zHi);
+        this.fillNewBand(xLo, xHi, yLo, yHi, zLo, zHi);
     }
 
     /**
@@ -718,21 +777,11 @@ public final class SectionLattice {
         int srcOff = (xLo + dX) * this.strideX;
         int len = (xHi - xLo + 1) * this.strideX;
 
-        System.arraycopy(this.visitState, srcOff, this.visitState, destOff, len);
-        if (this.shadowVisitState != null) {
-            System.arraycopy(this.shadowVisitState, srcOff, this.shadowVisitState, destOff, len);
-        }
-        System.arraycopy(this.sectionMeta, srcOff, this.sectionMeta, destOff, len);
-        System.arraycopy(this.regionOfCell, srcOff, this.regionOfCell, destOff, len);
-        System.arraycopy(this.latticeSection, srcOff, this.latticeSection, destOff, len);
-        if (this.rasterOcclusion) {
-            System.arraycopy(this.occluderData, srcOff, this.occluderData, destOff, len);
-            System.arraycopy(this.occluderBounds, srcOff, this.occluderBounds, destOff, len);
-        }
+        this.moveCells(srcOff, destOff, len);
     }
 
     /**
-     * Move retained contents for a shift that includes Z.
+     * Move retained contents for a shift that includes Z but not Y.
      *
      * <p>A Z shift cannot cross an X-plane boundary, so it moves one
      * contiguous {@code Z/Y} block per retained X-plane. The loop direction
@@ -755,55 +804,93 @@ public final class SectionLattice {
             int destOff = lx * this.strideX + zLo * this.strideZ;
             int srcOff = (lx + dX) * this.strideX + (zLo + dZ) * this.strideZ;
 
-            System.arraycopy(this.visitState, srcOff, this.visitState, destOff, runLen);
-            if (this.shadowVisitState != null) {
-                System.arraycopy(this.shadowVisitState, srcOff, this.shadowVisitState, destOff, runLen);
+            this.moveCells(srcOff, destOff, runLen);
+        }
+    }
+
+    /**
+     * Move retained contents for a shift that includes Y.
+     *
+     * <p>The retained part of each column is no longer contiguous with the
+     * next, so each column moves as its own run. With {@code dX} and {@code dZ}
+     * both zero the run only overlaps itself, which {@link System#arraycopy}
+     * handles. Otherwise the source and destination are different columns, and
+     * copying across columns is safe because of the traversal order: a run is
+     * shorter than the distance between columns, so a column's source is read
+     * before any write can reach it.
+     */
+    private void shiftContentsWithY(int dX, int dY, int dZ, int xLo, int xHi, int yLo, int yHi, int zLo, int zHi) {
+        int runLen = yHi - yLo + 1;
+
+        // The sign of the linear source offset, which is ordered by X, then Z, then Y.
+        boolean ascending = dX != 0 ? dX > 0 : dZ != 0 ? dZ > 0 : dY > 0;
+        int step = ascending ? 1 : -1;
+        int xFirst = ascending ? xLo : xHi;
+        int zFirst = ascending ? zLo : zHi;
+
+        for (int lx = xFirst; lx >= xLo && lx <= xHi; lx += step) {
+            for (int lz = zFirst; lz >= zLo && lz <= zHi; lz += step) {
+                int destOff = lx * this.strideX + lz * this.strideZ + yLo;
+                int srcOff = (lx + dX) * this.strideX + (lz + dZ) * this.strideZ + yLo + dY;
+
+                this.moveCells(srcOff, destOff, runLen);
             }
-            System.arraycopy(this.sectionMeta, srcOff, this.sectionMeta, destOff, runLen);
-            System.arraycopy(this.regionOfCell, srcOff, this.regionOfCell, destOff, runLen);
-            System.arraycopy(this.latticeSection, srcOff, this.latticeSection, destOff, runLen);
-            if (this.rasterOcclusion) {
-                System.arraycopy(this.occluderData, srcOff, this.occluderData, destOff, runLen);
-                System.arraycopy(this.occluderBounds, srcOff, this.occluderBounds, destOff, runLen);
-            }
+        }
+    }
+
+    private void moveCells(int srcOff, int destOff, int len) {
+        System.arraycopy(this.visitState, srcOff, this.visitState, destOff, len);
+        if (this.shadowVisitState != null) {
+            System.arraycopy(this.shadowVisitState, srcOff, this.shadowVisitState, destOff, len);
+        }
+        System.arraycopy(this.sectionMeta, srcOff, this.sectionMeta, destOff, len);
+        System.arraycopy(this.regionOfCell, srcOff, this.regionOfCell, destOff, len);
+        System.arraycopy(this.latticeSection, srcOff, this.latticeSection, destOff, len);
+        if (this.rasterOcclusion) {
+            System.arraycopy(this.occluderData, srcOff, this.occluderData, destOff, len);
+            System.arraycopy(this.occluderBounds, srcOff, this.occluderBounds, destOff, len);
         }
     }
 
     /**
      * Account for cells that leave the window before their slots are reused.
      *
-     * <p>The source rectangle is the old interior that supplies the retained
-     * destination rectangle. Every installed cell outside it loses its slot,
+     * <p>The source box is the old interior that supplies the retained
+     * destination box. Every installed cell outside it loses its slot,
      * so its contribution to {@link #installedCount} is decremented here.
      * Those sections remain in {@link #sections}; their stale array entries
-     * are subsequently overwritten by {@link #shiftContentsXOnly} or
-     * {@link #shiftContents}, then cleared by {@link #fillNewBand}.
+     * are subsequently overwritten by the content shift, then cleared by
+     * {@link #fillNewBand}.
      *
      * <p>Because the old and new windows differ by a translation, the retained
-     * source rectangle touches an edge in each shifted axis. Its complement is
-     * therefore two non-overlapping rectangles: an X-only strip and a Z-only
-     * strip. Iterating those rectangles avoids testing rectangle membership for
-     * every cell.
+     * source box touches an edge in each shifted axis. Its complement is
+     * therefore three non-overlapping boxes, any of which may be empty: an X
+     * slab, a Z slab within the retained X range, and a Y slab within the
+     * retained X and Z ranges. Iterating those boxes avoids testing membership
+     * for every cell.
      */
-    private void dropLeaving(int srcXLo, int srcXHi, int srcZLo, int srcZHi) {
+    private void dropLeaving(int srcXLo, int srcXHi, int srcYLo, int srcYHi, int srcZLo, int srcZHi) {
         int interiorXHi = this.dimX - 2;
-        int interiorZHi = this.dimZ - 2;
         int interiorYHi = this.dimY - 2;
+        int interiorZHi = this.dimZ - 2;
 
         int xBandLo = srcXLo == 1 ? srcXHi + 1 : 1;
         int xBandHi = srcXLo == 1 ? interiorXHi : srcXLo - 1;
+        int yBandLo = srcYLo == 1 ? srcYHi + 1 : 1;
+        int yBandHi = srcYLo == 1 ? interiorYHi : srcYLo - 1;
         int zBandLo = srcZLo == 1 ? srcZHi + 1 : 1;
         int zBandHi = srcZLo == 1 ? interiorZHi : srcZLo - 1;
 
-        this.dropLeavingRectangle(xBandLo, xBandHi, 1, interiorZHi, interiorYHi);
-        this.dropLeavingRectangle(srcXLo, srcXHi, zBandLo, zBandHi, interiorYHi);
+        this.dropLeavingBox(xBandLo, xBandHi, 1, interiorYHi, 1, interiorZHi);
+        this.dropLeavingBox(srcXLo, srcXHi, 1, interiorYHi, zBandLo, zBandHi);
+        this.dropLeavingBox(srcXLo, srcXHi, yBandLo, yBandHi, srcZLo, srcZHi);
     }
 
-    private void dropLeavingRectangle(int xLo, int xHi, int zLo, int zHi, int interiorYHi) {
+    private void dropLeavingBox(int xLo, int xHi, int yLo, int yHi, int zLo, int zHi) {
         for (int lx = xLo; lx <= xHi; lx++) {
             for (int lz = zLo; lz <= zHi; lz++) {
                 int col = lx * this.strideX + lz * this.strideZ;
-                for (int ly = 1; ly <= interiorYHi; ly++) {
+                for (int ly = yLo; ly <= yHi; ly++) {
                     if (this.latticeSection[col + ly] != null) {
                         this.installedCount--;
                     }
@@ -813,27 +900,30 @@ public final class SectionLattice {
     }
 
     /**
-     * Clear and repopulate the L-shaped band of cells that entered the window.
+     * Clear and repopulate the band of cells that entered the window.
      *
-     * <p>As with {@link #dropLeaving}, the band is visited as two
-     * non-overlapping rectangles: the X-only strip outside the retained X
-     * range, followed by the Z-only strip inside the retained X range.
+     * <p>As with {@link #dropLeaving}, the band is visited as three
+     * non-overlapping boxes: the X slab outside the retained X range, the Z
+     * slab inside it, and the Y slab inside the retained X and Z ranges.
      */
-    private void fillNewBand(int keepXLo, int keepXHi, int keepZLo, int keepZHi) {
+    private void fillNewBand(int keepXLo, int keepXHi, int keepYLo, int keepYHi, int keepZLo, int keepZHi) {
         int interiorXHi = this.dimX - 2;
-        int interiorZHi = this.dimZ - 2;
         int interiorYHi = this.dimY - 2;
+        int interiorZHi = this.dimZ - 2;
 
         int xBandLo = keepXLo == 1 ? keepXHi + 1 : 1;
         int xBandHi = keepXLo == 1 ? interiorXHi : keepXLo - 1;
+        int yBandLo = keepYLo == 1 ? keepYHi + 1 : 1;
+        int yBandHi = keepYLo == 1 ? interiorYHi : keepYLo - 1;
         int zBandLo = keepZLo == 1 ? keepZHi + 1 : 1;
         int zBandHi = keepZLo == 1 ? interiorZHi : keepZLo - 1;
 
-        this.fillBandRectangle(xBandLo, xBandHi, 1, interiorZHi, interiorYHi);
-        this.fillBandRectangle(keepXLo, keepXHi, zBandLo, zBandHi, interiorYHi);
+        this.fillBandBox(xBandLo, xBandHi, 1, interiorYHi, 1, interiorZHi);
+        this.fillBandBox(keepXLo, keepXHi, 1, interiorYHi, zBandLo, zBandHi);
+        this.fillBandBox(keepXLo, keepXHi, yBandLo, yBandHi, keepZLo, keepZHi);
     }
 
-    private void fillBandRectangle(int xLo, int xHi, int zLo, int zHi, int interiorYHi) {
+    private void fillBandBox(int xLo, int xHi, int yLo, int yHi, int zLo, int zHi) {
         for (int lx = xLo; lx <= xHi; lx++) {
             int worldX = this.baseX + lx;
 
@@ -841,7 +931,7 @@ public final class SectionLattice {
                 int worldZ = this.baseZ + lz;
                 int col = lx * this.strideX + lz * this.strideZ;
 
-                for (int ly = 1; ly <= interiorYHi; ly++) {
+                for (int ly = yLo; ly <= yHi; ly++) {
                     int idx = col + ly;
 
                     this.visitState[idx] = SENTINEL;
