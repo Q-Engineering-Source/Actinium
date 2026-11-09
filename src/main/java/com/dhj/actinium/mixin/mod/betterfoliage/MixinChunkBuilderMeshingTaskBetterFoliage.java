@@ -60,33 +60,6 @@ public abstract class MixinChunkBuilderMeshingTaskBetterFoliage {
                     target = "Lcom/dhj/actinium/render/terrain/compile/pipeline/VintageBlockRenderer;renderBlock("
                             + "Lnet/minecraft/block/state/IBlockState;Lnet/minecraft/util/math/BlockPos;"
                             + "Lcom/dhj/actinium/world/cloned/ActiniumBlockAccess;"
-                            + "Lnet/minecraft/util/BlockRenderLayer;)V",
-                    remap = false
-            )
-    )
-    private void actinium$betterFoliageRenderFastBlock(
-            VintageBlockRenderer renderer,
-            IBlockState state,
-            BlockPos pos,
-            ActiniumBlockAccess blockAccess,
-            BlockRenderLayer layer,
-            Operation<Void> original,
-            @Local(name = "buildContext") VintageChunkBuildContext buildContext
-    ) {
-        if (!ACTINIUM$BETTER_FOLIAGE_COMPAT.tryRenderFastBlock(
-                state, pos, blockAccess, buildContext, layer
-        )) {
-            original.call(renderer, state, pos, blockAccess, layer);
-        }
-    }
-
-    @WrapOperation(
-            method = EXECUTE_METHOD,
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lcom/dhj/actinium/render/terrain/compile/pipeline/VintageBlockRenderer;renderBlock("
-                            + "Lnet/minecraft/block/state/IBlockState;Lnet/minecraft/util/math/BlockPos;"
-                            + "Lcom/dhj/actinium/world/cloned/ActiniumBlockAccess;"
                             + "Lnet/minecraft/util/BlockRenderLayer;Z)V",
                     remap = false
             )
@@ -102,7 +75,7 @@ public abstract class MixinChunkBuilderMeshingTaskBetterFoliage {
             @Local(name = "buildContext") VintageChunkBuildContext buildContext
     ) {
         if (!ACTINIUM$BETTER_FOLIAGE_COMPAT.tryRenderFastBlock(
-                state, pos, blockAccess, buildContext, layer
+                state, pos, blockAccess, buildContext, layer, allowRenderPassOptimization
         )) {
             original.call(renderer, state, pos, blockAccess, layer, allowRenderPassOptimization);
         }

@@ -34,6 +34,9 @@ public interface BetterFoliageCompat {
     /**
      * Uses Better Foliage's dispatcher only when one of its feature renderers handles this block.
      *
+     * @param allowRenderPassOptimization the render pass optimization flag of the outer fast-render
+     *                                    call; the base block re-dispatched by Better Foliage must
+     *                                    keep the same rule
      * @return true when Better Foliage handled this block and the fast renderer should be skipped
      */
     boolean tryRenderFastBlock(
@@ -41,6 +44,7 @@ public interface BetterFoliageCompat {
             BlockPos pos,
             ActiniumBlockAccess blockAccess,
             VintageChunkBuildContext buildContext,
-            BlockRenderLayer layer
+            BlockRenderLayer layer,
+            boolean allowRenderPassOptimization
     );
 }

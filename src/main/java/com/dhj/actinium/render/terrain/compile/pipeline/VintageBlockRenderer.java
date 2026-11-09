@@ -10,6 +10,7 @@ import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.BlockModelShapes;
 import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.renderer.block.model.IBakedModel;
 import net.minecraft.client.renderer.color.IBlockColor;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
@@ -90,6 +91,9 @@ public class VintageBlockRenderer {
 
     private int currentQuadRenderingFlags;
 
+    private IBakedModel preparedModel;
+    private boolean renderedAnyQuad;
+
 
     public VintageBlockRenderer(VintageChunkBuildContext context, LightDataCache cache) {
         this.shapes = Minecraft.getMinecraft().getBlockRendererDispatcher().getBlockModelShapes();
@@ -128,11 +132,15 @@ public class VintageBlockRenderer {
         }
         this.analyzer.setDefaultRenderingFlags(defaultFlags);
         this.usedContextEncoders.clear();
+        this.renderedAnyQuad = false;
 
-        if (blockAccess.getWorldType() != WorldType.DEBUG_ALL_BLOCK_STATES) {
-            state = state.getActualState(blockAccess, pos);
+        IBakedModel model = this.preparedModel;
+        if (model == null) {
+            if (blockAccess.getWorldType() != WorldType.DEBUG_ALL_BLOCK_STATES) {
+                state = state.getActualState(blockAccess, pos);
+            }
+            model = this.shapes.getModelForState(state);
         }
-        var model = this.shapes.getModelForState(state);
         if (MissingModelCompat.isMissingModel(model)) {
             // Missing models have no renderable quads; Forge's fancy variant lazily renders a
             // "missing" label through the font renderer, which requires a GL context and crashes
@@ -200,6 +208,7 @@ public class VintageBlockRenderer {
 
             this.currentQuadRenderingFlags = this.analyzer.getFlagsForRendering(VintageDiffuseProvider.fromEnumFacing(dir), BakedQuadView.ofList(quads));
             renderQuadList(buffer, buffers, material, pos, dir, lighter, colorProvider, offset, quads);
+            this.renderedAnyQuad = true;
         }
 
         var quads = model.getQuads(state, null, rand);
@@ -210,6 +219,7 @@ public class VintageBlockRenderer {
             if (!quads.isEmpty()) {
                 this.currentQuadRenderingFlags = this.analyzer.getFlagsForRendering(ModelQuadFacing.UNASSIGNED, BakedQuadView.ofList(quads));
                 renderQuadList(buffer, buffers, material, pos, null, lighter, colorProvider, offset, quads);
+                this.renderedAnyQuad = true;
             }
         }
 
@@ -222,6 +232,41 @@ public class VintageBlockRenderer {
         this.currentShaderBlockId = -1;
         this.currentRenderLayer = null;
         this.currentWaterloggedWater = false;
+    }
+
+    /**
+     * Renders a block model the {@code BlockRendererDispatcher} already resolved, so model
+     * selection stays with the dispatcher while the geometry still goes through the fast mesher.
+     * The state is the one the dispatcher derived ({@code getActualState}), matching what
+     * {@code BlockModelRenderer#renderModel} receives.
+     *
+     * @return whether any quad list was handed to {@code renderQuadList}
+     */
+    public boolean renderModel(IBakedModel model, IBlockState state, BlockPos pos,
+                               ActiniumBlockAccess blockAccess, BlockRenderLayer layer) {
+        return this.renderModel(model, state, pos, blockAccess, layer, true);
+    }
+
+    /**
+     * Variant of {@link #renderModel(IBakedModel, IBlockState, BlockPos, ActiniumBlockAccess,
+     * BlockRenderLayer)} for renders that must not merge quads into a cheaper render pass, such as
+     * the shader layer override and the Better Foliage dispatcher hook it reaches.
+     *
+     * @return whether any quad list was handed to {@code renderQuadList}
+     */
+    public boolean renderModel(IBakedModel model, IBlockState state, BlockPos pos,
+                               ActiniumBlockAccess blockAccess, BlockRenderLayer layer,
+                               boolean allowRenderPassOptimization) {
+        IBakedModel previousModel = this.preparedModel;
+        boolean previousRendered = this.renderedAnyQuad;
+        this.preparedModel = model;
+        try {
+            this.renderBlock(state, pos, blockAccess, layer, allowRenderPassOptimization);
+            return this.renderedAnyQuad;
+        } finally {
+            this.preparedModel = previousModel;
+            this.renderedAnyQuad = previousRendered;
+        }
     }
 
     private QuadLightData getVertexLight(LightPipeline lighter, BlockPos pos, EnumFacing cullFace, BakedQuadView quad) {

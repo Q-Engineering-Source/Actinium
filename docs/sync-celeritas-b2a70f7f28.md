@@ -14,7 +14,7 @@
 | 附加前置 | 1（`2334caab0`，范围外，单列成节） |
 | `未分配` 条目 | 0 |
 
-统计（主表 36 行）：待同步 2、分 hunk 同步 0、已有等价 1、不适用 10、已同步 23（C05 四行计入已同步，待实机验证）。
+统计（主表 36 行）：待同步 1、分 hunk 同步 0、已有等价 1、不适用 10、已同步 24（C05 四行与 C08 一行计入已同步，待实机验证）。
 
 ## 边界
 
@@ -42,7 +42,7 @@
 | 5 | `64158a451` | Fix workflow [skip ci] | 2026-09-25 | 不适用 | — | `release.yaml` 工作流修正，属 CI 文件 |
 | 6 | `3345e59fa` | Bump base to 2.5 [skip ci] | 2026-09-25 | 不适用 | — | `gradle.properties` 的 base 版本提升 |
 | 7 | `9b661b70e` | Opt publish task out of the configuration cache | 2026-09-25 | 不适用 | — | `build.gradle.kts` 的配置缓存选项，属构建治理 |
-| 8 | `26ab21758` | Route the fast block renderer through BlockRendererDispatcher | 2026-10-01 | 待同步 | C08 | 快速方块渲染器改走 `BlockRendererDispatcher`；本地 `VintageBlockRenderer.renderBlock` 仍自行 `getActualState` 加 `shapes.getModelForState`，无 `ChunkBufferBuilder` 与 dispatcher mixin |
+| 8 | `26ab21758` | Route the fast block renderer through BlockRendererDispatcher | 2026-10-01 | 已同步（`feat/c08-dispatcher-block-renderer`） | C08 | `ChunkBufferBuilder` 携带构建上下文、render layer 与原版回退标记，`ChunkBlockRendererRouter.shouldUseFastRenderer` 判定资格，`MixinBlockRendererDispatcher` 用 `@WrapOperation` 只包裹 `BlockRendererDispatcher.renderBlock` 内的 `BlockModelRenderer.renderModel` 调用点；`ChunkBuilderMeshingTask` 的普通 LAYERS 分支统一走 `getBufferForLayer` + `beginVanillaBlockRender` + `dispatcher.renderBlock` + `endVanillaRender`，Snow Real Magic、ArchitectureCraft 与 Fluidlogged 由 buffer 标记留在原版路径。本地不采用上游把 `renderBlock` 主体改名搬进 `renderModel` 的做法：`renderBlock` 主体、返回值、两个 `renderQuadList` 调用点与 `shouldSideBeRendered` 调用点保持在原位（`VintageBlockRendererBindingContractTest` 锁定的 addon 绑定面），新增私有 `preparedModel` 字段让 `renderBlock` 跳过 `getActualState` 与 `shapes.getModelForState`，`renderModel` 只注入模型并读取 `renderedAnyQuad`。shader layer override 的直接快速路径保留 `allowRenderPassOptimization=false` |
 | 9 | `6150f9694` | Fix Oculus ShaderChunkRenderer init mixin after FogService constructor change | 2026-10-01 | 不适用 | — | 修的是 modern 源集里 Oculus 的 `MixinShaderChunkRenderer`，本地无该 Mixin |
 | 10 | `48eb54f5c` | Don't treat vertices past the far plane as needing a near clip | 2026-10-01 | 已同步 | C01 | 已核实 `AbstractRasterizer.needsNearClip` 与 `PerspectiveRasterizer` 仅接受 `w > 0 && tz > 0`，远平面外顶点不再触发近平面裁剪，避免边界覆盖误判 |
 | 11 | `7818b3317` | Relax SectionLattice restrictions on world height | 2026-10-11 | 已同步（`feat/c05-shadow-lattice`） | C05 | `SectionLattice` 以 `worldDimY` 记录世界高度加两侧哨兵，`allocate` 取 `dimY = min(worldDimY, dimXZ)` 并由 `windowedY` 决定 Y 是否随相机窗口化；`shiftRebase`、`dropLeaving`、`fillNewBand` 扩为三轴，新增 `shiftContentsWithY` 与 `moveCells` 搬运全部平行数组（含 `shadowVisitState`）。构造函数不再因世界高度超过 `MAX_DIM` 抛异常 |

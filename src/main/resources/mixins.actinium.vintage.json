@@ -39,6 +39,7 @@
     "core.terrain.MixinBakedQuad",
     "core.terrain.MixinBakedQuadFactory",
     "core.terrain.MixinBiomeColorHelper",
+    "core.terrain.MixinBlockRendererDispatcher",
     "core.terrain.MixinClientChunkManager",
     "core.terrain.MixinRenderGlobal",
     "core.terrain.MixinRenderRegionManager",

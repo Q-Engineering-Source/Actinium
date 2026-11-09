@@ -7,6 +7,7 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.VarInsnNode;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -58,6 +59,17 @@ class VintageBlockRendererBindingContractTest {
             + "Lnet/minecraft/client/renderer/color/IBlockColor;"
             + "Lnet/minecraft/util/math/Vec3d;"
             + "Ljava/util/List;)V";
+    private static final String RENDER_MODEL_WITH_FLAG_DESCRIPTOR =
+            "(Lnet/minecraft/client/renderer/block/model/IBakedModel;"
+            + BLOCK_STATE_DESCRIPTOR
+            + "Lnet/minecraft/util/math/BlockPos;"
+            + BLOCK_ACCESS_DESCRIPTOR
+            + "Lnet/minecraft/util/BlockRenderLayer;Z)Z";
+    private static final String RENDER_BLOCK_WITH_FLAG_DESCRIPTOR =
+            "(" + BLOCK_STATE_DESCRIPTOR
+            + "Lnet/minecraft/util/math/BlockPos;"
+            + BLOCK_ACCESS_DESCRIPTOR
+            + "Lnet/minecraft/util/BlockRenderLayer;Z)V";
 
     @Test
     void retainsShadowedPrivateFields() throws IOException {
@@ -137,6 +149,45 @@ class VintageBlockRendererBindingContractTest {
                         + "addon mixins @Redirect instructions inside renderBlock, so moving the "
                         + "predicate into a helper method would silently drop their injection "
                         + "(found " + callSites + ")");
+    }
+
+    @Test
+    void renderModelWithFlagForwardsTheFlagToRenderBlock() throws IOException {
+        ClassNode node = readRendererClass();
+        MethodNode renderModel = node.methods.stream()
+                .filter(method -> method.name.equals("renderModel"))
+                .filter(method -> method.desc.equals(RENDER_MODEL_WITH_FLAG_DESCRIPTOR))
+                .findFirst()
+                .orElse(null);
+
+        assertNotNull(renderModel, "renderModel(..., boolean) must exist: the dispatcher hands it the "
+                + "render pass optimization flag of the buffer that requested the render, and without "
+                + "the overload the shader layer override loses its allowRenderPassOptimization=false");
+
+        MethodInsnNode renderBlockCall = null;
+        for (var instruction = renderModel.instructions.getFirst(); instruction != null;
+             instruction = instruction.getNext()) {
+            if (instruction instanceof MethodInsnNode call
+                    && call.owner.equals(CLASS_NAME)
+                    && call.name.equals("renderBlock")
+                    && call.desc.equals(RENDER_BLOCK_WITH_FLAG_DESCRIPTOR)) {
+                renderBlockCall = call;
+                break;
+            }
+        }
+
+        assertNotNull(renderBlockCall,
+                "renderModel(..., boolean) must render through the five argument renderBlock overload");
+
+        // Slot 0 is "this", so slot 6 is the sixth declared parameter: the caller supplied flag.
+        var flagArgument = renderBlockCall.getPrevious();
+        assertTrue(flagArgument instanceof VarInsnNode,
+                "renderModel(..., boolean) must forward its flag parameter to renderBlock instead of "
+                        + "pushing a constant, otherwise every render would silently re-enable render "
+                        + "pass optimization");
+        assertEquals(Opcodes.ILOAD, flagArgument.getOpcode(), "the forwarded flag must be an int load");
+        assertEquals(6, ((VarInsnNode) flagArgument).var,
+                "the forwarded flag must come from the sixth parameter (this occupies slot 0)");
     }
 
     private static ClassNode readRendererClass() throws IOException {
