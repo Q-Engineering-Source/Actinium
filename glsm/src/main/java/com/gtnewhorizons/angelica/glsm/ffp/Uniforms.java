@@ -131,6 +131,13 @@ public class Uniforms {
             }
         }
 
+        if (program.getVertexKey().instancing() == Instancing.WEATHER) {
+            if (uploaded.needsWeatherParamsUpload(WeatherParams.generation)) {
+                uploadWeatherParams(program);
+                uploaded.markWeatherParamsUploaded(WeatherParams.generation);
+            }
+        }
+
         final int fragGen = GLStateManager.getFragmentGeneration();
         if (uploaded.needsFragmentUpload(fragGen)) {
             uploadFragmentUniforms(program);
@@ -141,6 +148,29 @@ public class Uniforms {
         if (program.getVertexKey().lineQuads() || program.getVertexKey().lineStipple()) {
             uploadLineUniforms(program, uploaded);
         }
+    }
+
+    /**
+     * Uploads the per-frame weather parameters to the three weather uniform vectors.
+     *
+     * <p>Only the weather variant declares them; the other variants resolve every location to
+     * {@code -1} and skip the upload entirely.</p>
+     */
+    private void uploadWeatherParams(Program program) {
+        uploadVec4(program.locWeatherParams0, WeatherParams.translateX, WeatherParams.translateY,
+            WeatherParams.translateZ, WeatherParams.invRadius);
+        uploadVec4(program.locWeatherParams1, WeatherParams.cameraFracX, WeatherParams.cameraFracZ,
+            WeatherParams.partialTicks, WeatherParams.age);
+        uploadVec4(program.locWeatherParams2, WeatherParams.rainScroll, WeatherParams.snowScroll,
+            WeatherParams.rainStrength, 0.0F);
+    }
+
+    private void uploadVec4(int location, float x, float y, float z, float w) {
+        if (location == -1) return;
+        vec4Buf.clear();
+        vec4Buf.put(x).put(y).put(z).put(w);
+        vec4Buf.flip();
+        RENDER_BACKEND.uniform4(location, vec4Buf);
     }
 
     private void uploadMatrices(Program program, boolean mvChanged, boolean projChanged, boolean texMatChanged) {

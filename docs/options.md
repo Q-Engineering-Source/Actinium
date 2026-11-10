@@ -58,7 +58,7 @@ DEBUG 页原先与高级/性能页重复的 5 项（模型渲染器批处理、�
 
 | 选项 | 字段 | 实现落点 |
 | --- | --- | --- |
-| 天气质量 | `quality.weatherQuality` | `mixin.vintage.features.options.MixinEntityRenderer`（`renderRainSnow` 与 `addRainParticles` 重定向 `fancyGraphics`） |
+| 天气质量 | `quality.weatherQuality` | `render/WeatherRenderer` 的降水采样半径（沿用 FAST=5、其余=10） |
 | 树叶质量 | `quality.leavesQuality` | `render/terrain/LeafRenderQuality`（由 `MixinRenderGlobal.onReload` 在 `loadRenderers` 返回后套用） |
 | 生物群系颜色噪声 | `quality.useBiomeColorNoise` 等 | 生物群系染色计算 |
 | 暗角 | `quality.enableVignette` | `mixin.vintage.features.options.MixinGuiIngameForge` |
@@ -173,6 +173,13 @@ section metadata 仅在 compute 可用且启用时发布，CPU 路径不为每�
 `COMPUTE` 时由 `GpuCulling.culler()` 重新创建，因此两个模式之间来回切换不会累积 GPU 资源。
 `ChunkRenderer.createCuller` 在能力探测失败时同样调用 `GpuCulling.shutdown()`，释放上一个渲染器
 留下的镜像与程序，已选中的模式保持不变。
+
+## 实例化天气（`advanced.use_instanced_weather`）
+
+高级页的实例化天气开关对应 `SodiumGameOptions.advanced.useInstancedWeather`，默认开启。
+开启时，无光影经 GLSM 实例化绘制，Iris 使用懒构建的天气实例程序；关闭时使用 `BufferBuilder`
+逐列回退。变体缺失或构建失败时也保留该回退。`weatherQuality` 继续控制降水采样半径，
+`runTick` 负责在设置变化后更新或释放天气资源。
 
 ## 延迟方块（`performance.deferred_block_ids`）
 

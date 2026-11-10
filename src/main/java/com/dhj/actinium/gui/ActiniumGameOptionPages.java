@@ -114,6 +114,22 @@ public class ActiniumGameOptionPages {
                 .build();
     }
 
+    /**
+     * Whether rain and snow are drawn as one instanced draw per precipitation type. Turning it off
+     * keeps the rewritten vanilla pass, which draws the same columns with per column quads.
+     */
+    private static OptionImpl<SodiumGameOptions, Boolean> createInstancedWeatherOption(TextComponent tooltip) {
+        return OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                .setId(OptionIdentifier.create("actinium", "use_instanced_weather", Boolean.class))
+                .setName(TextComponent.translatable("sodium.options.actinium.instanced_weather.name"))
+                .setTooltip(tooltip)
+                .setControl(TickBoxControl::new)
+                .setImpact(OptionImpact.MEDIUM)
+                .setBinding((opts, value) -> opts.advanced.useInstancedWeather = value, opts -> opts.advanced.useInstancedWeather)
+                .setDefaultValue(true)
+                .build();
+    }
+
     private static OptionImpl<SodiumGameOptions, Boolean> createModelRendererDisplayListsOption(TextComponent tooltip) {
         return OptionImpl.createBuilder(boolean.class, sodiumOpts)
                 .setId(StandardOptions.Option.MODEL_RENDERER_DISPLAY_LISTS.cast())
@@ -524,6 +540,7 @@ public class ActiniumGameOptionPages {
                 .add(createModelRendererDisplayListsOption(TextComponent.translatable("sodium.options.model_renderer_display_lists.tooltip")))
                 .add(createFastLitItemRenderingOption(TextComponent.translatable("sodium.options.fast_lit_item_rendering.tooltip")))
                 .add(createFastLitItemDisplayListsOption(TextComponent.translatable("sodium.options.fast_lit_item_display_lists.tooltip")))
+                .add(createInstancedWeatherOption(TextComponent.translatable("sodium.options.actinium.instanced_weather.tooltip")))
                 .build());
 
         groups.add(OptionGroup.createBuilder()

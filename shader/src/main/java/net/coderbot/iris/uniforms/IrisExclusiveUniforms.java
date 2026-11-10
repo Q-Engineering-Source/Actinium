@@ -15,6 +15,7 @@ import org.joml.Vector3dc;
 import org.joml.Vector4f;
 
 import java.util.List;
+import java.util.Objects;
 
 public class IrisExclusiveUniforms {
 	// Reusable vectors to avoid allocations every frame
@@ -23,11 +24,84 @@ public class IrisExclusiveUniforms {
 	private static final Vector4f lightningBoltPositionCache = new Vector4f();
 	private static final Vector4f ZERO_VECTOR_4f = new Vector4f(0, 0, 0, 0);
 
+	/** Supplies the cloud texture width and scale of the renderer, the inputs of the cloud scroll period. */
+	public interface CloudScrollPeriod {
+		/** Width in texels of the cloud texture sampled by the pack. */
+		int textureWidth();
+
+		/** Horizontal scale of one cloud cell, used to convert its texture period into world ticks. */
+		int scale();
+	}
+
+	private static final CloudScrollPeriod DEFAULT_CLOUD_SCROLL_PERIOD = new CloudScrollPeriod() {
+		@Override
+		public int textureWidth() {
+			return 256;
+		}
+
+		@Override
+		public int scale() {
+			return 1;
+		}
+	};
+
+	private static volatile CloudScrollPeriod cloudScrollPeriod = DEFAULT_CLOUD_SCROLL_PERIOD;
+
+	/**
+	 * Registers the cloud scroll period of the renderer. The renderer calls this because this module cannot
+	 * reference it; until then the vanilla texture width and scale are used.
+	 *
+	 * @param period cloud texture width and scale of the renderer
+	 * @throws NullPointerException     if {@code period} is {@code null}
+	 * @throws IllegalArgumentException if the width or the scale is not positive, which would make the cycle
+	 *                                  zero and the wrap undefined
+	 */
+	public static void setCloudScrollPeriod(CloudScrollPeriod period) {
+		Objects.requireNonNull(period, "period");
+		if (period.textureWidth() <= 0 || period.scale() <= 0) {
+			throw new IllegalArgumentException("Cloud scroll period needs a positive texture width and scale: "
+				+ period.textureWidth() + " texels at " + period.scale() + "x");
+		}
+		cloudScrollPeriod = period;
+	}
+
+	/**
+	 * Returns the number of ticks after which the cloud animation repeats.
+	 *
+	 * <p>One cycle moves the layer by one texture width: the width in texels times 400 ticks per width at
+	 * the 1x cloud scale, scaled by the registered scale.</p>
+	 */
+	static long cloudScrollCycle() {
+		final CloudScrollPeriod period = cloudScrollPeriod;
+		return (long) period.textureWidth() * 400L * period.scale();
+	}
+
+	/**
+	 * Returns the cloud animation time at the given world time.
+	 *
+	 * <p>The time wraps at one scroll period, which keeps the value small enough to stay exact in single
+	 * precision while the pack samples its cloud noise.</p>
+	 */
+	static float cloudTime(long totalWorldTime, float partialTicks) {
+		return (totalWorldTime % cloudScrollCycle() + partialTicks) * 0.03F;
+	}
+
+	/** Returns the cloud animation time of a world, zero when no world is loaded. */
+	static float cloudTime(WorldClient world, float partialTicks) {
+		return world == null ? 0.0F : cloudTime(world.getTotalWorldTime(), partialTicks);
+	}
+
+	private static float getCloudTime() {
+		final Minecraft mc = Minecraft.getMinecraft();
+		return cloudTime(mc.world, mc.getRenderPartialTicks());
+	}
+
 	public static void addIrisExclusiveUniforms(UniformHolder uniforms) {
 		WorldInfoUniforms.addWorldInfoUniforms(uniforms);
 
 		//All Iris-exclusive uniforms (uniforms which do not exist in either OptiFine or ShadersMod) should be registered here.
 		uniforms.uniform1f(UniformUpdateFrequency.PER_FRAME, "thunderStrength", IrisExclusiveUniforms::getThunderStrength);
+		uniforms.uniform1f(UniformUpdateFrequency.PER_FRAME, "cloudTime", IrisExclusiveUniforms::getCloudTime);
 		uniforms.uniform1f(UniformUpdateFrequency.PER_TICK, "currentPlayerHealth", IrisExclusiveUniforms::getCurrentHealth);
 		uniforms.uniform1f(UniformUpdateFrequency.PER_TICK, "maxPlayerHealth", IrisExclusiveUniforms::getMaxHealth);
 		uniforms.uniform1f(UniformUpdateFrequency.PER_TICK, "currentPlayerHunger", IrisExclusiveUniforms::getCurrentHunger);

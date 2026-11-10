@@ -54,6 +54,15 @@ public final class VertexKey {
     // Per-vertex texcoord availability for the extended multi-texture units 2/3 (issue #175).
     private static final int BIT_HAS_VERTEX_TEX2     = BIT_LINE_STIPPLE + 1;
     private static final int BIT_HAS_VERTEX_TEX3     = BIT_HAS_VERTEX_TEX2 + 1;
+    // Instanced draw kind of the current GL context (see GLSMPrograms.setFfpInstancing).
+    private static final int BIT_INSTANCING          = BIT_HAS_VERTEX_TEX3 + 1;
+    private static final long INSTANCING_MASK        = 0x7L;
+
+    static {
+        if (Instancing.VALUES.length > INSTANCING_MASK + 1) {
+            throw new IllegalStateException("Instancing has outgrown the VertexKey field; widen INSTANCING_MASK");
+        }
+    }
 
     public static final int TG_NONE                  = 0;
     public static final int TG_OBJ_LINEAR            = 1;
@@ -115,6 +124,9 @@ public final class VertexKey {
     public boolean clipPlanesEnabled()    { return bit(BIT_CLIP_PLANES); }
     public boolean lineStipple()          { return bit(BIT_LINE_STIPPLE); }
     public boolean lineQuads()            { return bit(BIT_LINE_QUADS); }
+
+    /** Instanced draw kind of the context this key was packed from. */
+    public Instancing instancing()        { return Instancing.VALUES[(int) ((packed >> BIT_INSTANCING) & INSTANCING_MASK)]; }
 
     public boolean cmReplacesAmbient()    { final int m = colorMaterialMode(); return m == CM_AMBIENT || m == CM_AMBIENT_AND_DIFFUSE; }
     public boolean cmReplacesDiffuse()    { final int m = colorMaterialMode(); return m == CM_DIFFUSE || m == CM_AMBIENT_AND_DIFFUSE; }
@@ -260,7 +272,23 @@ public final class VertexKey {
             bits |= (1L << BIT_LINE_STIPPLE);
         }
 
+        bits |= (long) GLStateManager.ctx().ffpInstancing.ordinal() << BIT_INSTANCING;
+
         return bits;
+    }
+
+    /**
+     * Returns a copy of a packed key with another instancing kind.
+     *
+     * <p>Used to precompile variants for draws that set the kind just before drawing, so the first
+     * ordinary warm-up does not leave a hitch.</p>
+     *
+     * @param packed key packed from state
+     * @param kind   instancing kind to store
+     * @return the repacked key
+     */
+    static long withInstancing(long packed, Instancing kind) {
+        return (packed & ~(INSTANCING_MASK << BIT_INSTANCING)) | ((long) kind.ordinal() << BIT_INSTANCING);
     }
 
     public static VertexKey fromState(boolean hasColor, boolean hasNormal, boolean hasTexCoord, boolean hasLightmap, int fragUnitMask) {

@@ -41,7 +41,9 @@
     "core.terrain.MixinBiomeColorHelper",
     "core.terrain.MixinBlockRendererDispatcher",
     "core.terrain.MixinClientChunkManager",
+    "core.terrain.MixinEntityRendererClouds",
     "core.terrain.MixinRenderGlobal",
+    "core.terrain.MixinRenderGlobalClouds",
     "core.terrain.MixinRenderRegionManager",
     "core.terrain.MixinShaderLoader",
     "core.terrain.MixinSharedQuadIndexBuffer",
@@ -58,6 +60,7 @@
     "features.textures.MixinRenderItem",
     "features.textures.MixinTextureAtlas",
     "features.textures.MixinTextureAtlasSprite",
+    "features.weather.MixinEntityRendererWeather",
     "fontrenderer.MixinFontRenderer",
     "gui.MixinGuiMainMenu"
   ],

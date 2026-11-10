@@ -363,6 +363,14 @@ public abstract class RenderBackend {
     public void multiDrawElementsIndirectCount(int mode, int type, long indirect, long drawcount, int maxdrawcount, int stride) { throw new UnsupportedOperationException(getName() + ": indirect draw-count buffers unsupported"); }
     public abstract void copyBufferSubData(int readTarget, int writeTarget, long readOffset, long writeOffset, long size);
     public abstract void drawElementsInstanced(int mode, int count, int type, long indices, int primcount);
+
+    /**
+     * Reports whether this backend can draw the same geometry once per instance in a single call.
+     * A backend without the instanced draw entry point reports false, and callers that can emit their
+     * geometry per vertex keep that path.
+     */
+    public boolean supportsInstancedDrawing() { return false; }
+
     public void drawArraysInstanced(int mode, int first, int count, int primcount) {
         throw new UnsupportedOperationException("drawArraysInstanced is only supported by the LWJGL3 backend");
     }

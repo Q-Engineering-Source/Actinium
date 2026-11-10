@@ -21,8 +21,17 @@ public final class VertexShaderGenerator {
         emitOutputs(sb, key);
 
         sb.append("void main() {\n");
+        if (key.instancing() == Instancing.WEATHER) {
+            sb.append("  ").append(InstancedGlslHelpers.weatherPrologue("u_", "a_", "a_TexCoord0",
+                "vec4 weatherVertex", "vec4 weatherColor", "vec4 weatherTex0", "vec4 weatherTex1",
+                "\n  ")).append('\n');
+        }
         emitPositionTransform(sb, key);
-        if (key.lightingEnabled()) {
+        if (key.instancing() == Instancing.WEATHER) {
+            // The weather quad carries its own colour and alpha; the lighting state of the pass it is
+            // drawn in must not replace them, so the variant never runs the lighting branch.
+            emitColorPassthrough(sb, key);
+        } else if (key.lightingEnabled()) {
             emitNormalTransform(sb, key);
             emitLighting(sb, key);
         } else {
@@ -70,6 +79,9 @@ public final class VertexShaderGenerator {
                 // Line quads carry the segment's other endpoint in the normal slot
                 sb.append("layout(location = ").append(VertexFormatElement.Usage.NORMAL.getAttributeLocation()).append(") in vec3 a_LineOtherEnd;\n");
             }
+        }
+        for (String decl : InstancedGlslHelpers.attributeDecls("a_", key.instancing())) {
+            sb.append(decl);
         }
         sb.append('\n');
     }
@@ -159,6 +171,13 @@ public final class VertexShaderGenerator {
             sb.append("uniform vec4 u_ClipPlane[8];\n");
         }
 
+        if (key.instancing() == Instancing.WEATHER) {
+            sb.append("\n// Weather instancing\n");
+            sb.append("uniform vec4 u_WeatherParams0;\n");
+            sb.append("uniform vec4 u_WeatherParams1;\n");
+            sb.append("uniform vec4 u_WeatherParams2;\n");
+        }
+
         sb.append('\n');
     }
 
@@ -232,7 +251,11 @@ public final class VertexShaderGenerator {
 
     private static void emitPositionTransform(StringBuilder sb, VertexKey key) {
         sb.append("  // Position transform\n");
-        sb.append("  vec4 pos4 = vec4(a_Position, 1.0);\n");
+        if (key.instancing() == Instancing.WEATHER) {
+            sb.append("  vec4 pos4 = weatherVertex;\n");
+        } else {
+            sb.append("  vec4 pos4 = vec4(a_Position, 1.0);\n");
+        }
         sb.append("  gl_Position = u_MVPMatrix * pos4;\n");
         if (key.lineQuads()) {
             emitLineQuadWidening(sb);
@@ -410,7 +433,12 @@ public final class VertexShaderGenerator {
 
     private static void emitColorPassthrough(StringBuilder sb, VertexKey key) {
         sb.append("  // Color passthrough (no lighting)\n");
-        if (key.hasVertexColor()) {
+        if (key.instancing() == Instancing.WEATHER) {
+            if (key.separateSpecular()) {
+                sb.append("  v_SpecularColor = vec3(0.0);\n");
+            }
+            sb.append("  v_Color = weatherColor;\n");
+        } else if (key.hasVertexColor()) {
             sb.append("  v_Color = a_Color;\n");
         } else {
             sb.append("  v_Color = u_CurrentColor;\n");
@@ -419,6 +447,15 @@ public final class VertexShaderGenerator {
     }
 
     private static void emitTexCoordPassthrough(StringBuilder sb, VertexKey key) {
+        if (key.instancing() == Instancing.WEATHER) {
+            sb.append("  // Texture coordinates - weather\n");
+            sb.append("  v_TexCoord0 = weatherTex0;\n");
+            if (key.lightmapEnabled()) {
+                sb.append("  v_TexCoord1 = u_LightmapTextureMatrix * weatherTex1;\n");
+            }
+            sb.append('\n');
+            return;
+        }
         if (key.texGenEnabled()) {
             emitTexGenCoordGeneration(sb, key);
         } else if (key.unitTexCoordEnabled(0) || key.hasVertexTexCoord()) {

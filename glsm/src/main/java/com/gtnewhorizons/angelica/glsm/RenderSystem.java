@@ -447,6 +447,14 @@ public class RenderSystem {
         return isGLES;
     }
 
+    /**
+     * Reports whether the context is MobileGlues, an ES translation layer that compiles desktop GLSL. Plain
+     * ES contexts cannot compile it, so callers that ship desktop GLSL shaders must fall back on them.
+     */
+    public static boolean isMobileGlues() {
+        return isMobileGlues;
+    }
+
     private static synchronized void detectGLES() {
         if (glesDetected) return;
         try {

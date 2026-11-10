@@ -1,5 +1,6 @@
 package net.coderbot.iris.pipeline.transform.parameter;
 
+import com.gtnewhorizons.angelica.glsm.ffp.Instancing;
 import net.coderbot.iris.gbuffer_overrides.matching.InputAvailability;
 import net.coderbot.iris.pipeline.transform.Patch;
 import net.coderbot.iris.shaderpack.texture.TextureStage;
@@ -7,12 +8,19 @@ import net.coderbot.iris.shaderpack.texture.TextureStage;
 public class AttributeParameters extends Parameters {
 	public final boolean hasGeometry;
 	public final InputAvailability inputs;
+	/** Instancing kind the program is specialised for; never null. */
+	public final Instancing instancing;
 	// WARNING: adding new fields requires updating hashCode and equals methods!
 
 	public AttributeParameters(Patch patch, boolean hasGeometry, InputAvailability inputs) {
+		this(patch, hasGeometry, inputs, Instancing.NONE);
+	}
+
+	public AttributeParameters(Patch patch, boolean hasGeometry, InputAvailability inputs, Instancing instancing) {
 		super(patch, null);
 		this.hasGeometry = hasGeometry;
 		this.inputs = inputs;
+		this.instancing = instancing;
 	}
 
 	@Override
@@ -26,6 +34,7 @@ public class AttributeParameters extends Parameters {
 		int result = super.hashCode();
 		result = prime * result + (hasGeometry ? 1231 : 1237);
 		result = prime * result + ((inputs == null) ? 0 : inputs.hashCode());
+		result = prime * result + instancing.hashCode();
 		return result;
 	}
 
@@ -45,6 +54,6 @@ public class AttributeParameters extends Parameters {
 				return false;
 		} else if (!inputs.equals(other.inputs))
 			return false;
-		return true;
+		return instancing == other.instancing;
 	}
 }

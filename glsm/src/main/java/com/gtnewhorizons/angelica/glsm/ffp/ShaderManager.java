@@ -226,6 +226,19 @@ public final class ShaderManager {
         RENDER_BACKEND.useProgram(currentProgram.getProgramId());
     }
 
+    /**
+     * Drops the cached variant so the next draw re-resolves it.
+     *
+     * <p>Called when the instancing kind changes: the kind is part of the vertex key, but a draw only
+     * re-keys itself through {@link #preDraw}, so a program bound before the switch must not be
+     * reused for it.</p>
+     */
+    public synchronized void invalidateVariant() {
+        currentProgram = null;
+        currentVertexKeyPacked = Long.MIN_VALUE;
+        currentFKLen = 0;
+    }
+
     private void uploadUniforms() {
         if (currentProgram == null) return;
         final boolean perfDebugEnabled = GLSMPerfDebug.isEnabled();

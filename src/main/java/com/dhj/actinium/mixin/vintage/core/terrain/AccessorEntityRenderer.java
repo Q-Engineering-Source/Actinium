@@ -24,6 +24,13 @@ public interface AccessorEntityRenderer {
     @Accessor("lightmapColors")
     int[] getLightmapColors();
 
+    /**
+     * Returns the update count of the renderer, which drives the weather texture scroll and reseeds
+     * the rain particle stream.
+     */
+    @Accessor("rendererUpdateCount")
+    int celeritas$getRendererUpdateCount();
+
     @Invoker("getNightVisionBrightness")
     float invokeGetNightVisionBrightness(EntityLivingBase entityLivingBase, float partialTicks);
 }

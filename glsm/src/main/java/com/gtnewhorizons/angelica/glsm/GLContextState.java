@@ -1,6 +1,7 @@
 package com.gtnewhorizons.angelica.glsm;
 
 import com.gtnewhorizon.gtnhlib.client.renderer.stacks.IStateStack;
+import com.gtnewhorizons.angelica.glsm.ffp.Instancing;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import com.gtnewhorizons.angelica.glsm.ffp.VAOManager;
 import com.gtnewhorizons.angelica.glsm.streaming.StreamingVaos;
@@ -69,6 +70,8 @@ public class GLContextState {
     }
 
     public boolean poppingAttributes;
+    /** Instanced draw kind the next FFP vertex variant must be specialised for. */
+    public Instancing ffpInstancing = Instancing.NONE;
     public int mvGeneration;
     public int projGeneration;
     public int texMatrixGeneration;

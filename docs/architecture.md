@@ -187,6 +187,21 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
 - **`render/terrain/fog/`**：`GLStateManagerFogService` —— FogService SPI 实现。
 - **`render/terrain/sprite/`**：`SpriteUtil`。
 
+### 云与天气
+
+`render/WeatherRenderer` 通过 `WeatherColumns` 缓存降水列，并为每个世界复用同一个采样器。
+`WeatherInstanceWriter` 以 48 字节布局输出雨段和雪段；无光影走 GLSM 实例化，Iris 使用
+`DeferredWorldRenderingPipeline.weatherInstancedPass`，配置关闭或变体不可用时走 `BufferBuilder`
+回退。粒子、声音、温度、光照和纹理滚动按 1.12.2 原版规则处理。`advanced.use_instanced_weather`
+控制实例化路径，`ActiniumWorldRenderer.unloadWorld()` 释放实例缓冲、四角网格和采样器。
+
+`com.gtnewhorizons.angelica.render.CloudRenderer` 负责云层与 `clouds=0/1/2`，
+`CloudLayerRenderer` 负责单层构建与绘制。后台只生成 CPU 几何，VAO/VBO 创建、上传、重排与删除在
+渲染线程执行；`CloudVertexMesh` 提供 position、colour、UV、normal 与 normalShade 属性。
+`CloudRenderResources` 管理四种云程序，公开 `CloudLayerProvider` 供其它维度提供层数据，Forge
+自定义云处理器优先于本地接管。`runTick` 检查云设置，OFF 时释放资源；退出世界先删除各层和 native
+缓冲，再删除共享程序。`cloudTime` 经 shader 侧 provider 获取主实现提供的纹理宽度与倍率。
+
 ### 世界与数据
 
 - **`world/`**：`WorldSlice`（世界状态切片，离线程拷贝 blockState/biome/light）、

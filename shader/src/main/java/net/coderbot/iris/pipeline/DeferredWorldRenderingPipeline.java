@@ -6,6 +6,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.primitives.Ints;
 import com.gtnewhorizons.angelica.compat.mojang.Camera;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.ffp.Instancing;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.texture.TextureInfoCache;
 import com.gtnewhorizons.angelica.rendering.RenderingState;
@@ -222,6 +223,13 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	private PackDirectives packDirectives;
 	private final Set<FeatureFlags> activeFeatures;
 	private final ProgramFallbackResolver resolver;
+
+	/**
+	 * Weather instanced variant: one lazily built pass for the weather program, kept out of the
+	 * ordinary pass table so its program and transform cache never mix with the per-column path.
+	 */
+	private Pass weatherInstancedPass;
+	private boolean weatherInstancedVariantFailed;
 
 	public DeferredWorldRenderingPipeline(ProgramSet programs) {
 		Objects.requireNonNull(programs);
@@ -1020,6 +1028,99 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 	private record BuiltProgram(Program program, Pass firstPass) {}
 
+	/**
+	 * Returns whether the pipeline can draw the given instancing kind.
+	 *
+	 * <p>Only weather is supported. The variant is built on first use; a build failure is logged once
+	 * with the program name and the exception and turns every later query into {@code false}, so the
+	 * caller keeps the per-column fallback instead of retrying a broken program every frame.</p>
+	 *
+	 * @param kind instancing kind of the draw
+	 * @return whether the variant exists and may be bound
+	 */
+	public boolean hasInstancedVariant(Instancing kind) {
+		if (kind != Instancing.WEATHER) return false;
+		if (weatherInstancedPass != null) return true;
+		if (weatherInstancedVariantFailed) return false;
+		try {
+			weatherInstancedPass = createWeatherInstancedPass();
+		} catch (Exception e) {
+			weatherInstancedVariantFailed = true;
+			Iris.logger.error("Failed to build the instanced weather program; the per-column weather path stays in use", e);
+			return false;
+		}
+		return weatherInstancedPass != null;
+	}
+
+	/**
+	 * Binds the instanced weather program for the next draw.
+	 *
+	 * @param kind instancing kind to bind, currently only weather
+	 */
+	public void bindInstancedVariant(Instancing kind) {
+		if (kind != Instancing.WEATHER) {
+			throw new IllegalArgumentException("Unsupported instanced variant: " + kind);
+		}
+		if (weatherInstancedPass == null) {
+			throw new IllegalStateException("The weather instanced variant was not built");
+		}
+		weatherInstancedPass.use();
+	}
+
+	/**
+	 * Builds the instanced weather pass from the pack's weather program.
+	 *
+	 * <p>Uses the same gbuffer wiring as the ordinary weather pass so framebuffer, blend, alpha and
+	 * depth state stay identical, and patches the sources with the weather instancing kind so the
+	 * program gets the instance inputs instead of the per-vertex geometry.</p>
+	 */
+	private Pass createWeatherInstancedPass() {
+		final ProgramSource source = resolver.resolveNullable(ProgramId.Weather);
+		if (source == null) {
+			return null;
+		}
+		final InputAvailability availability = new InputAvailability(true, true);
+		final Map<PatchShaderType, String> transformed = TransformPatcher.patchAttributes(
+			requireStageSource(source.getVertexSource(), source, PatchShaderType.VERTEX),
+			source.getGeometrySource().orElse(null),
+			source.getTessControlSource().orElse(null),
+			source.getTessEvalSource().orElse(null),
+			requireStageSource(source.getFragmentSource(), source, PatchShaderType.FRAGMENT),
+			availability, Instancing.WEATHER);
+
+		final ProgramBuilder builder = ProgramBuilder.begin(source.getName() + "_weather_instanced",
+			transformed.get(PatchShaderType.VERTEX),
+			transformed.get(PatchShaderType.GEOMETRY),
+			transformed.get(PatchShaderType.TESS_CONTROL),
+			transformed.get(PatchShaderType.TESS_EVAL),
+			transformed.get(PatchShaderType.FRAGMENT),
+			IrisSamplers.WORLD_RESERVED_TEXTURE_UNITS);
+		wireGbufferProgram(builder, availability, false);
+		final Program program = builder.build();
+		final Pass pass = createPassInner(program, source.getDirectives(), false, ProgramId.Weather);
+		this.customUniforms.mapholderToPass(builder, pass);
+		Iris.logger.info("Built the instanced weather program for {}", source.getName());
+		return pass;
+	}
+
+	/**
+	 * Returns one stage source of a program, rejecting a program that lacks that stage.
+	 *
+	 * <p>A program without a vertex or a fragment stage cannot be patched, so the failure names the
+	 * program and the stage it is missing instead of surfacing as a bare {@link NullPointerException}.</p>
+	 *
+	 * @param stageSource stage source of the program
+	 * @param program     program the source belongs to, named in the failure
+	 * @param stage       stage the source is taken from, named in the failure
+	 * @return the source text of that stage
+	 * @throws IllegalStateException if the program has no source for that stage
+	 */
+	private static String requireStageSource(Optional<String> stageSource, ProgramSource program,
+											 PatchShaderType stage) {
+		return stageSource.orElseThrow(
+			() -> new IllegalStateException("Program " + program.getName() + " has no " + stage + " source"));
+	}
+
 	private Pass createPass(ProgramSource source, InputAvailability availability, boolean shadow, ProgramId id,
 							Map<SharedProgramKey, BuiltProgram> builtPrograms) {
 		// Use pre-computed transform if available, otherwise transform synchronously
@@ -1038,11 +1139,11 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 		if (transformed == null) {
 			transformed = TransformPatcher.patchAttributes(
-				source.getVertexSource().orElseThrow(NullPointerException::new),
+				requireStageSource(source.getVertexSource(), source, PatchShaderType.VERTEX),
 				source.getGeometrySource().orElse(null),
 				source.getTessControlSource().orElse(null),
 				source.getTessEvalSource().orElse(null),
-				source.getFragmentSource().orElseThrow(NullPointerException::new),
+				requireStageSource(source.getFragmentSource(), source, PatchShaderType.FRAGMENT),
 				transformAvailability);
 		}
 
@@ -1372,6 +1473,10 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 		FullScreenQuadRenderer.clearLocCache();
 		destroyPasses(table);
+		if (weatherInstancedPass != null) {
+			weatherInstancedPass.destroy();
+			weatherInstancedPass = null;
+		}
 
 		// Destroy the composite rendering pipeline
 		// This destroys all the loaded composite programs as well.

@@ -1,5 +1,6 @@
 package net.coderbot.iris.pipeline.transform;
 
+import com.gtnewhorizons.angelica.glsm.ffp.Instancing;
 import net.coderbot.iris.gl.shader.ShaderType;
 import net.coderbot.iris.pipeline.transform.parameter.AttributeParameters;
 import org.taumc.glsl.Transformer;
@@ -25,6 +26,13 @@ class AttributeTransformer {
 
 	private static void transformCore(Transformer transformer, AttributeParameters parameters) {
 		CoreTransformHelper.injectMatrixUniforms(transformer);
+
+		if (parameters.instancing == Instancing.WEATHER) {
+			if (parameters.type == ShaderType.VERTEX) {
+				transformWeatherVertex(transformer, parameters);
+			}
+			return;
+		}
 
 		if (parameters.type == ShaderType.VERTEX) {
 			transformer.injectVariable("layout(location = 0) in vec4 iris_Vertex;");
@@ -70,6 +78,34 @@ class AttributeTransformer {
 				transformer.injectVariable("in vec4 mc_midTexCoord;");
 			}
 		}
+	}
+
+	/**
+	 * Vertex stage of the weather instanced variant.
+	 *
+	 * <p>The quad corner and the instance record are the only inputs; everything the shader reads as
+	 * {@code gl_Vertex}, {@code gl_Color} or {@code gl_MultiTexCoord0/1} is computed by the prologue
+	 * into plain variables, so those names must not be declared as attributes.</p>
+	 */
+	private static void transformWeatherVertex(Transformer transformer, AttributeParameters parameters) {
+		CoreTransformHelper.injectWeatherInstancing(transformer, parameters.instancing);
+
+		transformer.rename("gl_Vertex", "iris_Vertex");
+		transformer.rename("gl_Normal", "iris_Normal");
+		transformer.rename("gl_Color", "iris_Color");
+		transformer.rename("gl_MultiTexCoord0", "iris_MultiTexCoord0");
+		transformer.rename("gl_MultiTexCoord1", "iris_MultiTexCoord1");
+		transformer.rename("gl_MultiTexCoord2", "iris_MultiTexCoord1");
+
+		transformer.renameFunctionCall("ftransform", "iris_ftransform");
+		transformer.injectFunction("vec4 iris_ftransform() { return (iris_ProjectionMatrix * iris_ModelViewMatrix) * iris_Vertex; }");
+
+		if (transformer.hasVariable("gl_MultiTexCoord3") && !transformer.hasVariable("mc_midTexCoord")) {
+			transformer.rename("gl_MultiTexCoord3", "mc_midTexCoord");
+			transformer.injectVariable("in vec4 mc_midTexCoord;");
+		}
+
+		CoreTransformHelper.injectWeatherPrologue(transformer);
 	}
 
 }

@@ -110,6 +110,9 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         public boolean useFastLitItemRendering = true;
         public boolean useFastLitItemDisplayLists = true;
 
+        /** Draws rain and snow as one instanced draw per precipitation type instead of per column quads. */
+        public boolean useInstancedWeather = true;
+
         public int cpuRenderAheadLimit = 0;
         public MultiDrawMode multiDrawMode = MultiDrawMode.DIRECT;
         public StreamingUploadStrategy streamingUploadStrategy = StreamingUploadStrategy.MAP_BUFFER_RANGE;

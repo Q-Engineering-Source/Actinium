@@ -6,6 +6,7 @@ import com.dhj.actinium.gui.ActiniumWindowModeController;
 import com.dhj.actinium.render.BufferBuilderStreamingDrawer;
 import com.dhj.actinium.render.EndPortalCompositeRenderer;
 import com.dhj.actinium.render.frame.FramePacer;
+import com.gtnewhorizons.angelica.render.CloudRenderer;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.gtnewhorizons.angelica.glsm.GLSMTextureLifetime;
 import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
@@ -30,6 +31,7 @@ public class MixinMinecraft {
     @Inject(method = "runTick", at = @At("HEAD"))
     private void preRender(CallbackInfo ci) {
         ActiniumWindowModeController.synchronize((Minecraft) (Object) this);
+        CloudRenderer.tick();
     }
 
     @Inject(method = "toggleFullscreen", at = @At("HEAD"), cancellable = true)

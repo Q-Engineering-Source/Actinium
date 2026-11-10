@@ -6,6 +6,7 @@ import org.lwjgl.opengl.ARBShaderObjects;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
+import com.gtnewhorizons.angelica.glsm.ffp.Instancing;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandType;
@@ -37,6 +38,21 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.glGetInteger;
 public final class GLSMPrograms {
 
     private GLSMPrograms() {}
+
+    /**
+     * Selects the instancing kind the next FFP draw must be specialised for.
+     *
+     * <p>The kind is part of the vertex key, so switching it drops the cached variant and the next
+     * draw compiles or binds the matching one. Callers set it around an instanced draw and reset it
+     * to {@link Instancing#NONE} afterwards.</p>
+     *
+     * @param mode instancing kind of the draw about to be issued
+     */
+    public static void setFfpInstancing(Instancing mode) {
+        if (ctx().ffpInstancing == mode) return;
+        ctx().ffpInstancing = mode;
+        ShaderManager.getInstance().invalidateVariant();
+    }
 
     public static void glUseProgram(int program) {
         rejectExitCapture();

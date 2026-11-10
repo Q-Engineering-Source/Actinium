@@ -24,6 +24,7 @@ final class ProgramUniformState extends GenerationTrackedState {
     private static final int LINE_WIDTH = 11;
     private static final int VIEWPORT = 12;
     private static final int LINE_STIPPLE = 13;
+    private static final int WEATHER_PARAMS = 14;
 
     private float lightmapX;
     private float lightmapY;
@@ -35,7 +36,15 @@ final class ProgramUniformState extends GenerationTrackedState {
     private int lineStipple;
 
     ProgramUniformState() {
-        super(14);
+        super(15);
+    }
+
+    boolean needsWeatherParamsUpload(int generation) {
+        return needsUpload(WEATHER_PARAMS, generation);
+    }
+
+    void markWeatherParamsUploaded(int generation) {
+        markUploaded(WEATHER_PARAMS, generation);
     }
 
     boolean needsModelViewUpload(int generation) {

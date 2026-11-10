@@ -28,7 +28,9 @@ import dhj.embeddedt.embeddium.api.shader.ShaderProviderHolder;
 import net.coderbot.iris.pipeline.ShadowRenderer;
 import com.dhj.actinium.compat.depthsupdate.DepthsUpdateCompat;
 import com.dhj.actinium.render.terrain.fog.GLStateManagerFogService;
+import com.dhj.actinium.render.WeatherRenderer;
 import com.dhj.actinium.runtime.ActiniumRuntime;
+import com.gtnewhorizons.angelica.render.CloudRenderer;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 
@@ -89,6 +91,13 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
     @Override
     protected int getShadowEffectiveRenderDistance() {
         return Math.max(1, this.getEffectiveRenderDistance());
+    }
+
+    @Override
+    protected void unloadWorld() {
+        WeatherRenderer.clear();
+        CloudRenderer.release();
+        super.unloadWorld();
     }
 
     @Override

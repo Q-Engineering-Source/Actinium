@@ -93,6 +93,11 @@ public class Program {
     public int locViewportSize = -1;
     public int locLineWidth = -1;
 
+    // Weather instancing (per-frame parameters, uploaded when WeatherParams.generation changes)
+    public int locWeatherParams0 = -1;
+    public int locWeatherParams1 = -1;
+    public int locWeatherParams2 = -1;
+
     // Line stipple (vertex + fragment shader)
     public int locViewport = -1;
     public int locLineStipple = -1;
@@ -175,6 +180,11 @@ public class Program {
         // Wide line emulation
         locViewportSize = loc("u_ViewportSize");
         locLineWidth = loc("u_LineWidth");
+
+        // Weather instancing
+        locWeatherParams0 = loc("u_WeatherParams0");
+        locWeatherParams1 = loc("u_WeatherParams1");
+        locWeatherParams2 = loc("u_WeatherParams2");
 
         // Line stipple
         locViewport = loc("u_Viewport");

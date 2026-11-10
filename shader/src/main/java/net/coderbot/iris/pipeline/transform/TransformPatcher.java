@@ -6,6 +6,7 @@ import net.coderbot.iris.Iris;
 import net.coderbot.iris.gbuffer_overrides.matching.InputAvailability;
 import net.coderbot.iris.gl.texture.TextureType;
 import net.coderbot.iris.helpers.Tri;
+import com.gtnewhorizons.angelica.glsm.ffp.Instancing;
 import net.coderbot.iris.pipeline.transform.parameter.AttributeParameters;
 import net.coderbot.iris.pipeline.transform.parameter.CeleritasTerrainParameters;
 import net.coderbot.iris.pipeline.transform.parameter.ComputeParameters;
@@ -227,6 +228,20 @@ public class TransformPatcher {
 
     public static Map<PatchShaderType, String> patchAttributes(String vertex, String geometry, String fragment, InputAvailability inputs) {
         return patchAttributes(vertex, geometry, null, null, fragment, inputs);
+    }
+
+    /**
+     * Patches an attribute program for one instancing kind.
+     *
+     * <p>The kind is part of the parameter key, so a program patched for instancing never reuses the
+     * transform of the ordinary program of the same source.</p>
+     */
+    public static Map<PatchShaderType, String> patchAttributes(String vertex, String geometry, String tessControl, String tessEval, String fragment, InputAvailability inputs, Instancing instancing) {
+        return transform(vertex, geometry, tessControl, tessEval, fragment, new AttributeParameters(Patch.ATTRIBUTES, geometry != null, inputs, instancing));
+    }
+
+    public static Map<PatchShaderType, String> patchAttributes(String vertex, String geometry, String fragment, InputAvailability inputs, Instancing instancing) {
+        return patchAttributes(vertex, geometry, null, null, fragment, inputs, instancing);
     }
 
     public static Map<PatchShaderType, String> patchCeleritasTerrain(String vertex, String geometry, String fragment) {

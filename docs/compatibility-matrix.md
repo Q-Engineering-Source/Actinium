@@ -318,6 +318,13 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 | Derivative Main                  | d24.4.14      | 部分    | 开启、景深（DoF）开关与重复 Apply、维度切换、重载；手持动态光照；普通草、单格花、双格高草与 Farmer's Future Delight 1.5.1 蓝色矢车菊摆动（2026-11-07 用户实机确认） | 地形/实体/水/天空等完整场景清单与 Distant Horizons 组合未验证 | `fix/derivative-plant-materials` |
 | SEUS PTGI HRR                      | Test 2.1      | 无法启用 | -                                                              | 光影包不能成功开启 | `f261611`   |
 
+## 云与天气
+
+F01 提供降水列缓存、FFP 与 Iris 天气实例化，以及分层云网格、云盘剔除和 `cloudTime`。自动化覆盖
+缓存、几何、GL 属性与像素、程序编译和资源生命周期。完整客户端中的真实纹理、Forge 自定义云、
+Iris 程序选择、雾、深度预 pass 与跨帧交换仍待实机验证；GalaxySpace/AsmodeusCore 没有对应的
+上游层表，保留其自定义渲染路径，不标记为已通过。
+
 ## 模组与环境
 
 `performance.deferred_block_ids` 是 C09 引入的本地判据，默认空列表表示所有方块保持构建线程路径；

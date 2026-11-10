@@ -1,5 +1,8 @@
 package net.coderbot.iris.pipeline.transform;
 
+import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormatElement;
+import com.gtnewhorizons.angelica.glsm.ffp.InstancedGlslHelpers;
+import com.gtnewhorizons.angelica.glsm.ffp.Instancing;
 import org.taumc.glsl.Transformer;
 
 import java.util.HashMap;
@@ -39,6 +42,46 @@ class CoreTransformHelper {
 
         // Catch any remaining gl_TextureMatrix references (e.g. [2]-[7])
         transformer.replaceExpression("gl_TextureMatrix", "mat4[8](iris_TextureMatrix, iris_LightmapTextureMatrix, mat4(1.0), mat4(1.0), mat4(1.0), mat4(1.0), mat4(1.0), mat4(1.0))");
+    }
+
+    /**
+     * Declares the weather instancing inputs: the quad corner, the three per-instance attributes and
+     * the three per-frame uniform vectors, plus the computed values the prologue writes.
+     *
+     * <p>The corner is the primary UV attribute because the weather quad mesh binds it there; the
+     * instance attributes use the same slots as the fixed-function instanced variant so both paths
+     * share one instance buffer layout.</p>
+     */
+    static void injectWeatherInstancing(Transformer transformer, Instancing instancing) {
+        transformer.injectVariable("layout(location = "
+            + VertexFormatElement.Usage.PRIMARY_UV.getAttributeLocation() + ") in vec2 iris_WeatherCorner;");
+        for (String declaration : InstancedGlslHelpers.attributeDecls("iris_", instancing)) {
+            transformer.injectVariable(declaration.trim());
+        }
+        transformer.injectVariable("uniform vec4 iris_WeatherParams0;");
+        transformer.injectVariable("uniform vec4 iris_WeatherParams1;");
+        transformer.injectVariable("uniform vec4 iris_WeatherParams2;");
+        transformer.injectVariable("vec4 iris_Vertex;");
+        transformer.injectVariable("vec4 iris_Color;");
+        transformer.injectVariable("vec4 iris_MultiTexCoord0;");
+        transformer.injectVariable("vec4 iris_MultiTexCoord1;");
+        transformer.injectVariable("vec3 iris_Normal = vec3(0.0, 1.0, 0.0);");
+    }
+
+    /**
+     * Writes the weather prologue at the top of {@code main()}.
+     *
+     * <p>Uses the transformer's AST insertion rather than string concatenation, so the statements land
+     * inside the function body. The formulas and the attribute slots come from the same helper the
+     * fixed-function variant uses, which keeps the lightmap order and the rain scroll identical.</p>
+     */
+    static void injectWeatherPrologue(Transformer transformer) {
+        // prependMain takes a single statement, so the multi-line prologue goes in as one compound
+        // statement; without the braces only its first line survives and the rest is dropped.
+        transformer.prependMain("{\n"
+            + InstancedGlslHelpers.weatherPrologue("iris_", "iris_", "iris_WeatherCorner",
+                "iris_Vertex", "iris_Color", "iris_MultiTexCoord0", "iris_MultiTexCoord1", "\n")
+            + "\n}");
     }
 
     /**
