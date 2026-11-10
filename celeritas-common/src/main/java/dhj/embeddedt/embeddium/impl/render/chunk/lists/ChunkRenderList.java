@@ -28,6 +28,19 @@ public class ChunkRenderList {
         this.region = region;
     }
 
+    /**
+     * Forgets every section of the previous search while keeping the region binding, so the list can
+     * be filled again without keeping stale sections. The section arrays are not cleared: the counts
+     * bound every read, and the next {@link #add(int, int)} overwrites the entries from index 0.
+     */
+    public void reset() {
+        this.size = 0;
+        this.sectionsWithGeometryCount = 0;
+        this.sectionsWithSpritesCount = 0;
+        this.sectionsWithEntitiesCount = 0;
+        this.sectionsNeedingDynamicSortCount = 0;
+    }
+
     public void add(RenderSection render) {
         this.add(render.getSectionIndex(), render.getVisualsServiceFlags());
     }

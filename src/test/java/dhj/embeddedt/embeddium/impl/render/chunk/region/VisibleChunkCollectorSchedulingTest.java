@@ -5,6 +5,7 @@ import dhj.embeddedt.embeddium.impl.render.chunk.PackedSectionMetadata;
 import dhj.embeddedt.embeddium.impl.render.chunk.RenderSection;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.sorting.QuadPrimitiveType;
 import dhj.embeddedt.embeddium.impl.render.chunk.data.BuiltRenderSectionData;
+import dhj.embeddedt.embeddium.impl.render.chunk.lists.RenderListPool;
 import dhj.embeddedt.embeddium.impl.render.chunk.lists.VisibleChunkCollector;
 import dhj.embeddedt.embeddium.impl.render.chunk.occlusion.SectionLattice;
 import dhj.embeddedt.embeddium.impl.render.chunk.occlusion.SectionLattice.VisibilitySnapshot;
@@ -33,7 +34,7 @@ class VisibleChunkCollectorSchedulingTest {
         SectionLattice lattice = createLattice();
         RenderSection first = attach(lattice, region, 0, 0, 0, ChunkUpdateType.INITIAL_BUILD);
         RenderSection second = attach(lattice, region, 1, 0, 0, ChunkUpdateType.INITIAL_BUILD);
-        VisibleChunkCollector collector = new VisibleChunkCollector(lattice, 0, 1, 1, new Vector3i(8, 8, 8));
+        VisibleChunkCollector collector = new VisibleChunkCollector(lattice, new RenderListPool().beginSearch(1), 0, 1, new Vector3i(8, 8, 8));
         VisibilitySnapshot window = captureWindow(lattice);
 
         visit(collector, window, first);
@@ -53,7 +54,7 @@ class VisibleChunkCollectorSchedulingTest {
         SectionLattice lattice = createLattice();
         RenderSection first = attach(lattice, region, 0, 0, 0, ChunkUpdateType.REBUILD);
         RenderSection second = attach(lattice, region, 1, 0, 0, ChunkUpdateType.REBUILD);
-        VisibleChunkCollector collector = new VisibleChunkCollector(lattice, 0, 1, 0, new Vector3i(8, 8, 8));
+        VisibleChunkCollector collector = new VisibleChunkCollector(lattice, new RenderListPool().beginSearch(1), 0, 0, new Vector3i(8, 8, 8));
         VisibilitySnapshot window = captureWindow(lattice);
 
         visit(collector, window, first);

@@ -48,10 +48,12 @@ import com.dhj.actinium.world.cloned.ClonedChunkSectionCache;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.render.terrain.compile.VintageChunkBuildContext;
 import com.dhj.actinium.render.terrain.compile.task.ChunkBuilderMeshingTask;
+import com.dhj.actinium.render.terrain.deferred.DeferredMeshScheduler;
 import com.dhj.actinium.render.terrain.fog.GLStateManagerFogService;
 import com.dhj.actinium.render.terrain.sprite.SpriteUtil;
 
 import java.util.List;
+import java.util.Objects;
 
 public class VintageRenderSectionManager extends RenderSectionManager {
     private final WorldClient world;
@@ -60,10 +62,27 @@ public class VintageRenderSectionManager extends RenderSectionManager {
     private int shadowSearchSubmissions;
     private final TerrainPassPreparation terrainPassPreparation = new TerrainPassPreparation();
 
+    /**
+     * Runs the render-thread capture of the deferred blocks and owns their pooled buffers and
+     * snapshots. It outlives single builds: the pool is trimmed every frame and freed when the world
+     * is left.
+     */
+    private final DeferredMeshScheduler deferredScheduler;
+
+    /**
+     * The context every deferred capture renders with. It is separate from the contexts of the build
+     * threads so a capture cannot share render state with the build that handed a mesh over or with
+     * the next build on that thread.
+     */
+    private final VintageChunkBuildContext captureContext;
+
     public VintageRenderSectionManager(RenderPassConfiguration<?> configuration, WorldClient world, int renderDistance, CommandList commandList, int minSection, int maxSection) {
         super(configuration, () -> new VintageChunkBuildContext(world, configuration), ChunkRenderer::new, renderDistance, commandList, minSection, maxSection, ActiniumRuntime.options().performance.chunkBuilderThreads, true);
         this.world = world;
         this.sectionCache = new ClonedChunkSectionCache(world);
+        this.captureContext = new VintageChunkBuildContext(world, configuration);
+        this.deferredScheduler = new DeferredMeshScheduler(configuration, this.getBuilder(), () -> new WorldSlice(world),
+                this::scheduleAsyncTask, this::cancelAsyncTask, this.getBuildResults());
     }
 
     public static VintageRenderSectionManager create(ChunkVertexType vertexType, WorldClient world, int renderDistance, CommandList commandList) {
@@ -157,7 +176,14 @@ public class VintageRenderSectionManager extends RenderSectionManager {
             return null;
         }
 
-        return new ChunkBuilderMeshingTask(render, context, frame, this.cameraPosition, this.useRasterOcclusionCulling());
+        ChunkBuilderMeshingTask task = new ChunkBuilderMeshingTask(render, context, frame, this.cameraPosition,
+                this.useRasterOcclusionCulling(), this.captureContext);
+        // submitRebuildTasks keeps the pending update until the job was scheduled, so it is the type
+        // this rebuild was queued for.
+        task.bindScheduler(this.deferredScheduler,
+                Objects.requireNonNull(render.getPendingUpdate(), "Pending update").isImportant(),
+                () -> this.scheduleSectionForRebuild(render.getChunkX(), render.getChunkY(), render.getChunkZ(), false));
+        return task;
     }
 
     @Override
@@ -175,7 +201,26 @@ public class VintageRenderSectionManager extends RenderSectionManager {
     public void updateChunks(boolean updateImmediately) {
         this.sectionCache.cleanup();
         super.updateChunks(updateImmediately);
+        this.deferredScheduler.update();
         FluxLoadingCompat.onRenderSectionManagerUpdateChunks();
+    }
+
+    /**
+     * Stops the deferred pipeline before the shared executor goes away and releases what it still
+     * holds.
+     *
+     * <p>The order matters: the scheduler has to refuse new captures first, then the base teardown
+     * cancels and joins the build jobs, then the meshes that were still queued for their capture are
+     * captured and released, and finally everything left is released with the pools. The capture
+     * context is destroyed last because the release of those meshes may still render with it.</p>
+     */
+    @Override
+    public void destroy() {
+        this.deferredScheduler.markDestroyed();
+        super.destroy();
+        this.deferredScheduler.runImportant();
+        this.deferredScheduler.releaseOrphans();
+        this.captureContext.destroy();
     }
 
     /**

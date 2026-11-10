@@ -174,6 +174,16 @@ section metadata 仅在 compute 可用且启用时发布，CPU 路径不为每�
 `ChunkRenderer.createCuller` 在能力探测失败时同样调用 `GpuCulling.shutdown()`，释放上一个渲染器
 留下的镜像与程序，已选中的模式保持不变。
 
+## 延迟方块（`performance.deferred_block_ids`）
+
+质量页的延迟捕获方块编辑入口对应 `SodiumGameOptions.performance.deferredBlockIds`，JSON 数组键为
+`performance.deferred_block_ids`，默认空数组。编辑页接收以逗号或空白分隔的 `namespace:block`，
+保存时校验格式、去重并保留输入顺序；取消与 Escape 不保存，调整窗口大小保留草稿。
+
+空列表时全部方块沿用构建线程渲染。列表中的方块在区块预扫命中后，经主线程捕获原始顶点，
+再由构建线程编码为正式区块网格。`BlockRenderSafetyRegistry` 按配置列表的身份和大小缓存解析结果；
+不合法的手写 id 会记录警告并被忽略。保存有变化时重载区块渲染器；主菜单没有世界渲染器时只保存。
+
 ## 圆形雾（`quality.circularFog`）
 
 默认关闭。开启后，无光影包时的原版雾使用相机到顶点的径向距离：固定管线着色器通过

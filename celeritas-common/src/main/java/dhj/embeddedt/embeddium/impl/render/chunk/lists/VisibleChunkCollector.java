@@ -3,26 +3,24 @@ package dhj.embeddedt.embeddium.impl.render.chunk.lists;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongComparators;
 import it.unimi.dsi.fastutil.longs.LongHeaps;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import lombok.AccessLevel;
-import lombok.Getter;
 import dhj.embeddedt.embeddium.impl.render.chunk.ChunkUpdateType;
 import dhj.embeddedt.embeddium.impl.render.chunk.PackedSectionMetadata;
 import dhj.embeddedt.embeddium.impl.render.chunk.RenderSection;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.EnumMap;
+import java.util.List;
 import dhj.embeddedt.embeddium.impl.render.chunk.occlusion.OcclusionCuller;
 import dhj.embeddedt.embeddium.impl.render.chunk.occlusion.SectionLattice;
 import dhj.embeddedt.embeddium.impl.render.chunk.region.RenderRegion;
 import org.joml.Vector3ic;
 
 public class VisibleChunkCollector implements OcclusionCuller.Visitor {
-    @Getter(AccessLevel.PACKAGE)
-    private final ObjectArrayList<ChunkRenderList> sortedRenderLists;
+    // Owned by the render list pool; the search fills the slot it was handed and never allocates a
+    // container of its own, so a reused slot starts empty.
+    private final RenderListPool.Slot renderLists;
     private final EnumMap<ChunkUpdateType, ArrayDeque<RenderSection>> sortedRebuildLists;
     private final int[] rebuildQueueOverflowCounts;
-    private final ChunkRenderList[] renderListsByRegion;
 
     private final LongArrayList[] rebuildCandidates;
 
@@ -38,16 +36,15 @@ public class VisibleChunkCollector implements OcclusionCuller.Visitor {
     private boolean hasAdditionalUpdates;
     private boolean rebuildListsFinished;
 
-    public VisibleChunkCollector(SectionLattice lattice, int frame, int regionIdsLength, int targetQueueSize, Vector3ic cameraBlockPos) {
+    public VisibleChunkCollector(SectionLattice lattice, RenderListPool.Slot renderLists, int frame, int targetQueueSize, Vector3ic cameraBlockPos) {
         this.lattice = lattice;
         this.frame = frame;
 
-        this.sortedRenderLists = new ObjectArrayList<>();
+        this.renderLists = renderLists;
         this.sortedRebuildLists = new EnumMap<>(ChunkUpdateType.class);
         this.rebuildQueueOverflowCounts = new int[ChunkUpdateType.VALUES.length];
         this.rebuildCandidates = new LongArrayList[ChunkUpdateType.VALUES.length];
         this.targetQueueSize = targetQueueSize;
-        this.renderListsByRegion = new ChunkRenderList[regionIdsLength];
         this.cameraX = cameraBlockPos.x();
         this.cameraY = cameraBlockPos.y();
         this.cameraZ = cameraBlockPos.z();
@@ -57,18 +54,23 @@ public class VisibleChunkCollector implements OcclusionCuller.Visitor {
         }
     }
 
+    /**
+     * Returns the ordered render lists this search produced. The list belongs to the pool slot and
+     * stays readable until the slot is reused by the search after next.
+     */
+    List<ChunkRenderList> getSortedRenderLists() {
+        return this.renderLists.lists();
+    }
+
     private ChunkRenderList createRenderList(RenderRegion region) {
-        ChunkRenderList renderList = new ChunkRenderList(region);
-        this.sortedRenderLists.add(renderList);
-        this.renderListsByRegion[region.getId()] = renderList;
-        return renderList;
+        return this.renderLists.acquire(region);
     }
 
     @Override
     public void visit(int latticeIndex, int regionId, int sectionIndex, int chunkX, int chunkY, int chunkZ, int meta, boolean visible) {
         // Note: even if a section does not have render objects, we must ensure the render list is initialized and put
         // into the sorted queue of lists, so that we maintain the correct order of draw calls.
-        ChunkRenderList renderList = this.renderListsByRegion[regionId];
+        ChunkRenderList renderList = this.renderLists.get(regionId);
 
         if (renderList == null) {
             renderList = this.createRenderList(this.lattice.sectionAt(latticeIndex).getRegion());
@@ -179,7 +181,7 @@ public class VisibleChunkCollector implements OcclusionCuller.Visitor {
     }
 
     public SortedRenderLists createRenderLists() {
-        return new SortedRenderLists(this.sortedRenderLists);
+        return new SortedRenderLists(this.renderLists.lists());
     }
 
     public ChunkRebuildLists getRebuildLists() {

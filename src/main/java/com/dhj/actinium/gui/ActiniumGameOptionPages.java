@@ -90,6 +90,18 @@ public class ActiniumGameOptionPages {
                 .build();
     }
 
+    private static OptionImpl<SodiumGameOptions, Void> createDeferredBlocksScreenOption() {
+        return OptionImpl.createBuilder(Void.class, sodiumOpts)
+                .setId(OptionIdentifier.create("actinium", "deferred_blocks", Void.class))
+                .setName(TextComponent.translatable("sodium.options.actinium.deferred_blocks.name"))
+                .setTooltip(TextComponent.translatable("sodium.options.actinium.deferred_blocks.tooltip"))
+                .setControl(option -> new ExternalButtonControl(option,
+                        DeferredBlocksScreen::open,
+                        TextComponent.translatable("sodium.options.actinium.deferred_blocks.button")))
+                .setBinding((opts, value) -> { }, opts -> null)
+                .build();
+    }
+
     private static OptionImpl<SodiumGameOptions, Boolean> createModelRendererBatchingOption(TextComponent tooltip) {
         return OptionImpl.createBuilder(boolean.class, sodiumOpts)
                 .setId(StandardOptions.Option.MODEL_RENDERER_BATCHING.cast())
@@ -436,6 +448,7 @@ public class ActiniumGameOptionPages {
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .setDefaultValue(true)
                         .build())
+                .add(createDeferredBlocksScreenOption())
                 .build());
 
         return new OptionPage(StandardOptions.Pages.QUALITY, TextComponent.translatable("sodium.options.pages.quality"), ImmutableList.copyOf(groups));

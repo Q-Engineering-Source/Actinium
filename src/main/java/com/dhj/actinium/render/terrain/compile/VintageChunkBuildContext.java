@@ -32,6 +32,7 @@ import dhj.embeddedt.embeddium.impl.render.chunk.sprite.SpriteTransparencyLevel;
 import dhj.embeddedt.embeddium.impl.render.chunk.terrain.material.Material;
 import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.ChunkVertexEncoder;
 import dhj.embeddedt.embeddium.impl.util.QuadUtil;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL11;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.compat.architecturecraft.ArchitectureCraftCompat;
@@ -39,6 +40,7 @@ import com.dhj.actinium.compat.farmersfuturedelight.FarmersFutureDelightCompat;
 import com.dhj.actinium.compat.snowrealmagic.SnowRealMagicCompat;
 import com.dhj.actinium.texture.TextureMapExtension;
 import com.dhj.actinium.world.WorldSlice;
+import com.dhj.actinium.world.cloned.DeferredSlice;
 import com.dhj.actinium.render.terrain.compile.light.LightDataCache;
 import com.dhj.actinium.render.terrain.compile.pipeline.VintageBlockRenderer;
 
@@ -60,13 +62,22 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
     @Getter
     private int offX, offY, offZ;
     @Getter
-    private final WorldSlice worldSlice;
+    private WorldSlice worldSlice;
     @Getter
     private final VintageBlockRenderer blockRenderer;
     private final RenderPassConfiguration<?> renderPassConfiguration;
     private final LightDataCache lightDataCache;
     private final boolean useRenderPassOptimization;
     private final BlockRenderContext vanillaBlockRenderContext = new BlockRenderContext();
+
+    // Per-task buffers owned by the deferred scheduler while this context renders a captured block.
+    // They never replace `buffers`: cleanup() still releases the context's own buffers.
+    private ChunkBuildBuffers handoffBuffers;
+
+    // Blocks of the section being built that a build thread may not mesh. The mask is written by the
+    // scan of the build that owns this context and read again while it renders, so no per-build
+    // allocation is needed.
+    private final long[] deferredMask = new long[64];
 
     public VintageChunkBuildContext(WorldClient world, RenderPassConfiguration renderPassConfiguration) {
         super(renderPassConfiguration);
@@ -76,6 +87,54 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         this.blockRenderer = new VintageBlockRenderer(this, lightDataCache);
         this.textureAtlas = (TextureMapExtension) Minecraft.getMinecraft().getTextureMapBlocks();
         this.useRenderPassOptimization = ActiniumRuntime.options().performance.useRenderPassOptimization;
+    }
+
+    /**
+     * Replaces the slice this context renders from and returns the one it used before. The light
+     * cache follows the new slice, so a context that outlives its build task can render a later
+     * snapshot without reading the previous slice's blocks.
+     *
+     * <p>The deferred capture hands in {@link DeferredSlice} snapshots; this context renders chunk
+     * builds, which need the concrete {@link WorldSlice} for {@code copyData} and the block-access
+     * proxy, so it accepts the interface and keeps the concrete type internally.</p>
+     */
+    public DeferredSlice swapWorldSlice(DeferredSlice worldSlice) {
+        WorldSlice previous = this.worldSlice;
+        this.worldSlice = requireWorldSlice(worldSlice);
+        this.lightDataCache.rebind(this.worldSlice);
+        return previous;
+    }
+
+    private static WorldSlice requireWorldSlice(DeferredSlice slice) {
+        if (slice instanceof WorldSlice worldSlice) {
+            return worldSlice;
+        }
+
+        throw new IllegalArgumentException("VintageChunkBuildContext renders from WorldSlice snapshots, got "
+                + slice.getClass().getName());
+    }
+
+    /**
+     * Points this context at the scheduler-owned buffers of a deferred handoff. The context keeps
+     * ownership of its own {@code buffers}; the handoff buffers are released by the task that
+     * provided them.
+     */
+    public void setHandoffBuffers(@Nullable ChunkBuildBuffers buffers) {
+        this.handoffBuffers = buffers;
+    }
+
+    /** Buffers the current render must write to: the handoff buffers when set, otherwise the context's own. */
+    public ChunkBuildBuffers getRenderBuffers() {
+        ChunkBuildBuffers buffers = this.handoffBuffers;
+        return buffers != null ? buffers : this.buffers;
+    }
+
+    /**
+     * The section pass mask the deferred scan fills in. Every bit is a block the build thread may not
+     * mesh, so the render-thread capture has to draw it.
+     */
+    public long[] getDeferredMask() {
+        return this.deferredMask;
     }
 
     public void setupTranslation(int x, int y, int z) {
@@ -196,16 +255,48 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
     @Override
     public void cleanup() {
         super.cleanup();
+        this.handoffBuffers = null;
         this.worldSlice.reset();
+        this.discardVanillaBuffers();
+    }
+
+    /**
+     * Drops the vertices a vanilla render appended to the per-layer buffers without encoding them.
+     *
+     * <p>The deferred capture reads the bytes of one block out of these buffers and hands them to a
+     * build thread, so it has to start every capture from empty buffers. The immediate path instead
+     * drains them through {@link #convertVanillaDataToCeleritasData(ChunkBuildBuffers)}.</p>
+     */
+    public void discardVanillaBuffers() {
         for (int i = 0; i < LAYERS.length; i++) {
-            if (this.usedWorldRenderers[i]) {
-                this.worldRenderers[i].finishDrawing();
-                if (this.worldRenderers[i] instanceof BufferBuilderExtension extension) {
-                    extension.actinium$consumeQuadContexts();
-                }
-                this.usedWorldRenderers[i] = false;
+            if (!this.usedWorldRenderers[i]) {
+                continue;
             }
+
+            BufferBuilder builder = Objects.requireNonNull(this.worldRenderers[i]);
+
+            // A render that failed may already have ended the drawing itself; finishing it twice
+            // would replace the failure that is on its way to the crash report.
+            if (builder instanceof BufferBuilderExtension extension) {
+                if (extension.actinium$isDrawing()) {
+                    builder.finishDrawing();
+                }
+                extension.actinium$consumeQuadContexts();
+            } else {
+                builder.finishDrawing();
+            }
+
+            builder.reset();
+            this.usedWorldRenderers[i] = false;
         }
+    }
+
+    @Override
+    public void destroy() {
+        // cleanup() returns the snapshot to the section cache and drops the vanilla render buffers;
+        // skipping it here would leave the cloned sections referenced by a discarded context.
+        cleanup();
+        super.destroy();
     }
 
     private Material selectMaterial(Material material, TextureAtlasSprite sprite, ChunkVertexEncoder.Vertex[] quad) {
@@ -227,7 +318,20 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         BLOCK_VERTEX_FORMAT_SIZE = size;
     }
 
-    private void copyBlockData(ByteBuffer source, ChunkBuildBuffers buffers, Material material, BlockRenderLayer layer, List<VanillaQuadContext> quadContexts) {
+    /**
+     * Encodes vanilla-format vertices into the mesh buffers.
+     *
+     * <p>The immediate path calls this for the whole layer buffer once a section is meshed; the
+     * finish step of a deferred mesh calls it once per captured block, with a view of exactly that
+     * block's bytes.</p>
+     *
+     * @param source vertices in {@code DefaultVertexFormats.BLOCK} layout, read from its position to its limit
+     * @param buffers mesh buffers the encoded quads are written to
+     * @param material material of the source layer
+     * @param layer vanilla render layer the vertices were produced for
+     * @param quadContexts shader metadata of the quads, in quad order
+     */
+    public void copyBlockData(ByteBuffer source, ChunkBuildBuffers buffers, Material material, BlockRenderLayer layer, List<VanillaQuadContext> quadContexts) {
         int vsize = BLOCK_VERTEX_FORMAT_SIZE;
         int numQuads = source.limit() / (vsize * 4);
         long ptr = LWJGL.memAddress(source);

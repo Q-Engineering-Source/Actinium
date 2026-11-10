@@ -57,6 +57,12 @@ public class ChunkJobTyped<TASK extends ChunkBuilderTask<OUTPUT>, OUTPUT>
         }
 
         try {
+            if (!this.started) {
+                // Cancelled before the executor could start it: the task never reached execute, so it
+                // still holds whatever it acquired when it was created and has to give that back.
+                this.task.releaseUnstartedContext();
+            }
+
             this.consumer.accept(result);
         } catch (Throwable throwable) {
             throw new RuntimeException("Exception while consuming result", throwable);

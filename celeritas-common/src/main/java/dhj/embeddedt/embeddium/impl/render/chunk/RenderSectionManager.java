@@ -1074,6 +1074,23 @@ public abstract class RenderSectionManager {
         }
     }
 
+    /**
+     * Removes a task queued by {@link #scheduleAsyncTask(Runnable)} before it ran. Tasks are matched by
+     * reference, so a producer that hands the same task instance to the queue repeatedly can withdraw
+     * all of its pending entries at once.
+     */
+    public final void cancelAsyncTask(Runnable runnable) {
+        this.asyncSubmittedTasks.removeIf(task -> task == runnable);
+    }
+
+    /**
+     * {@return the queue finished chunk build results are delivered to}, which the deferred meshing
+     * scheduler writes its deferred finishes into as well
+     */
+    public ConcurrentLinkedDeque<ChunkJobResult<? extends ChunkTaskOutput>> getBuildResults() {
+        return this.buildResults;
+    }
+
     private void scheduleRebuildOffThread(int x, int y, int z, boolean important) {
         scheduleAsyncTask(() -> this.scheduleSectionForRebuild(x, y, z, important));
     }

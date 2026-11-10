@@ -277,12 +277,11 @@ public class ChunkBuilder {
     }
 
     /**
-     * <p>Notifies all worker threads to stop and blocks until all workers terminate. After the workers have been shut
-     * down, all tasks are cancelled and the pending queues are cleared. If the builder is already stopped, this
-     * method does nothing and exits.</p>
+     * <p>Notifies all worker threads to stop and blocks until all workers terminate. Jobs still queued
+     * are cancelled before the workers stop; their unstarted contexts are released and their consumers
+     * receive a cancelled result before the local context is destroyed.</p>
      *
-     * <p>After shutdown, all previously scheduled jobs will have been cancelled. Jobs that finished while
-     * waiting for worker threads to shut down will still have their results processed for later cleanup.</p>
+     * @throws IllegalStateException if the builder has already stopped
      */
     public void shutdown() {
         if (!this.queue.isRunning()) {
@@ -294,6 +293,13 @@ public class ChunkBuilder {
 
         for (var job : jobs) {
             job.setCancelled();
+        }
+
+        // A cancelled job still owns the state its task acquired on the render thread before it was
+        // queued, and its consumer has to see the cancelled result. Run them through the same path a
+        // main-thread tick uses, while the local context this builder still owns is alive.
+        for (var job : jobs) {
+            this.executeJobWithLocalContext(job);
         }
 
         this.shutdownThreads();

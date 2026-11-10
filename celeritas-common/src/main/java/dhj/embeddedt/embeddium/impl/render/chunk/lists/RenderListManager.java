@@ -34,6 +34,8 @@ public class RenderListManager {
 
     private final SectionGraph graph;
     private final SectionLattice lattice;
+    // Render list containers rotate between two slots; see RenderListPool.
+    private final RenderListPool renderListPool = new RenderListPool();
     // Whether this manager produces the shadow pass's lists. The shadow search is orthographic and receiver-driven;
     // the terrain search is the camera-rooted one with the angular frustum clamp.
     private final boolean shadow;
@@ -155,7 +157,8 @@ public class RenderListManager {
             throw new IllegalStateException("Occlusion work in progress while trying to submit next task");
         }
 
-        var visitor = new VisibleChunkCollector(this.lattice, frame, regionIdsLength, targetQueueSize, viewport.getBlockCoord());
+        var visitor = new VisibleChunkCollector(this.lattice, this.renderListPool.beginSearch(regionIdsLength),
+                frame, targetQueueSize, viewport.getBlockCoord());
 
         Supplier<VisibleChunkCollector> occlusionTask = () -> {
             this.pendingVisibilitySnapshot = search.apply(visitor);
