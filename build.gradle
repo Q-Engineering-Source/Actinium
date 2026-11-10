@@ -8,7 +8,7 @@ plugins {
     id 'maven-publish'
     id 'com.gradleup.shadow' version '9.5.1'
     id 'org.jetbrains.gradle.plugin.idea-ext' version '1.4.1'
-    id 'xyz.wagyourtail.unimined' version '1.4.36-kappa'
+    id 'top.outlands.unimined' version '1.4.48'
     id 'net.kyori.blossom' version '2.2.0'
 }
 
@@ -208,6 +208,8 @@ dependencies {
 def actiniumProjectAccessTransformer = propertyBool('use_access_transformer')
     ? rootProject.projectDir.toPath().resolve("src/main/resources/${propertyString('access_transformer_locations')}").toFile()
     : null
+def accessTransformerLocations = propertyString('access_transformer_locations').trim().split('\\s+').findAll { !it.isBlank() }
+
 
 /**
  * Dev-runtime image of the mod in the same shadow layout as the production jar: merged module
@@ -238,6 +240,42 @@ def devShadowJar = tasks.register('devShadowJar', ShadowJar) {
     manifest.attributes('Implementation-Version': finalVersion)
 }
 
+def configureActiniumRun = { run ->
+    run.systemProperty 'outlands.dev.mixin',
+        'mixins.actinium.vintage.json,mixins.actinium.iris.json,mixins.actinium.hbm.early.json,mixins.actinium.kirino.json'
+    run.args += ['--username', propertyString('minecraft_username')]
+    def extraArgs = propertyString('extra_jvm_args')
+    if (extraArgs != null && !extraArgs.trim().isEmpty()) {
+        run.jvmArgs += extraArgs.split('\\s+').toList()
+    }
+
+    // Swap raw module outputs for the shadow-layout dev jar. The loader-owned dev extra path keeps
+    // Actinium classes out of the application class loader, matching the production class-loader split.
+    def originalRunClasspath = run.classpath
+    run.classpath = files(provider {
+        def rawModuleOutputs = sourceSets.main.output.files
+        originalRunClasspath.files.findAll { file ->
+            !rawModuleOutputs.contains(file)
+        }
+    })
+
+    def extraPathArgument = '-Doutlands.dev.extrapath='
+    def rawModuleOutputPaths = project.sourceSets.main.output.files.collect { it.absolutePath } as Set
+    def extraPaths = new LinkedHashSet<String>()
+    extraPaths.add(devShadowJar.get().archiveFile.get().asFile.absolutePath)
+    run.jvmArgs.findAll { it.toString().startsWith(extraPathArgument) }.each { argument ->
+        extraPaths.addAll(argument.toString().substring(extraPathArgument.length()).tokenize(File.pathSeparator)
+                .findAll { path -> !rawModuleOutputPaths.contains(path) })
+    }
+    run.jvmArgs = run.jvmArgs.findAll { !it.toString().startsWith(extraPathArgument) }
+    run.jvmArgs += "${extraPathArgument}${extraPaths.join(File.pathSeparator)}"
+
+    if (propertyBool('is_coremod')) {
+        run.systemProperty 'fml.coreMods.load', propertyString('coremod_plugin_class_name')
+    }
+}
+
+
 unimined.minecraft {
     version '1.12.2'
 
@@ -245,53 +283,21 @@ unimined.minecraft {
         mcp 'stable', '39-1.12'
     }
 
-    cleanroom {
+    outlands {
         if (actiniumProjectAccessTransformer != null) {
             accessTransformer actiniumProjectAccessTransformer.absolutePath
         }
 
-        loader '0.6.12-alpha'
+        // A jar section disables Outlands' LWJGL2 call-site conversion. This jar still uses both
+        // LWJGL generations, so coremod, AT and contained-library declarations stay in the manifest.
 
+        loader '2026.11.03-2'
+
+        runs.config('client') {
+            args += ['--accessToken', '${auth_access_token}']
+        }
         runs.all {
-            args += ['--username', propertyString('minecraft_username')]
-            def extraArgs = propertyString('extra_jvm_args')
-            if (extraArgs != null && !extraArgs.trim().isEmpty()) {
-                jvmArgs += extraArgs.split('\\s+').toList()
-            }
-
-            // Swap the raw module outputs for the shadow-layout dev jar so the dev runtime carries
-            // the same relocated joml descriptors as the production distribution. The swap happens
-            // on the -Dcrl.dev.extrapath channel below, NOT on the JavaExec classpath: mod classes
-            // must stay invisible to the app class loader (exactly like production, where the mod
-            // jar is not on java.class.path). Keeping the jar on the JavaExec classpath lets the
-            // app loader serve Actinium classes as a parent-delegation fallback and splits classes
-            // like MixinLate across the app loader and the LaunchClassLoader (ClassCastException on
-            // the mixinbooter ILateMixinLoader cast).
-            def originalRunClasspath = classpath
-            classpath = files(provider {
-                def rawModuleOutputs = sourceSets.main.output.files
-                originalRunClasspath.files.findAll { file ->
-                    !rawModuleOutputs.contains(file)
-                }
-            })
-
-            // Unimined omits source output paths here when a clean build has not created their directories yet.
-            // The raw module outputs must not reach Cleanroom either: they would expose unrelocated
-            // joml descriptors next to the shadowed ones, so the dev shadow jar replaces them here.
-            def extraPathArgument = '-Dcrl.dev.extrapath='
-            def rawModuleOutputPaths = project.sourceSets.main.output.files.collect { it.absolutePath } as Set
-            def extraPaths = new LinkedHashSet<String>()
-            extraPaths.add(devShadowJar.get().archiveFile.get().asFile.absolutePath)
-            jvmArgs.findAll { it.toString().startsWith(extraPathArgument) }.each { argument ->
-                extraPaths.addAll(argument.toString().substring(extraPathArgument.length()).tokenize(File.pathSeparator)
-                        .findAll { path -> !rawModuleOutputPaths.contains(path) })
-            }
-            jvmArgs = jvmArgs.findAll { !it.toString().startsWith(extraPathArgument) }
-            jvmArgs += "${extraPathArgument}${extraPaths.join(File.pathSeparator)}"
-
-            if (propertyBool('is_coremod')) {
-                systemProperty 'fml.coreMods.load', propertyString('coremod_plugin_class_name')
-            }
+            configureActiniumRun(delegate)
         }
     }
 
@@ -431,6 +437,12 @@ processResources {
                 }
                 acc.replace("{{ ${entry.key} }}", entry.value).replace("{{${entry.key}}}", entry.value)
             }
+        }
+    }
+
+    if (propertyBool('use_access_transformer')) {
+        accessTransformerLocations.each { location ->
+            filesMatching(location) { it.path = "META-INF/${it.path}" }
         }
     }
 }
@@ -698,7 +710,7 @@ def verifyDistributedJar = tasks.register('verifyDistributedJar') {
                 throw new GradleException('Distributed mod jar is missing mcmod.info')
             }
             def metadata = new groovy.json.JsonSlurper().parse(jar.getInputStream(metadataEntry))
-            def mod = metadata[0]
+            def mod = metadata instanceof Map ? metadata.modList[0] : metadata[0]
             def expectedAuthors = propertyStringList('mod_authors', ',').collect { it.trim() }
             if (mod.description != propertyString('mod_description')
                     || mod.authorList != expectedAuthors

@@ -1,5 +1,6 @@
 package com.dhj.actinium.startup;
 
+import com.dhj.actinium.compat.ForgeEarlyConfigCompat;
 import com.dhj.actinium.debug.ActiniumStartupDebugConfig;
 import com.dhj.actinium.debug.CoreProfileContextAttributes;
 import com.dhj.actinium.debug.OpenGlVersion;
@@ -7,7 +8,6 @@ import com.gtnewhorizons.angelica.config.GLVersionChoice;
 import com.gtnewhorizons.angelica.config.SystemProperties;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.backend.BackendOptions;
-import net.minecraftforge.common.ForgeEarlyConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.LWJGLException;
@@ -38,17 +38,24 @@ public final class CoreProfileDisplayCreator {
      * @throws LWJGLException if no attempted profile creates an OpenGL 3.3 or newer context
      */
     public static void create(PixelFormat format) throws LWJGLException {
-        final int originalMajor = ForgeEarlyConfig.OPENGL_VERSION_MAJOR;
-        final int originalMinor = ForgeEarlyConfig.OPENGL_VERSION_MINOR;
-        final boolean originalDebug = ForgeEarlyConfig.OPENGL_DEBUG_CONTEXT;
+        ForgeEarlyConfigCompat.Snapshot original = ForgeEarlyConfigCompat.snapshot();
         boolean lwjglDebug = ActiniumStartupDebugConfig.enableLwjglDebug();
+        Throwable creationFailure = null;
         try {
             createWithFallback(format, lwjglDebug);
+        } catch (LWJGLException | RuntimeException | Error failure) {
+            creationFailure = failure;
+            throw failure;
         } finally {
-            // LWJGLXX persists the requested profile while creating the context. Restore and sync the
-            // compatibility profile so later launches without Actinium keep Cleanroom's default path.
-            CoreProfileContextAttributes.restoreForgeEarlyCompatProfile(originalMajor, originalMinor, originalDebug);
-            CoreProfileContextAttributes.persistForgeEarlyCompatProfile();
+            try {
+                CoreProfileContextAttributes.restoreForgeEarlyCompatProfile(original.major(), original.minor(), original.debugContext());
+                CoreProfileContextAttributes.persistForgeEarlyCompatProfile();
+            } catch (RuntimeException | Error restoreFailure) {
+                if (creationFailure == null) {
+                    throw restoreFailure;
+                }
+                creationFailure.addSuppressed(restoreFailure);
+            }
         }
     }
 
@@ -69,7 +76,7 @@ public final class CoreProfileDisplayCreator {
                 // The configured version only narrows where the scan starts; a rejected context lowers
                 // the ceiling so the remaining versions are still probed downwards from it.
                 if (major * 10 + minor > maxProbe) continue;
-                // LWJGLXX ignores ContextAttribs and reads these fields instead, so keep them in sync on every platform.
+                // Legacy LWJGLXX reads ForgeEarlyConfig instead of ContextAttribs.
                 CoreProfileContextAttributes.applyForgeEarlyCoreProfile(major, minor, lwjglDebug);
                 ContextAttribs attribs = CoreProfileContextAttributes.create(major, minor, lwjglDebug);
                 try {

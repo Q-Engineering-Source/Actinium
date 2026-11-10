@@ -1,5 +1,13 @@
 pluginManagement {
     repositories {
+        maven {
+            name = 'OutlandsMirror'
+            url = 'https://nexus.jsdu.cn/repository/'
+        }
+        maven {
+            name = 'Outlands'
+            url = 'https://maven.outlands.top/releases/'
+        }
         gradlePluginPortal() {
             content {
                 excludeGroup('org.apache.logging.log4j')

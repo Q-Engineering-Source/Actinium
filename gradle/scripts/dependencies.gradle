@@ -50,6 +50,7 @@ dependencies {
     modCompileOnly 'maven.modrinth:fluidlogged-api:3.0.6'
 
     compileOnly "org.lwjgl:lwjgl:${lwjglVersion}"
+    compileOnly "org.lwjgl:lwjgl-glfw:${lwjglVersion}"
     compileOnly "org.lwjgl:lwjgl-opengl:${lwjglVersion}"
     if (propertyBool('enable_lwjglx')) {
         compileOnly 'com.cleanroommc:lwjglx:1.0.0'
