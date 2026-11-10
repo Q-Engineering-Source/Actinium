@@ -26,18 +26,26 @@ import org.spongepowered.asm.mixin.injection.Redirect;
  */
 @Mixin(value = ChunkBuilderMeshingTask.class, remap = false)
 public abstract class MixinChunkBuilderMeshingTaskBetterFoliage {
+    /**
+     * The mesher renders one render layer of a block through this helper, for the build thread and
+     * for the render-thread capture of a deferred block alike, so the hooks below cover both.
+     */
     @Unique
-    private static final String EXECUTE_METHOD =
-            "execute(Ldhj/embeddedt/embeddium/impl/render/chunk/compile/ChunkBuildContext;"
-                    + "Ldhj/embeddedt/embeddium/impl/util/task/CancellationToken;"
-                    + ")Ldhj/embeddedt/embeddium/impl/render/chunk/compile/ChunkBuildOutput;";
+    private static final String RENDER_LAYER_METHOD =
+            "renderBlockLayer(Lnet/minecraft/block/Block;"
+                    + "Lnet/minecraft/block/state/IBlockState;"
+                    + "Lnet/minecraft/util/math/BlockPos;"
+                    + "Lcom/dhj/actinium/world/cloned/ActiniumBlockAccess;"
+                    + "Lnet/minecraft/util/BlockRenderLayer;"
+                    + "Z"
+                    + "Lcom/dhj/actinium/render/terrain/compile/VintageChunkBuildContext;)Z";
 
     @Unique
     private static final BetterFoliageCompat ACTINIUM$BETTER_FOLIAGE_COMPAT =
             new BetterFoliageCompatImpl();
 
     @Redirect(
-            method = EXECUTE_METHOD,
+            method = RENDER_LAYER_METHOD,
             at = @At(
                     value = "INVOKE",
                     target = "Lnet/minecraft/block/Block;canRenderInLayer("
@@ -54,7 +62,7 @@ public abstract class MixinChunkBuilderMeshingTaskBetterFoliage {
     }
 
     @WrapOperation(
-            method = EXECUTE_METHOD,
+            method = RENDER_LAYER_METHOD,
             at = @At(
                     value = "INVOKE",
                     target = "Lcom/dhj/actinium/render/terrain/compile/pipeline/VintageBlockRenderer;renderBlock("
@@ -82,7 +90,7 @@ public abstract class MixinChunkBuilderMeshingTaskBetterFoliage {
     }
 
     @WrapOperation(
-            method = EXECUTE_METHOD,
+            method = RENDER_LAYER_METHOD,
             at = @At(
                     value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/BlockRendererDispatcher;renderBlock("

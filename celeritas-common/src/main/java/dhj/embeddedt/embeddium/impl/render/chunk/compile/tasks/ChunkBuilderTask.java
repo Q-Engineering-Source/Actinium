@@ -21,4 +21,17 @@ public abstract class ChunkBuilderTask<OUTPUT> {
      * @return null if the task was cancelled
      */
     public abstract OUTPUT execute(ChunkBuildContext context, CancellationToken cancellationToken);
+
+    /**
+     * Releases the state this task acquired on the render thread before it was queued, for a job the executor
+     * cancelled before it could start. Such a job never reaches {@link #execute(ChunkBuildContext, CancellationToken)},
+     * so the task still owns that state: a chunk build holds the section snapshot of its
+     * {@code ChunkRenderContext} until the slice copies it.
+     *
+     * <p>Called exactly once by the job executor, right before it delivers the cancelled result. A task that did start
+     * owns its state through {@link #execute(ChunkBuildContext, CancellationToken)}, including the paths where it
+     * reports a cancellation itself, so the default implementation releases nothing.</p>
+     */
+    public void releaseUnstartedContext() {
+    }
 }

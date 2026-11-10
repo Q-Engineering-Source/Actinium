@@ -170,15 +170,20 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
   `BlockRendererDispatcher` 的区块构建 buffer，携带构建上下文、render layer 与原版回退标记）、
   `ChunkBlockRendererRouter`（dispatcher 快速路径的资格判定）；`compile/light/`：`LightDataCache`、
   `VintageDiffuseProvider`；`compile/pipeline/`：`VintageBlockRenderer`；`compile/task/`：
-  `ChunkBuilderMeshingTask`（区块网格构建任务）。普通 `LAYERS` 分支由
-  `ChunkBuilderMeshingTask` 统一调用 `BlockRendererDispatcher.renderBlock`，
+  `ChunkBuilderMeshingTask`（区块网格构建任务，同时承担延迟方块的扫描、主线程捕获与构建线程收尾）。
+  普通 `LAYERS` 分支由 `ChunkBuilderMeshingTask.renderBlockLayer` 统一调用
+  `BlockRendererDispatcher.renderBlock`，
   `MixinBlockRendererDispatcher` 只包裹该方法内部的 `BlockModelRenderer.renderModel` 调用点：
   谓词命中时交给 `VintageBlockRenderer.renderModel` 用 dispatcher 已选模型渲染，否则原样调用；
   shader layer override 不经 dispatcher，直接调用 `renderBlock(..., false)` 保留
   `allowRenderPassOptimization=false`。Snow Real Magic、ArchitectureCraft 与 Fluidlogged 的状态经
   `beginVanillaBlockRender` / `beginVanillaFluidRender` 写在 buffer 上，把该次渲染留在原版路径；
-  Better Foliage 快速路径适配器在调用其 Hook 前写入外层优化标志，复用同一 buffer 渲染基础方块，
-  并在 `finally` 恢复。
+  Better Foliage 与 RLFoliage 的适配器注入 `renderBlockLayer`，因此构建线程渲染与延迟方块的主线程
+  捕获走同一条判定与渲染调用链。
+- **`render/terrain/deferred/`**：`DeferredMeshScheduler`（池化 buffers、快照与 capture 的所有者，
+  important 队列与按距离排序的普通队列）、`DeferredSectionMesh`（跨线程传递的 mesh，内含
+  `DeferredCapture` 原始顶点池）、`DeferredFinishTask`（构建线程收尾任务）、`DeferredBlock`、
+  `ObjectPool`。判据由 `rendering/BlockRenderSafetyRegistry` 提供。
 - **`render/terrain/fog/`**：`GLStateManagerFogService` —— FogService SPI 实现。
 - **`render/terrain/sprite/`**：`SpriteUtil`。
 
@@ -373,6 +378,56 @@ section metadata 并执行 compute；`CPU_ONLY` 与能力不足时沿用 `Defaul
 避免无结果的 `uploadChunks` 等待本轮搜索。阴影视口提交计数关联搜索结果与对应的光照角度，
 地形矩阵和 shadow uniform 使用该角度；主地形 setup 复用阴影 pass 的 `CameraState`，避免雾参数差异
 重复标记图 dirty。子类可通过 `canSubmitShadowGraphSearch` 保留上一轮阴影列表。
+
+## 延迟区块构建（C09）
+
+`render/terrain/deferred/` 实现延迟方块路径：默认所有方块保持构建线程路径，只有
+`performance.deferred_block_ids` 列出的 `namespace:block` 交给主线程捕获。判据由
+`BlockRenderSafetyRegistry.canRenderOffThread(Block)` 提供，列表为空时不预扫、不取池。
+
+线程阶段固定为三步：
+
+1. **构建线程扫描**：`ChunkBuilderMeshingTask.execute` 先做一次 16³ 的 `IBlockState` 预扫，把
+   命中的方块写成 `VintageChunkBuildContext` 持有的 `long[64]` 位掩码，再从 scheduler 取池化
+   `ChunkBuildBuffers`。命中的方块在该阶段不调用 `canRenderInLayer`，也不调用任何渲染方法；
+   pass mask 记为全部 layer，由主线程按谓词决定实际渲染哪些层。其余方块照原路径立即渲染，
+   Fluidlogged 流体跟随其方块所在线程。扫描结束后先把留在构建线程的原版顶点
+   `convertVanillaDataToCeleritasData` 编码进池化 buffers（LittleTiles 的追加点也在此），再把
+   context 快照 `swapWorldSlice` 到 `DeferredSectionMesh` 并提交。没有命中方块时完全不进入该路径。
+2. **主线程捕获**：`DeferredMeshScheduler.runImportant()`（important，`updateChunks` 内调用）与
+   共享 `runNext`（普通队列，按距离优先，经 `scheduleAsyncTask` 投递）在渲染线程调用
+   `captureDeferred`。普通队列每次 `runAsyncTasks` 最多捕获一个 section，后续捕获由
+   `DeferredMeshScheduler.update()` 在 `updateChunks` 中安排，空队列不投递任务。捕获使用 manager 构造时创建的独立 `VintageChunkBuildContext`：换到 mesh 的
+   快照、设置 handoff buffers 与 translation，随后逐方块逐 layer 渲染，用渲染前后的顶点数差值把
+   该方块自己的字节追加到 `DeferredCapture` 并消费 buffer 上的 `VanillaQuadContext`。捕获结束不调用
+   `convertVanillaDataToCeleritasData`，还原 slice 与 handoff 指针，并清空本层的原版 buffer。
+   Fluidlogged 的流体渲染属于同一阶段，逐 layer 记录独立区间。
+3. **构建线程收尾**：`DeferredFinishTask` 在构建线程调用 `finishDeferred`，把 context 换到 mesh 快照，
+   按 capture entry 的有界 ByteBuffer 视图逐条调用 `VintageChunkBuildContext.copyBlockData`，
+   校验每个 entry 的 quad context 数量与字节区间一致，最后 `groupFromBuildBuffers` 生成
+   `ChunkBuildOutput`。结果进入正常 `buildResults`，`blockingResultsPending` 与阴影上传顺序不变。
+
+资源所有权：池化 buffers、快照与 capture 归 `DeferredMeshScheduler` 所有，`inFlight` 是唯一决定
+谁释放的集合，每条 mesh 恰好释放一次；构建在提交前失败时由 mesher 调 `releaseBuffers` 归还池化
+buffers。worker 的 `ChunkBuilder` context 与捕获 context 分离，捕获不会与交出 mesh 的构建或该线程
+的下一个任务共享渲染状态。`DeferredSectionMesh.isObsolete()` 同时检查提交时的取消 token、
+`render.isDisposed()` 与 `render.getLastBuiltFrame() > buildTime`，捕获与收尾各检查一次。
+
+普通队列有界：每帧 `update()` 先释放队列里已 obsolete 的 mesh，再把队列修剪到 `minFree`（worker 数
+× 2，至少 2）个、保留最近的 priority；被修剪的 mesh 归还缓冲与快照后由 mesher 的 `retryLater` 取消
+原构建 token 并重新请求该 section 的重建，下一帧再走正常调度。worker 提交期间允许短暂超出容量。
+`runNext` 每次只捕获一个有效 mesh，捕获前先在同一轮把队首连续的 obsolete mesh 释放掉，避免它们
+占用当轮唯一的捕获名额。important 队列不参与修剪。
+
+退出顺序：`VintageRenderSectionManager.destroy()` 先 `markDestroyed` 停止新的捕获，再走基类
+`destroy`（关闭 `ChunkBuilder`、取消并 join 构建线程），随后 `runImportant` 处理仍排在 important
+队列的 mesh（此时提交会失败并释放资源），再 `releaseOrphans` 释放剩余 important / normal /
+inFlight mesh 并关闭三个池，manager 持有的捕获 context 最后 `destroy`。
+`VintageChunkBuildContext.destroy()` 必须先 `cleanup()` 再 `super.destroy()`，否则
+`WorldSlice.releaseContext` 不会把快照引用还给 section cache。取消但从未启动的构建任务由
+`ChunkJobTyped.execute` 调用 `ChunkBuilderTask.releaseUnstartedContext()` 归还 `ChunkRenderContext`；
+`ChunkBuilder.shutdown()` 在销毁 local context 前驱动这条取消路径，并给结果消费者投递取消结果。
+shader 覆盖层捕获的材质先映射到 vanilla 层，再交给 finish；Fluidlogged 仍使用实际捕获层的材质。
 
 ## glsm/ 子项目（GL 状态跟踪与渲染后端抽象）
 

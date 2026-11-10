@@ -24,4 +24,8 @@ public final class TestRegions {
     public static RenderRegion create(int x, int y, int z, int id) {
         return new RenderRegion(x, y, z, id, null, ARENA_STRIDE);
     }
+
+    public static RenderRegion create(int id) {
+        return create(0, 0, 0, id);
+    }
 }

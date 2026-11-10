@@ -40,6 +40,14 @@ public abstract class LightDataAccess {
         this.yOffset = minBlockY - NEIGHBOR_BLOCK_RADIUS;
         this.zOffset = minBlockZ - NEIGHBOR_BLOCK_RADIUS;
 
+        this.clearCache();
+    }
+
+    /**
+     * Drops every cached light word while keeping the current offset window. Subclasses that
+     * re-point the cache at another block access must call this before the next query.
+     */
+    protected final void clearCache() {
         Arrays.fill(this.light, 0);
     }
 

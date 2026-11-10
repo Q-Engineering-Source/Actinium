@@ -28,6 +28,17 @@ public class ChunkJobCollector {
         }
     }
 
+    /**
+     * Delivers the result of a mesh whose finish was never submitted to the executor, without
+     * releasing a completion permit. {@link #awaitCompletion(ChunkBuilder)} only waits for submitted
+     * jobs, so a skipped result must not stand in for one of their permits.
+     */
+    public void onJobSkipped(@Nullable ChunkJobResult<? extends ChunkTaskOutput> result) {
+        if (result != null) {
+            this.collector.accept(result);
+        }
+    }
+
     public void awaitCompletion(ChunkBuilder builder) {
         if (this.submitted.size() == 0) {
             return;

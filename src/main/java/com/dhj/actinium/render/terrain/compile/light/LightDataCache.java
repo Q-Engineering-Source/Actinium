@@ -9,11 +9,21 @@ import net.minecraft.block.Block;
 import dhj.embeddedt.embeddium.impl.model.light.debug.AODebug;
 
 public class LightDataCache extends LightDataAccess {
-    private final IBlockAccess world;
+    private IBlockAccess world;
     private final BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 
     public LightDataCache(IBlockAccess world) {
         this.world = world;
+    }
+
+    /**
+     * Points the cache at another block access. Every entry was computed from the previous world's
+     * blocks, so the packed light table is dropped; the caller re-establishes the translation with
+     * {@link #reset(int, int, int)} before the next query.
+     */
+    public void rebind(IBlockAccess world) {
+        this.world = world;
+        this.clearCache();
     }
 
     protected int compute(int x, int y, int z) {

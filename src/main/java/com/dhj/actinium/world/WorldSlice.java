@@ -27,10 +27,10 @@ import com.dhj.actinium.compat.fluidlogged.FluidloggedCompat;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.world.biome.BiomeColorCache;
 import com.dhj.actinium.world.biome.BiomeColorNoise;
-import com.dhj.actinium.world.cloned.ActiniumBlockAccess;
 import com.dhj.actinium.world.cloned.ChunkRenderContext;
 import com.dhj.actinium.world.cloned.ClonedChunkSection;
 import com.dhj.actinium.world.cloned.ClonedChunkSectionCache;
+import com.dhj.actinium.world.cloned.DeferredSlice;
 
 import java.util.Arrays;
 
@@ -44,7 +44,7 @@ import java.util.Arrays;
  *
  * Object pooling should be used to avoid huge allocations as this class contains many large arrays.
  */
-public class WorldSlice implements ActiniumBlockAccess {
+public class WorldSlice implements DeferredSlice {
     private static final int SECTION_BLOCK_LENGTH = 16;
 
     private static final int SECTION_BLOCK_COUNT = SECTION_BLOCK_LENGTH * SECTION_BLOCK_LENGTH * SECTION_BLOCK_LENGTH;
@@ -79,6 +79,11 @@ public class WorldSlice implements ActiniumBlockAccess {
     // chunk build tasks: copyData refills it from the task-owned snapshot array, and reset clears
     // the element references so no ClonedChunkSection outlives its task inside this pooled object.
     private final ClonedChunkSection[] sections = new ClonedChunkSection[SECTION_TABLE_ARRAY_SIZE];
+
+    // Cache that owns the snapshot references held in `sections`; non-null only between
+    // copyData and releaseContext.
+    @Nullable
+    private ClonedChunkSectionCache sectionCache;
 
     // Biome tables are per chunk, so this covers SECTION_LENGTH chunks per axis rather than one
     // table per section (see BiomeLookup).
@@ -133,7 +138,7 @@ public class WorldSlice implements ActiniumBlockAccess {
             }
         }
 
-        return new ChunkRenderContext(origin, sections);
+        return new ChunkRenderContext(sectionCache, origin, sections);
     }
 
     private boolean hasSkyLight() {
@@ -170,12 +175,19 @@ public class WorldSlice implements ActiniumBlockAccess {
     }
 
     public void copyData(ChunkRenderContext context) {
+        if (this.sectionCache != null) {
+            throw new IllegalStateException("copyData on a slice that still owns a snapshot");
+        }
+
         SectionPos origin = context.getOrigin();
         this.origin = origin;
 
         // The snapshot array travels with the pending build task, so its entries are copied into
         // this slice's persistent array instead of being aliased; the task keeps its own container.
+        // The cache reference moves with the entries: from here on this slice releases them.
         System.arraycopy(context.getSections(), 0, this.sections, 0, SECTION_TABLE_ARRAY_SIZE);
+        this.sectionCache = context.getSectionCache();
+        context.transferOwnership();
 
         this.volumeBox.minX = origin.minX() - NEIGHBOR_BLOCK_RADIUS;
         this.volumeBox.minY = origin.minY() - NEIGHBOR_BLOCK_RADIUS;
@@ -219,8 +231,27 @@ public class WorldSlice implements ActiniumBlockAccess {
         }
     }
 
-    public void reset() {
+    /**
+     * Releases the snapshot references this slice holds and drops the cached sections. Idempotent:
+     * the ownership reference is cleared before the release, so a repeated call does nothing.
+     */
+    public void releaseContext() {
+        ClonedChunkSectionCache cache = this.sectionCache;
+        this.sectionCache = null;
+
+        if (cache != null) {
+            cache.release(this.sections);
+        }
+
         Arrays.fill(this.sections, null);
+
+        if (this.fluidStatesArrays != null) {
+            Arrays.fill(this.fluidStatesArrays, null);
+        }
+    }
+
+    public void reset() {
+        this.releaseContext();
 
         this.biomeLookup.clearSnapshot();
 

@@ -23,6 +23,16 @@ import com.dhj.actinium.world.WorldSlice;
 import java.util.Arrays;
 import java.util.Map;
 
+/**
+ * An immutable snapshot of one chunk section for use off the main thread.
+ *
+ * <p>The snapshot owns an independent {@link ExtendedBlockStorage} copy rather than keeping the
+ * live section's storage, so a block change made on the main thread while a chunk build is running
+ * cannot alter the geometry the worker produces. Light arrays, the biome table and the tile entity
+ * map are copied for the same reason. A section recycled through the cache's free queue is fully
+ * re-initialized: {@link #init(SectionPos)} refuses a section that is still referenced by a task or
+ * still cached, and overwrites every copied array, so no data of a previous position survives.
+ */
 public class ClonedChunkSection {
     private static final ExtendedBlockStorage EMPTY_SECTION = new ExtendedBlockStorage(0, false);
 
@@ -31,17 +41,18 @@ public class ClonedChunkSection {
     /** Lazily built and shared; see {@link #getUnpackedFluidData()}. */
     private static volatile Object[] EMPTY_FLUID_STATES;
 
-    private final Short2ObjectMap<TileEntity> blockEntities;
+    private final Short2ObjectMap<TileEntity> blockEntities = new Short2ObjectOpenHashMap<>();
     private final World world;
 
-    private final ExtendedBlockStorage data;
-    @Getter
-    private final FluidStateStorage fluidData;
+    private ExtendedBlockStorage data;
 
-    /** Unpacked form of {@link #fluidData}; built on first use and shared by every slice. */
+    @Getter
+    private @Nullable FluidStateStorage fluidData;
+
+    /** Unpacked form of {@link #fluidData}; rebuilt after every {@link #init(SectionPos)}. */
     private volatile Object[] unpackedFluidData;
 
-    private final Biome[] biomeData;
+    private final Biome[] biomeData = new Biome[16 * 16];
 
     // Light arrays are copied eagerly while this section is being cloned on the main thread.
     // Chunk-builder workers read them while the light engine keeps mutating the live
@@ -51,67 +62,143 @@ public class ClonedChunkSection {
 
     private long lastUsedTimestamp = Long.MAX_VALUE;
 
-    private final SectionPos sectionPos;
+    private SectionPos sectionPos;
 
-    ClonedChunkSection(World world, int x, int y, int z) {
+    /** Number of tasks that currently hold this section; maintained by {@link ClonedChunkSectionCache}. */
+    int refs;
+
+    /** Whether the section is still registered in the cache's position map. */
+    boolean cached;
+
+    ClonedChunkSection(World world) {
         this.world = world;
-        this.blockEntities = new Short2ObjectOpenHashMap<>();
-        this.sectionPos = new SectionPos(x, y, z);
+    }
 
-        Chunk chunk = world.getChunk(x, z);
+    /**
+     * Fills this section with a fresh snapshot of the section at {@code pos}.
+     *
+     * @throws IllegalStateException when the section is still cached or still referenced by a task,
+     *                               because overwriting it would corrupt an in-flight build
+     */
+    void init(SectionPos pos) {
+        if (this.refs != 0 || this.cached) {
+            throw new IllegalStateException("Reusing a live ClonedChunkSection (refs=" + this.refs
+                    + ", cached=" + this.cached + ")");
+        }
+
+        Chunk chunk = this.world.getChunk(pos.x(), pos.z());
 
         if (chunk == null) {
-            throw new RuntimeException(String.format("Couldn't retrieve chunk at %d, %d", x, z));
+            throw new RuntimeException(String.format("Couldn't retrieve chunk at %d, %d", pos.x(), pos.z()));
         }
 
-        ExtendedBlockStorage section = getChunkSection(world, chunk, y);
+        ExtendedBlockStorage live = getChunkSection(this.world, chunk, pos.y());
 
-        if (section == Chunk.NULL_BLOCK_STORAGE/*ChunkSection.isEmpty(section)*/) {
-            section = EMPTY_SECTION;
+        this.sectionPos = pos;
+        this.data = live == null || live.isEmpty() ? EMPTY_SECTION : copyIntoOwnedStorage(live);
+        copyBlockEntities(this.blockEntities, chunk, pos);
+        copyBiomeData(this.biomeData, this.world, pos.x(), pos.z());
+        copyLightData(live, this.lightData);
+        this.fluidData = FluidloggedCompat.IS_LOADED ? new FluidStateStorage(chunk, pos.minY()) : null;
+        this.unpackedFluidData = null;
+    }
+
+    /**
+     * Drops every reference this section holds into the live world and clears the copied data, so a
+     * section waiting in the cache's free queue cannot keep a chunk's tile entities, biomes or light
+     * arrays alive. The block state copy is kept: it holds immutable block state objects only and is
+     * overwritten in full by the next {@link #init(SectionPos)}.
+     */
+    void reset() {
+        this.sectionPos = null;
+        this.fluidData = null;
+        this.unpackedFluidData = null;
+        this.blockEntities.clear();
+        Arrays.fill(this.biomeData, null);
+        Arrays.fill(this.lightData, null);
+    }
+
+    private ExtendedBlockStorage copyIntoOwnedStorage(ExtendedBlockStorage live) {
+        ExtendedBlockStorage target = this.data;
+
+        if (target == null || target == EMPTY_SECTION
+                || target.getYLocation() != live.getYLocation()
+                || (target.getSkyLight() != null) != (live.getSkyLight() != null)) {
+            target = new ExtendedBlockStorage(live.getYLocation(), live.getSkyLight() != null);
         }
 
-        this.data = section;
-        this.lightData[EnumSkyBlock.BLOCK.ordinal()] = copyLightArray(section.getBlockLight());
-        this.lightData[EnumSkyBlock.SKY.ordinal()] = copyLightArray(section.getSkyLight());
-        if (FluidloggedCompat.IS_LOADED) {
-            this.fluidData = new FluidStateStorage(chunk, y << 4);
-        } else {
-            this.fluidData = null;
-        }
-        this.biomeData = new Biome[chunk.getBiomeArray().length];
+        copyBlockStates(live, target);
+        return target;
+    }
 
-        if (!chunk.getTileEntityMap().isEmpty()) {
-            StructureBoundingBox box = new StructureBoundingBox(this.sectionPos.minX(), this.sectionPos.minY(), this.sectionPos.minZ(),
-                    this.sectionPos.maxX(), this.sectionPos.maxY(), this.sectionPos.maxZ());
-
-            for (Map.Entry<BlockPos, TileEntity> entry : chunk.getTileEntityMap().entrySet()) {
-                BlockPos entityPos = entry.getKey();
-
-                if (box.isVecInside(entityPos)) {
-                    this.blockEntities.put(packLocal(entityPos.getX() & 15, entityPos.getY() & 15, entityPos.getZ() & 15), entry.getValue());
+    /**
+     * Copies every block state of {@code source} into {@code target}. All 4096 entries are written,
+     * so a target reused from an earlier position cannot keep stale blocks.
+     */
+    static void copyBlockStates(ExtendedBlockStorage source, ExtendedBlockStorage target) {
+        for (int y = 0; y < 16; y++) {
+            for (int z = 0; z < 16; z++) {
+                for (int x = 0; x < 16; x++) {
+                    target.set(x, y, z, source.get(x, y, z));
                 }
             }
         }
-
-        populateBiomeData(x, z, world);
-
     }
 
-    private void populateBiomeData(int chunkX, int chunkZ, World world) {
+    /**
+     * Copies the light arrays of the live section, replacing the entries of {@code target}. An array
+     * the live section does not have (block light of a sky-less section, or sky light in a world
+     * without sky) is stored as {@code null} so the previous position's light cannot survive.
+     */
+    static void copyLightData(@Nullable ExtendedBlockStorage source, NibbleArray[] target) {
+        target[EnumSkyBlock.BLOCK.ordinal()] = copyLightArray(source == null ? null : source.getBlockLight());
+        target[EnumSkyBlock.SKY.ordinal()] = copyLightArray(source == null ? null : source.getSkyLight());
+    }
+
+    private static NibbleArray copyLightArray(@Nullable NibbleArray source) {
+        return source == null ? null : new NibbleArray(source.getData().clone());
+    }
+
+    /** Re-fills the whole biome table of the chunk column {@code (chunkX, chunkZ)}. */
+    static void copyBiomeData(Biome[] target, World world, int chunkX, int chunkZ) {
         BlockPos.MutableBlockPos biomePos = new BlockPos.MutableBlockPos();
 
-        chunkX *= 16;
-        chunkZ *= 16;
-        for(int z = 0; z < 16; z++) {
-            for(int x = 0; x < 16; x++) {
-                biomePos.setPos(chunkX + x, 100, chunkZ + z);
-                this.biomeData[((z & 15) << 4) | (x & 15)] = world.getBiome(biomePos);
+        int baseX = chunkX << 4;
+        int baseZ = chunkZ << 4;
+
+        for (int z = 0; z < 16; z++) {
+            for (int x = 0; x < 16; x++) {
+                biomePos.setPos(baseX + x, 100, baseZ + z);
+                target[((z & 15) << 4) | (x & 15)] = world.getBiome(biomePos);
+            }
+        }
+    }
+
+    /**
+     * Re-fills {@code target} with the tile entities of {@code chunk} that fall inside the section at
+     * {@code pos}, clearing the entries of a previous position first.
+     */
+    static void copyBlockEntities(Short2ObjectMap<TileEntity> target, Chunk chunk, SectionPos pos) {
+        target.clear();
+
+        if (chunk.getTileEntityMap().isEmpty()) {
+            return;
+        }
+
+        StructureBoundingBox box = new StructureBoundingBox(pos.minX(), pos.minY(), pos.minZ(),
+                pos.maxX(), pos.maxY(), pos.maxZ());
+
+        for (Map.Entry<BlockPos, TileEntity> entry : chunk.getTileEntityMap().entrySet()) {
+            BlockPos entityPos = entry.getKey();
+
+            if (box.isVecInside(entityPos)) {
+                target.put(packLocal(entityPos.getX() & 15, entityPos.getY() & 15, entityPos.getZ() & 15), entry.getValue());
             }
         }
     }
 
     public IBlockState getBlockState(int x, int y, int z) {
-        return data.get(x, y, z);
+        return this.data.get(x, y, z);
     }
 
     public Biome[] getBiomeData() {
@@ -131,10 +218,6 @@ public class ClonedChunkSection {
         return lightArray != null ? lightArray.get(x, y, z) : type.defaultLightValue;
     }
 
-    private static NibbleArray copyLightArray(@Nullable NibbleArray source) {
-        return source == null ? null : new NibbleArray(source.getData().clone());
-    }
-
     private static ExtendedBlockStorage getChunkSection(World world, Chunk chunk, int y) {
         ExtendedBlockStorage section = null;
 
@@ -145,7 +228,7 @@ public class ClonedChunkSection {
             section = storageArray[storageIndex];
         }
 
-        return section;
+        return section == Chunk.NULL_BLOCK_STORAGE ? null : section;
     }
 
     public long getLastUsedTimestamp() {
@@ -156,7 +239,7 @@ public class ClonedChunkSection {
         this.lastUsedTimestamp = timestamp;
     }
 
-    private static short packLocal(int x, int y, int z) {
+    static short packLocal(int x, int y, int z) {
         return (short) (x << 8 | z << 4 | y);
     }
 
@@ -177,7 +260,7 @@ public class ClonedChunkSection {
     }
 
     private Object[] buildUnpackedFluidData() {
-        if (this.fluidData.isEmpty()) {
+        if (this.fluidData == null || this.fluidData.isEmpty()) {
             return emptyFluidStates();
         }
 

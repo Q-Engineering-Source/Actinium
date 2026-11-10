@@ -22,6 +22,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.List;
 
 public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
@@ -91,6 +92,8 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         public int loadingScreenFramerateLimit = 60;
 
         public boolean useFastBlockRenderer = true;
+        /** Blocks whose geometry must be captured on the render thread, as {@code namespace:block} ids. */
+        public List<String> deferredBlockIds = new ArrayList<>();
         public AsyncOcclusionMode asyncOcclusionMode = AsyncOcclusionMode.ONLY_SHADOW;
         public boolean useRasterOcclusionCulling = true;
         public GpuCullingMode gpuCullingMode = GpuCullingMode.CPU_ONLY;
@@ -259,6 +262,10 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
 
         if (config.advanced.streamingUploadStrategy == null) {
             config.advanced.streamingUploadStrategy = StreamingUploadStrategy.MAP_BUFFER_RANGE;
+        }
+
+        if (config.performance.deferredBlockIds == null) {
+            config.performance.deferredBlockIds = new ArrayList<>();
         }
 
         try {

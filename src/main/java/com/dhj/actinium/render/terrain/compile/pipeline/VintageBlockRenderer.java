@@ -156,7 +156,7 @@ public class VintageBlockRenderer {
         this.currentShaderBlockId = resolveShaderBlockId(state, pos);
         this.currentRenderLayer = layer;
 
-        var buffers = this.context.buffers;
+        var buffers = this.context.getRenderBuffers();
         var material = resolveRenderMaterial(buffers, state, layer);
         var buffer = buffers.get(material);
 
