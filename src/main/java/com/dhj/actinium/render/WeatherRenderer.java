@@ -645,7 +645,7 @@ public final class WeatherRenderer {
                 alpha = fadeAlpha(distance, false, rainStrength);
             }
 
-            emit(x, z, bottom, top, halfX, halfZ, u0, u1, scrollBottom, scrollTop, brightness, alpha);
+            emit(buffer, x, z, bottom, top, halfX, halfZ, u0, u1, scrollBottom, scrollTop, brightness, alpha);
         }
 
         /**
@@ -665,25 +665,26 @@ public final class WeatherRenderer {
             mc.getTextureManager().bindTexture(texture);
             buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.PARTICLE_POSITION_TEX_COLOR_LMAP);
         }
+    }
 
-        private void emit(int x, int z, int bottom, int top, float halfX, float halfZ, float u0, float u1,
-                          double vBottom, double vTop, int brightness, float alpha) {
-            final int skyLight = (brightness >> 16) & 0xFFFF;
-            final int blockLight = brightness & 0xFFFF;
-            final double minX = x - halfX + 0.5D;
-            final double maxX = x + halfX + 0.5D;
-            final double minZ = z - halfZ + 0.5D;
-            final double maxZ = z + halfZ + 0.5D;
+    /** Emits a precipitation quad with vanilla's upper vertices sampling the lower column V. */
+    static void emit(BufferBuilder buffer, int x, int z, int bottom, int top, float halfX, float halfZ,
+                     float u0, float u1, double vBottom, double vTop, int brightness, float alpha) {
+        final int skyLight = (brightness >> 16) & 0xFFFF;
+        final int blockLight = brightness & 0xFFFF;
+        final double minX = x - halfX + 0.5D;
+        final double maxX = x + halfX + 0.5D;
+        final double minZ = z - halfZ + 0.5D;
+        final double maxZ = z + halfZ + 0.5D;
 
-            vertex(minX, bottom, minZ, u0, vBottom, skyLight, blockLight, alpha);
-            vertex(maxX, bottom, maxZ, u1, vBottom, skyLight, blockLight, alpha);
-            vertex(maxX, top, maxZ, u1, vTop, skyLight, blockLight, alpha);
-            vertex(minX, top, minZ, u0, vTop, skyLight, blockLight, alpha);
-        }
+        vertex(buffer, minX, top, minZ, u0, vBottom, skyLight, blockLight, alpha);
+        vertex(buffer, maxX, top, maxZ, u1, vBottom, skyLight, blockLight, alpha);
+        vertex(buffer, maxX, bottom, maxZ, u1, vTop, skyLight, blockLight, alpha);
+        vertex(buffer, minX, bottom, minZ, u0, vTop, skyLight, blockLight, alpha);
+    }
 
-        private void vertex(double x, double y, double z, float u, double v, int skyLight, int blockLight,
-                            float alpha) {
-            buffer.pos(x, y, z).tex(u, v).color(1.0F, 1.0F, 1.0F, alpha).lightmap(skyLight, blockLight).endVertex();
-        }
+    private static void vertex(BufferBuilder buffer, double x, double y, double z, float u, double v,
+                               int skyLight, int blockLight, float alpha) {
+        buffer.pos(x, y, z).tex(u, v).color(1.0F, 1.0F, 1.0F, alpha).lightmap(skyLight, blockLight).endVertex();
     }
 }

@@ -2,11 +2,14 @@ package com.dhj.actinium.render;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.client.renderer.BufferBuilder;
+import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.init.Biomes;
 import net.minecraft.init.Bootstrap;
 import net.minecraft.world.WorldProviderSurface;
 import net.minecraft.world.biome.Biome;
 import net.minecraftforge.client.IRenderHandler;
+import org.lwjgl.opengl.GL11;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -19,7 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>The billboard axis, the transparency falloff, the particle attempt count and the column lightmap
  * are the parts of the fallback that touch neither the world nor the GL state, so they are verified
- * here against the vanilla formulas. The quad emission and the particle placement itself need a live
+ * here against the vanilla formulas. Quad emission is checked through raw BufferBuilder data;
+     * particle placement needs a live
  * client and are left to the in-game pass.</p>
  */
 class WeatherRendererTest {
@@ -80,6 +84,23 @@ class WeatherRendererTest {
         assertEquals(0.0F, WeatherRenderer.billboardAxisZ(0, 1), 1.0e-6F);
         assertEquals(0.0F, WeatherRenderer.billboardAxisX(1, 0), 1.0e-6F);
         assertEquals(1.0F, WeatherRenderer.billboardAxisZ(1, 0), 1.0e-6F);
+    }
+
+    @Test
+    void fallbackUsesVanillaHeightAndTextureVOrder() {
+        final BufferBuilder buffer = new BufferBuilder(128);
+        buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.PARTICLE_POSITION_TEX_COLOR_LMAP);
+        WeatherRenderer.emit(buffer, 0, 0, 0, 4, 0.5F, 0.0F, 0.0F, 1.0F, 2.0F, 6.0F, 0, 1.0F);
+        buffer.finishDrawing();
+
+        final int stride = buffer.getVertexFormat().getSize();
+        final int vOffset = buffer.getVertexFormat().getOffset(1) + Float.BYTES;
+        final float[] heights = {4.0F, 4.0F, 0.0F, 0.0F};
+        final float[] textureVs = {2.0F, 2.0F, 6.0F, 6.0F};
+        for (int vertex = 0; vertex < 4; vertex++) {
+            assertEquals(heights[vertex], buffer.getByteBuffer().getFloat(vertex * stride + Float.BYTES));
+            assertEquals(textureVs[vertex], buffer.getByteBuffer().getFloat(vertex * stride + vOffset));
+        }
     }
 
     @Test

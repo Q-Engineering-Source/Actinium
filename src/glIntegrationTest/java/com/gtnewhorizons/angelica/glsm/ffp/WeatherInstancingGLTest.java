@@ -208,9 +208,29 @@ class WeatherInstancingGLTest extends GLStateManagerIntegrationFixture {
         final int scrolled = redAt(drawColumn(rainInstance(0.0F, -0.5F, -0.5F, 0.5F), 1.0F, 2.0F), 48, 32);
         final int unscrolled = redAt(drawColumn(rainInstance(0.0F, -0.5F, -0.5F, 0.5F), 1.0F, 0.0F), 48, 32);
 
-        // V = -(mod(2 + 0, 32) + 0) / 32 * (3 + 0.5) = -0.21875, which repeats to 0.78125 and selects row 12.
+        // The upper vertices sample the lower column bound's V in vanilla.
+        // V = -0.00390625 - (mod(2 + 0, 32) + 0) / 32 * (3 + 0.5) = -0.22265625.
+        // The repeated coordinate is 0.77734375, which selects row 12.
         assertEquals(12 * TEXEL_STEP, scrolled, "the scroll moves the texture the vanilla way");
-        assertEquals(0, unscrolled, "without a scroll the column samples the first row");
+        assertEquals(15 * TEXEL_STEP, unscrolled, "vanilla reverses V between the top and bottom vertices");
+    }
+
+    @Test
+    void rainTextureVMatchesVanillaVertexHeights() {
+        GLSMMatrices.glMatrixMode(GL11.GL_PROJECTION);
+        GLSMMatrices.glLoadIdentity();
+        GLSMMatrices.glOrtho(-0.5, 0.5, 0.0, 1.0, -1.0, 1.0);
+        GLSMMatrices.glMatrixMode(GL11.GL_MODELVIEW);
+        bindRainTexture(gradientTexture());
+
+        final int[] pixels = drawColumn(rainInstance(0.0F, -0.5F, 0.0F, 1.0F), 1.0F, 0.0F);
+
+        for (int y : new int[]{16, 48}) {
+            final float worldY = (y + 0.5F) / SIZE;
+            final float vanillaV = (1.0F - worldY) * 0.25F;
+            assertEquals((int) (vanillaV * 16.0F) * TEXEL_STEP, redAt(pixels, 32, y),
+                "the vertex at world height " + worldY + " uses the vanilla texture V");
+        }
     }
 
     @Test

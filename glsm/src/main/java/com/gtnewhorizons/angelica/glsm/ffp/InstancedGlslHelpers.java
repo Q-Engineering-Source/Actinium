@@ -16,10 +16,11 @@ public final class InstancedGlslHelpers {
     /**
      * Weather prologue. Placeholders are replaced by {@link #weatherPrologue}.
      *
-     * <p>Two details differ from the upstream Angelica prologue on purpose. The texture scroll is
-     * negative here, because 1.12.2 vanilla scrolls the rain and snow texture downwards and the
-     * fallback keeps that sign. The packed lightmap is read as {@code (sky, block)}, because the
-     * lightmap attribute vanilla feeds the fixed pipeline is ordered that way.</p>
+     * <p>Vanilla's upper vertices sample the lower column bound's V coordinate, so the Y term is
+     * reversed here. The texture scroll is negative, matching 1.12.2 vanilla and the fallback.
+     * The packed lightmap is read as
+     * {@code (sky, block)}, because the lightmap attribute vanilla feeds the fixed pipeline is ordered
+     * that way.</p>
      */
     private static final String WEATHER_PROLOGUE = """
         vec2 {p}wColumn = {span}.xy;
@@ -61,7 +62,7 @@ public final class InstancedGlslHelpers {
             {p}wAlpha = ({p}wFade * 0.5 + 0.5) * {p}wStrength;
         }
 
-        {tex0} = vec4({corner}.x + {p}wDrift.x, {p}wCornerY * 0.25 + {p}wScroll + {p}wDrift.y, 0.0, 1.0);
+        {tex0} = vec4({corner}.x + {p}wDrift.x, ({p}wBottom + {p}wTop - {p}wCornerY) * 0.25 + {p}wScroll + {p}wDrift.y, 0.0, 1.0);
         {tex1} = vec4({p}wLightmap, 0.0, 1.0);
         {color} = vec4(1.0, 1.0, 1.0, {p}wAlpha);""";
 
