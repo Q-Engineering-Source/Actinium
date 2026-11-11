@@ -9,6 +9,9 @@ import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL21;
 import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GL31;
+import org.lwjgl.opengl.GL32;
+import org.lwjgl.opengl.GL40;
 
 import java.nio.Buffer;
 import java.util.concurrent.locks.ReentrantLock;
@@ -28,6 +31,18 @@ public class TextureInfoCache {
     private int deleteCount;
 
     private TextureInfoCache() {
+    }
+
+    /** Proxy targets query allocation limits without changing a texture object's storage. */
+    public static boolean isProxyTarget(int target) {
+        return switch (target) {
+            case GL11.GL_PROXY_TEXTURE_1D, GL11.GL_PROXY_TEXTURE_2D, GL12.GL_PROXY_TEXTURE_3D,
+                 GL13.GL_PROXY_TEXTURE_CUBE_MAP, GL30.GL_PROXY_TEXTURE_1D_ARRAY,
+                 GL30.GL_PROXY_TEXTURE_2D_ARRAY, GL31.GL_PROXY_TEXTURE_RECTANGLE,
+                 GL32.GL_PROXY_TEXTURE_2D_MULTISAMPLE, GL32.GL_PROXY_TEXTURE_2D_MULTISAMPLE_ARRAY,
+                 GL40.GL_PROXY_TEXTURE_CUBE_MAP_ARRAY -> true;
+            default -> false;
+        };
     }
 
     /** Deletions so far; an exit capture that outlived a texture deletion can no longer be applied. */

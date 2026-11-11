@@ -29,5 +29,11 @@ public final class GLSMConfig {
      */
     public static volatile int workerThreadCount;
 
+    /** Maximum submitted frames retained by the SDL GPU device, fixed before device creation. */
+    public static int sdlGpuFramesInFlight = 2;
+
+    /** Whether SDL presentation runs on a dedicated executor. Requires a client restart to change. */
+    public static boolean sdlGpuPresenterThread = true;
+
     private GLSMConfig() {}
 }

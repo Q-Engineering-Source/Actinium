@@ -29,6 +29,7 @@ class StubRenderBackend extends RenderBackend {
     @Override public boolean isAvailable() { throw new UnsupportedOperationException(); }
     @Override public String getName() { throw new UnsupportedOperationException(); }
     @Override public boolean hasContext() { throw new UnsupportedOperationException(); }
+    @Override public boolean isCurrent() { throw new UnsupportedOperationException(); }
     @Override public int getMinGLSLVersion() { throw new UnsupportedOperationException(); }
     @Override public void flush() { throw new UnsupportedOperationException(); }
     @Override public void finish() { throw new UnsupportedOperationException(); }

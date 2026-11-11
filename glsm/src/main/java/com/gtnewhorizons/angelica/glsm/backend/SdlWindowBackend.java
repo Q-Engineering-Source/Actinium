@@ -56,6 +56,9 @@ public final class SdlWindowBackend implements WindowBackend {
         if (window == 0L) {
             throw new IllegalStateException("Cannot change fullscreen state without an SDL window");
         }
+        if (BackendManager.RENDER_BACKEND.isSDLGPU()) {
+            BackendManager.RENDER_BACKEND.onPreSwapchainInvalidatingChange(null);
+        }
 
         if (fullscreen) {
             enterExclusiveFullscreen(window);

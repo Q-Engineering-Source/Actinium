@@ -208,6 +208,7 @@ public class GLSMRedirector {
             .add("glGetTexParameterf")
             .add("glGetTexParameteri")
             .add("glIsEnabled")
+            .add("glIsEnabledi")
             .add("glMaterial")
             .add("glMaterialf")
             .add("glMateriali")

@@ -292,6 +292,11 @@ public final class GLSMEnable {
         };
     }
 
+    public static boolean glIsEnabledi(int cap, int index) {
+        GLStateManager.rejectExitCapture();
+        return RENDER_BACKEND.isEnabledIndexed(cap, index);
+    }
+
     public static void glEnablei(int cap, int index) {
         rejectExitCapture();
         RENDER_BACKEND.enablei(cap, index);

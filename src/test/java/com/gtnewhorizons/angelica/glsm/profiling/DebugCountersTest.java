@@ -61,14 +61,14 @@ class DebugCountersTest {
 
     @Test
     void describeOmitsCountersThatDidNotMove() {
-        final DebugCounters.Delta delta = new DebugCounters.Delta(0L, 0L, 0L, 12L, 5L);
+        final DebugCounters.Delta delta = new DebugCounters.Delta(0L, 0L, 0L, 12L, 5L, 0L);
 
         assertEquals("debugCounters[pbrAnimUpdates=12,pbrAnimDryRuns=5]", delta.describe());
     }
 
     @Test
     void emptyDeltaDescribesNothing() {
-        final DebugCounters.Delta delta = new DebugCounters.Delta(0L, 0L, 0L, 0L, 0L);
+        final DebugCounters.Delta delta = new DebugCounters.Delta(0L, 0L, 0L, 0L, 0L, 0L);
 
         assertTrue(delta.isEmpty());
         assertEquals("", delta.describe());

@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.glsm.debug;
 
+import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCheckpointType;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandRecorder;
 import org.lwjgl.opengl.GL32;
@@ -204,12 +205,12 @@ public final class GpuCheckpointTracker {
 
         @Override
         public long fence() {
-            return GL32.glFenceSync(GL32.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+            return BackendManager.RENDER_BACKEND.fenceSync(GL32.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
         }
 
         @Override
         public GpuSyncStatus poll(long sync) {
-            int result = GL32.glClientWaitSync(sync, 0, 0L);
+            int result = BackendManager.RENDER_BACKEND.clientWaitSync(sync, 0, 0L);
             if (result == GL32.GL_ALREADY_SIGNALED || result == GL32.GL_CONDITION_SATISFIED) {
                 return GpuSyncStatus.COMPLETED;
             }
@@ -224,7 +225,7 @@ public final class GpuCheckpointTracker {
 
         @Override
         public void delete(long sync) {
-            GL32.glDeleteSync(sync);
+            BackendManager.RENDER_BACKEND.deleteSync(sync);
         }
     }
 }

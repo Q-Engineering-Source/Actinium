@@ -4,8 +4,10 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.Iterator;
+import java.util.Objects;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
+import java.util.function.Supplier;
 
 public final class BackendManager {
     private static final Logger LOGGER = LogManager.getLogger("BackendManager");
@@ -41,6 +43,19 @@ public final class BackendManager {
                 }
             } catch (ServiceConfigurationError | LinkageError e) {
                 LOGGER.debug("Skipping unavailable backend: {}", e.getMessage());
+            }
+        }
+
+        for (Supplier<? extends RenderBackend> factory : RenderBackendCandidates.take()) {
+            final RenderBackend backend;
+            try {
+                backend = Objects.requireNonNull(factory.get(), "Render backend factory returned null");
+            } catch (RuntimeException | LinkageError failure) {
+                LOGGER.error("Failed to construct a registered render backend", failure);
+                throw failure;
+            }
+            if (backend.isAvailable() && (best == null || backend.getPriority() > best.getPriority())) {
+                best = backend;
             }
         }
 

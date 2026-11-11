@@ -780,6 +780,7 @@ public class GLStateManager {
     public static void glDisable(int cap) { GLSMEnable.glDisable(cap); }
 
     public static boolean glIsEnabled(int cap) { return GLSMEnable.glIsEnabled(cap); }
+    public static boolean glIsEnabledi(int cap, int index) { return GLSMEnable.glIsEnabledi(cap, index); }
 
     /**
      * Whether the pname is an enable capability tracked by {@link #glIsEnabled}. Compatibility
@@ -1817,19 +1818,32 @@ public class GLStateManager {
     }
 
     public static void makeCurrent(Drawable drawable) throws LWJGLException {
-        drawable.makeCurrent();
-        CurrentThread = Thread.currentThread();
-
-        final boolean display;
-        try {
-            display = drawable == Display.getDrawable();
-        } catch (Exception e) {
-            LOGGER.warn("Display not ready in makeCurrent", e);
-            return;
-        }
+        final boolean display = drawable == Display.getDrawable();
         final Object token = drawable instanceof DrawableGL drawableGL
             ? drawableGL.getContext()
             : drawable;
+        final GLContextState target = display || token == displayContextToken ? null : contextFor(token);
+        if (target != null && RENDER_BACKEND.isSDLGPU()) {
+            if (!target.viewportInitialized) {
+                final int width = Display.getWidth();
+                final int height = Display.getHeight();
+                target.viewportState.setViewPort(0, 0, width, height);
+                target.scissorState.setScissor(0, 0, width, height);
+                target.viewportInitialized = true;
+            }
+            initializeDrawableResources(target);
+        }
+        final GLContextState previous = tlWorkerContext.get();
+        final boolean changed = bindThreadContext(target);
+        final boolean handled;
+        try {
+            handled = RENDER_BACKEND.handleMakeCurrent(drawable);
+            if (!handled) drawable.makeCurrent();
+        } catch (LWJGLException | RuntimeException | Error failure) {
+            if (changed) bindThreadContext(previous);
+            throw failure;
+        }
+        CurrentThread = Thread.currentThread();
         final long nativeHandle = RENDER_BACKEND.getContextHandle();
         if (display) {
             if (!splashComplete) GLStateManager.drawableGL = drawable;
@@ -1837,11 +1851,17 @@ public class GLStateManager {
         } else {
             bindDrawableContext(token, nativeHandle);
         }
+        if (!handled && changed) replayStateToBackend();
     }
 
     public static void releaseContext(Drawable drawable) throws LWJGLException {
-        drawable.releaseContext();
+        if (!RENDER_BACKEND.handleReleaseContext(drawable)) drawable.releaseContext();
         releaseBoundContext();
+    }
+
+    /** Returns ownership of the backend's native or logical rendering context. */
+    public static boolean isCurrent() {
+        return RENDER_BACKEND.isCurrent();
     }
 
     public static void registerDrawableContext(Object contextToken) {
@@ -1975,7 +1995,7 @@ public class GLStateManager {
 
     /** Presents the back buffer. Callers that take over the present path use this so the gate stays recorded. */
     public static void swapBuffers() {
-        Display.swapBuffers();
+        if (!RENDER_BACKEND.handleSwapBuffers()) Display.swapBuffers();
     }
 
     /** Presents the frame and processes window events. */
@@ -1991,9 +2011,14 @@ public class GLStateManager {
      * should start. Event processing stays outside the timed region because it is not presentation work.
      */
     public static void updateDisplay(boolean processMessages) {
+        if (Thread.currentThread() != MainThread) {
+            RENDER_BACKEND.updateDisplayFromWorkerThread(processMessages);
+            return;
+        }
         if (processMessages) {
             RENDER_BACKEND.pumpDisplayMessages();
         }
+        if (RENDER_BACKEND.handleSwapBuffers()) return;
         if (!RENDER_BACKEND.wantsDisplayUpdateGateTiming()) {
             Display.update(false);
             return;

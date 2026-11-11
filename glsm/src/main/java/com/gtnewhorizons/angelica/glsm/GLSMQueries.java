@@ -63,6 +63,12 @@ public final class GLSMQueries {
 
     private GLSMQueries() {}
 
+    /** Reads a full-width indexed offset or length from the active rendering backend. */
+    public static long glGetInteger64i(int pname, int index) {
+        rejectExitCapture();
+        return RENDER_BACKEND.getInteger64Indexed(pname, index);
+    }
+
     public static boolean glGetBoolean(int pname) {
         rejectExitCapture();
         if (shouldBypassCache()) {

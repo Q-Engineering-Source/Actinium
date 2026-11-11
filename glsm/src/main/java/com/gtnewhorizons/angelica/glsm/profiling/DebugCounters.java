@@ -10,11 +10,11 @@ import java.util.concurrent.atomic.LongAdder;
  * window (the flyby harness accounts per phase this way). The periodic report built by
  * {@link #dumpDeltaAndAdvance()} keeps its own baseline instead of resetting the adders.
  *
- * <p>The transfer and present counters are written by the SDL backend, which is not part of this
- * tree; until that backend lands they stay at zero and only the PBR counters move.
+ * <p>SDL records transfer, fence and presentation traffic; Iris records PBR animation updates.
  */
 public final class DebugCounters {
     public static final LongAdder TRANSFER_WAIT_NANOS = new LongAdder();
+    public static final LongAdder FENCE_WAIT_NANOS = new LongAdder();
     public static final LongAdder PRESENTS = new LongAdder();
     public static final LongAdder EMPTY_ACQUIRES = new LongAdder();
     public static final LongAdder PBR_ANIM_UPDATES = new LongAdder();
@@ -31,7 +31,8 @@ public final class DebugCounters {
             PRESENTS.sum(),
             EMPTY_ACQUIRES.sum(),
             PBR_ANIM_UPDATES.sum(),
-            PBR_ANIM_DRY_RUNS.sum());
+            PBR_ANIM_DRY_RUNS.sum(),
+            FENCE_WAIT_NANOS.sum());
     }
 
     /**
@@ -53,7 +54,8 @@ public final class DebugCounters {
             || PRESENTS.sum() != baseline.presents()
             || EMPTY_ACQUIRES.sum() != baseline.emptyAcquires()
             || PBR_ANIM_UPDATES.sum() != baseline.pbrAnimUpdates()
-            || PBR_ANIM_DRY_RUNS.sum() != baseline.pbrAnimDryRuns();
+            || PBR_ANIM_DRY_RUNS.sum() != baseline.pbrAnimDryRuns()
+            || FENCE_WAIT_NANOS.sum() != baseline.fenceWaitNanos();
     }
 
     /**
@@ -77,8 +79,8 @@ public final class DebugCounters {
     }
 
     /** Counter values read at one point in time. */
-    public record Snapshot(long transferWaitNanos, long presents, long emptyAcquires, long pbrAnimUpdates, long pbrAnimDryRuns) {
-        private static final Snapshot ZERO = new Snapshot(0L, 0L, 0L, 0L, 0L);
+    public record Snapshot(long transferWaitNanos, long presents, long emptyAcquires, long pbrAnimUpdates, long pbrAnimDryRuns, long fenceWaitNanos) {
+        private static final Snapshot ZERO = new Snapshot(0L, 0L, 0L, 0L, 0L, 0L);
 
         public Delta since(Snapshot start) {
             return new Delta(
@@ -86,24 +88,27 @@ public final class DebugCounters {
                 presents - start.presents,
                 emptyAcquires - start.emptyAcquires,
                 pbrAnimUpdates - start.pbrAnimUpdates,
-                pbrAnimDryRuns - start.pbrAnimDryRuns);
+                pbrAnimDryRuns - start.pbrAnimDryRuns,
+                fenceWaitNanos - start.fenceWaitNanos);
         }
     }
 
     /** Difference between two snapshots. */
-    public record Delta(long transferWaitNanos, long presents, long emptyAcquires, long pbrAnimUpdates, long pbrAnimDryRuns) {
+    public record Delta(long transferWaitNanos, long presents, long emptyAcquires, long pbrAnimUpdates, long pbrAnimDryRuns, long fenceWaitNanos) {
         public boolean isEmpty() {
             return transferWaitNanos == 0L
                 && presents == 0L
                 && emptyAcquires == 0L
                 && pbrAnimUpdates == 0L
-                && pbrAnimDryRuns == 0L;
+                && pbrAnimDryRuns == 0L
+                && fenceWaitNanos == 0L;
         }
 
         /** Periodic report entry, listing only the counters that moved. */
         public String describe() {
             final StringBuilder sb = new StringBuilder(96);
             appendEntry(sb, "transferWaitNanos", transferWaitNanos);
+            appendEntry(sb, "fenceWaitNanos", fenceWaitNanos);
             appendEntry(sb, "presents", presents);
             appendEntry(sb, "emptyAcquires", emptyAcquires);
             appendEntry(sb, "pbrAnimUpdates", pbrAnimUpdates);
