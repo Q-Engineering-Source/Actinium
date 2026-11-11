@@ -6,7 +6,7 @@
 
 开发运行通过 `outlands.dev.extrapath` 装载 `devShadowJar`，使 Actinium 的类由模组类加载器加载。早期 Mixin 继续由 `MixinEarly` 注册，条件 Mixin 继续由 `MixinLate` 按模组检查注册。分发 jar 保留 `FMLCorePlugin`、`FMLCorePluginContainsFMLMod`、`FMLAT`、`ContainedDeps` 和 `NonModDeps`，供旧 Cleanroom 加载；`ModType: FML` 让 Forge、Cleanroom 和 Outlands 都识别同一 coremod。
 
-必须保留旧式模组元数据与 manifest 声明。Actinium 同时使用 LWJGL2 兼容入口和 LWJGL3 API；Outlands 的顶层 `jar` 元数据会将其标记为只使用 LWJGL3 的模组，在 `outlands.lwjgl2.filter=skip` 时跳过必需的调用转换。GLSL transformation、ANTLR、JCPP 及 shaderc/SPIRV-Cross Java 类直接嵌入主 jar，使 Forge Splash 阶段也能解析字体 shader；平台 native 继续使用 `ContainedDeps`。
+必须保留旧式模组元数据与 manifest 声明。Actinium 同时使用 LWJGL2 兼容入口和 LWJGL3 API；Outlands 的顶层 `jar` 元数据会将其标记为只使用 LWJGL3 的模组，在 `outlands.lwjgl2.filter=skip` 时跳过必需的调用转换。GLSL transformation、ANTLR、JCPP 及 shaderc/SPIRV-Cross Java 类直接嵌入主 jar，使 Forge Splash 阶段也能解析字体 shader；平台 native 继续使用 `ContainedDeps`。Outlands 的 SDL 窗口不提供 exclusive fullscreen，Actinium 将该模式映射到 borderless，并以 `options.txt` 的 `fullscreen` 状态清理残留的全屏配置。
 
 Access transformer 源文件为 `src/main/resources/actinium_at.cfg`，构建后位于 `META-INF/actinium_at.cfg`。GLFW 编译依赖显式声明为 `compileOnly`，供旧 Cleanroom 窗口路径编译。
 
