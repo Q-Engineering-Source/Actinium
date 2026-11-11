@@ -44,8 +44,14 @@ dependencies {
     compileOnly "org.ow2.asm:asm-tree:${asmVersion}"
     compileOnly "org.ow2.asm:asm-util:${asmVersion}"
     implementation 'com.google.code.gson:gson:2.10.1'
-    implementation 'org.anarres:jcpp:1.4.14'
-    contain 'org.anarres:jcpp:1.4.14'
+    // These parser classes are used while FML is still showing the splash screen. They must be
+    // expanded into the mod body because ContainedDeps/NonModDeps are injected after that phase.
+    shadowBundle 'org.anarres:jcpp:1.4.14'
+
+    shadowBundle('org.taumc:glsl-transformation-lib:0.2.0-32.g7dd88a4-GTNH') {
+        transitive = false
+    }
+    shadowBundle 'org.antlr:antlr4-runtime:4.13.2'
 
     modCompileOnly 'maven.modrinth:fluidlogged-api:3.0.6'
 
@@ -55,7 +61,9 @@ dependencies {
 
     // Outlands supplies SDL, while the optional GPU backend also needs shaderc and SPIRV-Cross at runtime.
     ['lwjgl-shaderc', 'lwjgl-spvc'].each { module ->
-        contain("org.lwjgl:${module}:${lwjglVersion}") { transitive = false }
+        // LWJGL's Java bindings are needed by the early shader backend. Keep native classifiers
+        // nested so the loader's native extraction path remains responsible for platform files.
+        shadowBundle("org.lwjgl:${module}:${lwjglVersion}") { transitive = false }
         ['windows', 'windows-arm64', 'linux', 'linux-arm64', 'macos', 'macos-arm64'].each { platform ->
             contain("org.lwjgl:${module}:${lwjglVersion}:natives-${platform}") { transitive = false }
         }
