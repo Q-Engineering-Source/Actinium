@@ -9,7 +9,6 @@ import com.dhj.actinium.render.frame.FramePacer;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.startup.SdlFrameLifecycle;
 import com.gtnewhorizons.angelica.glsm.GLSMTextureLifetime;
-import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
 import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
@@ -31,7 +30,6 @@ public class MixinMinecraft {
 
     @Inject(method = "runTick", at = @At("HEAD"))
     private void preRender(CallbackInfo ci) {
-        WindowBackends.get().pumpMessages();
         ActiniumWindowModeController.synchronize((Minecraft) (Object) this);
     }
 
