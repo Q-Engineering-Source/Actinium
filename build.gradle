@@ -29,7 +29,7 @@ setDefaultProperty 'extra_jvm_args', false, ''
 def cliProjectProperties = gradle.startParameter.projectProperties
 def outlandsLoaderVersion = cliProjectProperties.containsKey('outlands_loader_version')
     ? cliProjectProperties['outlands_loader_version']
-    : '2026.11.11-2'
+    : '2026.11.11'
 
 /**
  * Derives the build version from git: an exact tag on HEAD wins, otherwise the short commit sha.

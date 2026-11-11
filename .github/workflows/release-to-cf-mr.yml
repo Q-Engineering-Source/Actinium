@@ -29,7 +29,7 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Execute Gradle build
-        run: ./gradlew "-Poutlands_loader_version=2026.11.11" build
+        run: ./gradlew build
 
       - name: Get Changes between Tags
         id: changes
