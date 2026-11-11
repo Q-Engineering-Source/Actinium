@@ -608,7 +608,9 @@ public class SDLGPURenderBackend extends RenderBackend {
     @Override public boolean handleMakeCurrent(Object drawable) {
         if (!isSDLManagedDrawable(drawable)) return false;
         SDLHostHooks.installCapabilities(advertisedCapabilities());
-        enterContext(drawable instanceof SDLDrawable);
+        final boolean splashDrawable = drawable instanceof SDLDrawable
+            || (!GLStateManager.isSplashComplete() && SDLGPUDisplayBridge.isSdlSharedDrawable(drawable));
+        enterContext(splashDrawable);
         SDLGPUDisplayBridge.onMadeCurrent(drawable);
         return true;
     }

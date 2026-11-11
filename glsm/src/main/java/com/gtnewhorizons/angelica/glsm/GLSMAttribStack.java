@@ -10,6 +10,7 @@ import org.lwjgl.opengl.GL15;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL30;
 
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.CLIENT_ATTRIB_STACK_DEPTH;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.MAX_ATTRIB_STACK_DEPTH;
@@ -216,6 +217,8 @@ public final class GLSMAttribStack {
             applyPolygonOffset(glCtx);
             RENDER_BACKEND.cullFace(glCtx.polygonState.getCullFaceMode());
             RENDER_BACKEND.frontFace(glCtx.polygonState.getFrontFace());
+            RENDER_BACKEND.bindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, glCtx.drawFramebuffer);
+            RENDER_BACKEND.bindFramebuffer(GL30.GL_READ_FRAMEBUFFER, glCtx.readFramebuffer);
         }
 
     public static boolean isPoppingAttributes() {
