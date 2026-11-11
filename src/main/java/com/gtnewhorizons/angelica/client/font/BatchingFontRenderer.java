@@ -21,12 +21,12 @@ import dhj.embeddedt.embeddium.impl.render.shader.ShaderLoader;
 import org.joml.Matrix4f;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import com.dhj.actinium.runtime.ActiniumRuntime;
+import com.dhj.actinium.startup.SdlGpuBootstrap;
 
 
 import java.nio.ByteBuffer;
@@ -181,7 +181,7 @@ public class BatchingFontRenderer {
 
 
     private static boolean hasCurrentGlContext() {
-        final boolean current = WindowBackends.get().currentContextHandle() != 0L;
+        final boolean current = SdlGpuBootstrap.isActive() || GLStateManager.isCurrent();
         if (!current) {
             LOGGER.error("Font rendering attempted without a current OpenGL context on thread {}", Thread.currentThread().getName());
         }
