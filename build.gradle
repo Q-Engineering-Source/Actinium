@@ -27,6 +27,9 @@ setDefaultProperty 'minecraft_username', true, 'Developer'
 setDefaultProperty 'extra_jvm_args', false, ''
 
 def cliProjectProperties = gradle.startParameter.projectProperties
+def outlandsLoaderVersion = cliProjectProperties.containsKey('outlands_loader_version')
+    ? cliProjectProperties['outlands_loader_version']
+    : '2026.11.11-2'
 
 /**
  * Derives the build version from git: an exact tag on HEAD wins, otherwise the short commit sha.
@@ -301,7 +304,7 @@ unimined.minecraft {
         // A jar section disables Outlands' LWJGL2 call-site conversion. This jar still uses both
         // LWJGL generations, so coremod, AT and contained-library declarations stay in the manifest.
 
-        loader '2026.11.11-2'
+        loader outlandsLoaderVersion
 
         runs.config('client') {
             args += ['--accessToken', '${auth_access_token}']
@@ -762,8 +765,8 @@ def verifyDistributedJar = tasks.register('verifyDistributedJar') {
 
 /**
  * Executes a small probe against the actual production jar with no nested dependency jars on the
- * Java class path. Parser classes therefore prove they are in the body; native files are extracted
- * from the nested platform jars exactly as a loader would do before initializing LWJGL bindings.
+ * Java class path. Parser classes therefore prove they are in the body. Host native archives are
+ * resolved separately for this verification because production jars leave native extraction to the loader.
  */
 def verifyDistributedShaderDependencies = tasks.register('verifyDistributedShaderDependencies') {
     group = 'verification'
@@ -808,15 +811,13 @@ def verifyDistributedShaderDependencies = tasks.register('verifyDistributedShade
             }
         }
 
-        new java.util.zip.ZipFile(distributedJar).withCloseable { archive ->
-            def nativeNames = archive.entries().toList()
-                .findAll { !it.directory && it.name.endsWith("-${classifier}.jar") }
-            if (nativeNames.isEmpty()) {
-                throw new GradleException("Distributed jar has no ${classifier} native dependency archives")
-            }
-            nativeNames.each { entry ->
-                archive.getInputStream(entry).withCloseable { extractNativeJar(it) }
-            }
+        ['lwjgl-shaderc', 'lwjgl-spvc'].each { module ->
+            def nativeArchive = configurations.detachedConfiguration(
+                dependencies.create("org.lwjgl:${module}:${lwjglVersion}:${classifier}") {
+                    transitive = false
+                }
+            ).singleFile
+            extractNativeJar(new FileInputStream(nativeArchive))
         }
 
         def coreNative = configurations.detachedConfiguration(

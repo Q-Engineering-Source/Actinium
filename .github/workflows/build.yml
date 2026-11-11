@@ -35,7 +35,7 @@ jobs:
     - name: Add permission
       run: chmod +x ./gradlew
     - name: Execute Gradle build
-      run: ./gradlew build
+      run: ./gradlew "-Poutlands_loader_version=2026.11.11" build
         
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v7
