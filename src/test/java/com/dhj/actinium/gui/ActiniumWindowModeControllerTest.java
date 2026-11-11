@@ -102,4 +102,27 @@ class ActiniumWindowModeControllerTest {
             ActiniumWindowModeController.effectiveMode(FullscreenMode.OFF, false)
         );
     }
+
+    @Test
+    void mapsExclusiveFullscreenToBorderlessWhenTheWindowBackendLacksExclusiveMode() {
+        assertEquals(
+            FullscreenMode.BORDERLESS,
+            ActiniumWindowModeController.effectiveMode(FullscreenMode.EXCLUSIVE, true, false)
+        );
+        assertEquals(
+            FullscreenMode.OFF,
+            ActiniumWindowModeController.effectiveMode(FullscreenMode.EXCLUSIVE, false, false)
+        );
+    }
+
+    @Test
+    void vanillaWindowedStateClearsAStaleFullscreenSelection() {
+        SodiumGameOptions options = new SodiumGameOptions();
+        options.window.fullscreenMode = FullscreenMode.EXCLUSIVE.name();
+
+        assertEquals(FullscreenMode.OFF, ActiniumWindowModeController.resolveStartupMode(options, false));
+        assertEquals(FullscreenMode.OFF, options.window.fullscreenMode == null
+            ? FullscreenMode.OFF
+            : FullscreenMode.valueOf(options.window.fullscreenMode));
+    }
 }

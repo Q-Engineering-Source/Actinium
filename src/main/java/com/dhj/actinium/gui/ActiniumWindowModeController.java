@@ -16,6 +16,7 @@ public final class ActiniumWindowModeController {
     private static final boolean borderlessSupported;
     private static boolean borderlessActive;
     private static boolean loggedBorderlessUnsupported;
+    private static boolean loggedExclusiveUnsupported;
     // Android can start fullscreen before LWJGLXX has saved a window geometry to restore.
     private static boolean windowedGeometryCaptured;
 
@@ -63,9 +64,17 @@ public final class ActiniumWindowModeController {
     }
 
     public static void applyMode(Minecraft client, SodiumGameOptions options, FullscreenMode mode) {
-        FullscreenMode modeToApply = effectiveMode(mode, borderlessSupported);
+        FullscreenMode modeToApply = effectiveMode(
+            mode,
+            borderlessSupported,
+            WindowBackends.get().supportsExclusiveFullscreen()
+        );
         if (modeToApply != mode) {
-            warnBorderlessUnsupported();
+            if (mode == FullscreenMode.BORDERLESS) {
+                warnBorderlessUnsupported();
+            } else {
+                warnExclusiveUnsupported();
+            }
         }
         options.window.fullscreenMode = modeToApply.name();
         if (modeToApply != FullscreenMode.OFF) {
@@ -86,6 +95,15 @@ public final class ActiniumWindowModeController {
 
     static FullscreenMode nextMode(FullscreenMode current, FullscreenMode lastFullscreenMode) {
         return current == FullscreenMode.OFF ? lastFullscreenMode : FullscreenMode.OFF;
+    }
+
+    static FullscreenMode resolveStartupMode(SodiumGameOptions options, boolean vanillaFullscreen) {
+        FullscreenMode configured = resolveConfiguredMode(options);
+        if (!vanillaFullscreen && configured != FullscreenMode.OFF) {
+            options.window.fullscreenMode = FullscreenMode.OFF.name();
+            return FullscreenMode.OFF;
+        }
+        return configured;
     }
 
     static FullscreenMode resolveLastFullscreenMode(SodiumGameOptions options) {
@@ -118,7 +136,21 @@ public final class ActiniumWindowModeController {
     }
 
     static FullscreenMode effectiveMode(FullscreenMode mode, boolean borderlessSupported) {
-        return mode == FullscreenMode.BORDERLESS && !borderlessSupported ? FullscreenMode.EXCLUSIVE : mode;
+        return effectiveMode(mode, borderlessSupported, true);
+    }
+
+    static FullscreenMode effectiveMode(
+        FullscreenMode mode,
+        boolean borderlessSupported,
+        boolean exclusiveSupported
+    ) {
+        if (mode == FullscreenMode.EXCLUSIVE && !exclusiveSupported) {
+            return borderlessSupported ? FullscreenMode.BORDERLESS : FullscreenMode.OFF;
+        }
+        if (mode == FullscreenMode.BORDERLESS && !borderlessSupported) {
+            return exclusiveSupported ? FullscreenMode.EXCLUSIVE : FullscreenMode.OFF;
+        }
+        return mode;
     }
 
     private static void warnBorderlessUnsupported() {
@@ -128,21 +160,32 @@ public final class ActiniumWindowModeController {
         }
     }
 
+    private static void warnExclusiveUnsupported() {
+        if (!loggedExclusiveUnsupported) {
+            loggedExclusiveUnsupported = true;
+            LOGGER.warn("Exclusive fullscreen is not supported on this runtime, using borderless fullscreen instead");
+        }
+    }
+
     public static void synchronize(Minecraft client) {
         if (synchronizing) {
             return;
         }
 
         SodiumGameOptions options = ActiniumRuntime.options();
-        FullscreenMode desiredMode = resolveConfiguredMode(options);
-        if (options.window.fullscreenMode == null && client.gameSettings.fullScreen) {
-            desiredMode = FullscreenMode.EXCLUSIVE;
-            options.window.fullscreenMode = desiredMode.name();
-        }
-        FullscreenMode modeToApply = effectiveMode(desiredMode, borderlessSupported);
+        FullscreenMode desiredMode = resolveStartupMode(options, client.gameSettings.fullScreen);
+        FullscreenMode modeToApply = effectiveMode(
+            desiredMode,
+            borderlessSupported,
+            WindowBackends.get().supportsExclusiveFullscreen()
+        );
         if (modeToApply != desiredMode) {
             options.window.fullscreenMode = modeToApply.name();
-            warnBorderlessUnsupported();
+            if (desiredMode == FullscreenMode.BORDERLESS) {
+                warnBorderlessUnsupported();
+            } else {
+                warnExclusiveUnsupported();
+            }
         }
         if (isWindowStateCompatible(client, modeToApply)) {
             return;

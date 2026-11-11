@@ -69,6 +69,11 @@ public final class SdlWindowBackend implements WindowBackend {
         }
     }
 
+    @Override
+    public boolean supportsExclusiveFullscreen() {
+        return false;
+    }
+
     private static void enterExclusiveFullscreen(long window) {
         int display = SDL_GetDisplayForWindow(window);
         if (display == 0) {
