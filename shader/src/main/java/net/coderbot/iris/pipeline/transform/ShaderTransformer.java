@@ -1,5 +1,7 @@
 package net.coderbot.iris.pipeline.transform;
 
+import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
+
 import com.google.common.base.Stopwatch;
 import com.gtnewhorizons.angelica.glsm.CompatShaderTransformer;
 import com.gtnewhorizons.angelica.glsm.GlslTransformUtils;
@@ -23,6 +25,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -32,6 +35,10 @@ public class ShaderTransformer {
     // Track logged negotiations to avoid spam - cleared on shader pack reload
     private static final Set<String> loggedNegotiations = new HashSet<>();
 
+    static boolean canEmitImageOps() {
+        return RenderSystem.supportsImageLoadStore() && RenderSystem.getMaxGlslVersion() >= 420;
+    }
+
     static void clearSessionState() {
         loggedNegotiations.clear();
     }
@@ -39,7 +46,6 @@ public class ShaderTransformer {
 
     private record VersionRequirement(String keyword, int minVersion, BooleanSupplier supported) {}
 
-    // Sorted descending by minVersion for early exit in getRequiredVersion
 
     private static final VersionRequirement[] VERSION_REQUIREMENTS = {
         new VersionRequirement("std430", 430, RenderSystem::supportsSSBO),
@@ -105,7 +111,7 @@ public class ShaderTransformer {
             if (req.supported.getAsBoolean()) {
                 if (!patternBuilder.isEmpty()) patternBuilder.append('|');
 
-                patternBuilder.append("\\b").append(Pattern.quote(req.keyword)).append("\\b");
+                patternBuilder.append("\\b").append(Pattern.quote(req.keyword)).append(req.keyword.endsWith("image") ? "\\w*\\b" : "\\b");
                 versionMap.put(req.keyword, req.minVersion);
                 maxVersion = Math.max(maxVersion, req.minVersion);
             }
@@ -128,7 +134,7 @@ public class ShaderTransformer {
         final Matcher m = hoistPattern.matcher(shaderSource);
         int required = declaredVersion;
         while (m.find()) {
-            final int ver = keywordToVersion.getInt(m.group());
+            final int ver = keywordToVersion.getInt(m.group().startsWith("iimage") ? "iimage" : m.group().startsWith("uimage") ? "uimage" : m.group());
             if (ver > required) {
                 required = ver;
                 if (required >= maxSupportedHoistVersion) break;
@@ -182,7 +188,6 @@ public class ShaderTransformer {
         String versionString = matcher.group(1);
         int versionInt = Integer.parseInt(versionString);
 
-        // Check if shader uses features requiring a higher GLSL version
         final int requiredVersion = getRequiredVersion(compute, versionInt);
         if (requiredVersion > versionInt) {
             Iris.logger.debug("Compute shader requires GLSL {} for detected features, hoisting from {}", requiredVersion, versionInt);
@@ -190,13 +195,11 @@ public class ShaderTransformer {
             versionString = String.valueOf(versionInt);
         }
 
-        // Compute shaders always use core profile, minimum 330
         if (versionInt < 330) {
             versionString = "330";
             versionInt = 330;
         }
 
-        // Negotiate version downgrade if needed
         final NegotiationResult negotiation = negotiateVersion(versionInt, PatchShaderType.COMPUTE);
         if (negotiation.isError()) {
             throw new RuntimeException("Compute shader version negotiation failed: " + negotiation.error());
@@ -209,7 +212,6 @@ public class ShaderTransformer {
 
         final String profileString = "#version " + versionString + " core\n";
 
-        // Pre-parse reserved word renaming
         String input = GlslTransformUtils.replaceTexture(compute);
         input = GlslTransformUtils.renameReservedWords(input, versionInt);
 
@@ -218,7 +220,15 @@ public class ShaderTransformer {
 
         doTransform(transformer, patchType, parameters, versionInt);
 
-        // Extract extensions
+        final EnumMap<PatchShaderType, Transformer> computeTypes = new EnumMap<>(PatchShaderType.class);
+        computeTypes.put(PatchShaderType.COMPUTE, transformer);
+        if (canEmitImageOps()) {
+            SamplerToStorageImageRewriter.transformGrouped(computeTypes, parameters);
+        }
+        if (BackendManager.RENDER_BACKEND.isSDLGPU()) {
+            LocalZeroInitTransformer.transformGrouped(computeTypes);
+        }
+
         final var extensions = versionPattern.matcher(GlslTransformUtils.getFormattedShader(parsedShader.pre(), "")).replaceFirst("").trim();
 
         final String finalHeader = profileString + (extensions.isEmpty() ? "" : "\n" + extensions);
@@ -229,7 +239,7 @@ public class ShaderTransformer {
             formattedShaderBuilder.append(GlslTransformUtils.getFormattedShader(tree, finalHeader));
         });
 
-        String formattedShader = formattedShaderBuilder.toString();
+        String formattedShader = hoistTransformedVersion(formattedShaderBuilder.toString(), parameters.type);
 
         result.put(PatchShaderType.COMPUTE, formattedShader);
 
@@ -265,7 +275,7 @@ public class ShaderTransformer {
 
             int versionInt = Integer.parseInt(versionString);
 
-            // Include celeritas header in scan — it's injected post-negotiation but contains uint/uvec3
+            // The terrain header contributes unsigned types before it is injected.
             String scanSource = (patchType == Patch.CELERITAS_TERRAIN && type == PatchShaderType.VERTEX) ? input + computeCeleritasHeader() : input;
             if (type == PatchShaderType.FRAGMENT
                 && AdaptiveShadowBoundsStats.isInstrumentationEnabled()
@@ -279,24 +289,21 @@ public class ShaderTransformer {
                 versionString = String.valueOf(versionInt);
             }
 
-            // Ensure minimum version for this stage (330 for most, 400 for tessellation)
             final int stageMin = getStageMinimumVersion(type);
             if (versionInt < stageMin) {
                 versionInt = stageMin;
                 versionString = String.valueOf(versionInt);
             }
 
-            // Negotiate version if needed (error if hardware can't support)
             final NegotiationResult negotiation = negotiateVersion(versionInt, type);
             if (negotiation.isError()) {
                 throw new RuntimeException("Shader version negotiation failed for " + type.name() + ": " + negotiation.error());
             }
 
-            // All stages >= 330 use core profile
             final String profile = "core";
             final String profileString = "#version " + versionString + " " + profile + "\n";
 
-            // Pre-parse reserved word renaming — prevents ANTLR parse failures
+            // Reserved identifiers must be replaced before parsing.
             input = GlslTransformUtils.replaceTexture(input);
             input = GlslTransformUtils.renameReservedWords(input, versionInt);
             input = CompatShaderTransformer.fixupQualifiers(input, parameters.type == ShaderType.FRAGMENT);
@@ -313,20 +320,26 @@ public class ShaderTransformer {
 
             doTransform(transformer, patchType, parameters, versionInt);
 
-            // Extract extensions from the pre-parsed content (version + extensions before main code)
-            // This preserves #extension directives that the shader pack declares
             final var extensions = versionPattern.matcher(GlslTransformUtils.getFormattedShader(parsedShader.pre(), "")).replaceFirst("").trim();
 
             types.put(type, transformer);
             prepatched.put(type, profileString + (extensions.isEmpty() ? "" : "\n" + extensions));
         }
         CompatibilityTransformer.transformGrouped(types, parameters);
+        if (BackendManager.RENDER_BACKEND.isSDLGPU()) {
+            SamplerAliasDeduplicator.transformGrouped(types, parameters);
+        }
+        if (canEmitImageOps()) {
+            SamplerToStorageImageRewriter.transformGrouped(types, parameters);
+        }
+        if (BackendManager.RENDER_BACKEND.isSDLGPU()) {
+            LocalZeroInitTransformer.transformGrouped(types);
+        }
         for (var entry : types.entrySet()) {
             final PatchShaderType shaderType = entry.getKey();
             final Transformer transformer = entry.getValue();
             String header = prepatched.get(shaderType);
 
-            // For Celeritas terrain vertex shaders, inject chunk_vertex.glsl header
             if (patchType == Patch.CELERITAS_TERRAIN && shaderType == PatchShaderType.VERTEX) {
                 header += computeCeleritasHeader();
             }
@@ -339,20 +352,91 @@ public class ShaderTransformer {
                 formattedShaderBuilder.append(GlslTransformUtils.getFormattedShader(tree, finalHeader));
             });
 
-            String formattedShader = formattedShaderBuilder.toString();
+            String formattedShader = hoistTransformedVersion(formattedShaderBuilder.toString(), shaderType.glShaderType);
 
             result.put(shaderType, formattedShader);
+        }
+        if (BackendManager.RENDER_BACKEND.isSDLGPU()) {
+            extractRwImageStores(result, patchType, RwImageStoreExtractor::supportsAtomics);
         }
         watch.stop();
         Iris.logger.info("[Load #{}] Transformed shader for {} in {}", Iris.getShaderPackLoadId(), patchType.name(), watch);
         return result;
     }
 
+    private static String hoistTransformedVersion(String source, ShaderType stage) {
+        final Matcher version = versionPattern.matcher(source);
+        if (!version.find()) throw new IllegalArgumentException("Transformed shader has no version directive");
+        final int declared = Integer.parseInt(version.group(1));
+        final int required = getRequiredVersion(source, declared);
+        if (required <= declared) return source;
+        final NegotiationResult negotiation = negotiateVersion(required, PatchShaderType.fromGlShaderType(stage)[0]);
+        if (negotiation.isError()) throw new IllegalStateException(negotiation.error());
+        return version.replaceFirst("#version " + required + " core");
+    }
+
+    static void extractRwImageStores(EnumMap<PatchShaderType, String> result, Patch patchType, Predicate<String> imageAtomics) {
+        if (result.containsKey(PatchShaderType.COMPUTE)) return;
+        if (patchType == Patch.ATTRIBUTES) {
+            extractVertexReplay(result, imageAtomics);
+            return;
+        }
+
+        final String vsh = result.get(PatchShaderType.VERTEX);
+        final String fsh = result.get(PatchShaderType.FRAGMENT);
+        final RwImageStoreExtractor.RwExtractMode vertexMode = patchType == Patch.COMPOSITE ? RwImageStoreExtractor.RwExtractMode.COMPOSITE_VSH : null;
+        final RwImageStoreExtractor.Result vshResult = (vsh != null) ? RwImageStoreExtractor.tryExtract(vsh, PatchShaderType.VERTEX, patchType.name(), vertexMode) : null;
+        final RwImageStoreExtractor.Result fshResult = (fsh != null) ? RwImageStoreExtractor.tryExtract(fsh, PatchShaderType.FRAGMENT, patchType.name()) : null;
+
+        if (vshResult != null && fshResult != null) {
+            throw new RuntimeException("Program " + patchType.name() + " writes images from both VSH and FSH; only one stage may write per program under SDL_GPU");
+        }
+        final RwImageStoreExtractor.Result extracted = vshResult != null ? vshResult : fshResult;
+        if (extracted == null) return;
+        final PatchShaderType stage = vshResult != null ? PatchShaderType.VERTEX : PatchShaderType.FRAGMENT;
+        result.put(stage, extracted.strippedSource());
+        if (patchType != Patch.COMPOSITE && patchType != Patch.CELERITAS_TERRAIN) {
+            Iris.logger.info("[RwImageStoreExtractor] Dropped image writes from {} (written={})", patchType.name(), extracted.writtenImages());
+        } else if (needsUnsupportedAtomics(extracted, imageAtomics)) {
+            Iris.logger.info("[RwImageStoreExtractor] Dropped image writes from {}, they need image atomics this backend cannot run (written={})", patchType.name(), extracted.writtenImages());
+        } else {
+            result.put(PatchShaderType.COMPUTE, extracted.computeSource());
+            Iris.logger.info("[RwImageStoreExtractor] Extracted compute pre-pass for {} (mode={}, written={})", patchType.name(), extracted.mode(), extracted.writtenImages());
+        }
+    }
+
+    private static boolean needsUnsupportedAtomics(RwImageStoreExtractor.Result extracted, Predicate<String> imageAtomics) {
+        return !extracted.atomicImages().stream().allMatch(imageAtomics);
+    }
+
+    private static void extractVertexReplay(EnumMap<PatchShaderType, String> result, Predicate<String> imageAtomics) {
+        final String fsh = result.get(PatchShaderType.FRAGMENT);
+        final RwImageStoreExtractor.Result fshResult = (fsh != null) ? RwImageStoreExtractor.tryExtract(fsh, PatchShaderType.FRAGMENT, Patch.ATTRIBUTES.name()) : null;
+        if (fshResult != null) {
+            result.put(PatchShaderType.FRAGMENT, fshResult.strippedSource());
+            Iris.logger.info("[RwImageStoreExtractor] Dropped fragment image writes from ATTRIBUTES (written={})", fshResult.writtenImages());
+        }
+
+        final String vsh = result.get(PatchShaderType.VERTEX);
+        final RwImageStoreExtractor.Result vshResult = (vsh != null) ? RwImageStoreExtractor.tryExtractVertexReplay(vsh) : null;
+        if (vshResult == null) return;
+        result.put(PatchShaderType.VERTEX, vshResult.strippedSource());
+        if (vshResult.computeSource() == null) {
+            Iris.logger.info("[RwImageStoreExtractor] Dropped vertex image writes from ATTRIBUTES, an input cannot be replayed (written={})", vshResult.writtenImages());
+            return;
+        }
+        if (needsUnsupportedAtomics(vshResult, imageAtomics)) {
+            Iris.logger.info("[RwImageStoreExtractor] Dropped vertex image writes from ATTRIBUTES, they need image atomics this backend cannot run (written={})", vshResult.writtenImages());
+            return;
+        }
+        result.put(PatchShaderType.COMPUTE, vshResult.computeSource());
+        Iris.logger.info("[RwImageStoreExtractor] Extracted vertex replay for ATTRIBUTES (written={})", vshResult.writtenImages());
+    }
+
     private static void doTransform(Transformer transformer, Patch patchType, Parameters parameters, int versionInt) {
         switch (patchType) {
             case CELERITAS_TERRAIN:
                 CeleritasTransformer.transform(transformer, parameters, versionInt);
-                // Handle mc_midTexCoord for Celeritas
                 patchMultiTexCoord3(transformer, parameters);
                 replaceMidTexCoord(transformer, ExtendedChunkVertexType.MID_TEX_SCALE);
                 replaceMCEntity(transformer, parameters);

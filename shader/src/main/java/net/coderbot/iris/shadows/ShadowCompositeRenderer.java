@@ -21,6 +21,8 @@ import net.coderbot.iris.gl.texture.TextureAccess;
 import net.coderbot.iris.pipeline.PatchedShaderPrinter;
 import net.coderbot.iris.pipeline.WorldRenderingPipeline;
 import net.coderbot.iris.pipeline.transform.PatchShaderType;
+import net.coderbot.iris.pipeline.transform.PreRasterComputeDispatcher;
+import net.coderbot.iris.pipeline.transform.RwImageStoreExtractor;
 import net.coderbot.iris.pipeline.transform.TransformPatcher;
 import net.coderbot.iris.postprocess.FullScreenQuadRenderer;
 import net.coderbot.iris.rendertarget.RenderTarget;
@@ -113,7 +115,17 @@ public class ShadowCompositeRenderer {
             Pass pass = new Pass();
             ProgramDirectives directives = source.getDirectives();
 
-            pass.program = createProgram(source, flipped, flippedAtLeastOnceSnapshot, renderTargets);
+            final Map<PatchShaderType, String> transformed = TransformPatcher.patchComposite(
+                source.getVertexSource().orElseThrow(), source.getGeometrySource().orElse(null),
+                source.getTessControlSource().orElse(null), source.getTessEvalSource().orElse(null),
+                source.getFragmentSource().orElseThrow(), TextureStage.SHADOWCOMP, pipeline.getTextureMap());
+            pass.program = createProgram(source, transformed, flipped, flippedAtLeastOnceSnapshot, renderTargets);
+            final String preComputeSource = transformed.get(PatchShaderType.COMPUTE);
+            pass.preRasterMode = RwImageStoreExtractor.parseSentinel(preComputeSource);
+            if (pass.preRasterMode != null) {
+                pass.preRasterCompute = buildPreRasterCompute(source.getName(), preComputeSource,
+                    flipped, flippedAtLeastOnceSnapshot, renderTargets);
+            }
             pass.computes = createComputes(computes[i], flipped, flippedAtLeastOnceSnapshot, renderTargets);
             int[] drawBuffers = directives.hasUnknownDrawBuffers() ? new int[] { 0, 1 } : directives.getDrawBuffers();
 
@@ -235,6 +247,11 @@ public class ShadowCompositeRenderer {
             int beginHeight = (int) (renderTargets.getResolution() * renderPass.viewportScale.viewportY());
             GLSMRasterizer.glViewport(beginWidth, beginHeight, (int) scaledWidth, (int) scaledHeight);
 
+            if (renderPass.preRasterCompute != null) {
+                renderPass.preRasterTargetSizeLoc = PreRasterComputeDispatcher.dispatch(
+                    renderPass.preRasterCompute, renderPass.preRasterMode, renderPass.preRasterTargetSizeLoc,
+                    (int) scaledWidth, (int) scaledHeight, customUniforms);
+            }
             renderPass.framebuffer.bind();
             renderPass.program.use();
 
@@ -259,17 +276,8 @@ public class ShadowCompositeRenderer {
     }
 
     // TODO: Don't just copy this from DeferredWorldRenderingPipeline
-    private Program createProgram(ProgramSource source, ImmutableSet<Integer> flipped, ImmutableSet<Integer> flippedAtLeastOnceSnapshot,
+    private Program createProgram(ProgramSource source, Map<PatchShaderType, String> transformed, ImmutableSet<Integer> flipped, ImmutableSet<Integer> flippedAtLeastOnceSnapshot,
             ShadowRenderTargets targets) {
-        // TODO: Properly handle empty shaders
-        Map<PatchShaderType, String> transformed = TransformPatcher.patchComposite(
-                source.getVertexSource().orElseThrow(NullPointerException::new),
-                source.getGeometrySource().orElse(null),
-                source.getTessControlSource().orElse(null),
-                source.getTessEvalSource().orElse(null),
-                source.getFragmentSource().orElseThrow(NullPointerException::new),
-                TextureStage.SHADOWCOMP,
-                pipeline.getTextureMap());
         String vertex = transformed.get(PatchShaderType.VERTEX);
         String geometry = transformed.get(PatchShaderType.GEOMETRY);
         String tessControl = transformed.get(PatchShaderType.TESS_CONTROL);
@@ -306,6 +314,32 @@ public class ShadowCompositeRenderer {
         this.customUniforms.mapholderToPass(builder, build);
 
         return build;
+    }
+
+    private ComputeProgram buildPreRasterCompute(String name, String computeSource, ImmutableSet<Integer> flipped, ImmutableSet<Integer> flippedAtLeastOnceSnapshot, ShadowRenderTargets targets) {
+        PatchedShaderPrinter.debugPatchedShaders(name + "_pre_compute", null, null, null, computeSource);
+        final ProgramBuilder builder;
+        try {
+            builder = ProgramBuilder.beginCompute(name + "_pre", computeSource, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
+        } catch (RuntimeException e) {
+            throw new RuntimeException("Pre-raster compute compilation failed for shadow composite " + name, e);
+        }
+        final ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor =
+            ProgramSamplers.customTextureSamplerInterceptor(builder, customTextureIds, flippedAtLeastOnceSnapshot);
+
+        CommonUniforms.addDynamicUniforms(builder, FogMode.OFF);
+        this.customUniforms.assignTo(builder);
+
+        IrisSamplers.addNoiseSampler(customTextureSamplerInterceptor, noiseTexture);
+        IrisSamplers.addCustomTextures(customTextureSamplerInterceptor, irisCustomTextures);
+        IrisSamplers.addShadowSamplers(customTextureSamplerInterceptor, targets, flipped, pipeline.hasFeature(FeatureFlags.SEPARATE_HARDWARE_SAMPLERS));
+        IrisImages.addShadowColorImages(builder, targets, flipped);
+        IrisImages.addCustomImages(builder, irisCustomImages);
+        IrisSamplers.addCustomImages(customTextureSamplerInterceptor, irisCustomImages);
+
+        final ComputeProgram cp = builder.buildCompute();
+        this.customUniforms.mapholderToPass(builder, cp);
+        return cp;
     }
 
     private ComputeProgram[] createComputes(ComputeSource[] sources, ImmutableSet<Integer> flipped, ImmutableSet<Integer> flippedAtLeastOnceSnapshot,
@@ -377,9 +411,13 @@ public class ShadowCompositeRenderer {
         ImmutableSet<Integer> mipmappedBuffers;
         ViewportData viewportScale;
         ComputeProgram[] computes;
+        @Nullable ComputeProgram preRasterCompute;
+        @Nullable RwImageStoreExtractor.RwExtractMode preRasterMode;
+        int preRasterTargetSizeLoc = PreRasterComputeDispatcher.LOC_UNRESOLVED;
 
         protected void destroy() {
             this.program.destroy();
+            if (preRasterCompute != null) preRasterCompute.destroy();
             for (ComputeProgram compute : this.computes) {
                 if (compute != null) {
                     compute.destroy();

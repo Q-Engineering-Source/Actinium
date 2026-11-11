@@ -239,6 +239,14 @@
 | — | `1587a12c` | `MainThreadPump` 与 `MainThreadPumpTest` | 待做；唯一驱动方是 SDL 的 presenter，且 `RenderBackend` 缺 `pumpDisplayMessages` 与 `parkNanos`，前置是 F09 的 `2845c9e0` |
 | — | `49db8e11` | `SamplerAliasDeduplicator` 与其测试 | 待做；该类由 `8da561d3` 引入，测试还依赖 `TransformTestSupport`，真正消费点在 SDL 采样器搬运，随 S05 的 `ShaderIndex` 一并做 |
 
+## SDL-GPU 当前同步记录
+
+2026-11-11，`feat/sdl-gpu-sync` 开始接入完整 `8e099e95` SDL-GPU 主模块。开发 loader 切换已提交 `8169f138`，旧 CRL 的分发兼容保留。无 GL 窗口所需的宿主 API 在 Outlands 独立分支 `feat/non-gl-render-backend-lifecycle` 实现，提交 `a7420256` 与 `1948c780`，本地构建版本 `2026.11.11-2`。
+
+本批提前同步的通用前置包括后端生命周期与 context 委托、`MainThreadPump`、`VertexWriteReplaySetup`、代理纹理判定、GPU fence 计数和 MoltenVK 定位。现有 `ShaderIndex`、shader 磁盘缓存、SPIR-V 编译器与 `PerFrameUniformBlock` 直接复用。
+
+SDL 主模块按当前 GLSM 和 Outlands 宿主适配，资源与管线完整导入；SDL 专用调试使用已有 GUI DEBUG 门控，Tracy 保持未启用原生采集。`check`、`glIntegrationTest`、`:sdl-gpu:gpuTest` 与 `build` 均通过。必要的 Iris image 写入消费者、sampler 合并/整数纹理转换、vertex replay、composite prepass 与 shadow terrain voxelization 同批接入；用户客户端实测待进行，详见 `docs/compat/sdl-gpu.md`。
+
 ## SDL-GPU 后端引入顺序
 
 SDL-GPU 后端确定后续引入，台账中标注为排除的 `sdl-gpu/`、`moltenvk/` 文件属于延后同步，引入时按下列顺序补齐。通用侧接口必须先就位，`RenderBackend` 的新方法一律给默认实现，SDL 后端接入时覆写。

@@ -1,6 +1,9 @@
 package net.coderbot.iris.pipeline.transform;
 
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
+import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
+import net.coderbot.iris.gl.image.ImageInformation;
+import java.util.Set;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.gbuffer_overrides.matching.InputAvailability;
@@ -46,6 +49,10 @@ public class TransformPatcher {
 
     private static final class CacheKey {
         final Parameters parameters;
+        final boolean sdlGpu = BackendManager.RENDER_BACKEND.isSDLGPU();
+        final Set<SamplerToStorageImageRewriter.Candidate> imageSamplers = SamplerToStorageImageRewriter.activeCandidates();
+        final Map<String, ImageInformation> customImages = RwImageStoreExtractor.activeCustomImages();
+        final String imageAtomics = RwImageStoreExtractor.atomicCustomImagesKey();
         final String vertex;
         final String geometry;
         final String tessControl;
@@ -94,6 +101,10 @@ public class TransformPatcher {
             result = prime * result + ((compute == null) ? 0 : compute.hashCode());
             result = prime * result + (adaptiveShadowBoundsInstrumentation ? 1 : 0);
             result = prime * result + adaptiveShadowBoundsBinding;
+            result = prime * result + Boolean.hashCode(sdlGpu);
+            result = prime * result + imageSamplers.hashCode();
+            result = prime * result + customImages.hashCode();
+            result = prime * result + imageAtomics.hashCode();
             return result;
         }
 
@@ -110,7 +121,11 @@ public class TransformPatcher {
                 && Objects.equals(vertex, other.vertex)
                 && Objects.equals(compute, other.compute)
                 && adaptiveShadowBoundsInstrumentation == other.adaptiveShadowBoundsInstrumentation
-                && adaptiveShadowBoundsBinding == other.adaptiveShadowBoundsBinding;
+                && adaptiveShadowBoundsBinding == other.adaptiveShadowBoundsBinding
+                && sdlGpu == other.sdlGpu
+                && imageSamplers.equals(other.imageSamplers)
+                && customImages.equals(other.customImages)
+                && imageAtomics.equals(other.imageAtomics);
         }
     }
 
