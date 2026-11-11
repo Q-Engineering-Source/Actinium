@@ -21,6 +21,9 @@ public final class ActiniumWindowModeController {
     private static boolean windowedGeometryCaptured;
 
     static {
+        if (hasResource("top/outlands/foundation/Foundation.class")) {
+            WindowBackends.useSdl();
+        }
         // Some Android runtimes omit glfwGetWindowPos(IntBuffer), making Display.isBorderless()
         // throw NoSuchMethodError. Probe once and use exclusive fullscreen when borderless is unavailable.
         boolean supported = false;
@@ -37,6 +40,10 @@ public final class ActiniumWindowModeController {
     }
 
     private ActiniumWindowModeController() {
+    }
+
+    private static boolean hasResource(String path) {
+        return ActiniumWindowModeController.class.getClassLoader().getResource(path) != null;
     }
 
     public static FullscreenMode resolveConfiguredMode(SodiumGameOptions options) {
@@ -205,15 +212,16 @@ public final class ActiniumWindowModeController {
     }
 
     private static boolean isWindowStateCompatible(Minecraft client, FullscreenMode desiredMode) {
+        boolean actualBorderless = borderlessActive || Display.isBorderless();
         return switch (desiredMode) {
-            case OFF -> !client.isFullScreen() && !Display.isFullscreen() && !borderlessActive;
-            case EXCLUSIVE -> client.isFullScreen() && Display.isFullscreen() && !borderlessActive;
-            case BORDERLESS -> client.isFullScreen() && borderlessActive;
+            case OFF -> !client.isFullScreen() && !Display.isFullscreen() && !actualBorderless;
+            case EXCLUSIVE -> client.isFullScreen() && Display.isFullscreen() && !actualBorderless;
+            case BORDERLESS -> client.isFullScreen() && actualBorderless;
         };
     }
 
     private static void applyWindowed(Minecraft client) {
-        if (borderlessActive) {
+        if (borderlessActive || Display.isBorderless()) {
             if (!androidRuntime || windowedGeometryCaptured) {
                 Display.setBorderless(false);
             }
@@ -227,7 +235,7 @@ public final class ActiniumWindowModeController {
     }
 
     private static void applyExclusiveFullscreen(Minecraft client) {
-        if (borderlessActive) {
+        if (borderlessActive || Display.isBorderless()) {
             if (!androidRuntime || windowedGeometryCaptured) {
                 Display.setBorderless(false);
             }
