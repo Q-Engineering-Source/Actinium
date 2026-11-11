@@ -15,12 +15,12 @@ import com.dhj.actinium.render.FastLitItemDisplayListCache;
 import com.dhj.actinium.render.terrain.ActiniumWorldRenderer;
 import com.dhj.actinium.render.terrain.GpuCullingSettings;
 import com.dhj.actinium.runtime.ActiniumRuntime;
+import com.dhj.actinium.startup.SdlGpuBootstrap;
 import com.gtnewhorizons.angelica.proxy.ClientProxy;
 import com.gtnewhorizon.gtnhlib.compat.Mods;
 import net.coderbot.iris.debug.IrisDebugOptions;
 import com.gtnewhorizon.gtnhlib.client.renderer.RuntimeOptionsBridge;
 import com.gtnewhorizon.gtnhlib.client.renderer.postprocessing.PostProcessingBridge;
-import com.gtnewhorizons.angelica.glsm.backend.BackendOptions;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
 import com.gtnewhorizons.angelica.glsm.compat.FogDistanceModeBridge;
@@ -70,7 +70,6 @@ public class Actinium {
 
     @EventHandler
     public void onConstruct(FMLConstructionEvent event) {
-        BackendOptions.latch(ActiniumConfig.renderBackendSdlGpu, ActiniumConfig.renderBackendDriver, ActiniumConfig.glVersion);
         GLSMConfig.workerThreadCount = ActiniumConfig.workerThreadCount;
 
         var container = Loader.instance().getIndexedModList().get(MODID);
@@ -246,6 +245,7 @@ public class Actinium {
             return;
         }
         titleScreenOpened = true;
+        SdlGpuBootstrap.onLoadingComplete();
         if (Iris.enabled) {
             ShaderWarmup.start();
         }

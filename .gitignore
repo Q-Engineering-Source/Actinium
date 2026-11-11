@@ -38,6 +38,8 @@ gradle-app.setting
 
 # Dev-run artifacts
 /assets/
+/logs/
+/sdl-gpu/logs/
 *.log
 
 # JMH extracts its bundled Mesa EGL runtime here; keep the generated DLLs out of Git.

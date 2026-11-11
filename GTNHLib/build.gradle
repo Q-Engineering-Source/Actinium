@@ -63,8 +63,8 @@ if (lwjglNatives == null) {
 dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter:6.0.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-    testImplementation 'org.lwjgl:lwjgl:3.4.1'
-    testRuntimeOnly "org.lwjgl:lwjgl:3.4.1:${lwjglNatives}"
+    testImplementation "org.lwjgl:lwjgl:${rootProject.ext.lwjglVersion}"
+    testRuntimeOnly "org.lwjgl:lwjgl:${rootProject.ext.lwjglVersion}:${lwjglNatives}"
 }
 
 tasks.named('test', Test).configure {

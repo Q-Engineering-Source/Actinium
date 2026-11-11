@@ -100,11 +100,14 @@ configurations {
     runtimeOnly.extendsFrom(modRuntimeOnly)
 }
 
+ext.lwjglVersion = '3.4.3'
+
 def embeddedLibraryProjects = [
     project(':GTNHLib'),
     project(':glsm'),
     project(':celeritas-common'),
-    project(':shader')
+    project(':shader'),
+    project(':sdl-gpu')
 ]
 
 def mergedEmbeddedLibraryClassesDir = layout.buildDirectory.dir('embedded-library-classes/main')
@@ -169,6 +172,9 @@ subprojects {
 }
 
 repositories {
+    mavenLocal {
+        content { includeModule('top.outlands', 'outlands') }
+    }
     mavenCentral()
     maven { url = 'https://maven.cleanroommc.com' }
     maven { url = 'https://cursemaven.com' }
@@ -193,10 +199,12 @@ configurations {
 dependencies {
     compileOnly project(':celeritas-common')
     compileOnly project(':shader')
+    compileOnly project(':sdl-gpu')
     // Declare test dependencies explicitly so IDEA sees the embedded source modules as well.
     // Gradle's merged main output alone is not a test-module dependency in the IDE model.
     testImplementation project(':celeritas-common')
     testImplementation project(':shader')
+    testImplementation project(':sdl-gpu')
 
     contain('org.taumc:glsl-transformation-lib:0.2.0-32.g7dd88a4-GTNH') {
         transitive = false
@@ -291,7 +299,7 @@ unimined.minecraft {
         // A jar section disables Outlands' LWJGL2 call-site conversion. This jar still uses both
         // LWJGL generations, so coremod, AT and contained-library declarations stay in the manifest.
 
-        loader '2026.11.03-2'
+        loader '2026.11.11-2'
 
         runs.config('client') {
             args += ['--accessToken', '${auth_access_token}']
@@ -573,6 +581,8 @@ def prepareTestRunDirectory = tasks.register('prepareTestRunDirectory') {
 
 test {
     systemProperty 'actinium.projectRoot', rootProject.projectDir.absolutePath
+    // Forge's registry bootstrap accesses Field.modifiers; the standalone test VM needs the loader's module access.
+    jvmArgs '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED'
     dependsOn prepareTestRunDirectory
     useJUnitPlatform()
     workingDir = testRunDirectory.asFile
@@ -608,20 +618,25 @@ def glIntegrationNativeClassifiers = [
 ]
 def glIntegrationLwjglNatives = glIntegrationOsKey == null
     ? null : glIntegrationNativeClassifiers[glIntegrationOsKey][glIntegrationOsArch]
+ext.lwjglNativesClassifier = glIntegrationLwjglNatives
 
 dependencies {
-    glIntegrationTestImplementation 'org.lwjgl:lwjgl:3.4.1'
-    glIntegrationTestImplementation 'org.lwjgl:lwjgl-sdl:3.4.1'
+    glIntegrationTestImplementation "org.lwjgl:lwjgl:${lwjglVersion}"
+    glIntegrationTestImplementation "org.lwjgl:lwjgl-sdl:${lwjglVersion}"
+    glIntegrationTestImplementation "org.lwjgl:lwjgl-glfw:${lwjglVersion}"
+    glIntegrationTestRuntimeOnly 'org.apache.logging.log4j:log4j-core:2.24.3'
     if (glIntegrationLwjglNatives != null) {
-        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl:3.4.1:${glIntegrationLwjglNatives}"
-        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl-sdl:3.4.1:${glIntegrationLwjglNatives}"
+        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl:${lwjglVersion}:${glIntegrationLwjglNatives}"
+        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl-sdl:${lwjglVersion}:${glIntegrationLwjglNatives}"
+        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl-glfw:${lwjglVersion}:${glIntegrationLwjglNatives}"
+        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl-opengl:${lwjglVersion}:${glIntegrationLwjglNatives}"
     }
     // SpirvCompilerDiskCacheTest drives the real shaderc compiler, so the JNI wrapper and its host
     // natives must be on the unit test classpath; production code only needs the compileOnly binding.
-    testImplementation 'org.lwjgl:lwjgl-shaderc:3.4.1'
+    testImplementation "org.lwjgl:lwjgl-shaderc:${lwjglVersion}"
     if (glIntegrationLwjglNatives != null) {
-        testRuntimeOnly "org.lwjgl:lwjgl:3.4.1:${glIntegrationLwjglNatives}"
-        testRuntimeOnly "org.lwjgl:lwjgl-shaderc:3.4.1:${glIntegrationLwjglNatives}"
+        testRuntimeOnly "org.lwjgl:lwjgl:${lwjglVersion}:${glIntegrationLwjglNatives}"
+        testRuntimeOnly "org.lwjgl:lwjgl-shaderc:${lwjglVersion}:${glIntegrationLwjglNatives}"
     }
 }
 
@@ -641,7 +656,7 @@ tasks.register('glIntegrationTest', Test) {
     group = 'verification'
     description = 'Runs the opt-in SDL window integration tests; requires a native display driver.'
     testClassesDirs = sourceSets.glIntegrationTest.output.classesDirs
-    classpath = sourceSets.glIntegrationTest.runtimeClasspath
+    classpath = sourceSets.glIntegrationTest.runtimeClasspath.filter { !it.name.startsWith('lwjglx-') }
     dependsOn validateGlIntegrationPlatform
     dependsOn tasks.named('compileGlIntegrationTestJava')
     useJUnitPlatform()
@@ -673,6 +688,7 @@ def verifyDistributedJar = tasks.register('verifyDistributedJar') {
             'com/dhj/actinium/Actinium.class',
             'org/taumc/celeritas/core/CeleritasLoadingPlugin.class',
             'com/gtnewhorizons/angelica/glsm/GLStateManager.class',
+            'com/gtnewhorizons/angelica/sdlgpu/SDLGPURenderBackend.class',
             'net/coderbot/iris/Iris.class',
             'dhj/embeddedt/embeddium/impl/render/chunk/RenderSectionManager.class',
             'dhj/embeddedt/embeddium/impl/shadow/joml/Vector3f.class',
@@ -736,7 +752,8 @@ def verifyModuleBoundaries = tasks.register('verifyModuleBoundaries') {
             actinium: files(tasks.named('compileJava', JavaCompile).get().destinationDirectory),
             GTNHLib: project(':GTNHLib').sourceSets.main.output.classesDirs,
             glsm: project(':glsm').sourceSets.main.output.classesDirs,
-            celeritas: project(':celeritas-common').sourceSets.main.output.classesDirs
+            celeritas: project(':celeritas-common').sourceSets.main.output.classesDirs,
+            sdlgpu: project(':sdl-gpu').sourceSets.main.output.classesDirs
         ]
         def owners = [:]
         def duplicates = []

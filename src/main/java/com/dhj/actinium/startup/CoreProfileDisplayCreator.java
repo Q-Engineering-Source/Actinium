@@ -38,6 +38,7 @@ public final class CoreProfileDisplayCreator {
      * @throws LWJGLException if no attempted profile creates an OpenGL 3.3 or newer context
      */
     public static void create(PixelFormat format) throws LWJGLException {
+        if (SdlGpuBootstrap.createDisplay(format)) return;
         ForgeEarlyConfigCompat.Snapshot original = ForgeEarlyConfigCompat.snapshot();
         boolean lwjglDebug = ActiniumStartupDebugConfig.enableLwjglDebug();
         Throwable creationFailure = null;

@@ -23,7 +23,7 @@ repositories {
 }
 
 dependencies {
-    def lwjglVersion = '3.4.1'
+    def lwjglVersion = rootProject.ext.lwjglVersion
     def lombokVersion = '1.18.46'
     def asmVersion = '9.9.1'
 
@@ -31,7 +31,7 @@ dependencies {
     compileOnly 'org.jetbrains:annotations:24.1.0'
     compileOnly "org.projectlombok:lombok:${lombokVersion}"
     annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
-    compileOnly 'org.apache.logging.log4j:log4j-api:2.0-beta9'
+    compileOnly 'org.apache.logging.log4j:log4j-api:2.24.3'
 
     implementation 'org.joml:joml:1.10.5'
     contain 'org.joml:joml:1.10.5'
@@ -52,6 +52,17 @@ dependencies {
     compileOnly "org.lwjgl:lwjgl:${lwjglVersion}"
     compileOnly "org.lwjgl:lwjgl-glfw:${lwjglVersion}"
     compileOnly "org.lwjgl:lwjgl-opengl:${lwjglVersion}"
+
+    // Outlands supplies SDL, while the optional GPU backend also needs shaderc and SPIRV-Cross at runtime.
+    ['lwjgl-shaderc', 'lwjgl-spvc'].each { module ->
+        contain("org.lwjgl:${module}:${lwjglVersion}") { transitive = false }
+        ['windows', 'windows-arm64', 'linux', 'linux-arm64', 'macos', 'macos-arm64'].each { platform ->
+            contain("org.lwjgl:${module}:${lwjglVersion}:natives-${platform}") { transitive = false }
+        }
+    }
+    ['macos', 'macos-arm64'].each { platform ->
+        contain("org.lwjgl:lwjgl-vulkan:${lwjglVersion}:natives-${platform}") { transitive = false }
+    }
     if (propertyBool('enable_lwjglx')) {
         compileOnly 'com.cleanroommc:lwjglx:1.0.0'
     }

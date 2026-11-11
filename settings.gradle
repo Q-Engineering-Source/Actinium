@@ -38,4 +38,4 @@ plugins {
 
 rootProject.name = 'Actinium'
 
-include 'GTNHLib', 'glsm', 'celeritas-common', 'shader'
+include 'GTNHLib', 'glsm', 'celeritas-common', 'shader', 'sdl-gpu'

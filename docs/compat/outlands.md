@@ -25,3 +25,5 @@ Outlands 将早期配置保存在 `forge.cfg` 的 `early` 区段；旧 Cleanroom
 开发任务配置检查确认入口为 `top.outlands.foundation.boot.Foundation`，`Actinium-dev.jar` 位于 `outlands.dev.extrapath`，应用类加载器 classpath 中没有该 jar。
 
 客户端验收场景：Outlands 开发启动与分发安装、旧 Cleanroom 分发安装、无光影与光影切换、退出后移除 Actinium 再次启动。客户端由用户运行。
+
+SDL-GPU 开发依赖已推进到本地 Outlands `2026.11.11-2`，由 `feat/non-gl-render-backend-lifecycle` 分支 `a7420256`、`1948c780` 提供。该版本需先在 Outlands 仓库执行 `:outlands:publishOutlandsPublicationToMavenLocal -PcalverDate=2026.11.11 -PcalverSuffix=2 --no-daemon`；Actinium 的 Maven Local 仓库只匹配 `top.outlands:outlands`。

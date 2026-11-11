@@ -4,6 +4,8 @@ import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lwjgl.BufferUtils;
+import org.lwjgl.PointerBuffer;
+import org.lwjgl.opengl.Drawable;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL11C;
@@ -22,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.lwjgl.sdl.SDLVideo.SDL_GL_CreateContext;
 import static org.lwjgl.sdl.SDLVideo.SDL_GL_DestroyContext;
@@ -165,6 +168,119 @@ class DrawableContextIntegrationTest extends GLStateManagerIntegrationFixture {
             assertTrue(SDL_GL_DestroyContext(workerContext));
             activateContext(DISPLAY_TOKEN, context, true);
             resetMainState();
+        }
+    }
+
+    @Test
+    void makeCurrentSelectsTheDrawableCacheBeforeNativeBindingAndReleaseClearsOwnership() throws Exception {
+        final long nativeContext = SDL_GL_CreateContext(window);
+        assertNotEquals(MemoryUtil.NULL, nativeContext);
+        final NativeDrawable drawable = new NativeDrawable(nativeContext);
+        final GLContextState displayState = GLStateManager.ctx();
+        try {
+            GLStateManager.makeCurrent(drawable);
+            assertSame(drawable.stateDuringMakeCurrent, GLStateManager.ctx());
+            assertNotSame(displayState, GLStateManager.ctx());
+            assertEquals(nativeContext, GLStateManager.getBoundContextHandle());
+            assertTrue(GLStateManager.isCurrent());
+            GLStateManager.enableBlend();
+            assertTrue(GL11.glIsEnabled(GL11.GL_BLEND));
+
+            GLStateManager.releaseContext(drawable);
+            assertEquals(MemoryUtil.NULL, GLStateManager.getBoundContextHandle());
+            assertFalse(GLStateManager.isCurrent());
+            assertSame(displayState, GLStateManager.ctx());
+        } finally {
+            releaseNativeContext();
+            GLStateManager.retireDrawableContext(drawable);
+            assertTrue(SDL_GL_DestroyContext(nativeContext));
+            activateContext(DISPLAY_TOKEN, context, true);
+            resetMainState();
+        }
+    }
+
+    @Test
+    void failedNativeMakeCurrentRestoresThePreviousCacheAndOwnership() {
+        final NativeDrawable drawable = new NativeDrawable(MemoryUtil.NULL);
+        drawable.makeFailure = new IllegalStateException("makeCurrent failed");
+        final GLContextState originalState = GLStateManager.ctx();
+        final long originalHandle = GLStateManager.getBoundContextHandle();
+        try {
+            assertSame(drawable.makeFailure,
+                assertThrows(IllegalStateException.class, () -> GLStateManager.makeCurrent(drawable)));
+            assertNotSame(originalState, drawable.stateDuringMakeCurrent);
+            assertSame(originalState, GLStateManager.ctx());
+            assertEquals(originalHandle, GLStateManager.getBoundContextHandle());
+            assertEquals(originalHandle, SDL_GL_GetCurrentContext());
+            assertTrue(GLStateManager.isCurrent());
+        } finally {
+            GLStateManager.retireDrawableContext(drawable);
+        }
+    }
+
+    @Test
+    void failedNativeReleaseKeepsTheDrawableCacheAndOwnership() throws Exception {
+        final long nativeContext = SDL_GL_CreateContext(window);
+        assertNotEquals(MemoryUtil.NULL, nativeContext);
+        final NativeDrawable drawable = new NativeDrawable(nativeContext);
+        try {
+            GLStateManager.makeCurrent(drawable);
+            final GLContextState drawableState = GLStateManager.ctx();
+            drawable.releaseFailure = new IllegalStateException("releaseContext failed");
+
+            assertSame(drawable.releaseFailure,
+                assertThrows(IllegalStateException.class, () -> GLStateManager.releaseContext(drawable)));
+            assertSame(drawableState, GLStateManager.ctx());
+            assertEquals(nativeContext, GLStateManager.getBoundContextHandle());
+            assertEquals(nativeContext, SDL_GL_GetCurrentContext());
+            assertTrue(GLStateManager.isCurrent());
+        } finally {
+            releaseNativeContext();
+            GLStateManager.retireDrawableContext(drawable);
+            assertTrue(SDL_GL_DestroyContext(nativeContext));
+            activateContext(DISPLAY_TOKEN, context, true);
+            resetMainState();
+        }
+    }
+
+    private static final class NativeDrawable implements Drawable {
+        private final long nativeContext;
+        private GLContextState stateDuringMakeCurrent;
+        private RuntimeException makeFailure;
+        private RuntimeException releaseFailure;
+
+        private NativeDrawable(long nativeContext) {
+            this.nativeContext = nativeContext;
+        }
+
+        @Override
+        public boolean isCurrent() {
+            return SDL_GL_GetCurrentContext() == nativeContext;
+        }
+
+        @Override
+        public void makeCurrent() {
+            stateDuringMakeCurrent = GLStateManager.ctx();
+            if (makeFailure != null) throw makeFailure;
+            assertTrue(SDL_GL_MakeCurrent(window, nativeContext));
+            GL.createCapabilities();
+        }
+
+        @Override
+        public void releaseContext() {
+            if (releaseFailure != null) throw releaseFailure;
+            assertTrue(SDL_GL_MakeCurrent(window, MemoryUtil.NULL));
+            GL.setCapabilities(null);
+        }
+
+        @Override
+        public void destroy() {
+            throw new UnsupportedOperationException("The fixture owns native context destruction");
+        }
+
+        @Override
+        public void setCLSharingProperties(PointerBuffer properties) {
+            throw new UnsupportedOperationException("OpenCL sharing is outside the context lifecycle test");
         }
     }
 

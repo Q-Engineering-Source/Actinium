@@ -6,6 +6,8 @@ import com.dhj.actinium.loading.fml.transformers.LwjglContextLifecycleTransforme
 import com.dhj.actinium.loading.fml.transformers.LwjglContextVersionTransformer;
 import com.dhj.actinium.loading.fml.transformers.MacDisplayForwardCompatTransformer;
 import com.dhj.actinium.loading.fml.transformers.StellarCoreHudCachingCompatTransformer;
+import com.dhj.actinium.loading.fml.transformers.SdlGpuHostTransformer;
+import com.dhj.actinium.startup.SdlGpuBootstrap;
 import net.minecraft.launchwrapper.Launch;
 import net.minecraftforge.fml.relauncher.IFMLLoadingPlugin;
 import org.jetbrains.annotations.Nullable;
@@ -40,6 +42,7 @@ public class MixinEarly implements IFMLLoadingPlugin, IEarlyMixinLoader {
         new LwjglContextLifecycleTransformer();
     private static final LwjglContextVersionTransformer EXPLICIT_VERSION_TRANSFORMER =
         new LwjglContextVersionTransformer();
+    private static final SdlGpuHostTransformer EXPLICIT_SDL_HOST_TRANSFORMER = new SdlGpuHostTransformer();
 
     static {
         // CeleritasExtra uses Java 11 nesting features in its mixins.
@@ -53,6 +56,7 @@ public class MixinEarly implements IFMLLoadingPlugin, IEarlyMixinLoader {
             MacDisplayForwardCompatTransformer.class.getName(),
             LwjglContextVersionTransformer.class.getName(),
             LwjglContextLifecycleTransformer.class.getName(),
+            SdlGpuHostTransformer.class.getName(),
             StellarCoreHudCachingCompatTransformer.class.getName(),
             GnetumHudCachingCompatTransformer.class.getName(),
             "com.gtnewhorizons.angelica.loading.fml.transformers.EarlyRedirectorTransformer",
@@ -66,6 +70,11 @@ public class MixinEarly implements IFMLLoadingPlugin, IEarlyMixinLoader {
             registerExplicitTransformer(registry, EXPLICIT_LIFECYCLE_TRANSFORMER, target);
         }
         registerExplicitTransformer(registry, EXPLICIT_VERSION_TRANSFORMER, CONTEXT_ATTRIBS);
+        if (SdlGpuBootstrap.isSupported()) {
+            for (String target : SdlGpuHostTransformer.TARGETS) {
+                registerExplicitTransformer(registry, EXPLICIT_SDL_HOST_TRANSFORMER, target);
+            }
+        }
     }
 
     private static void registerExplicitTransformer(
@@ -93,6 +102,7 @@ public class MixinEarly implements IFMLLoadingPlugin, IEarlyMixinLoader {
     @Override
     @SuppressWarnings("unchecked")
     public void injectData(Map<String, Object> data) {
+        SdlGpuBootstrap.initialize();
         Object value = Launch.blackboard.get("TweakClasses");
         List<String> tweaks = null;
         if (value instanceof List<?>) {

@@ -100,6 +100,14 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
     }
 
     public static class AdvancedSettings {
+        /** Selects SDL GPU at the next startup, before the window and backend are created. */
+        public boolean renderBackendSdlGpu = false;
+        /** Preferred SDL GPU driver; an empty value selects the platform default. */
+        public String renderBackendDriver = "";
+        /** Limits queued GPU frames and their associated resource lifetime. */
+        public int sdlGpuFramesInFlight = 2;
+        /** Presents GPU frames on a separate executor. */
+        public boolean sdlGpuPresenterThread = true;
         public boolean enableMemoryTracing = false;
         public boolean useAdvancedStagingBuffers = true;
         public boolean disableIncompatibleModWarnings = false;
@@ -173,6 +181,34 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
     public static class WindowSettings {
         public String fullscreenMode;
         public String lastFullscreenMode;
+    }
+
+    /** Driver identifiers understood by SDL, exposed without depending on a native backend. */
+    public enum SdlGpuDriver implements TextProvider {
+        AUTO("", "options.actinium.sdl_driver.auto"),
+        VULKAN("vulkan", "options.actinium.sdl_driver.vulkan"),
+        DIRECT3D12("direct3d12", "options.actinium.sdl_driver.direct3d12"),
+        METAL("metal", "options.actinium.sdl_driver.metal");
+
+        private final String id;
+        private final String translationKey;
+
+        SdlGpuDriver(String id, String translationKey) {
+            this.id = id;
+            this.translationKey = translationKey;
+        }
+
+        public String id() { return id; }
+
+        public static SdlGpuDriver fromId(String id) {
+            for (SdlGpuDriver driver : values()) {
+                if (driver.id.equals(id)) return driver;
+            }
+            throw new IllegalArgumentException("Unknown SDL GPU driver: " + id);
+        }
+
+        @Override
+        public TextComponent getLocalizedName() { return TextComponent.translatable(translationKey); }
     }
 
     public enum GraphicsQuality implements TextProvider {
