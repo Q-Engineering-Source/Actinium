@@ -10,7 +10,6 @@ import org.lwjgl.system.MemoryStack;
 import java.util.List;
 
 import static org.lwjgl.sdl.SDLError.SDL_GetError;
-import static org.lwjgl.sdl.SDLEvents.SDL_PumpEvents;
 import static org.lwjgl.sdl.SDLVideo.SDL_GL_GetCurrentContext;
 import static org.lwjgl.sdl.SDLVideo.SDL_GL_SetSwapInterval;
 import static org.lwjgl.sdl.SDLVideo.SDL_GetClosestFullscreenDisplayMode;
@@ -125,6 +124,6 @@ public final class SdlWindowBackend implements WindowBackend {
 
     @Override
     public void pumpMessages() {
-        SDL_PumpEvents();
+        Display.processMessages();
     }
 }
