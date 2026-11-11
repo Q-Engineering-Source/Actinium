@@ -21,6 +21,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.render.BufferBuilderStreamingDrawer;
 import com.dhj.actinium.render.EndPortalCompositeRenderer;
+import com.dhj.actinium.startup.SdlGpuBootstrap;
 
 @Mixin(value = OpenGlHelper.class, priority = 100)
 public class MixinOpenGlHelper {
@@ -57,6 +58,11 @@ public class MixinOpenGlHelper {
         if (Iris.enabled && Thread.currentThread() == GLStateManager.getMainThread()) {
             Iris.onRenderSystemInit();
         }
+    }
+
+    @Inject(method = "initializeTextures", at = @At("HEAD"))
+    private static void celeritas$installSdlDrawable(CallbackInfo ci) {
+        SdlGpuBootstrap.ensureDrawableInstalled();
     }
 
     @Unique

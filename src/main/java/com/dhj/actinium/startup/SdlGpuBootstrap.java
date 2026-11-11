@@ -69,6 +69,10 @@ public final class SdlGpuBootstrap {
 
     public static boolean isActive() { return requested && SUPPORTED && Outlands.isActive(); }
 
+    public static void ensureDrawableInstalled() {
+        if (isActive()) Outlands.ensureDrawableInstalled();
+    }
+
     public static void onLoadingComplete() {
         if (isActive()) BackendStartGuard.latch();
     }
@@ -103,6 +107,7 @@ public final class SdlGpuBootstrap {
         private static boolean isActive() { return SDLGPUGate.isActive(); }
         private static boolean isSelected() { return SDLGPUGate.isSelected(); }
         private static boolean isSharedDrawable(Object drawable) { return SDLGPUDisplayBridge.isSdlSharedDrawable(drawable); }
+        private static void ensureDrawableInstalled() { SDLGPUGate.ensureDrawableInstalled(); }
         private static void makeCurrent(Drawable drawable) throws LWJGLException { SDLGPUDisplayBridge.makeCurrent(drawable); }
         private static void releaseContext(Drawable drawable) throws LWJGLException { SDLGPUDisplayBridge.releaseContext(drawable); }
         private static boolean isCurrent(Drawable drawable) { return SDLGPUDisplayBridge.isCurrent(drawable); }
