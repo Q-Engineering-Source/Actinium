@@ -2,13 +2,12 @@ package com.gtnewhorizons.angelica.loading.fml.tweakers;
 
 import com.dhj.actinium.compat.MixinReEntranceLockFix;
 import com.dhj.actinium.compat.modernsplash.ModernSplashOverlayCompat;
-import com.gtnewhorizons.angelica.loading.fml.transformers.AngelicaRedirectorTransformer;
+import com.dhj.actinium.loading.fml.transformers.LateRedirectorInstaller;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.launchwrapper.ITweaker;
 import net.minecraft.launchwrapper.LaunchClassLoader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import top.outlands.foundation.TransformerDelegate;
 
 import java.io.File;
 import java.util.List;
@@ -16,7 +15,6 @@ import java.util.List;
 public class AngelicaLateTweaker implements ITweaker {
 
     private static final Logger LOGGER = LogManager.getLogger("ActiniumRedirector");
-    private static final String FULL_REDIRECTOR_CLASS = AngelicaRedirectorTransformer.class.getName();
 
     @Override
     public void acceptOptions(List<String> args, File gameDir, File assetsDir, String profile) {
@@ -37,13 +35,7 @@ public class AngelicaLateTweaker implements ITweaker {
             // Probe before registering: anything already defined at this point keeps
             // raw GL calls forever (issue #200).
             ModernSplashOverlayCompat.markIfLoadedBeforeRedirector();
-            TransformerDelegate.unRegisterTransformer("com.gtnewhorizons.angelica.loading.fml.transformers.EarlyRedirectorTransformer");
-            boolean alreadyRegistered = TransformerDelegate.getTransformers().stream()
-                .anyMatch(t -> t.getClass().getName().equals(FULL_REDIRECTOR_CLASS));
-            if (!alreadyRegistered) {
-                LOGGER.debug("Registering transformer {}", FULL_REDIRECTOR_CLASS);
-                TransformerDelegate.registerTransformer(new AngelicaRedirectorTransformer());
-            }
+            LateRedirectorInstaller.install();
         } catch (Exception e) {
             LOGGER.warn("Failed to install Angelica redirector late", e);
         } finally {

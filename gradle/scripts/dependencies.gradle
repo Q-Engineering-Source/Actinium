@@ -32,12 +32,28 @@ dependencies {
     compileOnly "org.projectlombok:lombok:${lombokVersion}"
     annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
     compileOnly 'org.apache.logging.log4j:log4j-api:2.24.3'
+    vanillaLaunchwrapper('net.minecraft:launchwrapper:1.12') { transitive = false }
+    forgeLoadingTestClasspath "org.ow2.asm:asm-tree:${asmVersion}"
+    forgeLoadingTestClasspath "org.ow2.asm:asm-commons:${asmVersion}"
+    forgeLoadingTestClasspath 'com.google.guava:guava:21.0'
+    forgeLoadingTestClasspath 'com.google.code.gson:gson:2.10.1'
+    forgeLoadingTestClasspath 'org.apache.logging.log4j:log4j-api:2.24.3'
+    forgeLoadingTestClasspath 'org.apache.logging.log4j:log4j-core:2.24.3'
+    forgeLoadingTestClasspath "org.lwjgl:lwjgl:${lwjglVersion}"
+    forgeLoadingTestClasspath "org.lwjgl:lwjgl-opengl:${lwjglVersion}"
+    forgeLoadingTestClasspath('net.minecraftforge:forge:1.12.2-14.23.5.2864:universal') { transitive = false }
+    forgeLoadingTestClasspath('zone.rong:mixinbooter:11.18') { transitive = false }
+    forgeLoadingTestClasspath('com.cleanroommc:sponge-mixin:0.20.13+mixin.0.8.7') { transitive = false }
+    forgeLoadingTestClasspath 'org.jetbrains:annotations:24.1.0'
 
     implementation 'org.joml:joml:1.10.5'
     contain 'org.joml:joml:1.10.5'
     // Same joml artifact bundled into the jar body and relocated under the shadow namespace by the
     // shadowRemapJar / devShadowJar tasks (upstream Celeritas distribution layout).
     shadowBundle 'org.joml:joml:1.10.5'
+    shadowBundle('xyz.wagyourtail.jvmdowngrader:jvmdowngrader-java-api:1.3.5:downgraded-8') {
+        transitive = false
+    }
     compileOnly 'it.unimi.dsi:fastutil:8.5.18'
     compileOnly "org.ow2.asm:asm:${asmVersion}"
     compileOnly "org.ow2.asm:asm-commons:${asmVersion}"

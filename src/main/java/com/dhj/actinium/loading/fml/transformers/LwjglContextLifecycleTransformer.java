@@ -1,7 +1,6 @@
 package com.dhj.actinium.loading.fml.transformers;
 
 import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
-import net.minecraft.launchwrapper.IClassTransformer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.objectweb.asm.ClassReader;
@@ -16,12 +15,11 @@ import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
-import top.outlands.foundation.IExplicitTransformer;
 
 import java.util.List;
 
 /** Injects native context lifetime callbacks for supported LWJGL display implementations. */
-public final class LwjglContextLifecycleTransformer implements IClassTransformer, IExplicitTransformer {
+public final class LwjglContextLifecycleTransformer implements ExplicitClassTransformer {
     private static final Logger LOGGER = LogManager.getLogger("Actinium");
 
     private static final String DISPLAY = "org.lwjgl.opengl.Display";
@@ -48,7 +46,7 @@ public final class LwjglContextLifecycleTransformer implements IClassTransformer
 
     @Override
     public int getPriority() {
-        return IClassTransformer.super.getPriority();
+        return ExplicitClassTransformer.super.getPriority();
     }
 
     @Override
