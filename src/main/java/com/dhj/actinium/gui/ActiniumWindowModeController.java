@@ -212,7 +212,7 @@ public final class ActiniumWindowModeController {
     }
 
     private static boolean isWindowStateCompatible(Minecraft client, FullscreenMode desiredMode) {
-        boolean actualBorderless = borderlessActive || Display.isBorderless();
+        boolean actualBorderless = borderlessActive || (borderlessSupported && Display.isBorderless());
         return switch (desiredMode) {
             case OFF -> !client.isFullScreen() && !Display.isFullscreen() && !actualBorderless;
             case EXCLUSIVE -> client.isFullScreen() && Display.isFullscreen() && !actualBorderless;
@@ -221,8 +221,8 @@ public final class ActiniumWindowModeController {
     }
 
     private static void applyWindowed(Minecraft client) {
-        if (borderlessActive || Display.isBorderless()) {
-            if (!androidRuntime || windowedGeometryCaptured) {
+        if (borderlessActive || (borderlessSupported && Display.isBorderless())) {
+            if (borderlessSupported && (!androidRuntime || windowedGeometryCaptured)) {
                 Display.setBorderless(false);
             }
             borderlessActive = false;
@@ -235,8 +235,8 @@ public final class ActiniumWindowModeController {
     }
 
     private static void applyExclusiveFullscreen(Minecraft client) {
-        if (borderlessActive || Display.isBorderless()) {
-            if (!androidRuntime || windowedGeometryCaptured) {
+        if (borderlessActive || (borderlessSupported && Display.isBorderless())) {
+            if (borderlessSupported && (!androidRuntime || windowedGeometryCaptured)) {
                 Display.setBorderless(false);
             }
             borderlessActive = false;
@@ -251,7 +251,7 @@ public final class ActiniumWindowModeController {
         if (Display.isFullscreen() && (!androidRuntime || windowedGeometryCaptured)) {
             Display.setFullscreen(false);
         }
-        Display.setBorderless(true);
+        if (borderlessSupported) Display.setBorderless(true);
         windowedGeometryCaptured = true;
         borderlessActive = true;
         setFullscreenState(client, true);
@@ -264,8 +264,14 @@ public final class ActiniumWindowModeController {
     }
 
     private static void updateClientDisplaySize(Minecraft client) {
-        int width = Display.getFramebufferWidth();
-        int height = Display.getFramebufferHeight();
+        int width, height;
+        if (borderlessSupported) {
+            width = Display.getFramebufferWidth();
+            height = Display.getFramebufferHeight();
+        } else {
+            width = Display.getWidth();
+            height = Display.getHeight();
+        }
 
         if (width > 0 && height > 0) {
             client.displayWidth = width;
