@@ -95,6 +95,7 @@ java {
 configurations {
     contain
     implementation.extendsFrom(contain)
+    embeddedLibs
     // External classes bundled into the mod jar body under the shared shadow namespace, mirroring
     // the upstream Celeritas distribution layout. Kept separate from implementation so the plain
     // namespace jars stay on the compile/dev classpath for third-party mods that need them.
@@ -244,7 +245,6 @@ def devShadowJar = tasks.register('devShadowJar', ShadowJar) {
     destinationDirectory.set(layout.buildDirectory.dir('dev-libs'))
     configurations.set([project.configurations.shadowBundle])
     from(sourceSets.main.output)
-    relocate('it.unimi.dsi.fastutil', 'com.gtnewhorizons.angelica.shadow.it.unimi.dsi.fastutil')
     relocate('org.joml', 'dhj.embeddedt.embeddium.impl.shadow.joml')
     relocate('org.antlr', 'com.gtnewhorizons.angelica.shadow.org.antlr')
     relocate('org.taumc.glsl', 'com.gtnewhorizons.angelica.shadow.org.taumc.glsl')
@@ -354,7 +354,6 @@ def shadowRemapJar = tasks.register('shadowRemapJar', ShadowJar) {
     archiveClassifier.set('')
     configurations.set([project.configurations.shadowBundle])
     from(zipTree(tasks.named('remapJar').get().archiveFile))
-    relocate('it.unimi.dsi.fastutil', 'com.gtnewhorizons.angelica.shadow.it.unimi.dsi.fastutil')
     relocate('org.joml', 'dhj.embeddedt.embeddium.impl.shadow.joml')
     relocate('org.antlr', 'com.gtnewhorizons.angelica.shadow.org.antlr')
     relocate('org.taumc.glsl', 'com.gtnewhorizons.angelica.shadow.org.taumc.glsl')
@@ -449,6 +448,13 @@ tasks.named('runServer', JavaExec).configure {
 apply from: 'gradle/scripts/dependencies.gradle'
 
 processResources {
+    // Embed fastutil 8 jar so FastutilBootstrap can prepend it to the LaunchClassLoader search path
+    // ahead of Forge's bundled fastutil 7.1.0.
+    into('META-INF/actinium_libs') {
+        from(configurations.embeddedLibs)
+        rename { 'fastutil.jar' }
+    }
+
     def resourceProperties = [
         mod_id         : propertyString('mod_id'),
         mod_name       : propertyString('mod_name'),

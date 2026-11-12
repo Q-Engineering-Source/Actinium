@@ -6,6 +6,7 @@ import com.dhj.actinium.loading.fml.transformers.LateRedirectorInstaller;
 import com.dhj.actinium.loading.fml.transformers.LwjglContextLifecycleTransformer;
 import com.dhj.actinium.loading.fml.transformers.LwjglContextVersionTransformer;
 import com.dhj.actinium.loading.fml.transformers.MacDisplayForwardCompatTransformer;
+import com.dhj.actinium.loading.fml.transformers.FastutilUpgraderTransformer;
 import com.dhj.actinium.loading.fml.transformers.OutlandsExplicitTransformerRegistration;
 import com.dhj.actinium.loading.fml.transformers.StellarCoreHudCachingCompatTransformer;
 import com.dhj.actinium.loading.fml.transformers.SdlGpuHostTransformer;
@@ -45,6 +46,7 @@ public class MixinEarly implements IFMLLoadingPlugin, IEarlyMixinLoader {
     public @Nullable String[] getASMTransformerClass() {
         OutlandsExplicitTransformerRegistration.register();
         return new String[] {
+            FastutilUpgraderTransformer.class.getName(),
             MacDisplayForwardCompatTransformer.class.getName(),
             LwjglContextVersionTransformer.class.getName(),
             LwjglContextLifecycleTransformer.class.getName(),
