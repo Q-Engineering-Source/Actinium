@@ -211,13 +211,7 @@ public class ShaderCache {
     }
 
     private String getOrGenerateVertex(VertexKey vk) {
-        long cacheKey = vk.pack();
-        String cached = vertexSourceCache.get(cacheKey);
-        if (cached == null) {
-            cached = VertexShaderGenerator.generate(vk);
-            vertexSourceCache.put(cacheKey, cached);
-        }
-        return cached;
+        return vertexSourceCache.computeIfAbsent(vk.pack(), k -> VertexShaderGenerator.generate(vk));
     }
 
     private void dumpShader(String name, String suffix, String source) {

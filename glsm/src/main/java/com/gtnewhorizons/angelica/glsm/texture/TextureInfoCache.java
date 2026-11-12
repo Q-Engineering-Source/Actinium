@@ -54,22 +54,12 @@ public class TextureInfoCache {
         if (id < 0) return null;
 
         if (GLStateManager.isSplashComplete()) {
-            TextureInfo info = cache.get(id);
-            if (info == null) {
-                info = new TextureInfo(id);
-                cache.put(id, info);
-            }
-            return info;
+            return cache.computeIfAbsent(id, TextureInfo::new);
         }
 
         lock.lock();
         try {
-            TextureInfo info = cache.get(id);
-            if (info == null) {
-                info = new TextureInfo(id);
-                cache.put(id, info);
-            }
-            return info;
+            return cache.computeIfAbsent(id, TextureInfo::new);
         } finally {
             lock.unlock();
         }
