@@ -89,6 +89,18 @@ public final class DistributedForgeLoadingProbe {
                 }
             }
 
+            Class<?> nativeBufferType = loader.loadClass("dhj.embeddedt.embeddium.impl.common.util.NativeBuffer");
+            Object nativeBuffer = nativeBufferType.getConstructor(int.class).newInstance(64);
+            nativeBufferType.getMethod("ensureCapacity", int.class).invoke(nativeBuffer, 128);
+            if ((Integer) nativeBufferType.getMethod("getLength").invoke(nativeBuffer) != 128) {
+                throw new AssertionError("NativeBuffer did not grow to the requested capacity");
+            }
+            Buffer directBuffer = (Buffer) nativeBufferType.getMethod("getDirectBuffer").invoke(nativeBuffer);
+            if (directBuffer.capacity() != 128) {
+                throw new AssertionError("NativeBuffer direct view has capacity " + directBuffer.capacity());
+            }
+            nativeBufferType.getMethod("free").invoke(nativeBuffer);
+
             Class<?> installer = loader.loadClass(LATE_INSTALLER);
             installer.getMethod("prepareTweaker").invoke(null);
             loader.addClassLoaderExclusion("com.gtnewhorizons.angelica.loading.fml.tweakers");

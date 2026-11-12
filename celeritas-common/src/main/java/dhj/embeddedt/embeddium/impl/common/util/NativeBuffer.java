@@ -58,7 +58,7 @@ public class NativeBuffer {
             ACTIVE_BUFFERS.remove(this.reclaimHandle);
             this.reclaimHandle.clear();
         } finally {
-            Reference.reachabilityFence(this);
+            ReachabilityFence.accept(this);
         }
     }
 
@@ -87,7 +87,7 @@ public class NativeBuffer {
                 throw new IllegalStateException("NativeBuffer reclaim entry went missing while growing the buffer");
             }
         } finally {
-            Reference.reachabilityFence(this);
+            ReachabilityFence.accept(this);
         }
     }
 
