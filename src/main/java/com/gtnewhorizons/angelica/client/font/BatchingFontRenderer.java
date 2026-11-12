@@ -590,7 +590,7 @@ public class BatchingFontRenderer {
     }
 
     private void clearBatch() {
-        for (int i = 0; i < batchCommands.size(); i++) batchCommandPool.add(batchCommands.get(i));
+        batchCommandPool.addAll(batchCommands);
         batchCommands.clear();
         vertexDataPos = 0;
         idxWriterIndex = 0;
