@@ -377,7 +377,7 @@ final class ExitStateCapture {
     }
 
     private long restoredFields(StateSet set) {
-        long restored = restoredFieldsBySet.getOrDefault(set, -1L);
+        long restored = (restoredFieldsBySet.containsKey(set) ? restoredFieldsBySet.getLong(set) : -1L);
         if (restored >= 0) return restored;
         restored = 0;
         for (int field = 0; field < FIELD_COUNT; field++) {
