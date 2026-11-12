@@ -8,7 +8,6 @@ import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.NULL;
 
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.PointerBuffer;
-import org.lwjgl.system.Platform;
 
 /**
  * Pointer interface.
@@ -28,15 +27,14 @@ import org.lwjgl.system.Platform;
 public interface Pointer {
 
     /** The pointer size in bytes. Will be 4 on a 32bit JVM and 8 on a 64bit one. */
-    // Delegate to LWJGL's own constant: Platform.Architecture.is64Bit() only exists
-    // on LWJGL 3.4+, while Cleanroom currently ships LWJGL 3.3.x at runtime.
-    int POINTER_SIZE = org.lwjgl.system.Pointer.POINTER_SIZE;
+    int POINTER_SIZE = "64".equals(System.getProperty("sun.arch.data.model"))
+        || System.getProperty("os.arch", "").endsWith("64") ? 8 : 4;
 
     /** The pointer size power-of-two. Will be 2 on a 32bit JVM and 3 on a 64bit one. */
     int POINTER_SHIFT = POINTER_SIZE == 8 ? 3 : 2;
 
     /** The value of {@code sizeof(long)} for the current platform. */
-    int CLONG_SIZE = POINTER_SIZE == 8 && Platform.get() == Platform.WINDOWS ? 4 : POINTER_SIZE;
+    int CLONG_SIZE = POINTER_SIZE == 8 && System.getProperty("os.name", "").toLowerCase().startsWith("windows") ? 4 : POINTER_SIZE;
 
     /** The value of {@code sizeof(long)} as a power-of-two. */
     int CLONG_SHIFT = CLONG_SIZE == 8 ? 3 : 2;

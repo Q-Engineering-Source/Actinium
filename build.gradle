@@ -628,9 +628,10 @@ test {
             (sourceSets.main.output.files + configurations.forgeLoadingTestClasspath.files).collect {
                 it.absolutePath
             }.join(File.pathSeparator)
-        systemProperty 'actinium.forgeDependencyClasspath', configurations.forgeLoadingTestClasspath.files.collect {
-            it.absolutePath
-        }.join(File.pathSeparator)
+        systemProperty 'actinium.forgeDependencyClasspath',
+            (configurations.legacyLwjgl.files + configurations.forgeLoadingTestClasspath.files).collect {
+                it.absolutePath
+            }.join(File.pathSeparator)
     }
     if (propertyBool('show_testing_output')) {
         testLogging {

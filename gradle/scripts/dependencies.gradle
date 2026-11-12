@@ -39,8 +39,6 @@ dependencies {
     forgeLoadingTestClasspath 'com.google.code.gson:gson:2.8.0'
     forgeLoadingTestClasspath 'org.apache.logging.log4j:log4j-api:2.24.3'
     forgeLoadingTestClasspath 'org.apache.logging.log4j:log4j-core:2.24.3'
-    forgeLoadingTestClasspath "org.lwjgl:lwjgl:${lwjglVersion}"
-    forgeLoadingTestClasspath "org.lwjgl:lwjgl-opengl:${lwjglVersion}"
     forgeLoadingTestClasspath('net.minecraftforge:forge:1.12.2-14.23.5.2864:universal') { transitive = false }
     forgeLoadingTestClasspath('zone.rong:mixinbooter:11.18') { transitive = false }
     forgeLoadingTestClasspath('com.cleanroommc:sponge-mixin:0.20.13+mixin.0.8.7') { transitive = false }

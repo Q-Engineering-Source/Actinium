@@ -4,6 +4,7 @@ import net.minecraft.launchwrapper.LaunchClassLoader;
 import java.io.File;
 import java.lang.reflect.Method;
 import java.net.URL;
+import java.nio.Buffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -58,6 +59,13 @@ public final class DistributedForgeLoadingProbe {
                 || (Integer) attributeType.getMethod("getMinorVersion").invoke(attributes) != 6) {
                 throw new AssertionError("GL 4.6 attributes were not preserved");
             }
+            Class<?> memoryType = loader.loadClass("com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities");
+            Object memory = memoryType.getMethod("memAlloc", int.class).invoke(null, 16);
+            long address = (Long) memoryType.getMethod("memAddress", Buffer.class).invoke(null, memory);
+            if (address == 0L) {
+                throw new AssertionError("Native memory allocation returned a null address");
+            }
+            memoryType.getMethod("memFree", Buffer.class).invoke(null, memory);
             Class<?> pluginType = loader.loadClass(MIXIN_EARLY);
             Object plugin = pluginType.getDeclaredConstructor().newInstance();
             String[] transformerArray = (String[]) pluginType.getMethod("getASMTransformerClass").invoke(plugin);

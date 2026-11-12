@@ -371,7 +371,7 @@ public final class MemoryUtilities {
      * @param size the number of pointer values to allocate.
      */
     public static PointerBuffer memAllocPointer(int size) {
-        return new PointerBuffer(memAlloc(Math.toIntExact(getAllocationSize(size, POINTER_SHIFT))));
+        return PointerBufferCompat.create(memAlloc(Math.toIntExact(getAllocationSize(size, POINTER_SHIFT))));
     }
 
     /** Unsafe version of {@link #memFree}. */
@@ -564,7 +564,7 @@ public final class MemoryUtilities {
      * @param num the number of pointer values to allocate.
      */
     public static PointerBuffer memCallocPointer(int num) {
-        return new PointerBuffer(memCalloc(Math.toIntExact(getAllocationSize(num, POINTER_SHIFT))));
+        return PointerBufferCompat.create(memCalloc(Math.toIntExact(getAllocationSize(num, POINTER_SHIFT))));
     }
 
     // --- [ memRealloc] ---
@@ -720,7 +720,7 @@ public final class MemoryUtilities {
      * @param size the number of pointer values to allocate.
      */
     public static PointerBuffer memRealloc(@Nullable PointerBuffer ptr, int size) {
-        // return new PointerBuffer(memCalloc(Math.toIntExact(getAllocationSize(num, POINTER_SHIFT))));
+        // return PointerBufferCompat.create(memCalloc(Math.toIntExact(getAllocationSize(num, POINTER_SHIFT))));
 
         PointerBuffer buffer = memPointerBuffer(
                 nmemReallocChecked(ptr == null ? NULL : memAddress(ptr), getAllocationSize(size, POINTER_SHIFT)),
@@ -885,13 +885,13 @@ public final class MemoryUtilities {
 
     /** PointerBuffer version of {@link #memAddress(ByteBuffer)}. */
     public static long memAddress(PointerBuffer buffer) {
-        return address(buffer.position(), POINTER_SHIFT, memAddress0(buffer.getBuffer()));
+        return address(buffer.position(), POINTER_SHIFT, PointerBufferCompat.baseAddress(buffer));
     }
 
     /** PointerBuffer version of {@link #memAddress(ByteBuffer, int)}. */
     public static long memAddress(PointerBuffer buffer, int position) {
         Objects.requireNonNull(buffer);
-        return address(position, POINTER_SHIFT, memAddress0(buffer.getBuffer()));
+        return address(position, POINTER_SHIFT, PointerBufferCompat.baseAddress(buffer));
     }
 
     /** Polymorphic version of {@link #memAddress(ByteBuffer)}. */
@@ -1247,12 +1247,12 @@ public final class MemoryUtilities {
         if (address == 0L) {
             throw new IllegalArgumentException("Null pointer");
         }
-        return new PointerBuffer(memByteBuffer(address, capacity));
+        return PointerBufferCompat.create(memByteBuffer(address, capacity));
     }
 
     /** Like {@link #memPointerBuffer}, but returns {@code null} if {@code address} is {@link #NULL}. */
     public static @Nullable PointerBuffer memPointerBufferSafe(long address, int capacity) {
-        return address == NULL ? null : new PointerBuffer(memByteBuffer(address, capacity));
+        return address == NULL ? null : PointerBufferCompat.create(memByteBuffer(address, capacity));
     }
 
     // --- [ Buffer duplication ] ---
@@ -3161,11 +3161,8 @@ public final class MemoryUtilities {
     }
 
     private static long getAddressOffset() {
-        long MAGIC_ADDRESS = 0xDEADBEEF8BADF00DL & (BITS32 ? 0xFFFF_FFFFL : 0xFFFF_FFFF_FFFF_FFFFL);
-
-        ByteBuffer bb = Objects.requireNonNull(newDirectByteBuffer(MAGIC_ADDRESS, 0));
-
-        return getFieldOffset(bb.getClass(), long.class, offset -> UNSAFE.getLong(bb, offset) == MAGIC_ADDRESS);
+        ByteBuffer bb = ByteBuffer.allocateDirect(0).order(NATIVE_ORDER);
+        return getFieldOffset(bb.getClass(), long.class, offset -> UNSAFE.getLong(bb, offset) != 0);
     }
 
     private static final int MAGIC_CAPACITY = 0x0D15EA5E;
@@ -3366,17 +3363,7 @@ public final class MemoryUtilities {
     }
 
     private static ByteBuffer newDirectByteBuffer(long address, int capacity) {
-        try {
-            @SuppressWarnings("unchecked")
-            final Class<? extends ByteBuffer> dbb = (Class<? extends ByteBuffer>) Class
-                    .forName("java.nio.DirectByteBuffer");
-            final java.lang.reflect.Constructor<? extends ByteBuffer> newDbb =
-                    dbb.getDeclaredConstructor(long.class, int.class);
-            newDbb.setAccessible(true);
-            return newDbb.newInstance(address, capacity);
-        } catch (Throwable t) {
-            throw new RuntimeException(t);
-        }
+        return ByteBuffer.allocateDirect(capacity).order(NATIVE_ORDER);
     }
 
     private static String decodeUTF8(long source, int length) {

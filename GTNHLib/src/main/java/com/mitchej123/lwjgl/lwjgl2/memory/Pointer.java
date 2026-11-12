@@ -7,7 +7,6 @@ import static com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.NULL;
 
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.PointerBuffer;
-import org.lwjgl.Sys;
 
 /**
  * Pointer interface.
@@ -27,10 +26,15 @@ import org.lwjgl.Sys;
 public interface Pointer {
 
     /** The pointer size in bytes. Will be 4 on a 32bit JVM and 8 on a 64bit one. */
-    int POINTER_SIZE = Sys.is64Bit() ? 8 : 4;
+    int POINTER_SIZE = is64Bit() ? 8 : 4;
 
     /** The pointer size power-of-two. Will be 2 on a 32bit JVM and 3 on a 64bit one. */
     int POINTER_SHIFT = POINTER_SIZE == 8 ? 3 : 2;
+
+    private static boolean is64Bit() {
+        String dataModel = System.getProperty("sun.arch.data.model");
+        return dataModel != null ? "64".equals(dataModel) : System.getProperty("os.arch").endsWith("64");
+    }
 
     /** The value of {@code sizeof(long)} for the current platform. */
     int CLONG_SIZE = POINTER_SIZE == 8 && System.getProperty("os.name").toLowerCase().startsWith("windows") ? 4 : POINTER_SIZE;

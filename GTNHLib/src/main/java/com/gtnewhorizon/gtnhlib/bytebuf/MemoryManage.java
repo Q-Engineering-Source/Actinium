@@ -5,7 +5,7 @@ package com.gtnewhorizon.gtnhlib.bytebuf;
 
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.MemoryAllocator;
 
-import org.lwjgl.system.MemoryUtil;
+import com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities;
 
 /** Provides {@link MemoryAllocator} implementations for {@link MemoryUtilities} to use. */
 final class MemoryManage {
@@ -21,22 +21,22 @@ final class MemoryManage {
 
         @Override
         public long malloc(long size) {
-            return MemoryUtil.nmemAlloc(size);
+            return MemoryUtilities.nmemAlloc(size);
         }
 
         @Override
         public long calloc(long num, long size) {
-            return MemoryUtil.nmemCalloc(1L, Math.multiplyExact(num, size));
+            return MemoryUtilities.nmemCalloc(1L, Math.multiplyExact(num, size));
         }
 
         @Override
         public long realloc(long ptr, long size) {
-            return MemoryUtil.nmemRealloc(ptr, size);
+            return MemoryUtilities.nmemRealloc(ptr, size);
         }
 
         @Override
         public void free(long ptr) {
-            MemoryUtil.nmemFree(ptr);
+            MemoryUtilities.nmemFree(ptr);
         }
     }
 

@@ -36,13 +36,13 @@ import java.util.Objects;
 
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.PointerBuffer;
-import org.lwjgl.system.MemoryUtil;
 
 /**
  * This class provides functionality for managing native memory.
  *
  * <p>
- * Low-level native memory operations are delegated to LWJGL's maintained {@link MemoryUtil} implementation.
+ * Low-level native memory operations are delegated to the LWJGL2 backend's
+ * {@link com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities} implementation.
  * </p>
  *
  * <p>
@@ -121,8 +121,8 @@ public final class MemoryUtilities {
             : StandardCharsets.UTF_16BE;
 
     static {
-        PAGE_SIZE = MemoryUtil.PAGE_SIZE;
-        CACHE_LINE_SIZE = MemoryUtil.CACHE_LINE_SIZE;
+        PAGE_SIZE = com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.PAGE_SIZE;
+        CACHE_LINE_SIZE = com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.CACHE_LINE_SIZE;
     }
 
     static final class LazyInit {
@@ -318,56 +318,56 @@ public final class MemoryUtilities {
      */
     public static void memFree(@Nullable Buffer ptr) {
         if (ptr != null) {
-            nmemFree(MemoryUtil.memAddress0(ptr));
+            nmemFree(com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(ptr));
         }
     }
 
     /** {@code ByteBuffer} version of {@link #memFree(Buffer)}. */
     public static void memFree(@Nullable ByteBuffer ptr) {
         if (ptr != null) {
-            nmemFree(MemoryUtil.memAddress0(ptr));
+            nmemFree(com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(ptr));
         }
     }
 
     /** {@code ShortBuffer} version of {@link #memFree(Buffer)}. */
     public static void memFree(@Nullable ShortBuffer ptr) {
         if (ptr != null) {
-            nmemFree(MemoryUtil.memAddress0(ptr));
+            nmemFree(com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(ptr));
         }
     }
 
     /** {@code CharBuffer} version of {@link #memFree(Buffer)}. */
     public static void memFree(@Nullable CharBuffer ptr) {
         if (ptr != null) {
-            nmemFree(MemoryUtil.memAddress0(ptr));
+            nmemFree(com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(ptr));
         }
     }
 
     /** {@code IntBuffer} version of {@link #memFree(Buffer)}. */
     public static void memFree(@Nullable IntBuffer ptr) {
         if (ptr != null) {
-            nmemFree(MemoryUtil.memAddress0(ptr));
+            nmemFree(com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(ptr));
         }
     }
 
     /** {@code LongBuffer} version of {@link #memFree(Buffer)}. */
     public static void memFree(@Nullable LongBuffer ptr) {
         if (ptr != null) {
-            nmemFree(MemoryUtil.memAddress0(ptr));
+            nmemFree(com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(ptr));
         }
     }
 
     /** {@code FloatBuffer} version of {@link #memFree(Buffer)}. */
     public static void memFree(@Nullable FloatBuffer ptr) {
         if (ptr != null) {
-            nmemFree(MemoryUtil.memAddress0(ptr));
+            nmemFree(com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(ptr));
         }
     }
 
     /** {@code DoubleBuffer} version of {@link #memFree(Buffer)}. */
     public static void memFree(@Nullable DoubleBuffer ptr) {
         if (ptr != null) {
-            nmemFree(MemoryUtil.memAddress0(ptr));
+            nmemFree(com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(ptr));
         }
     }
 
@@ -549,7 +549,7 @@ public final class MemoryUtilities {
     public static ByteBuffer memRealloc(@Nullable ByteBuffer ptr, int size) {
         return realloc(
                 ptr,
-                memByteBuffer(nmemReallocChecked(ptr == null ? NULL : MemoryUtil.memAddress0(ptr), size), size),
+                memByteBuffer(nmemReallocChecked(ptr == null ? NULL : com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(ptr), size), size),
                 size);
     }
 
@@ -563,7 +563,7 @@ public final class MemoryUtilities {
                 ptr,
                 memShortBuffer(
                         nmemReallocChecked(
-                                ptr == null ? NULL : MemoryUtil.memAddress0(ptr),
+                                ptr == null ? NULL : com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(ptr),
                                 getAllocationSize(size, 1)),
                         size),
                 size);
@@ -579,7 +579,7 @@ public final class MemoryUtilities {
                 ptr,
                 memIntBuffer(
                         nmemReallocChecked(
-                                ptr == null ? NULL : MemoryUtil.memAddress0(ptr),
+                                ptr == null ? NULL : com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(ptr),
                                 getAllocationSize(size, 2)),
                         size),
                 size);
@@ -595,7 +595,7 @@ public final class MemoryUtilities {
                 ptr,
                 memLongBuffer(
                         nmemReallocChecked(
-                                ptr == null ? NULL : MemoryUtil.memAddress0(ptr),
+                                ptr == null ? NULL : com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(ptr),
                                 getAllocationSize(size, 3)),
                         size),
                 size);
@@ -611,7 +611,7 @@ public final class MemoryUtilities {
                 ptr,
                 memFloatBuffer(
                         nmemReallocChecked(
-                                ptr == null ? NULL : MemoryUtil.memAddress0(ptr),
+                                ptr == null ? NULL : com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(ptr),
                                 getAllocationSize(size, 2)),
                         size),
                 size);
@@ -627,7 +627,7 @@ public final class MemoryUtilities {
                 ptr,
                 memDoubleBuffer(
                         nmemReallocChecked(
-                                ptr == null ? NULL : MemoryUtil.memAddress0(ptr),
+                                ptr == null ? NULL : com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(ptr),
                                 getAllocationSize(size, 3)),
                         size),
                 size);
@@ -653,42 +653,42 @@ public final class MemoryUtilities {
      * Returns the memory address of the specified buffer. [INTERNAL USE ONLY]
      */
     public static long memAddress0(Buffer buffer) {
-        return MemoryUtil.memAddress0(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(buffer);
     }
 
     /** {@code ByteBuffer} version of {@link #memAddress0(Buffer)}. */
     public static long memAddress0(ByteBuffer buffer) {
-        return MemoryUtil.memAddress0(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(buffer);
     }
 
     /** {@code ShortBuffer} version of {@link #memAddress0(Buffer)}. */
     public static long memAddress0(ShortBuffer buffer) {
-        return MemoryUtil.memAddress0(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(buffer);
     }
 
     /** {@code CharBuffer} version of {@link #memAddress0(Buffer)}. */
     public static long memAddress0(CharBuffer buffer) {
-        return MemoryUtil.memAddress0(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(buffer);
     }
 
     /** {@code IntBuffer} version of {@link #memAddress0(Buffer)}. */
     public static long memAddress0(IntBuffer buffer) {
-        return MemoryUtil.memAddress0(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(buffer);
     }
 
     /** {@code LongBuffer} version of {@link #memAddress0(Buffer)}. */
     public static long memAddress0(LongBuffer buffer) {
-        return MemoryUtil.memAddress0(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(buffer);
     }
 
     /** {@code FloatBuffer} version of {@link #memAddress0(Buffer)}. */
     public static long memAddress0(FloatBuffer buffer) {
-        return MemoryUtil.memAddress0(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(buffer);
     }
 
     /** {@code DoubleBuffer} version of {@link #memAddress0(Buffer)}. */
     public static long memAddress0(DoubleBuffer buffer) {
-        return MemoryUtil.memAddress0(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(buffer);
     }
 
     /**
@@ -802,7 +802,7 @@ public final class MemoryUtilities {
         } else {
             elementShift = 3;
         }
-        return address(buffer.position(), elementShift, MemoryUtil.memAddress0(buffer));
+        return address(buffer.position(), elementShift, com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memAddress0(buffer));
     }
 
     /** Null-safe version of {@link #memAddress(ByteBuffer)}. Returns {@link #NULL} if the specified buffer is null. */
@@ -1111,7 +1111,7 @@ public final class MemoryUtilities {
      * </p>
      */
     public static ByteBuffer memDuplicate(ByteBuffer buffer) {
-        return MemoryUtil.memDuplicate(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memDuplicate(buffer);
     }
 
     /**
@@ -1124,7 +1124,7 @@ public final class MemoryUtilities {
      * </p>
      */
     public static ShortBuffer memDuplicate(ShortBuffer buffer) {
-        return MemoryUtil.memDuplicate(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memDuplicate(buffer);
     }
 
     /**
@@ -1137,7 +1137,7 @@ public final class MemoryUtilities {
      * </p>
      */
     public static CharBuffer memDuplicate(CharBuffer buffer) {
-        return MemoryUtil.memDuplicate(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memDuplicate(buffer);
     }
 
     /**
@@ -1150,7 +1150,7 @@ public final class MemoryUtilities {
      * </p>
      */
     public static IntBuffer memDuplicate(IntBuffer buffer) {
-        return MemoryUtil.memDuplicate(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memDuplicate(buffer);
     }
 
     /**
@@ -1163,7 +1163,7 @@ public final class MemoryUtilities {
      * </p>
      */
     public static LongBuffer memDuplicate(LongBuffer buffer) {
-        return MemoryUtil.memDuplicate(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memDuplicate(buffer);
     }
 
     /**
@@ -1176,7 +1176,7 @@ public final class MemoryUtilities {
      * </p>
      */
     public static FloatBuffer memDuplicate(FloatBuffer buffer) {
-        return MemoryUtil.memDuplicate(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memDuplicate(buffer);
     }
 
     /**
@@ -1189,7 +1189,7 @@ public final class MemoryUtilities {
      * </p>
      */
     public static DoubleBuffer memDuplicate(DoubleBuffer buffer) {
-        return MemoryUtil.memDuplicate(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memDuplicate(buffer);
     }
 
     /**
@@ -1202,7 +1202,7 @@ public final class MemoryUtilities {
      * </p>
      */
     public static ByteBuffer memSlice(ByteBuffer buffer) {
-        return MemoryUtil.memSlice(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memSlice(buffer);
     }
 
     /**
@@ -1215,7 +1215,7 @@ public final class MemoryUtilities {
      * </p>
      */
     public static ShortBuffer memSlice(ShortBuffer buffer) {
-        return MemoryUtil.memSlice(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memSlice(buffer);
     }
 
     /**
@@ -1228,7 +1228,7 @@ public final class MemoryUtilities {
      * </p>
      */
     public static CharBuffer memSlice(CharBuffer buffer) {
-        return MemoryUtil.memSlice(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memSlice(buffer);
     }
 
     /**
@@ -1241,7 +1241,7 @@ public final class MemoryUtilities {
      * </p>
      */
     public static IntBuffer memSlice(IntBuffer buffer) {
-        return MemoryUtil.memSlice(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memSlice(buffer);
     }
 
     /**
@@ -1254,7 +1254,7 @@ public final class MemoryUtilities {
      * </p>
      */
     public static LongBuffer memSlice(LongBuffer buffer) {
-        return MemoryUtil.memSlice(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memSlice(buffer);
     }
 
     /**
@@ -1267,7 +1267,7 @@ public final class MemoryUtilities {
      * </p>
      */
     public static FloatBuffer memSlice(FloatBuffer buffer) {
-        return MemoryUtil.memSlice(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memSlice(buffer);
     }
 
     /**
@@ -1280,7 +1280,7 @@ public final class MemoryUtilities {
      * </p>
      */
     public static DoubleBuffer memSlice(DoubleBuffer buffer) {
-        return MemoryUtil.memSlice(buffer);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memSlice(buffer);
     }
 
     /**
@@ -1297,7 +1297,7 @@ public final class MemoryUtilities {
      */
     public static ByteBuffer memSlice(ByteBuffer buffer, int offset, int capacity) {
         checkSliceRange(buffer, offset, capacity);
-        return MemoryUtil.memSlice(buffer, offset, capacity);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memSlice(buffer, offset, capacity);
     }
 
     /**
@@ -1313,7 +1313,7 @@ public final class MemoryUtilities {
      */
     public static ShortBuffer memSlice(ShortBuffer buffer, int offset, int capacity) {
         checkSliceRange(buffer, offset, capacity);
-        return MemoryUtil.memSlice(buffer, offset, capacity);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memSlice(buffer, offset, capacity);
     }
 
     /**
@@ -1329,7 +1329,7 @@ public final class MemoryUtilities {
      */
     public static CharBuffer memSlice(CharBuffer buffer, int offset, int capacity) {
         checkSliceRange(buffer, offset, capacity);
-        return MemoryUtil.memSlice(buffer, offset, capacity);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memSlice(buffer, offset, capacity);
     }
 
     /**
@@ -1345,7 +1345,7 @@ public final class MemoryUtilities {
      */
     public static IntBuffer memSlice(IntBuffer buffer, int offset, int capacity) {
         checkSliceRange(buffer, offset, capacity);
-        return MemoryUtil.memSlice(buffer, offset, capacity);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memSlice(buffer, offset, capacity);
     }
 
     /**
@@ -1361,7 +1361,7 @@ public final class MemoryUtilities {
      */
     public static LongBuffer memSlice(LongBuffer buffer, int offset, int capacity) {
         checkSliceRange(buffer, offset, capacity);
-        return MemoryUtil.memSlice(buffer, offset, capacity);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memSlice(buffer, offset, capacity);
     }
 
     /**
@@ -1377,7 +1377,7 @@ public final class MemoryUtilities {
      */
     public static FloatBuffer memSlice(FloatBuffer buffer, int offset, int capacity) {
         checkSliceRange(buffer, offset, capacity);
-        return MemoryUtil.memSlice(buffer, offset, capacity);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memSlice(buffer, offset, capacity);
     }
 
     /**
@@ -1393,7 +1393,7 @@ public final class MemoryUtilities {
      */
     public static DoubleBuffer memSlice(DoubleBuffer buffer, int offset, int capacity) {
         checkSliceRange(buffer, offset, capacity);
-        return MemoryUtil.memSlice(buffer, offset, capacity);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memSlice(buffer, offset, capacity);
     }
 
     private static void checkSliceRange(Buffer buffer, int offset, int capacity) {
@@ -1550,7 +1550,7 @@ public final class MemoryUtilities {
             throw new IllegalArgumentException();
         }
 
-        MemoryUtil.memSet(ptr, value, bytes);
+        com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memSet(ptr, value, bytes);
     }
 
     /**
@@ -1561,75 +1561,75 @@ public final class MemoryUtilities {
             throw new IllegalArgumentException();
         }
 
-        MemoryUtil.memCopy(src, dst, bytes);
+        com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memCopy(src, dst, bytes);
     }
 
     public static boolean memGetBoolean(long ptr) {
-        return MemoryUtil.memGetBoolean(ptr);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetBoolean(ptr);
     }
 
     public static byte memGetByte(long ptr) {
-        return MemoryUtil.memGetByte(ptr);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetByte(ptr);
     }
 
     public static short memGetShort(long ptr) {
-        return MemoryUtil.memGetShort(ptr);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetShort(ptr);
     }
 
     public static int memGetInt(long ptr) {
-        return MemoryUtil.memGetInt(ptr);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetInt(ptr);
     }
 
     public static long memGetLong(long ptr) {
-        return MemoryUtil.memGetLong(ptr);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetLong(ptr);
     }
 
     public static float memGetFloat(long ptr) {
-        return MemoryUtil.memGetFloat(ptr);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetFloat(ptr);
     }
 
     public static double memGetDouble(long ptr) {
-        return MemoryUtil.memGetDouble(ptr);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetDouble(ptr);
     }
 
     public static long memGetCLong(long ptr) {
-        return MemoryUtil.memGetCLong(ptr);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetCLong(ptr);
     }
 
     public static long memGetAddress(long ptr) {
-        return MemoryUtil.memGetAddress(ptr);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetAddress(ptr);
     }
 
     public static void memPutByte(long ptr, byte value) {
-        MemoryUtil.memPutByte(ptr, value);
+        com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memPutByte(ptr, value);
     }
 
     public static void memPutShort(long ptr, short value) {
-        MemoryUtil.memPutShort(ptr, value);
+        com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memPutShort(ptr, value);
     }
 
     public static void memPutInt(long ptr, int value) {
-        MemoryUtil.memPutInt(ptr, value);
+        com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memPutInt(ptr, value);
     }
 
     public static void memPutLong(long ptr, long value) {
-        MemoryUtil.memPutLong(ptr, value);
+        com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memPutLong(ptr, value);
     }
 
     public static void memPutFloat(long ptr, float value) {
-        MemoryUtil.memPutFloat(ptr, value);
+        com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memPutFloat(ptr, value);
     }
 
     public static void memPutDouble(long ptr, double value) {
-        MemoryUtil.memPutDouble(ptr, value);
+        com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memPutDouble(ptr, value);
     }
 
     public static void memPutCLong(long ptr, long value) {
-        MemoryUtil.memPutCLong(ptr, value);
+        com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memPutCLong(ptr, value);
     }
 
     public static void memPutAddress(long ptr, long value) {
-        MemoryUtil.memPutAddress(ptr, value);
+        com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memPutAddress(ptr, value);
     }
 
     /**
@@ -1640,7 +1640,7 @@ public final class MemoryUtilities {
     public static native <T> T memGlobalRefToObject(long globalRef);
 
     private static int write8(long target, int offset, int value) {
-        MemoryUtil.memPutByte(target + Integer.toUnsignedLong(offset), (byte) value);
+        com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memPutByte(target + Integer.toUnsignedLong(offset), (byte) value);
         return offset + 1;
     }
 
@@ -1648,12 +1648,12 @@ public final class MemoryUtilities {
         if (offset == maxLength) {
             throw new BufferOverflowException();
         }
-        MemoryUtil.memPutByte(target + Integer.toUnsignedLong(offset), (byte) value);
+        com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memPutByte(target + Integer.toUnsignedLong(offset), (byte) value);
         return offset + 1;
     }
 
     private static int write16(long target, int offset, char value) {
-        MemoryUtil.memPutShort(target + Integer.toUnsignedLong(offset), (short) value);
+        com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memPutShort(target + Integer.toUnsignedLong(offset), (short) value);
         return offset + 2;
     }
 
@@ -2088,7 +2088,7 @@ public final class MemoryUtilities {
             if (misalignment != 0) {
                 // Align to 8 bytes
                 for (int len = 8 - misalignment; i < len; i++) {
-                    if (MemoryUtil.memGetByte(address + i) == 0) {
+                    if (com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetByte(address + i) == 0) {
                         return i;
                     }
                 }
@@ -2096,7 +2096,7 @@ public final class MemoryUtilities {
 
             // Aligned longs for performance
             for (; i <= maxLength - 8; i += 8) {
-                if (mathHasZeroByte(MemoryUtil.memGetLong(address + i))) {
+                if (mathHasZeroByte(com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetLong(address + i))) {
                     break;
                 }
             }
@@ -2104,7 +2104,7 @@ public final class MemoryUtilities {
 
         // Tail
         for (; i < maxLength; i++) {
-            if (MemoryUtil.memGetByte(address + i) == 0) {
+            if (com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetByte(address + i) == 0) {
                 break;
             }
         }
@@ -2120,7 +2120,7 @@ public final class MemoryUtilities {
             if (misalignment != 0) {
                 // Align to 4 bytes
                 for (int len = 4 - misalignment; i < len; i++) {
-                    if (MemoryUtil.memGetByte(address + i) == 0) {
+                    if (com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetByte(address + i) == 0) {
                         return i;
                     }
                 }
@@ -2128,7 +2128,7 @@ public final class MemoryUtilities {
 
             // Aligned ints for performance
             for (; i <= maxLength - 4; i += 4) {
-                if (mathHasZeroByte(MemoryUtil.memGetInt(address + i))) {
+                if (mathHasZeroByte(com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetInt(address + i))) {
                     break;
                 }
             }
@@ -2136,7 +2136,7 @@ public final class MemoryUtilities {
 
         // Tail
         for (; i < maxLength; i++) {
-            if (MemoryUtil.memGetByte(address + i) == 0) {
+            if (com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetByte(address + i) == 0) {
                 break;
             }
         }
@@ -2172,7 +2172,7 @@ public final class MemoryUtilities {
             if (misalignment != 0) {
                 // Align to 8 bytes
                 for (int len = 8 - misalignment; i < len; i += 2) {
-                    if (MemoryUtil.memGetShort(address + i) == 0) {
+                    if (com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetShort(address + i) == 0) {
                         return i;
                     }
                 }
@@ -2180,7 +2180,7 @@ public final class MemoryUtilities {
 
             // Aligned longs for performance
             for (; i <= maxLength - 8; i += 8) {
-                if (mathHasZeroShort(MemoryUtil.memGetLong(address + i))) {
+                if (mathHasZeroShort(com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetLong(address + i))) {
                     break;
                 }
             }
@@ -2188,7 +2188,7 @@ public final class MemoryUtilities {
 
         // Tail
         for (; i < maxLength; i += 2) {
-            if (MemoryUtil.memGetShort(address + i) == 0) {
+            if (com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetShort(address + i) == 0) {
                 break;
             }
         }
@@ -2204,7 +2204,7 @@ public final class MemoryUtilities {
             if (misalignment != 0) {
                 // Align to 4 bytes
                 for (int len = 4 - misalignment; i < len; i += 2) {
-                    if (MemoryUtil.memGetShort(address + i) == 0) {
+                    if (com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetShort(address + i) == 0) {
                         return i;
                     }
                 }
@@ -2212,7 +2212,7 @@ public final class MemoryUtilities {
 
             // Aligned longs for performance
             while (i <= maxLength - 4) {
-                if (mathHasZeroShort(MemoryUtil.memGetInt(address + i))) {
+                if (mathHasZeroShort(com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetInt(address + i))) {
                     break;
                 }
                 i += 4;
@@ -2221,7 +2221,7 @@ public final class MemoryUtilities {
 
         // Tail
         for (; i < maxLength; i += 2) {
-            if (MemoryUtil.memGetShort(address + i) == 0) {
+            if (com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memGetShort(address + i) == 0) {
                 break;
             }
         }
@@ -2567,31 +2567,31 @@ public final class MemoryUtilities {
     }
 
     static ByteBuffer wrapBufferByte(long address, int capacity) {
-        return MemoryUtil.memByteBuffer(address, capacity);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memByteBuffer(address, capacity);
     }
 
     static ShortBuffer wrapBufferShort(long address, int capacity) {
-        return MemoryUtil.memShortBuffer(address, capacity);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memShortBuffer(address, capacity);
     }
 
     static CharBuffer wrapBufferChar(long address, int capacity) {
-        return MemoryUtil.memCharBuffer(address, capacity);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memCharBuffer(address, capacity);
     }
 
     static IntBuffer wrapBufferInt(long address, int capacity) {
-        return MemoryUtil.memIntBuffer(address, capacity);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memIntBuffer(address, capacity);
     }
 
     static LongBuffer wrapBufferLong(long address, int capacity) {
-        return MemoryUtil.memLongBuffer(address, capacity);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memLongBuffer(address, capacity);
     }
 
     static FloatBuffer wrapBufferFloat(long address, int capacity) {
-        return MemoryUtil.memFloatBuffer(address, capacity);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memFloatBuffer(address, capacity);
     }
 
     static DoubleBuffer wrapBufferDouble(long address, int capacity) {
-        return MemoryUtil.memDoubleBuffer(address, capacity);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memDoubleBuffer(address, capacity);
     }
 
 }
