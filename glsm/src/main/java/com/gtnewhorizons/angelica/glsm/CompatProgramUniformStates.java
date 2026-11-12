@@ -39,7 +39,7 @@ final class CompatProgramUniformStates {
      * @param locations in {@link CompatUniformManager} index order
      */
     synchronized boolean storeLinkedProgram(int program, long lifecycleEpoch, int[] locations) {
-        if (lifecycleEpochs.getOrDefault(program, 0L) != lifecycleEpoch) {
+        if ((lifecycleEpochs.containsKey(program) ? lifecycleEpochs.get(program) : 0L) != lifecycleEpoch) {
             return false;
         }
 
