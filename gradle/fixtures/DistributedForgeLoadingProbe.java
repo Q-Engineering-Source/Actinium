@@ -6,6 +6,7 @@ import java.lang.reflect.Method;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 
 public final class DistributedForgeLoadingProbe {
@@ -36,7 +37,19 @@ public final class DistributedForgeLoadingProbe {
         }
 
         try (LaunchClassLoader loader = new LaunchClassLoader(classpath.toArray(new URL[0]))) {
+            Launch.blackboard = new HashMap<String, Object>();
             Launch.classLoader = loader;
+            loader.loadClass("com.dhj.actinium.debug.ActiniumStartupDebugConfig")
+                .getMethod("enableLwjglDebug").invoke(null);
+            Class<?> earlyConfig = loader.loadClass("com.dhj.actinium.compat.ForgeEarlyConfigCompat");
+            Object snapshot = earlyConfig.getMethod("snapshot").invoke(null);
+            Class<?> snapshotType = loader.loadClass("com.dhj.actinium.compat.ForgeEarlyConfigCompat$Snapshot");
+            earlyConfig.getMethod("applyCoreProfile", int.class, int.class, boolean.class)
+                .invoke(null, 4, 6, false);
+            earlyConfig.getMethod("restoreCompatibilityProfile", int.class, int.class, boolean.class)
+                .invoke(null, 4, 6, false);
+            earlyConfig.getMethod("restore", snapshotType).invoke(null, snapshot);
+            earlyConfig.getMethod("persistCompatibilityProfile").invoke(null);
             Class<?> pluginType = loader.loadClass(MIXIN_EARLY);
             Object plugin = pluginType.getDeclaredConstructor().newInstance();
             String[] transformerArray = (String[]) pluginType.getMethod("getASMTransformerClass").invoke(plugin);
@@ -61,30 +74,29 @@ public final class DistributedForgeLoadingProbe {
             }
 
             Class<?> installer = loader.loadClass(LATE_INSTALLER);
+            installer.getMethod("prepareTweaker").invoke(null);
+            loader.addClassLoaderExclusion("com.gtnewhorizons.angelica.loading.fml.tweakers");
+            Class.forName("com.gtnewhorizons.angelica.loading.fml.tweakers.AngelicaLateTweaker", true, loader);
+            loader.loadClass("com.dhj.actinium.compat.modernsplash.ModernSplashOverlayCompat")
+                .getMethod("markIfLoadedBeforeRedirector").invoke(null);
+
             Method install = installer.getMethod("install");
             install.invoke(null);
             install.invoke(null);
 
             List<?> transformers = loader.getTransformers();
             int lateRegistrations = 0;
-            Object early = null;
+            int earlyRegistrations = 0;
             for (Object transformer : transformers) {
                 if (LATE_REDIRECTOR.equals(transformer.getClass().getName())) {
                     lateRegistrations++;
                 }
                 if (EARLY_REDIRECTOR.equals(transformer.getClass().getName())) {
-                    early = transformer;
+                    earlyRegistrations++;
                 }
             }
-            if (lateRegistrations != 1 || early == null) {
+            if (lateRegistrations != 1 || earlyRegistrations != 0) {
                 throw new AssertionError("Unexpected transformer registry: " + transformers);
-            }
-            byte[] bytes = {1};
-            Object transformed = early.getClass()
-                .getMethod("transform", String.class, String.class, byte[].class)
-                .invoke(early, "cn.tesseract.mycelium.Example", "cn.tesseract.mycelium.Example", bytes);
-            if (transformed != bytes) {
-                throw new AssertionError("Early redirector remained active after late registration");
             }
             loader.loadClass(LOCK_FIX).getMethod("clearInvalidVanillaClasses").invoke(null);
         }

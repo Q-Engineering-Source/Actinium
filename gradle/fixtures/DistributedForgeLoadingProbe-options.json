@@ -1,0 +1,8 @@
+{
+  "debug": {
+    "enable_redirector_debug": false,
+    "enable_redirector_log_spam": false,
+    "enable_redirector_class_dump": false,
+    "enable_lwjgl_debug": false
+  }
+}

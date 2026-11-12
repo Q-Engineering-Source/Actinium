@@ -36,7 +36,7 @@ dependencies {
     forgeLoadingTestClasspath "org.ow2.asm:asm-tree:${asmVersion}"
     forgeLoadingTestClasspath "org.ow2.asm:asm-commons:${asmVersion}"
     forgeLoadingTestClasspath 'com.google.guava:guava:21.0'
-    forgeLoadingTestClasspath 'com.google.code.gson:gson:2.10.1'
+    forgeLoadingTestClasspath 'com.google.code.gson:gson:2.8.0'
     forgeLoadingTestClasspath 'org.apache.logging.log4j:log4j-api:2.24.3'
     forgeLoadingTestClasspath 'org.apache.logging.log4j:log4j-core:2.24.3'
     forgeLoadingTestClasspath "org.lwjgl:lwjgl:${lwjglVersion}"
@@ -45,6 +45,7 @@ dependencies {
     forgeLoadingTestClasspath('zone.rong:mixinbooter:11.18') { transitive = false }
     forgeLoadingTestClasspath('com.cleanroommc:sponge-mixin:0.20.13+mixin.0.8.7') { transitive = false }
     forgeLoadingTestClasspath 'org.jetbrains:annotations:24.1.0'
+    forgeLoadingTestClasspath('net.sf.jopt-simple:jopt-simple:5.0.3') { transitive = false }
 
     implementation 'org.joml:joml:1.10.5'
     contain 'org.joml:joml:1.10.5'

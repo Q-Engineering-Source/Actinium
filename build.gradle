@@ -627,6 +627,9 @@ test {
             (sourceSets.main.output.files + configurations.forgeLoadingTestClasspath.files).collect {
                 it.absolutePath
             }.join(File.pathSeparator)
+        systemProperty 'actinium.forgeDependencyClasspath', configurations.forgeLoadingTestClasspath.files.collect {
+            it.absolutePath
+        }.join(File.pathSeparator)
     }
     if (propertyBool('show_testing_output')) {
         testLogging {
@@ -898,6 +901,7 @@ def verifyDistributedForgeLoading = tasks.register('verifyDistributedForgeLoadin
     inputs.file(java8Jar.flatMap { it.archiveFile })
     inputs.file(layout.projectDirectory.file('gradle/fixtures/DistributedForgeLoadingProbe.java'))
     inputs.file(layout.projectDirectory.file('gradle/fixtures/DistributedForgeLoadingProbe-log4j2.xml'))
+    inputs.file(layout.projectDirectory.file('gradle/fixtures/DistributedForgeLoadingProbe-options.json'))
     inputs.files(configurations.vanillaLaunchwrapper)
     inputs.files(configurations.forgeLoadingTestClasspath)
 
@@ -905,10 +909,14 @@ def verifyDistributedForgeLoading = tasks.register('verifyDistributedForgeLoadin
         def distributedJar = java8Jar.get().archiveFile.get().asFile
         def fixture = layout.projectDirectory.file('gradle/fixtures/DistributedForgeLoadingProbe.java').asFile
         def log4jConfig = layout.projectDirectory.file('gradle/fixtures/DistributedForgeLoadingProbe-log4j2.xml').asFile
+        def optionsFixture = layout.projectDirectory.file('gradle/fixtures/DistributedForgeLoadingProbe-options.json').asFile
         def probeRoot = layout.buildDirectory.dir('distributed-forge-probe').get().asFile
         def classesDir = new File(probeRoot, 'classes')
         delete probeRoot
         classesDir.mkdirs()
+        def configDir = new File(probeRoot, 'config')
+        configDir.mkdirs()
+        new File(configDir, 'actinium-options.json').text = optionsFixture.text
 
         def compiler = javaToolchains.compilerFor {
             languageVersion = JavaLanguageVersion.of(25)

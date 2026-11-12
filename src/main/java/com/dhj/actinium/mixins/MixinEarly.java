@@ -2,6 +2,7 @@ package com.dhj.actinium.mixins;
 
 import com.dhj.actinium.loading.fml.transformers.BetterFoliageHbmCompatTransformer;
 import com.dhj.actinium.loading.fml.transformers.GnetumHudCachingCompatTransformer;
+import com.dhj.actinium.loading.fml.transformers.LateRedirectorInstaller;
 import com.dhj.actinium.loading.fml.transformers.LwjglContextLifecycleTransformer;
 import com.dhj.actinium.loading.fml.transformers.LwjglContextVersionTransformer;
 import com.dhj.actinium.loading.fml.transformers.MacDisplayForwardCompatTransformer;
@@ -9,13 +10,11 @@ import com.dhj.actinium.loading.fml.transformers.OutlandsExplicitTransformerRegi
 import com.dhj.actinium.loading.fml.transformers.StellarCoreHudCachingCompatTransformer;
 import com.dhj.actinium.loading.fml.transformers.SdlGpuHostTransformer;
 import com.dhj.actinium.startup.SdlGpuBootstrap;
-import net.minecraft.launchwrapper.Launch;
 import net.minecraftforge.fml.relauncher.IFMLLoadingPlugin;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.MixinEnvironment;
 import zone.rong.mixinbooter.IEarlyMixinLoader;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -68,21 +67,9 @@ public class MixinEarly implements IFMLLoadingPlugin, IEarlyMixinLoader {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public void injectData(Map<String, Object> data) {
         SdlGpuBootstrap.initialize();
-        Object value = Launch.blackboard.get("TweakClasses");
-        List<String> tweaks = null;
-        if (value instanceof List<?>) {
-            tweaks = (List<String>) value;
-        }
-        if (tweaks == null) {
-            tweaks = new ArrayList<>();
-            Launch.blackboard.put("TweakClasses", tweaks);
-        }
-        if (!tweaks.contains("com.gtnewhorizons.angelica.loading.fml.tweakers.AngelicaLateTweaker")) {
-            tweaks.add("com.gtnewhorizons.angelica.loading.fml.tweakers.AngelicaLateTweaker");
-        }
+        LateRedirectorInstaller.prepareTweaker();
     }
 
     @Override

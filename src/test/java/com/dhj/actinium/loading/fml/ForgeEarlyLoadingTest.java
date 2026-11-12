@@ -68,7 +68,30 @@ class ForgeEarlyLoadingTest {
         assertTrue(loader.bootstrapRequest == null, loader.bootstrapRequest);
     }
 
-    private static final class WithoutOutlandsClassLoader extends ClassLoader {
+    @Test
+    void forgeEarlyConfigIsOptional() throws Exception {
+        ClassLoader loader = new WithoutForgeEarlyConfigClassLoader();
+        Class<?> compat = Class.forName("com.dhj.actinium.compat.ForgeEarlyConfigCompat", true, loader);
+        Class<?> snapshotType = Class.forName(
+            "com.dhj.actinium.compat.ForgeEarlyConfigCompat$Snapshot",
+            false,
+            loader
+        );
+        Object snapshot = compat.getMethod("snapshot").invoke(null);
+
+        assertTrue((Integer) snapshotType.getMethod("major").invoke(snapshot) == 0);
+        assertTrue((Integer) snapshotType.getMethod("minor").invoke(snapshot) == 0);
+        assertTrue(!((Boolean) snapshotType.getMethod("compatibilityProfile").invoke(snapshot)));
+        assertTrue(!((Boolean) snapshotType.getMethod("debugContext").invoke(snapshot)));
+        compat.getMethod("applyCoreProfile", int.class, int.class, boolean.class)
+            .invoke(null, 4, 6, false);
+        compat.getMethod("restoreCompatibilityProfile", int.class, int.class, boolean.class)
+            .invoke(null, 4, 6, false);
+        compat.getMethod("restore", snapshotType).invoke(null, snapshot);
+        compat.getMethod("persistCompatibilityProfile").invoke(null);
+    }
+
+    private static class WithoutOutlandsClassLoader extends ClassLoader {
         private String outlandsRequest;
         private String bootstrapRequest;
 
@@ -133,7 +156,26 @@ class ForgeEarlyLoadingTest {
         private static boolean isChildFirst(String name) {
             return MIXIN_EARLY.equals(name)
                 || "com.dhj.actinium.compat.MixinReEntranceLockFix".equals(name)
+                || "com.dhj.actinium.compat.ForgeEarlyConfigCompat".equals(name)
                 || name.startsWith("com.dhj.actinium.loading.fml.transformers.");
+        }
+    }
+
+    private static final class WithoutForgeEarlyConfigClassLoader extends WithoutOutlandsClassLoader {
+        @Override
+        protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+            if ("net.minecraftforge.common.ForgeEarlyConfig".equals(name)) {
+                throw new ClassNotFoundException(name);
+            }
+            return super.loadClass(name, resolve);
+        }
+
+        @Override
+        public URL getResource(String name) {
+            if ("net/minecraftforge/common/ForgeEarlyConfig.class".equals(name)) {
+                return null;
+            }
+            return super.getResource(name);
         }
     }
 }

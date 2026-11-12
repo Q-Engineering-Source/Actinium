@@ -15,14 +15,13 @@ import java.lang.reflect.Field;
  * <p>Outlands exposes lower camel case fields while older Cleanroom releases expose uppercase fields. Neither
  * loader provides a shared setter, and legacy LWJGLXX reads these fields before the display context is created. The
  * compatibility lookup is therefore isolated here so the rest of Actinium never links against one loader's field
- * spelling.</p>
+ * spelling. Vanilla Forge does not provide ForgeEarlyConfig and uses ContextAttribs directly.</p>
  */
 public final class ForgeEarlyConfigCompat {
     private static final Logger LOGGER = LogManager.getLogger("Actinium");
-    private static final Field VERSION_MAJOR = field("openglVersionMajor", "OPENGL_VERSION_MAJOR");
-    private static final Field VERSION_MINOR = field("openglVersionMinor", "OPENGL_VERSION_MINOR");
-    private static final Field COMPAT_PROFILE = field("openglCompatProfile", "OPENGL_COMPAT_PROFILE");
-    private static final Field DEBUG_CONTEXT = field("openglDebugContext", "OPENGL_DEBUG_CONTEXT");
+    private static final boolean SUPPORTED = ForgeEarlyConfigCompat.class.getClassLoader()
+        .getResource("net/minecraftforge/common/ForgeEarlyConfig.class") != null;
+    private static final Snapshot DEFAULT_SNAPSHOT = new Snapshot(0, 0, false, false);
 
     private ForgeEarlyConfigCompat() {
     }
@@ -33,30 +32,28 @@ public final class ForgeEarlyConfigCompat {
 
     /** Reads the current OpenGL settings from the active loader. */
     public static Snapshot snapshot() {
-        return new Snapshot(
-            readInt(VERSION_MAJOR),
-            readInt(VERSION_MINOR),
-            readBoolean(COMPAT_PROFILE),
-            readBoolean(DEBUG_CONTEXT)
-        );
+        return SUPPORTED ? ForgeEarlyConfigAccess.snapshot() : DEFAULT_SNAPSHOT;
     }
 
     /** Applies an OpenGL core-profile request before the loader creates the display context. */
     public static void applyCoreProfile(int major, int minor, boolean debugContext) {
-        restore(new Snapshot(major, minor, false, debugContext));
+        if (SUPPORTED) {
+            ForgeEarlyConfigAccess.restore(new Snapshot(major, minor, false, debugContext));
+        }
     }
 
     /** Restores the loader's compatibility-profile settings after the core context has been created. */
     public static void restoreCompatibilityProfile(int major, int minor, boolean debugContext) {
-        restore(new Snapshot(major, minor, true, debugContext));
+        if (SUPPORTED) {
+            ForgeEarlyConfigAccess.restore(new Snapshot(major, minor, true, debugContext));
+        }
     }
 
     /** Restores an exact snapshot after a temporary change to the loader's context settings. */
     public static void restore(Snapshot snapshot) {
-        writeInt(VERSION_MAJOR, snapshot.major());
-        writeInt(VERSION_MINOR, snapshot.minor());
-        writeBoolean(COMPAT_PROFILE, snapshot.compatibilityProfile());
-        writeBoolean(DEBUG_CONTEXT, snapshot.debugContext());
+        if (SUPPORTED) {
+            ForgeEarlyConfigAccess.restore(snapshot);
+        }
     }
 
     /**
@@ -66,15 +63,8 @@ public final class ForgeEarlyConfigCompat {
      * that configuration directly. Legacy ConfigManager writes the registered config class back to its file.</p>
      */
     public static void persistCompatibilityProfile() {
-        try {
-            if (VERSION_MAJOR.getName().equals("OPENGL_VERSION_MAJOR")) {
-                ConfigManager.sync(ForgeEarlyConfig.class);
-            } else {
-                persistOutlandsProfile(ForgeModContainer.getConfig(), snapshot());
-            }
-        } catch (RuntimeException failure) {
-            LOGGER.error("Failed to persist the restored ForgeEarlyConfig profile", failure);
-            throw failure;
+        if (SUPPORTED) {
+            ForgeEarlyConfigAccess.persistCompatibilityProfile();
         }
     }
 
@@ -87,61 +77,97 @@ public final class ForgeEarlyConfigCompat {
         configuration.save();
     }
 
-    private static int readInt(Field field) {
-        try {
-            return field.getInt(null);
-        } catch (IllegalAccessException e) {
-            throw accessFailure(field, e);
-        }
-    }
+    private static final class ForgeEarlyConfigAccess {
+        private static final Field VERSION_MAJOR = field("openglVersionMajor", "OPENGL_VERSION_MAJOR");
+        private static final Field VERSION_MINOR = field("openglVersionMinor", "OPENGL_VERSION_MINOR");
+        private static final Field COMPAT_PROFILE = field("openglCompatProfile", "OPENGL_COMPAT_PROFILE");
+        private static final Field DEBUG_CONTEXT = field("openglDebugContext", "OPENGL_DEBUG_CONTEXT");
 
-    private static boolean readBoolean(Field field) {
-        try {
-            return field.getBoolean(null);
-        } catch (IllegalAccessException e) {
-            throw accessFailure(field, e);
+        private static Snapshot snapshot() {
+            return new Snapshot(
+                readInt(VERSION_MAJOR),
+                readInt(VERSION_MINOR),
+                readBoolean(COMPAT_PROFILE),
+                readBoolean(DEBUG_CONTEXT)
+            );
         }
-    }
 
-    private static void writeInt(Field field, int value) {
-        try {
-            field.setInt(null, value);
-        } catch (IllegalAccessException e) {
-            throw accessFailure(field, e);
+        private static void restore(Snapshot snapshot) {
+            writeInt(VERSION_MAJOR, snapshot.major());
+            writeInt(VERSION_MINOR, snapshot.minor());
+            writeBoolean(COMPAT_PROFILE, snapshot.compatibilityProfile());
+            writeBoolean(DEBUG_CONTEXT, snapshot.debugContext());
         }
-    }
 
-    private static void writeBoolean(Field field, boolean value) {
-        try {
-            field.setBoolean(null, value);
-        } catch (IllegalAccessException e) {
-            throw accessFailure(field, e);
-        }
-    }
-
-    private static Field field(String currentName, String legacyName) {
-        try {
-            return ForgeEarlyConfig.class.getField(currentName);
-        } catch (NoSuchFieldException currentMissing) {
+        private static void persistCompatibilityProfile() {
             try {
-                return ForgeEarlyConfig.class.getField(legacyName);
-            } catch (NoSuchFieldException legacyMissing) {
-                IllegalStateException failure = new IllegalStateException(
-                    "ForgeEarlyConfig exposes neither " + currentName + " nor " + legacyName,
-                    legacyMissing
-                );
-                LOGGER.error(failure.getMessage(), failure);
+                if (VERSION_MAJOR.getName().equals("OPENGL_VERSION_MAJOR")) {
+                    ConfigManager.sync(ForgeEarlyConfig.class);
+                } else {
+                    persistOutlandsProfile(ForgeModContainer.getConfig(), snapshot());
+                }
+            } catch (RuntimeException failure) {
+                LOGGER.error("Failed to persist the restored ForgeEarlyConfig profile", failure);
                 throw failure;
             }
         }
-    }
 
-    private static IllegalStateException accessFailure(Field field, IllegalAccessException cause) {
-        IllegalStateException failure = new IllegalStateException(
-            "Cannot access ForgeEarlyConfig field " + field.getName(),
-            cause
-        );
-        LOGGER.error(failure.getMessage(), failure);
-        return failure;
+        private static int readInt(Field field) {
+            try {
+                return field.getInt(null);
+            } catch (IllegalAccessException e) {
+                throw accessFailure(field, e);
+            }
+        }
+
+        private static boolean readBoolean(Field field) {
+            try {
+                return field.getBoolean(null);
+            } catch (IllegalAccessException e) {
+                throw accessFailure(field, e);
+            }
+        }
+
+        private static void writeInt(Field field, int value) {
+            try {
+                field.setInt(null, value);
+            } catch (IllegalAccessException e) {
+                throw accessFailure(field, e);
+            }
+        }
+
+        private static void writeBoolean(Field field, boolean value) {
+            try {
+                field.setBoolean(null, value);
+            } catch (IllegalAccessException e) {
+                throw accessFailure(field, e);
+            }
+        }
+
+        private static Field field(String currentName, String legacyName) {
+            try {
+                return ForgeEarlyConfig.class.getField(currentName);
+            } catch (NoSuchFieldException currentMissing) {
+                try {
+                    return ForgeEarlyConfig.class.getField(legacyName);
+                } catch (NoSuchFieldException legacyMissing) {
+                    IllegalStateException failure = new IllegalStateException(
+                        "ForgeEarlyConfig exposes neither " + currentName + " nor " + legacyName,
+                        legacyMissing
+                    );
+                    LOGGER.error(failure.getMessage(), failure);
+                    throw failure;
+                }
+            }
+        }
+
+        private static IllegalStateException accessFailure(Field field, IllegalAccessException cause) {
+            IllegalStateException failure = new IllegalStateException(
+                "Cannot access ForgeEarlyConfig field " + field.getName(),
+                cause
+            );
+            LOGGER.error(failure.getMessage(), failure);
+            return failure;
+        }
     }
 }

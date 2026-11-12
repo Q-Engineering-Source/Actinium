@@ -21,7 +21,6 @@ public class EarlyRedirectorTransformer implements IClassTransformer {
 
     private final GLSMRedirector core = new GLSMRedirector();
     private final String[] exclusions;
-    private volatile boolean disabled;
 
     public EarlyRedirectorTransformer() {
         List<String> excl = new ArrayList<>(Arrays.asList(core.getCoreExclusions()));
@@ -32,17 +31,10 @@ public class EarlyRedirectorTransformer implements IClassTransformer {
         exclusions = excl.toArray(new String[0]);
     }
 
-    public void disable() {
-        disabled = true;
-    }
-
     @Override
     public byte[] transform(String name, String transformedName, byte[] basicClass) {
         if (basicClass == null) {
             return null;
-        }
-        if (disabled) {
-            return basicClass;
         }
 
         boolean targeted = false;
