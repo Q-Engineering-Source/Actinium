@@ -31,7 +31,12 @@ public final class LWJGLServiceProvider {
             return constructInstance(override);
         }
 
-        return constructInstance("com.mitchej123.lwjgl.lwjgl3.LWJGL3Service");
+        try {
+            Class.forName("org.lwjgl.opengl.GL11C");
+            return constructInstance("com.mitchej123.lwjgl.lwjgl3.LWJGL3Service");
+        } catch (ClassNotFoundException e) {
+            return constructInstance("com.mitchej123.lwjgl.lwjgl2.LWJGL2Service");
+        }
     }
 }
 

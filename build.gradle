@@ -128,11 +128,21 @@ ext.sharedMinecraftCompileClasspath = {
 def mergeEmbeddedLibraryClasses = tasks.register('mergeEmbeddedLibraryClasses', Sync) {
     duplicatesStrategy = DuplicatesStrategy.FAIL
     dependsOn tasks.named('compileJava')
-    dependsOn embeddedLibraryProjects.collect { it.tasks.named('classes') }
+    dependsOn embeddedLibraryProjects.collectMany { libraryProject ->
+        def tasks = [libraryProject.tasks.named('classes')]
+        if (libraryProject.tasks.findByName('lwjgl2Classes') != null) {
+            tasks << libraryProject.tasks.named('lwjgl2Classes')
+        }
+        tasks
+    }
     into mergedEmbeddedLibraryClassesDir
 
     embeddedLibraryProjects.each { libraryProject ->
         from(libraryProject.sourceSets.main.output)
+        def lwjgl2SourceSet = libraryProject.sourceSets.findByName('lwjgl2')
+        if (lwjgl2SourceSet != null) {
+            from(lwjgl2SourceSet.output)
+        }
     }
 }
 
