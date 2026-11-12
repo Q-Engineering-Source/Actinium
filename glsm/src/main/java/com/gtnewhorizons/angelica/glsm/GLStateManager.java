@@ -1886,11 +1886,10 @@ public class GLStateManager {
         }
         final GLContextState target = contextFor(contextToken);
         if (!target.viewportInitialized) {
-            final IntBuffer viewport = BufferUtils.createIntBuffer(4);
-            RENDER_BACKEND.getInteger(GL11.GL_VIEWPORT, viewport);
-            target.viewportState.setViewPort(viewport.get(0), viewport.get(1), viewport.get(2), viewport.get(3));
-            RENDER_BACKEND.getInteger(GL11.GL_SCISSOR_BOX, viewport);
-            target.scissorState.setScissor(viewport.get(0), viewport.get(1), viewport.get(2), viewport.get(3));
+            final int width = Display.getWidth();
+            final int height = Display.getHeight();
+            target.viewportState.setViewPort(0, 0, width, height);
+            target.scissorState.setScissor(0, 0, width, height);
             target.viewportInitialized = true;
         }
         initializeDrawableResources(target);
