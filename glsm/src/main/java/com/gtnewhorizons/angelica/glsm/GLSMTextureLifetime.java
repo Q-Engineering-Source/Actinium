@@ -6,6 +6,7 @@ import com.gtnewhorizons.angelica.glsm.states.ImageUnitBinding;
 import com.gtnewhorizons.angelica.glsm.texture.TextureTargets;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2LongMap;
+import it.unimi.dsi.fastutil.ints.Int2LongMaps;
 import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongIterator;
 import org.lwjgl.BufferUtils;
@@ -172,7 +173,7 @@ public final class GLSMTextureLifetime {
     static void releaseDueTextures(IntConsumer releaseStorage) {
         if (frameIndex < nextReleaseFrame) return;
         nextReleaseFrame = Long.MAX_VALUE;
-        for (Int2LongMap.Entry entry : deferredDeleteTextures.int2LongEntrySet()) {
+        for (Int2LongMap.Entry entry : Int2LongMaps.fastIterable(deferredDeleteTextures)) {
             final long since = entry.getLongValue();
             if (since < 0) continue;
             if (frameIndex - since < RELEASE_DELAY_FRAMES) {
@@ -215,13 +216,12 @@ public final class GLSMTextureLifetime {
     /** Drops every released name from the table the way {@link #flushDeferredTextureDeletes()} does, minus the driver. */
     static int flushReleasedForTesting() {
         int flushed = 0;
-        final it.unimi.dsi.fastutil.objects.ObjectIterator<Int2LongMap.Entry> it = deferredDeleteTextures.int2LongEntrySet().iterator();
+        final var it = Int2LongMaps.fastIterator(deferredDeleteTextures);
         while (it.hasNext()) {
             final Int2LongMap.Entry entry = it.next();
             if (entry.getLongValue() == DEFERRED_ATTACHED) continue;
-            final int id = entry.getIntKey();
             it.remove();
-            non2DTextureTargets.remove(id);
+            non2DTextureTargets.remove(entry.getIntKey());
             flushed++;
         }
         return flushed;
@@ -314,7 +314,7 @@ public final class GLSMTextureLifetime {
         if (!isSplashComplete() || deferredDeleteTextures.isEmpty()) return;
         if (Tracy.ENABLED) Tracy.beginZone(Z_TEX_FLUSH_DELETES);
         try {
-            final it.unimi.dsi.fastutil.objects.ObjectIterator<Int2LongMap.Entry> it = deferredDeleteTextures.int2LongEntrySet().iterator();
+            final var it = Int2LongMaps.fastIterator(deferredDeleteTextures);
             while (it.hasNext()) {
                 final Int2LongMap.Entry entry = it.next();
                 if (entry.getLongValue() == DEFERRED_ATTACHED) continue;
