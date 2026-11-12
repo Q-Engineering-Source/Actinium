@@ -33,7 +33,7 @@ public final class ActiniumWindowModeController {
         } catch (Throwable t) {
             LOGGER.warn(
                 "Borderless fullscreen is not supported on this runtime, treating it as exclusive fullscreen: {}",
-                t
+                t.toString()
             );
         }
         borderlessSupported = supported;
