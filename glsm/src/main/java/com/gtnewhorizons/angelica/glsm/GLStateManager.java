@@ -88,7 +88,6 @@ import org.lwjgl.opengl.ARBShaderObjects;
 import org.lwjgl.opengl.ContextCapabilities;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.Drawable;
-import org.lwjgl.opengl.DrawableGL;
 import org.lwjgl.opengl.EXTTextureFilterAnisotropic;
 import org.lwjgl.opengl.GLUtil;
 import org.lwjgl.opengl.OpenGLException;
@@ -1819,10 +1818,7 @@ public class GLStateManager {
 
     public static void makeCurrent(Drawable drawable) throws LWJGLException {
         final boolean display = drawable == Display.getDrawable();
-        final Object token = drawable instanceof DrawableGL drawableGL
-            ? drawableGL.getContext()
-            : drawable;
-        final GLContextState target = display || token == displayContextToken ? null : contextFor(token);
+        final GLContextState target = display ? null : contextFor(drawable);
         if (target != null && RENDER_BACKEND.isSDLGPU()) {
             if (!target.viewportInitialized) {
                 final int width = Display.getWidth();
@@ -1847,9 +1843,9 @@ public class GLStateManager {
         final long nativeHandle = RENDER_BACKEND.getContextHandle();
         if (display) {
             if (!splashComplete) GLStateManager.drawableGL = drawable;
-            bindDisplayContext(token, nativeHandle);
+            bindDisplayContext(drawable, nativeHandle);
         } else {
-            bindDrawableContext(token, nativeHandle);
+            bindDrawableContext(drawable, nativeHandle);
         }
         if (!handled && changed) replayStateToBackend();
     }
