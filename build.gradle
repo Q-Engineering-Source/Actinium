@@ -109,6 +109,7 @@ configurations {
     runtimeOnly.extendsFrom(modRuntimeOnly)
     vanillaLaunchwrapper
     forgeLoadingTestClasspath
+    legacyLwjgl
 }
 
 ext.lwjglVersion = '3.4.3'
@@ -904,6 +905,7 @@ def verifyDistributedForgeLoading = tasks.register('verifyDistributedForgeLoadin
     inputs.file(layout.projectDirectory.file('gradle/fixtures/DistributedForgeLoadingProbe-options.json'))
     inputs.files(configurations.vanillaLaunchwrapper)
     inputs.files(configurations.forgeLoadingTestClasspath)
+    inputs.files(configurations.legacyLwjgl)
 
     doLast {
         def distributedJar = java8Jar.get().archiveFile.get().asFile
@@ -924,8 +926,8 @@ def verifyDistributedForgeLoading = tasks.register('verifyDistributedForgeLoadin
         def launcher = javaToolchains.launcherFor {
             languageVersion = JavaLanguageVersion.of(8)
         }.get().executablePath.asFile
-        def dependencyClasspath = ([distributedJar] + configurations.vanillaLaunchwrapper.files
-            + configurations.forgeLoadingTestClasspath.files)
+        def dependencyClasspath = ([distributedJar] + configurations.legacyLwjgl.files
+            + configurations.vanillaLaunchwrapper.files + configurations.forgeLoadingTestClasspath.files)
         def classpath = ([classesDir] + dependencyClasspath).collect { it.absolutePath }.join(File.pathSeparator)
 
         def runProcess = { File executable, List<String> arguments ->

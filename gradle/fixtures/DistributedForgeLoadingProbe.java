@@ -50,6 +50,14 @@ public final class DistributedForgeLoadingProbe {
                 .invoke(null, 4, 6, false);
             earlyConfig.getMethod("restore", snapshotType).invoke(null, snapshot);
             earlyConfig.getMethod("persistCompatibilityProfile").invoke(null);
+            Class<?> attributeFactory = loader.loadClass("com.dhj.actinium.debug.CoreProfileContextAttributes");
+            Object attributes = attributeFactory.getMethod("create", int.class, int.class, boolean.class)
+                .invoke(null, 4, 6, false);
+            Class<?> attributeType = loader.loadClass("org.lwjgl.opengl.ContextAttribs");
+            if ((Integer) attributeType.getMethod("getMajorVersion").invoke(attributes) != 4
+                || (Integer) attributeType.getMethod("getMinorVersion").invoke(attributes) != 6) {
+                throw new AssertionError("GL 4.6 attributes were not preserved");
+            }
             Class<?> pluginType = loader.loadClass(MIXIN_EARLY);
             Object plugin = pluginType.getDeclaredConstructor().newInstance();
             String[] transformerArray = (String[]) pluginType.getMethod("getASMTransformerClass").invoke(plugin);
