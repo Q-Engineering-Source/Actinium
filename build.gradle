@@ -112,6 +112,7 @@ ext.lwjglVersion = '3.4.3'
 def embeddedLibraryProjects = [
     project(':GTNHLib'),
     project(':glsm'),
+    project(':lwjgl2-backend'),
     project(':celeritas-common'),
     project(':shader'),
     project(':sdl-gpu')
@@ -128,21 +129,11 @@ ext.sharedMinecraftCompileClasspath = {
 def mergeEmbeddedLibraryClasses = tasks.register('mergeEmbeddedLibraryClasses', Sync) {
     duplicatesStrategy = DuplicatesStrategy.FAIL
     dependsOn tasks.named('compileJava')
-    dependsOn embeddedLibraryProjects.collectMany { libraryProject ->
-        def tasks = [libraryProject.tasks.named('classes')]
-        if (libraryProject.tasks.findByName('lwjgl2Classes') != null) {
-            tasks << libraryProject.tasks.named('lwjgl2Classes')
-        }
-        tasks
-    }
+    dependsOn embeddedLibraryProjects.collect { it.tasks.named('classes') }
     into mergedEmbeddedLibraryClassesDir
 
     embeddedLibraryProjects.each { libraryProject ->
         from(libraryProject.sourceSets.main.output)
-        def lwjgl2SourceSet = libraryProject.sourceSets.findByName('lwjgl2')
-        if (lwjgl2SourceSet != null) {
-            from(lwjgl2SourceSet.output)
-        }
     }
 }
 
@@ -708,6 +699,8 @@ def verifyDistributedJar = tasks.register('verifyDistributedJar') {
             'com/dhj/actinium/Actinium.class',
             'org/taumc/celeritas/core/CeleritasLoadingPlugin.class',
             'com/gtnewhorizons/angelica/glsm/GLStateManager.class',
+            'com/gtnewhorizons/angelica/glsm/backend/Lwjgl2GLRenderBackend.class',
+            'com/mitchej123/lwjgl/lwjgl2/LWJGL2Service.class',
             'com/gtnewhorizons/angelica/sdlgpu/SDLGPURenderBackend.class',
             'net/coderbot/iris/Iris.class',
             // Early shader dependencies must be available from the production jar body before
@@ -877,6 +870,7 @@ def verifyModuleBoundaries = tasks.register('verifyModuleBoundaries') {
             actinium: files(tasks.named('compileJava', JavaCompile).get().destinationDirectory),
             GTNHLib: project(':GTNHLib').sourceSets.main.output.classesDirs,
             glsm: project(':glsm').sourceSets.main.output.classesDirs,
+            lwjgl2: project(':lwjgl2-backend').sourceSets.main.output.classesDirs,
             celeritas: project(':celeritas-common').sourceSets.main.output.classesDirs,
             sdlgpu: project(':sdl-gpu').sourceSets.main.output.classesDirs
         ]

@@ -1,0 +1,30 @@
+plugins {
+    id 'java-library'
+}
+
+repositories {
+    mavenCentral()
+}
+
+def lwjgl2BackendDependencies = configurations.dependencyScope('lwjgl2BackendDependencies')
+def lwjgl2CompileClasspath = configurations.resolvable('lwjgl2BackendCompileClasspath')
+lwjgl2CompileClasspath.get().extendsFrom(lwjgl2BackendDependencies.get())
+
+dependencies {
+    api project(':glsm')
+
+    add(lwjgl2BackendDependencies.name, project(':glsm'))
+    add(lwjgl2BackendDependencies.name, project(':GTNHLib'))
+    add(lwjgl2BackendDependencies.name, 'org.lwjgl.lwjgl:lwjgl:2.9.3')
+    add(lwjgl2BackendDependencies.name, 'org.apache.logging.log4j:log4j-api:2.24.3')
+    add(lwjgl2BackendDependencies.name, 'org.jetbrains:annotations:24.1.0')
+    add(lwjgl2BackendDependencies.name, 'it.unimi.dsi:fastutil:8.5.18')
+}
+
+sourceSets.main.compileClasspath = files(lwjgl2CompileClasspath)
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release.set(21)
+}
+

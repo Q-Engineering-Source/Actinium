@@ -4,7 +4,6 @@ plugins {
 
 repositories {
     mavenCentral()
-    maven { url = 'https://maven.cleanroommc.com' }
 }
 
 sourceSets {
@@ -15,33 +14,12 @@ sourceSets {
             srcDir '../src/lwjgl3/java'
         }
     }
-    lwjgl2 {
-        java.srcDir '../src/lwjgl2/java'
-    }
 }
 
 dependencies {
     api project(':GTNHLib')
-    lwjgl2CompileOnly project(':GTNHLib')
-    lwjgl2CompileOnly 'org.lwjgl.lwjgl:lwjgl:2.9.3'
-    lwjgl2CompileOnly 'org.apache.logging.log4j:log4j-api:2.24.3'
-    lwjgl2CompileOnly 'org.jetbrains:annotations:24.1.0'
-    lwjgl2CompileOnly 'it.unimi.dsi:fastutil:8.5.18'
     // SPIR-V toolchain for the future sdl-gpu backend (compile-time only; natives ship with that backend).
     compileOnly "org.lwjgl:lwjgl-sdl:${rootProject.ext.lwjglVersion}"
     compileOnly "org.lwjgl:lwjgl-shaderc:${rootProject.ext.lwjglVersion}"
     compileOnly "org.lwjgl:lwjgl-spvc:${rootProject.ext.lwjglVersion}"
-}
-
-sourceSets.lwjgl2.compileClasspath = files(sourceSets.main.output, configurations.lwjgl2CompileClasspath)
-sourceSets.lwjgl2.runtimeClasspath = files(sourceSets.lwjgl2.output, sourceSets.lwjgl2.compileClasspath)
-
-tasks.named('compileLwjgl2Java', JavaCompile) {
-    options.encoding = 'UTF-8'
-    options.release.set(21)
-}
-
-tasks.named('jar', Jar) {
-    dependsOn tasks.named('compileLwjgl2Java')
-    from(sourceSets.lwjgl2.output)
 }
