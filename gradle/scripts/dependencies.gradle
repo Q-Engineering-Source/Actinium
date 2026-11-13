@@ -73,6 +73,8 @@ dependencies {
     shadowBundle 'org.antlr:antlr4-runtime:4.13.2'
 
     modCompileOnly 'maven.modrinth:fluidlogged-api:3.0.6'
+    modCompileOnly 'curse.maven:railcraft-51195:3853491'
+    modRuntimeOnly 'curse.maven:railcraft-51195:3853491'
 
     compileOnly "org.lwjgl:lwjgl:${lwjglVersion}"
     compileOnly "org.lwjgl:lwjgl-glfw:${lwjglVersion}"

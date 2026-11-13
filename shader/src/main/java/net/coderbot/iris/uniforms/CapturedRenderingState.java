@@ -1,8 +1,12 @@
 package net.coderbot.iris.uniforms;
 
+import it.unimi.dsi.fastutil.ints.Int2IntMap;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import lombok.Getter;
 import lombok.Setter;
+import net.coderbot.iris.block_rendering.BlockRenderingSettings;
 import net.coderbot.iris.gl.state.ValueUpdateNotifier;
+import net.minecraft.block.Block;
 
 import org.joml.Vector4f;
 
@@ -15,6 +19,7 @@ public class CapturedRenderingState {
 	@Getter
     private int currentRenderedBlockEntity;
 	private Runnable blockEntityIdListener = null;
+	private final IntArrayList blockEntityStack = new IntArrayList();
 
 	@Getter
     private int currentRenderedEntity = -1;
@@ -38,6 +43,20 @@ public class CapturedRenderingState {
 			this.blockEntityIdListener.run();
 		}
 	}
+
+    public void setCurrentBlockEntity(Block block, int metadata) {
+        final Int2IntMap ids = BlockRenderingSettings.INSTANCE.getBlockMetaMatches() == null
+            ? null : BlockRenderingSettings.INSTANCE.getBlockMetaMatches().get(block);
+        setCurrentBlockEntity(ids == null ? 0 : Math.max(0, ids.get(metadata)));
+    }
+
+    public void pushCurrentBlockEntity() {
+        blockEntityStack.push(currentRenderedBlockEntity);
+    }
+
+    public void popCurrentBlockEntity() {
+        setCurrentBlockEntity(blockEntityStack.popInt());
+    }
 
     public void setCurrentEntity(int entity) {
 		this.currentRenderedEntity = entity;
