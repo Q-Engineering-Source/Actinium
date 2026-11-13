@@ -1,0 +1,75 @@
+repositories {
+    maven {
+        url = 'https://maven.minecraftforge.net/'
+    }
+    mavenCentral()
+}
+
+def moltenvkVersion = findProperty('moltenvk_version') ?: rootProject.ext.lwjglVersion
+
+configurations {
+    moltenvkNativesX64 {
+        canBeConsumed = false
+        canBeResolved = true
+    }
+    moltenvkNativesArm64 {
+        canBeConsumed = false
+        canBeResolved = true
+    }
+}
+
+dependencies {
+    compileOnly('net.minecraftforge:forge:1.12.2-14.23.5.2864:universal') {
+        transitive = false
+    }
+
+    moltenvkNativesX64("org.lwjgl:lwjgl-vulkan:${rootProject.ext.lwjglVersion}") {
+        artifact {
+            classifier = 'natives-macos'
+        }
+        transitive = false
+    }
+    moltenvkNativesArm64("org.lwjgl:lwjgl-vulkan:${rootProject.ext.lwjglVersion}") {
+        artifact {
+            classifier = 'natives-macos-arm64'
+        }
+        transitive = false
+    }
+}
+
+def moltenvkNatives = [
+    configurations.moltenvkNativesX64,
+    configurations.moltenvkNativesArm64
+]
+
+def extractMoltenVK = tasks.register('extractMoltenVK', Sync) {
+    def outputDir = layout.buildDirectory.dir('generated/resources/moltenvk')
+    from({ moltenvkNatives.collect { zipTree(it.singleFile) } }) {
+        include 'macos/**/libMoltenVK.dylib'
+    }
+    includeEmptyDirs = false
+    into outputDir
+    doLast {
+        ['macos/x64', 'macos/arm64'].each { architecture ->
+            def library = outputDir.get().file("${architecture}/org/lwjgl/vulkan/libMoltenVK.dylib").asFile
+            if (!library.isFile()) {
+                throw new GradleException("MoltenVK dylib missing after extraction: ${library}")
+            }
+        }
+    }
+}
+
+sourceSets.main.resources.srcDir(extractMoltenVK)
+
+tasks.named('assemble') {
+    dependsOn 'distJar'
+}
+
+tasks.register('distJar', Jar) {
+    archiveBaseName = 'actinium-moltenvk'
+    archiveVersion = moltenvkVersion
+    from(sourceSets.main.output)
+    manifest {
+        attributes 'FMLCorePlugin': 'com.gtnewhorizons.angelica.moltenvk.loading.MoltenVKCorePlugin'
+    }
+}
