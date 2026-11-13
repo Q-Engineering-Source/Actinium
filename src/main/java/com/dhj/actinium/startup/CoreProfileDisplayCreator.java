@@ -44,7 +44,7 @@ public final class CoreProfileDisplayCreator {
         Throwable creationFailure = null;
         try {
             createWithFallback(format, lwjglDebug);
-        } catch (LWJGLException | RuntimeException | Error failure) {
+        } catch (Throwable failure) {
             creationFailure = failure;
             throw failure;
         } finally {

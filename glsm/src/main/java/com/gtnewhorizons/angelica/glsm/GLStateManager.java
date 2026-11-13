@@ -1835,7 +1835,7 @@ public class GLStateManager {
         try {
             handled = RENDER_BACKEND.handleMakeCurrent(drawable);
             if (!handled) drawable.makeCurrent();
-        } catch (LWJGLException | RuntimeException | Error failure) {
+        } catch (Throwable failure) {
             if (changed) bindThreadContext(previous);
             throw failure;
         }
