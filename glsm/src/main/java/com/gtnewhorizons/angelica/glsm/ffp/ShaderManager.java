@@ -318,9 +318,17 @@ public final class ShaderManager {
         invalidateProgram();
     }
 
+    /**
+     * Advances the frame clocks the FFP layer keeps. Run once per rendered frame, after its draws.
+     */
+    public static void endFrame() {
+        FfpExtendedAttribs.endFrame();
+    }
+
     public void destroy() {
         cache.destroy();
         uniforms.destroy();
+        FfpExtendedAttribs.reset();
         final GLSMInitConfig config = GLStateManager.getInitConfig();
         if (config != null && config.getStreamingDrawerDestroy() != null) config.getStreamingDrawerDestroy().run();
         QuadConverter.destroy();

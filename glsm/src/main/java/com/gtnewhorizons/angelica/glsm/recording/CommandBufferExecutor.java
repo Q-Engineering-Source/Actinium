@@ -30,6 +30,7 @@ import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
 import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
 import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 import com.gtnewhorizons.angelica.glsm.GLSMVertexInput;
+import com.gtnewhorizons.angelica.glsm.ffp.FfpExtendedAttribs;
 
 /**
  * Executes commands from a CommandBuffer
@@ -53,6 +54,19 @@ public final class CommandBufferExecutor {
      * @param compiledDisplayList the list being replayed, used to validate recorded vertex array names
      */
     public static void execute(ByteBuffer buffer, Object[] complexObjects, DisplayListVBO ownedVbos, CompiledDisplayList compiledDisplayList) {
+        FfpExtendedAttribs.beginInternalDraw();
+        try {
+            replay(buffer, complexObjects, ownedVbos, compiledDisplayList);
+        } finally {
+            FfpExtendedAttribs.endInternalDraw();
+        }
+    }
+
+    /**
+     * Replays the recorded commands. The recorded attribute layout describes GLSM's own batches rather than the
+     * caller's live vertex arrays, so the replay runs with the extended-attribute rebuild disabled.
+     */
+    private static void replay(ByteBuffer buffer, Object[] complexObjects, DisplayListVBO ownedVbos, CompiledDisplayList compiledDisplayList) {
         long ptr = memAddress(buffer);
         final long end = ptr + buffer.limit();
 

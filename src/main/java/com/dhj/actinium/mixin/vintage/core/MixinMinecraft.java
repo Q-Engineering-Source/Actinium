@@ -9,6 +9,7 @@ import com.dhj.actinium.render.frame.FramePacer;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.startup.SdlFrameLifecycle;
 import com.gtnewhorizons.angelica.glsm.GLSMTextureLifetime;
+import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
@@ -68,6 +69,7 @@ public class MixinMinecraft {
     )
     private void endStreamingFrame(CallbackInfo ci) {
         GLSMTextureLifetime.onFrameEnd();
+        ShaderManager.endFrame();
         if (supportsCpuRenderAhead() && ActiniumRuntime.options().advanced.cpuRenderAheadLimit > 0) {
             celeritas$renderAheadManager.endFrame();
         }

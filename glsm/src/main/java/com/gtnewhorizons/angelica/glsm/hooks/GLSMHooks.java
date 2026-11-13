@@ -19,12 +19,16 @@ public final class GLSMHooks {
     public static DeferredBlendHandler blendHandler;
     public static DeferredAlphaHandler alphaHandler;
     public static DeferredDepthColorHandler depthColorHandler;
+    /** Host builder for the {@code mc_midTexCoord}/{@code at_tangent} attributes the FFP draw path rebuilds. */
+    public static ImmediateExtendedAttribHandler immediateExtendedHandler;
     /** Optional host-owned observer for diagnostics at the native draw boundary. */
     public static DrawCallObserver drawCallObserver;
     public static ShaderWorkSubmitter shaderWorkSubmitter;
     public static ShaderTransformPostProcessor postTransformProcessor;
     /** Host program that widens lines for shader-pack draws, used instead of the FFP line-quad path. */
     public static LineDrawHandler lineDrawHandler;
+    /** Host callback run after a shader pack reload, when caches derived from the previous pack's programs are stale. */
+    public static Runnable shaderPackReloaded;
     public static PerFrameUniformBlock perFrameUniformBlock;
     public static PerFrameUniformBlock perPassUniformBlock;
     /** Waits for asynchronously prepared uniform-block layouts before a backend compiles a dependent shader. */
@@ -65,6 +69,14 @@ public final class GLSMHooks {
     /** Whether hook consumers may act on events, i.e. snapshots and event posts must run. */
     public static boolean hasActiveConsumers() {
         return ALWAYS_ACTIVE || consumersActive;
+    }
+
+    /** Dispatches the shader pack reload notification to the host when one has been registered. */
+    public static void notifyShaderPackReloaded() {
+        final Runnable callback = shaderPackReloaded;
+        if (callback != null) {
+            callback.run();
+        }
     }
 
     public static final EventBus<TextureBindEvent> TEXTURE_BIND = EventBus.create(TextureBindEvent.class);

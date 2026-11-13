@@ -104,6 +104,9 @@ public final class IrisGLSMBridge {
         IrisGlDebug.logDebugInfo("glsm-bridge register defaultTexUnit={} lightmapTexUnit={}", OpenGlHelper.defaultTexUnit, OpenGlHelper.lightmapTexUnit);
 
         IrisSamplers.initRenderer();
+        GLSMHooks.immediateExtendedHandler = new ImmediateExtendedAttribs();
+        GLSMHooks.shaderPackReloaded = ImmediateExtendedAttribs::onShaderPackChanged;
+        GLSMHooks.PROGRAM_DELETE.addListener(event -> ImmediateExtendedAttribs.onProgramDeleted(event.program));
 
         GLSMHooks.blendHandler = new DeferredBlendHandler() {
             @Override
@@ -312,7 +315,10 @@ public final class IrisGLSMBridge {
         });
 
         GLSMHooks.PROGRAM_CHANGE.addListener(event -> {
-            if (Iris.enabled && !event.postBind) {
+            if (!Iris.enabled) return;
+            if (event.postBind) {
+                ImmediateExtendedAttribs.onProgramBound(event.newProgram);
+            } else {
                 ProgramUniforms.clearActiveUniforms();
             }
         });

@@ -10,8 +10,12 @@ import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL21;
+import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL31;
 import org.lwjgl.opengl.GL43;
+import org.lwjgl.opengl.GL44;
+
+import com.gtnewhorizons.angelica.glsm.ffp.FfpExtendedAttribs;
 
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.copyOf;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
@@ -27,6 +31,7 @@ public final class GLSMBuffers {
     public static void glDeleteBuffers(int buffer) {
         rejectExitCapture();
         if (buffer == 0) return;
+        FfpExtendedAttribs.onDeleteBuffer(ctx(), buffer);
         invalidateDeletedBuffer(buffer);
         RENDER_BACKEND.deleteBuffers(buffer);
     }
@@ -34,7 +39,10 @@ public final class GLSMBuffers {
     public static void glDeleteBuffers(IntBuffer buffers) {
         rejectExitCapture();
         for (int i = buffers.position(); i < buffers.limit(); i++) {
-            invalidateDeletedBuffer(buffers.get(i));
+            final int buffer = buffers.get(i);
+            if (buffer == 0) continue;
+            FfpExtendedAttribs.onDeleteBuffer(ctx(), buffer);
+            invalidateDeletedBuffer(buffer);
         }
         RENDER_BACKEND.deleteBuffers(buffers);
     }
@@ -254,9 +262,56 @@ public final class GLSMBuffers {
 
     private static void onNamedBufferRespec(int buffer) {
         rejectExitCapture();
+        if (!FfpExtendedAttribs.isEmpty()) {
+            FfpExtendedAttribs.onBufferRespecified(ctx(), buffer);
+        }
+    }
+
+    /** A map that can write changes the contents without a respecification call, so derived data goes stale. */
+    private static void onBufferMap(int target, int access) {
+        if (access == GL15.GL_READ_ONLY) return;
+        onBufferWriteMap(target);
+    }
+
+    private static void onBufferMapRange(int target, int access) {
+        if ((access & GL30.GL_MAP_WRITE_BIT) == 0) return;
+        if ((access & GL44.GL_MAP_PERSISTENT_BIT) != 0) {
+            markPersistentlyMapped(target);
+            return;
+        }
+        onBufferWriteMap(target);
+    }
+
+    private static void onBufferWriteMap(int target) {
+        final GLContextState glCtx = ctx();
+        final int buffer = bufferForTarget(glCtx, target);
+        if (buffer == 0) return;
+        glCtx.writeMappedBuffers.add(buffer);
+        if (!FfpExtendedAttribs.isEmpty()) FfpExtendedAttribs.onBufferRespecified(glCtx, buffer);
+    }
+
+    private static void onBufferUnmap(int target) {
+        final GLContextState glCtx = ctx();
+        final int buffer = bufferForTarget(glCtx, target);
+        if (buffer == 0) return;
+        if (glCtx.writeMappedBuffers.remove(buffer) && !FfpExtendedAttribs.isEmpty()) {
+            FfpExtendedAttribs.onBufferRespecified(glCtx, buffer);
+        }
+    }
+
+    /** Immutable storage handed to a persistent map is rewritten without any further buffer call. */
+    private static void markPersistentlyMapped(int target) {
+        final GLContextState glCtx = ctx();
+        final int buffer = bufferForTarget(glCtx, target);
+        if (buffer != 0) FfpExtendedAttribs.markPersistent(glCtx, buffer);
     }
 
     private static void onBufferStorage(int target, int flags) {
+        rejectExitCapture();
+        if ((flags & GL44.GL_MAP_PERSISTENT_BIT) != 0) {
+            if (!RENDER_BACKEND.isBufferImmutable(bufferForTarget(ctx(), target))) markPersistentlyMapped(target);
+            return;
+        }
         onBufferRespec(target);
     }
 
@@ -268,6 +323,7 @@ public final class GLSMBuffers {
 
     public static ByteBuffer glMapBuffer(int target, int access) {
         rejectExitCapture();
+        onBufferMap(target, access);
         return RENDER_BACKEND.mapBuffer(target, access);
     }
 
@@ -275,11 +331,13 @@ public final class GLSMBuffers {
 
     public static ByteBuffer glMapBuffer(int target, int access, long length, ByteBuffer old_buffer) {
         rejectExitCapture();
+        onBufferMap(target, access);
         return RENDER_BACKEND.mapBuffer(target, access, length, old_buffer);
     }
 
     public static ByteBuffer glMapBufferRange(int target, long offset, long length, int access) {
         rejectExitCapture();
+        onBufferMapRange(target, access);
         return RENDER_BACKEND.mapBufferRange(target, offset, length, access);
     }
 
@@ -287,6 +345,7 @@ public final class GLSMBuffers {
 
     public static long glMapBufferRangeAddress(int target, long offset, long length, int access) {
         rejectExitCapture();
+        onBufferMapRange(target, access);
         return RENDER_BACKEND.mapBufferRangeAddress(target, offset, length, access);
     }
 
@@ -294,6 +353,7 @@ public final class GLSMBuffers {
 
     public static boolean glUnmapBuffer(int target) {
         rejectExitCapture();
+        onBufferUnmap(target);
         return RENDER_BACKEND.unmapBuffer(target);
     }
 
