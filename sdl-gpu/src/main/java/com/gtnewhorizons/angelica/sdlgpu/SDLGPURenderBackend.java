@@ -15,6 +15,7 @@ import com.gtnewhorizons.angelica.glsm.backend.GLDebugMessageListener;
 import com.gtnewhorizons.angelica.glsm.backend.MainThreadPump;
 import com.gtnewhorizons.angelica.glsm.backend.VertexWriteReplaySetup;
 import com.gtnewhorizons.angelica.glsm.backend.VSyncMode;
+import com.gtnewhorizons.angelica.glsm.backend.DebugMessageHandler;
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMConfig;
 import com.gtnewhorizons.angelica.glsm.texture.TextureInfoCache;
@@ -2565,6 +2566,19 @@ public class SDLGPURenderBackend extends RenderBackend {
     }
 
     @Override public boolean supportsDebugOutput() { return debugLabels.isEnabled(); }
+
+    @Override
+    public int setupDebugOutput(DebugMessageHandler handler) {
+        debugMessageCallback((source, type, id, severity, length, message, userParam) ->
+            handler.handleMessage(source, type, id, severity, MemoryUtil.memUTF8(message, length)), 0L);
+        return 3;
+    }
+
+    @Override
+    public int disableDebugOutput() {
+        debugMessageCallback(null, 0L);
+        return 3;
+    }
 
     @Override
     public void debugMessageCallback(GLDebugMessageListener listener, long userParam) {
