@@ -67,4 +67,10 @@ public final class Tracy {
     public static void zoneValue(long value) {}
 
     public static void frameMark() {}
+
+    /** No native plot exists while the profiler backend is disabled. */
+    public static long plotHandle(String name) { return 0L; }
+
+    /** Accepts upstream instrumentation while native profiling is disabled. */
+    public static void plotInt(long plot, long value) {}
 }

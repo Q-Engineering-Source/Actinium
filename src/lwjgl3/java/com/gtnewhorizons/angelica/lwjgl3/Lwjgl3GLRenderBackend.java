@@ -49,6 +49,14 @@ import java.util.Locale;
  * NOTE: This is _not_ redirected by lwjgl3ify at runtime and targets lwjgl3 directly
  */
 public final class Lwjgl3GLRenderBackend extends RenderBackend {
+    @Override
+    public long getInteger64Indexed(int pname, int index) {
+        return GL32C.glGetInteger64i(pname, index);
+    }
+    @Override
+    public boolean isEnabledIndexed(int cap, int index) {
+        return GL30C.glIsEnabledi(cap, index);
+    }
     private GLCapabilities caps;
     private GLDebugMessageCallback debugCallback;
     private GLDebugMessageCallback appDebugCallback;
@@ -119,6 +127,11 @@ public final class Lwjgl3GLRenderBackend extends RenderBackend {
         } catch (IllegalStateException e) {
             return false;
         }
+    }
+
+    @Override
+    public boolean isCurrent() {
+        return hasContext();
     }
 
     @Override

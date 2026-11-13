@@ -7,6 +7,7 @@ import com.dhj.actinium.render.BufferBuilderStreamingDrawer;
 import com.dhj.actinium.render.EndPortalCompositeRenderer;
 import com.dhj.actinium.render.frame.FramePacer;
 import com.dhj.actinium.runtime.ActiniumRuntime;
+import com.dhj.actinium.startup.SdlFrameLifecycle;
 import com.gtnewhorizons.angelica.glsm.GLSMTextureLifetime;
 import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
@@ -48,6 +49,7 @@ public class MixinMinecraft {
 
     @Inject(method = "runGameLoop", at = @At("HEAD"))
     private void beginRenderFrame(CallbackInfo ci) {
+        SdlFrameLifecycle.beginFrame();
         GlFlightRecording.beginFrame();
         EndPortalCompositeRenderer.beginFrame();
         final int limit = supportsCpuRenderAhead() ? ActiniumRuntime.options().advanced.cpuRenderAheadLimit : 0;
@@ -77,6 +79,16 @@ public class MixinMinecraft {
         GlFlightRecording.endStreamingSync(GlFlightStreamingSource.BUFFER_BUILDER);
         FramePacer.beforePresent();
         GlFlightRecording.beginSwap();
+    }
+
+    @Inject(method = "updateDisplay", at = @At("HEAD"))
+    private void actinium$endBackendFrame(CallbackInfo ci) {
+        SdlFrameLifecycle.endFrame();
+    }
+
+    @Inject(method = "updateDisplay", at = @At("RETURN"))
+    private void actinium$beginBackendFrame(CallbackInfo ci) {
+        SdlFrameLifecycle.beginFrame();
     }
 
     @Inject(

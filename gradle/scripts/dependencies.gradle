@@ -23,7 +23,7 @@ repositories {
 }
 
 dependencies {
-    def lwjglVersion = '3.4.1'
+    def lwjglVersion = rootProject.ext.lwjglVersion
     def lombokVersion = '1.18.46'
     def asmVersion = '9.9.1'
 
@@ -31,7 +31,7 @@ dependencies {
     compileOnly 'org.jetbrains:annotations:24.1.0'
     compileOnly "org.projectlombok:lombok:${lombokVersion}"
     annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
-    compileOnly 'org.apache.logging.log4j:log4j-api:2.0-beta9'
+    compileOnly 'org.apache.logging.log4j:log4j-api:2.24.3'
 
     implementation 'org.joml:joml:1.10.5'
     contain 'org.joml:joml:1.10.5'
@@ -44,13 +44,26 @@ dependencies {
     compileOnly "org.ow2.asm:asm-tree:${asmVersion}"
     compileOnly "org.ow2.asm:asm-util:${asmVersion}"
     implementation 'com.google.code.gson:gson:2.10.1'
-    implementation 'org.anarres:jcpp:1.4.14'
-    contain 'org.anarres:jcpp:1.4.14'
+    // These parser classes are used while FML is still showing the splash screen. They must be
+    // expanded into the mod body because ContainedDeps/NonModDeps are injected after that phase.
+    shadowBundle 'org.anarres:jcpp:1.4.14'
+
+    shadowBundle('org.taumc:glsl-transformation-lib:0.2.0-32.g7dd88a4-GTNH') {
+        transitive = false
+    }
+    shadowBundle 'org.antlr:antlr4-runtime:4.13.2'
 
     modCompileOnly 'maven.modrinth:fluidlogged-api:3.0.6'
 
     compileOnly "org.lwjgl:lwjgl:${lwjglVersion}"
+    compileOnly "org.lwjgl:lwjgl-glfw:${lwjglVersion}"
     compileOnly "org.lwjgl:lwjgl-opengl:${lwjglVersion}"
+
+    // Outlands/FCL supplies the platform native libraries. Actinium only embeds the Java bindings so the
+    // backend can load on hosts that provide the matching LWJGL native toolchain.
+    ['lwjgl-shaderc', 'lwjgl-spvc'].each { module ->
+        shadowBundle("org.lwjgl:${module}:${lwjglVersion}") { transitive = false }
+    }
     if (propertyBool('enable_lwjglx')) {
         compileOnly 'com.cleanroommc:lwjglx:1.0.0'
     }

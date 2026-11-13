@@ -27,6 +27,8 @@ public final class GLSMHooks {
     public static LineDrawHandler lineDrawHandler;
     public static PerFrameUniformBlock perFrameUniformBlock;
     public static PerFrameUniformBlock perPassUniformBlock;
+    /** Waits for asynchronously prepared uniform-block layouts before a backend compiles a dependent shader. */
+    public static Runnable uniformBlockBarrier;
 
     /**
      * Optional host callback notified after each executed {@code GL_TEXTURE_2D} bind request,

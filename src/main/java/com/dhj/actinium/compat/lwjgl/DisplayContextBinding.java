@@ -1,5 +1,6 @@
 package com.dhj.actinium.compat.lwjgl;
 
+import com.dhj.actinium.startup.SdlGpuBootstrap;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
 import com.gtnewhorizons.angelica.glsm.context.NativeContextHandle;
@@ -12,6 +13,7 @@ public final class DisplayContextBinding {
     }
 
     public static void bindDisplayContextIfNativeCurrent(DrawableGL drawable) {
+        if (SdlGpuBootstrap.isActive()) return;
         final Object contextToken = drawable == null ? null : drawable.getContext();
         final long contextHandle = contextToken == null
             ? 0L
@@ -29,10 +31,12 @@ public final class DisplayContextBinding {
     }
 
     public static ContextGL captureDisplayContextBeforeDestroy(DrawableGL drawable, boolean displayCreated) {
+        if (SdlGpuBootstrap.isActive()) return null;
         return displayCreated && drawable != null ? drawable.getContext() : null;
     }
 
     public static void bindIfNativeCurrent(Object contextToken, long contextHandle) {
+        if (SdlGpuBootstrap.isActive()) return;
         final long nativeCurrent = WindowBackends.get().currentContextHandle();
         if (nativeCurrent == 0L) {
             GLStateManager.releaseBoundContext();
@@ -46,6 +50,7 @@ public final class DisplayContextBinding {
     }
 
     public static void releaseIfNativeUnbound() {
+        if (SdlGpuBootstrap.isActive()) return;
         final long nativeCurrent = WindowBackends.get().currentContextHandle();
         if (nativeCurrent != 0L) {
             assertCurrentBindingMatches(nativeCurrent);
@@ -55,6 +60,7 @@ public final class DisplayContextBinding {
     }
 
     public static void registerSharedContext(Object contextToken, long nativeHandle, Object sharedWithToken) {
+        if (SdlGpuBootstrap.isActive() && nativeHandle == 0L) return;
         GLStateManager.registerDrawableContext(contextToken);
     }
 

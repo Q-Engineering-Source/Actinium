@@ -12,7 +12,7 @@ for the full license text or legal advice.
 
 | Component | Repository | Local paths | Upstream license | Actinium import record |
 | --- | --- | --- | --- | --- |
-| Angelica / GLSM | https://github.com/GTNewHorizons/Angelica | `glsm/`, portions of `src/main/java/com/gtnewhorizons/angelica/`, Angelica resources | LGPL-3.0, with additional file-level notices | GLSM introduced in `119f607`; expanded with GTNHLib in `83ea1b7` |
+| Angelica / GLSM | https://github.com/GTNewHorizons/Angelica | `glsm/`, `sdl-gpu/`, portions of `src/main/java/com/gtnewhorizons/angelica/`, Angelica resources | LGPL-3.0, with additional file-level notices | GLSM introduced in `119f607`; expanded with GTNHLib in `83ea1b7`; SDL-GPU synchronized from `8e099e952921a53ea5db88414e1071135f716ed4` |
 | GTNHLib | https://github.com/GTNewHorizons/GTNHLib | `GTNHLib/` | LGPL-3.0, plus file-level notices | `83ea1b7` |
 | Iris | https://github.com/IrisShaders/Iris | `shader/src/main/java/net/coderbot/iris/`, Iris API/resources, Iris-oriented mixins | LGPL-3.0 | full pipeline import in `79306ba`; resource mappings below |
 | Celeritas renderer | historical Celeritas/Embeddium/Sodium-derived code | `celeritas-common/` | mixed upstream provenance; preserve file-level notices and consult source history | present in standalone extraction `6167e49`, split to its current tree in `2835afe` |
@@ -75,6 +75,8 @@ See `gradle/scripts/dependencies.gradle` and `build.gradle` for the authoritativ
   task and are not included in the distributed mod jar. The `mesa-dist-win` packaging source
   MIT notice from commit `53ce894` is retained at
   `third-party/licenses/mesa-dist-win-MIT.txt`.
+
+SDL-GPU 使用 LWJGL 3.4.3 的 shaderc、SPIRV-Cross Java 绑定及 Windows、Linux、macOS 的 x64/arm64 native 包。macOS 同时包含 LWJGL Vulkan native 包中的 MoltenVK。Java 绑定嵌入 Actinium 主 jar，平台 native 保留原始 jar 与许可文件，通过现有 `ContainedDeps` 声明加载。
 
 ## Maintenance rule
 

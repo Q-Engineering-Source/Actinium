@@ -12,6 +12,8 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import lombok.Getter;
 import net.coderbot.iris.Iris;
+import net.coderbot.iris.pipeline.transform.RwImageStoreExtractor;
+import net.coderbot.iris.pipeline.transform.SamplerToStorageImageRewriter;
 import net.coderbot.iris.features.FeatureFlags;
 import net.coderbot.iris.gl.buffer.ShaderStorageInfo;
 import net.coderbot.iris.gl.image.ImageInformation;
@@ -382,6 +384,8 @@ public class ShaderPack {
 
         this.customUniforms = shaderProperties.getCustomUniforms();
 		this.customImages = shaderProperties.getCustomImages();
+		SamplerToStorageImageRewriter.setActiveCandidates(SamplerToStorageImageRewriter.buildCandidates(this.customImages.values()));
+		RwImageStoreExtractor.setActiveCustomImages(this.customImages);
 		this.bufferObjects = shaderProperties.getBufferObjects();
 
 		this.idMap = await(idMapFuture);

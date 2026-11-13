@@ -1,6 +1,6 @@
 package com.dhj.actinium.debug;
 
-import net.minecraftforge.common.ForgeEarlyConfig;
+import com.dhj.actinium.compat.ForgeEarlyConfigCompat;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -78,49 +78,39 @@ class CoreProfileContextAttributesTest {
 
     @Test
     void appliesForgeEarlyCoreProfileForLwjglxx() {
-        int originalMajor = ForgeEarlyConfig.OPENGL_VERSION_MAJOR;
-        int originalMinor = ForgeEarlyConfig.OPENGL_VERSION_MINOR;
-        boolean originalCompatProfile = ForgeEarlyConfig.OPENGL_COMPAT_PROFILE;
-        boolean originalDebugContext = ForgeEarlyConfig.OPENGL_DEBUG_CONTEXT;
+        ForgeEarlyConfigCompat.Snapshot original = ForgeEarlyConfigCompat.snapshot();
 
         try {
             CoreProfileContextAttributes.applyForgeEarlyCoreProfile(4, 1, true);
 
-            assertEquals(4, ForgeEarlyConfig.OPENGL_VERSION_MAJOR);
-            assertEquals(1, ForgeEarlyConfig.OPENGL_VERSION_MINOR);
-            assertFalse(ForgeEarlyConfig.OPENGL_COMPAT_PROFILE);
-            assertTrue(ForgeEarlyConfig.OPENGL_DEBUG_CONTEXT);
+            ForgeEarlyConfigCompat.Snapshot configured = ForgeEarlyConfigCompat.snapshot();
+            assertEquals(4, configured.major());
+            assertEquals(1, configured.minor());
+            assertFalse(configured.compatibilityProfile());
+            assertTrue(configured.debugContext());
         } finally {
-            ForgeEarlyConfig.OPENGL_VERSION_MAJOR = originalMajor;
-            ForgeEarlyConfig.OPENGL_VERSION_MINOR = originalMinor;
-            ForgeEarlyConfig.OPENGL_COMPAT_PROFILE = originalCompatProfile;
-            ForgeEarlyConfig.OPENGL_DEBUG_CONTEXT = originalDebugContext;
+            ForgeEarlyConfigCompat.restore(original);
         }
     }
 
     @Test
     void restoresCompatProfileForLwjglxxAfterCoreContextCreation() {
-        int originalMajor = ForgeEarlyConfig.OPENGL_VERSION_MAJOR;
-        int originalMinor = ForgeEarlyConfig.OPENGL_VERSION_MINOR;
-        boolean originalCompatProfile = ForgeEarlyConfig.OPENGL_COMPAT_PROFILE;
-        boolean originalDebugContext = ForgeEarlyConfig.OPENGL_DEBUG_CONTEXT;
+        ForgeEarlyConfigCompat.Snapshot original = ForgeEarlyConfigCompat.snapshot();
 
         try {
             CoreProfileContextAttributes.applyForgeEarlyCoreProfile(4, 6, true);
-            assertFalse(ForgeEarlyConfig.OPENGL_COMPAT_PROFILE);
+            assertFalse(ForgeEarlyConfigCompat.snapshot().compatibilityProfile());
 
             CoreProfileContextAttributes.restoreForgeEarlyCompatProfile(4, 6, false);
 
-            assertEquals(4, ForgeEarlyConfig.OPENGL_VERSION_MAJOR);
-            assertEquals(6, ForgeEarlyConfig.OPENGL_VERSION_MINOR);
-            assertTrue(ForgeEarlyConfig.OPENGL_COMPAT_PROFILE,
+            ForgeEarlyConfigCompat.Snapshot restored = ForgeEarlyConfigCompat.snapshot();
+            assertEquals(4, restored.major());
+            assertEquals(6, restored.minor());
+            assertTrue(restored.compatibilityProfile(),
                 "The compatibility profile must be restored so Cleanroom can start without Actinium");
-            assertFalse(ForgeEarlyConfig.OPENGL_DEBUG_CONTEXT);
+            assertFalse(restored.debugContext());
         } finally {
-            ForgeEarlyConfig.OPENGL_VERSION_MAJOR = originalMajor;
-            ForgeEarlyConfig.OPENGL_VERSION_MINOR = originalMinor;
-            ForgeEarlyConfig.OPENGL_COMPAT_PROFILE = originalCompatProfile;
-            ForgeEarlyConfig.OPENGL_DEBUG_CONTEXT = originalDebugContext;
+            ForgeEarlyConfigCompat.restore(original);
         }
     }
 

@@ -10,7 +10,6 @@ import org.lwjgl.system.MemoryStack;
 import java.util.List;
 
 import static org.lwjgl.sdl.SDLError.SDL_GetError;
-import static org.lwjgl.sdl.SDLEvents.SDL_PumpEvents;
 import static org.lwjgl.sdl.SDLVideo.SDL_GL_GetCurrentContext;
 import static org.lwjgl.sdl.SDLVideo.SDL_GL_SetSwapInterval;
 import static org.lwjgl.sdl.SDLVideo.SDL_GetClosestFullscreenDisplayMode;
@@ -56,6 +55,9 @@ public final class SdlWindowBackend implements WindowBackend {
         if (window == 0L) {
             throw new IllegalStateException("Cannot change fullscreen state without an SDL window");
         }
+        if (BackendManager.RENDER_BACKEND.isSDLGPU()) {
+            BackendManager.RENDER_BACKEND.onPreSwapchainInvalidatingChange(null);
+        }
 
         if (fullscreen) {
             enterExclusiveFullscreen(window);
@@ -64,6 +66,11 @@ public final class SdlWindowBackend implements WindowBackend {
             requireSdl(SDL_SyncWindow(window), "SDL_SyncWindow");
             Display.setBorderless(false);
         }
+    }
+
+    @Override
+    public boolean supportsExclusiveFullscreen() {
+        return false;
     }
 
     private static void enterExclusiveFullscreen(long window) {
@@ -117,6 +124,6 @@ public final class SdlWindowBackend implements WindowBackend {
 
     @Override
     public void pumpMessages() {
-        SDL_PumpEvents();
+        Display.processMessages();
     }
 }

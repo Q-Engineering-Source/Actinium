@@ -24,6 +24,7 @@ import dhj.embeddedt.embeddium.impl.render.culling.GpuCulling;
 import dhj.embeddedt.embeddium.impl.render.culling.GpuCullingMode;
 import com.dhj.actinium.render.terrain.GpuCullingSettings;
 import com.dhj.actinium.runtime.ActiniumRuntime;
+import com.dhj.actinium.startup.SdlGpuBootstrap;
 import dhj.embeddedt.embeddium.api.options.structure.OptionFlag;
 import dhj.embeddedt.embeddium.api.options.structure.OptionGroup;
 import dhj.embeddedt.embeddium.api.options.structure.OptionImpact;
@@ -456,6 +457,52 @@ public class ActiniumGameOptionPages {
 
     public static OptionPage advanced() {
         List<OptionGroup> groups = new ArrayList<>();
+
+        groups.add(OptionGroup.createBuilder()
+                .setId(OptionIdentifier.create("actinium", "render_backend"))
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create("actinium", "sdl_gpu", boolean.class))
+                        .setName(TextComponent.translatable("options.actinium.sdl_gpu"))
+                        .setTooltip(TextComponent.translatable("options.actinium.sdl_gpu.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setBinding((opts, value) -> opts.advanced.renderBackendSdlGpu = value,
+                                opts -> opts.advanced.renderBackendSdlGpu)
+                        .setEnabledPredicate(SdlGpuBootstrap::isSupported)
+                        .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
+                        .setDefaultValue(false)
+                        .build())
+                .add(OptionImpl.createBuilder(SodiumGameOptions.SdlGpuDriver.class, sodiumOpts)
+                        .setId(OptionIdentifier.create("actinium", "sdl_driver", SodiumGameOptions.SdlGpuDriver.class))
+                        .setName(TextComponent.translatable("options.actinium.sdl_driver"))
+                        .setTooltip(TextComponent.translatable("options.actinium.sdl_driver.tooltip"))
+                        .setControl(opt -> new CyclingControl<>(opt, SodiumGameOptions.SdlGpuDriver.class))
+                        .setBinding((opts, value) -> opts.advanced.renderBackendDriver = value.id(),
+                                opts -> SodiumGameOptions.SdlGpuDriver.fromId(opts.advanced.renderBackendDriver))
+                        .setEnabledPredicate(SdlGpuBootstrap::isSupported)
+                        .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
+                        .setDefaultValue(SodiumGameOptions.SdlGpuDriver.AUTO)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create("actinium", "sdl_frames_in_flight", int.class))
+                        .setName(TextComponent.translatable("options.actinium.sdl_frames_in_flight"))
+                        .setTooltip(TextComponent.translatable("options.actinium.sdl_frames_in_flight.tooltip"))
+                        .setControl(opt -> new SliderControl(opt, 1, 3, 1, ControlValueFormatter.number()))
+                        .setBinding((opts, value) -> opts.advanced.sdlGpuFramesInFlight = value,
+                                opts -> opts.advanced.sdlGpuFramesInFlight)
+                        .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
+                        .setDefaultValue(2)
+                        .build())
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create("actinium", "sdl_presenter_thread", boolean.class))
+                        .setName(TextComponent.translatable("options.actinium.sdl_presenter_thread"))
+                        .setTooltip(TextComponent.translatable("options.actinium.sdl_presenter_thread.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setBinding((opts, value) -> opts.advanced.sdlGpuPresenterThread = value,
+                                opts -> opts.advanced.sdlGpuPresenterThread)
+                        .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
+                        .setDefaultValue(true)
+                        .build())
+                .build());
 
         groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.CPU_SAVING)

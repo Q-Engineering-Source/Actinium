@@ -51,6 +51,7 @@ import com.dhj.actinium.render.terrain.compile.task.ChunkBuilderMeshingTask;
 import com.dhj.actinium.render.terrain.deferred.DeferredMeshScheduler;
 import com.dhj.actinium.render.terrain.fog.GLStateManagerFogService;
 import com.dhj.actinium.render.terrain.sprite.SpriteUtil;
+import com.dhj.actinium.render.terrain.voxelization.ShadowVoxelizer;
 
 import java.util.List;
 import java.util.Objects;
@@ -324,6 +325,7 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         private boolean usingActiniumProgram;
         private final GpuTerrainCuller culler = createCuller();
         private final ReusableCachedBatch gpuBatch = new ReusableCachedBatch();
+        private final ShadowVoxelizer shadowVoxelizer = ShadowVoxelizer.create();
 
         public ChunkRenderer(RenderDevice device, RenderPassConfiguration<?> renderPassConfiguration) {
             super(device, renderPassConfiguration, GLStateManagerFogService.INSTANCE);
@@ -368,6 +370,9 @@ public class VintageRenderSectionManager extends RenderSectionManager {
             }
 
             try {
+                this.shadowVoxelizer.voxelize(matrices, renderLists, renderPass,
+                    renderPass.vertexType().getVertexFormat(),
+                    occlusionCamera, camera, this.useBlockFaceCulling());
                 super.render(matrices, commandList, renderLists, renderPass, occlusionCamera, camera);
             } finally {
                 if (this.culler != null) {
@@ -394,6 +399,7 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         @Override
         public void delete(CommandList commandList) {
             super.delete(commandList);
+            this.shadowVoxelizer.delete();
 
             if (this.culler != null) {
                 this.culler.delete();

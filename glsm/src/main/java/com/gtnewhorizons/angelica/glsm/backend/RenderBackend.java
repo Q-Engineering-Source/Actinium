@@ -25,13 +25,31 @@ import java.util.function.Predicate;
  */
 public abstract class RenderBackend {
 
+    /** Maximum queued frames shared by presentation and transient resource pools. */
+    public static final int MAX_FRAMES_IN_FLIGHT = 3;
+
+    /** Attaches backend resources after the window exists, before render context initialization. */
+    public void onPostWindowCreate(long window) {}
+
     public abstract void init();
     public abstract void shutdown();
     public abstract boolean isAvailable();
     public abstract String getName();
 
-    /** Returns true if the current thread has a valid render context. Safe to call from any thread. */
+    /** Returns whether this backend has rendering resources available. Safe to call from any thread. */
     public abstract boolean hasContext();
+
+    /** Returns whether the calling thread may issue commands to this backend. */
+    public boolean hasContextOnThread() { return hasContext(); }
+
+    /** Returns whether the calling thread owns the current rendering context. */
+    public abstract boolean isCurrent();
+
+    /** Returns whether draws must use indirect submission on this backend. */
+    public boolean isIndirectRequired() { return false; }
+
+    /** Identifies the SDL-GPU implementation for backend-specific rendering paths. */
+    public boolean isSDLGPU() { return false; }
 
     /** Higher priority backends are preferred. */
     public int getPriority() { return 0; }
@@ -303,6 +321,14 @@ public abstract class RenderBackend {
         WindowBackends.get().pumpMessages();
     }
 
+    private boolean presentSuppressed;
+
+    /** Prevents presentation while intermediate passes still need the current frame. */
+    public final void setPresentSuppressed(boolean suppressed) { presentSuppressed = suppressed; }
+
+    /** Returns whether the current frame must remain available for further rendering. */
+    public final boolean isPresentSuppressed() { return presentSuppressed; }
+
     /**
      * Called by the frame loop before the first GL work of a frame. Consumes the splash state
      * seed: after the splash screen finishes, the game loop inherits a context whose driver
@@ -315,10 +341,62 @@ public abstract class RenderBackend {
     }
     public void onFrameEnd() {}
 
+    /** Discards a backend mirror when cached GLSM state will be replayed. */
+    public void invalidateStateMirror() {}
+
+    /** Invalidates pacing samples before the window system recreates the swapchain. */
+    public void onPreSwapchainInvalidatingChange(Object change) { bumpDisplayGeneration(); }
+
+    /** Returns whether this backend acquired a logical context without the drawable's native GL call. */
+    public boolean handleMakeCurrent(Object drawable) { return false; }
+
+    /** Returns whether this backend released a logical context without the drawable's native GL call. */
+    public boolean handleReleaseContext(Object drawable) { return false; }
+
+    /** Returns whether this backend presented the frame without the window system's native GL swap. */
+    public boolean handleSwapBuffers() { return false; }
+
+    /** Releases command and context resources when a rendering thread relinquishes ownership. */
+    public void onRenderThreadReleased(Thread thread) {}
+
+    /** Presents from a worker and routes event processing through the backend's window thread. */
+    public void updateDisplayFromWorkerThread(boolean processMessages) {
+        GLStateManager.swapBuffers();
+        if (processMessages) pumpDisplayMessages();
+    }
+
+    /** Returns backend transfer statistics for the debug overlay, or null when unavailable. */
+    public String getTransferDebugInfo() { return null; }
+
+    /** Returns a native voxelization pass handle, or zero to keep using individual compute dispatches. */
+    public long beginVoxelizationBatch(int ssboBinding) { return 0L; }
+
+    /** Emits one region into a pass returned by {@link #beginVoxelizationBatch(int)}. */
+    public void voxelizeRegion(long pass, boolean rebindVertexBuffer, float x, float y, float z,
+                              int rangeBase, int rangeCount, int vertexTotal) {}
+
+    /** Submits a native voxelization pass; OpenGL uses the individual dispatch path. */
+    public void endVoxelizationBatch(long pass) {}
+
+    /** Installs compute replay metadata where the native backend cannot execute vertex-stage image writes. */
+    public void setVertexWriteReplay(int graphicsProgram, VertexWriteReplaySetup setup) {}
+
+    /** OpenGL supports image atomics directly when the caller's compute path is available. */
+    public boolean supportsComputeImageAtomics() { return true; }
+
+    /** Checks image dimensions on backends whose atomic support depends on the resource size. */
+    public boolean supportsComputeImageAtomics(int width, int height, int depth) {
+        return supportsComputeImageAtomics();
+    }
+
     public abstract void enable(int cap);
     public abstract void enablei(int cap, int index);
     public abstract void disable(int cap);
     public abstract void disablei(int cap, int index);
+    /** Queries the state of one indexed capability such as a draw buffer's blend enable. */
+    public boolean isEnabledIndexed(int cap, int index) {
+        return getIntegerIndexed(cap, index) != 0;
+    }
     public abstract void blendFuncSeparatei(int buf, int srcRGB, int dstRGB, int srcAlpha, int dstAlpha);
     public abstract void blendFunc(int sfactor, int dfactor);
     public abstract void blendFuncSeparate(int srcRGB, int dstRGB, int srcAlpha, int dstAlpha);
@@ -879,6 +957,8 @@ public abstract class RenderBackend {
     public abstract int getInteger(int pname);
     public abstract void getInteger(int pname, IntBuffer params);
     public abstract int getIntegerIndexed(int pname, int index);
+    /** Queries indexed byte offsets and lengths without truncating them to 32 bits. */
+    public long getInteger64Indexed(int pname, int index) { return getIntegerIndexed(pname, index); }
     public abstract float getFloat(int pname);
     public abstract void getFloat(int pname, FloatBuffer params);
     public double getDouble(int pname) { return getFloat(pname); }

@@ -4,8 +4,10 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.system.MemoryUtil;
+import top.outlands.foundation.boot.MainThreadExecutor;
 
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMInitConfig;
+import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormat;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormatElement;
 
@@ -69,6 +71,8 @@ public abstract class GLStateManagerIntegrationFixture {
 
     @BeforeAll
     static void createGlContext() {
+        MainThreadExecutor.init();
+        WindowBackends.useSdl();
         assertTrue(SDL_Init(SDL_INIT_VIDEO), () -> sdlError("SDL_Init"));
         window = SDL_CreateWindow(
             "Actinium GLSM integration", WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);

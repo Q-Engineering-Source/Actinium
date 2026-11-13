@@ -8,7 +8,7 @@ plugins {
     id 'maven-publish'
     id 'com.gradleup.shadow' version '9.5.1'
     id 'org.jetbrains.gradle.plugin.idea-ext' version '1.4.1'
-    id 'xyz.wagyourtail.unimined' version '1.4.36-kappa'
+    id 'top.outlands.unimined' version '1.4.48'
     id 'net.kyori.blossom' version '2.2.0'
 }
 
@@ -27,6 +27,9 @@ setDefaultProperty 'minecraft_username', true, 'Developer'
 setDefaultProperty 'extra_jvm_args', false, ''
 
 def cliProjectProperties = gradle.startParameter.projectProperties
+def outlandsLoaderVersion = cliProjectProperties.containsKey('outlands_loader_version')
+    ? cliProjectProperties['outlands_loader_version']
+    : '2026.11.11'
 
 /**
  * Derives the build version from git: an exact tag on HEAD wins, otherwise the short commit sha.
@@ -94,17 +97,24 @@ configurations {
     // the upstream Celeritas distribution layout. Kept separate from implementation so the plain
     // namespace jars stay on the compile/dev classpath for third-party mods that need them.
     shadowBundle
+    // Early shader parsing runs before loader-owned ContainedDeps are injected. Keep its Java
+    // dependencies in the shadow configuration so the production body and dev shadow image have
+    // the same classes directly available to the launch class loader.
+    implementation.extendsFrom(shadowBundle)
     modCompileOnly
     compileOnly.extendsFrom(modCompileOnly)
     modRuntimeOnly
     runtimeOnly.extendsFrom(modRuntimeOnly)
 }
 
+ext.lwjglVersion = '3.4.3'
+
 def embeddedLibraryProjects = [
     project(':GTNHLib'),
     project(':glsm'),
     project(':celeritas-common'),
-    project(':shader')
+    project(':shader'),
+    project(':sdl-gpu')
 ]
 
 def mergedEmbeddedLibraryClassesDir = layout.buildDirectory.dir('embedded-library-classes/main')
@@ -169,6 +179,9 @@ subprojects {
 }
 
 repositories {
+    mavenLocal {
+        content { includeModule('top.outlands', 'outlands') }
+    }
     mavenCentral()
     maven { url = 'https://maven.cleanroommc.com' }
     maven { url = 'https://cursemaven.com' }
@@ -193,21 +206,20 @@ configurations {
 dependencies {
     compileOnly project(':celeritas-common')
     compileOnly project(':shader')
+    compileOnly project(':sdl-gpu')
     // Declare test dependencies explicitly so IDEA sees the embedded source modules as well.
     // Gradle's merged main output alone is not a test-module dependency in the IDE model.
     testImplementation project(':celeritas-common')
     testImplementation project(':shader')
+    testImplementation project(':sdl-gpu')
 
-    contain('org.taumc:glsl-transformation-lib:0.2.0-32.g7dd88a4-GTNH') {
-        transitive = false
-        exclude module: 'antlr4'
-    }
-    contain 'org.antlr:antlr4-runtime:4.13.2'
 }
 
 def actiniumProjectAccessTransformer = propertyBool('use_access_transformer')
     ? rootProject.projectDir.toPath().resolve("src/main/resources/${propertyString('access_transformer_locations')}").toFile()
     : null
+def accessTransformerLocations = propertyString('access_transformer_locations').trim().split('\\s+').findAll { !it.isBlank() }
+
 
 /**
  * Dev-runtime image of the mod in the same shadow layout as the production jar: merged module
@@ -227,6 +239,9 @@ def devShadowJar = tasks.register('devShadowJar', ShadowJar) {
     configurations.set([project.configurations.shadowBundle])
     from(sourceSets.main.output)
     relocate('org.joml', 'dhj.embeddedt.embeddium.impl.shadow.joml')
+    relocate('org.antlr', 'com.gtnewhorizons.angelica.shadow.org.antlr')
+    relocate('org.taumc.glsl', 'com.gtnewhorizons.angelica.shadow.org.taumc.glsl')
+    relocate('org.anarres.cpp', 'com.gtnewhorizons.angelica.shadow.org.anarres.cpp')
     mergeServiceFiles()
     // Deliberately no manifest inheritance from the jar task: that manifest carries the
     // FMLCorePlugin / FMLCorePluginContainsFMLMod entries the production jar needs, but at dev time
@@ -238,6 +253,42 @@ def devShadowJar = tasks.register('devShadowJar', ShadowJar) {
     manifest.attributes('Implementation-Version': finalVersion)
 }
 
+def configureActiniumRun = { run ->
+    run.systemProperty 'outlands.dev.mixin',
+        'mixins.actinium.vintage.json,mixins.actinium.iris.json,mixins.actinium.hbm.early.json,mixins.actinium.kirino.json'
+    run.args += ['--username', propertyString('minecraft_username')]
+    def extraArgs = propertyString('extra_jvm_args')
+    if (extraArgs != null && !extraArgs.trim().isEmpty()) {
+        run.jvmArgs += extraArgs.split('\\s+').toList()
+    }
+
+    // Swap raw module outputs for the shadow-layout dev jar. The loader-owned dev extra path keeps
+    // Actinium classes out of the application class loader, matching the production class-loader split.
+    def originalRunClasspath = run.classpath
+    run.classpath = files(provider {
+        def rawModuleOutputs = sourceSets.main.output.files
+        originalRunClasspath.files.findAll { file ->
+            !rawModuleOutputs.contains(file)
+        }
+    })
+
+    def extraPathArgument = '-Doutlands.dev.extrapath='
+    def rawModuleOutputPaths = project.sourceSets.main.output.files.collect { it.absolutePath } as Set
+    def extraPaths = new LinkedHashSet<String>()
+    extraPaths.add(devShadowJar.get().archiveFile.get().asFile.absolutePath)
+    run.jvmArgs.findAll { it.toString().startsWith(extraPathArgument) }.each { argument ->
+        extraPaths.addAll(argument.toString().substring(extraPathArgument.length()).tokenize(File.pathSeparator)
+                .findAll { path -> !rawModuleOutputPaths.contains(path) })
+    }
+    run.jvmArgs = run.jvmArgs.findAll { !it.toString().startsWith(extraPathArgument) }
+    run.jvmArgs += "${extraPathArgument}${extraPaths.join(File.pathSeparator)}"
+
+    if (propertyBool('is_coremod')) {
+        run.systemProperty 'fml.coreMods.load', propertyString('coremod_plugin_class_name')
+    }
+}
+
+
 unimined.minecraft {
     version '1.12.2'
 
@@ -245,53 +296,21 @@ unimined.minecraft {
         mcp 'stable', '39-1.12'
     }
 
-    cleanroom {
+    outlands {
         if (actiniumProjectAccessTransformer != null) {
             accessTransformer actiniumProjectAccessTransformer.absolutePath
         }
 
-        loader '0.6.12-alpha'
+        // A jar section disables Outlands' LWJGL2 call-site conversion. This jar still uses both
+        // LWJGL generations, so coremod, AT and contained-library declarations stay in the manifest.
 
+        loader outlandsLoaderVersion
+
+        runs.config('client') {
+            args += ['--accessToken', '${auth_access_token}']
+        }
         runs.all {
-            args += ['--username', propertyString('minecraft_username')]
-            def extraArgs = propertyString('extra_jvm_args')
-            if (extraArgs != null && !extraArgs.trim().isEmpty()) {
-                jvmArgs += extraArgs.split('\\s+').toList()
-            }
-
-            // Swap the raw module outputs for the shadow-layout dev jar so the dev runtime carries
-            // the same relocated joml descriptors as the production distribution. The swap happens
-            // on the -Dcrl.dev.extrapath channel below, NOT on the JavaExec classpath: mod classes
-            // must stay invisible to the app class loader (exactly like production, where the mod
-            // jar is not on java.class.path). Keeping the jar on the JavaExec classpath lets the
-            // app loader serve Actinium classes as a parent-delegation fallback and splits classes
-            // like MixinLate across the app loader and the LaunchClassLoader (ClassCastException on
-            // the mixinbooter ILateMixinLoader cast).
-            def originalRunClasspath = classpath
-            classpath = files(provider {
-                def rawModuleOutputs = sourceSets.main.output.files
-                originalRunClasspath.files.findAll { file ->
-                    !rawModuleOutputs.contains(file)
-                }
-            })
-
-            // Unimined omits source output paths here when a clean build has not created their directories yet.
-            // The raw module outputs must not reach Cleanroom either: they would expose unrelocated
-            // joml descriptors next to the shadowed ones, so the dev shadow jar replaces them here.
-            def extraPathArgument = '-Dcrl.dev.extrapath='
-            def rawModuleOutputPaths = project.sourceSets.main.output.files.collect { it.absolutePath } as Set
-            def extraPaths = new LinkedHashSet<String>()
-            extraPaths.add(devShadowJar.get().archiveFile.get().asFile.absolutePath)
-            jvmArgs.findAll { it.toString().startsWith(extraPathArgument) }.each { argument ->
-                extraPaths.addAll(argument.toString().substring(extraPathArgument.length()).tokenize(File.pathSeparator)
-                        .findAll { path -> !rawModuleOutputPaths.contains(path) })
-            }
-            jvmArgs = jvmArgs.findAll { !it.toString().startsWith(extraPathArgument) }
-            jvmArgs += "${extraPathArgument}${extraPaths.join(File.pathSeparator)}"
-
-            if (propertyBool('is_coremod')) {
-                systemProperty 'fml.coreMods.load', propertyString('coremod_plugin_class_name')
-            }
+            configureActiniumRun(delegate)
         }
     }
 
@@ -329,6 +348,9 @@ def shadowRemapJar = tasks.register('shadowRemapJar', ShadowJar) {
     configurations.set([project.configurations.shadowBundle])
     from(zipTree(tasks.named('remapJar').get().archiveFile))
     relocate('org.joml', 'dhj.embeddedt.embeddium.impl.shadow.joml')
+    relocate('org.antlr', 'com.gtnewhorizons.angelica.shadow.org.antlr')
+    relocate('org.taumc.glsl', 'com.gtnewhorizons.angelica.shadow.org.taumc.glsl')
+    relocate('org.anarres.cpp', 'com.gtnewhorizons.angelica.shadow.org.anarres.cpp')
     mergeServiceFiles()
     manifest.inheritFrom(tasks.named('jar').get().manifest)
 }
@@ -433,6 +455,12 @@ processResources {
             }
         }
     }
+
+    if (propertyBool('use_access_transformer')) {
+        accessTransformerLocations.each { location ->
+            filesMatching(location) { it.path = "META-INF/${it.path}" }
+        }
+    }
 }
 
 tasks.named('sourcesJar').configure {
@@ -502,7 +530,9 @@ jar {
     doFirst {
         manifest {
             def attributeMap = [
-                ModType: 'CRL',
+                // FML is understood by Forge, Cleanroom and Outlands. CRL-only ModType values
+                // make Forge skip the coremod before it can discover the FMLCorePlugin entry.
+                ModType: 'FML',
                 'Implementation-Version': finalVersion,
             ]
             if (configurations.contain.size() > 0) {
@@ -561,6 +591,8 @@ def prepareTestRunDirectory = tasks.register('prepareTestRunDirectory') {
 
 test {
     systemProperty 'actinium.projectRoot', rootProject.projectDir.absolutePath
+    // Forge's registry bootstrap accesses Field.modifiers; the standalone test VM needs the loader's module access.
+    jvmArgs '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED'
     dependsOn prepareTestRunDirectory
     useJUnitPlatform()
     workingDir = testRunDirectory.asFile
@@ -596,20 +628,25 @@ def glIntegrationNativeClassifiers = [
 ]
 def glIntegrationLwjglNatives = glIntegrationOsKey == null
     ? null : glIntegrationNativeClassifiers[glIntegrationOsKey][glIntegrationOsArch]
+ext.lwjglNativesClassifier = glIntegrationLwjglNatives
 
 dependencies {
-    glIntegrationTestImplementation 'org.lwjgl:lwjgl:3.4.1'
-    glIntegrationTestImplementation 'org.lwjgl:lwjgl-sdl:3.4.1'
+    glIntegrationTestImplementation "org.lwjgl:lwjgl:${lwjglVersion}"
+    glIntegrationTestImplementation "org.lwjgl:lwjgl-sdl:${lwjglVersion}"
+    glIntegrationTestImplementation "org.lwjgl:lwjgl-glfw:${lwjglVersion}"
+    glIntegrationTestRuntimeOnly 'org.apache.logging.log4j:log4j-core:2.24.3'
     if (glIntegrationLwjglNatives != null) {
-        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl:3.4.1:${glIntegrationLwjglNatives}"
-        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl-sdl:3.4.1:${glIntegrationLwjglNatives}"
+        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl:${lwjglVersion}:${glIntegrationLwjglNatives}"
+        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl-sdl:${lwjglVersion}:${glIntegrationLwjglNatives}"
+        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl-glfw:${lwjglVersion}:${glIntegrationLwjglNatives}"
+        glIntegrationTestRuntimeOnly "org.lwjgl:lwjgl-opengl:${lwjglVersion}:${glIntegrationLwjglNatives}"
     }
     // SpirvCompilerDiskCacheTest drives the real shaderc compiler, so the JNI wrapper and its host
     // natives must be on the unit test classpath; production code only needs the compileOnly binding.
-    testImplementation 'org.lwjgl:lwjgl-shaderc:3.4.1'
+    testImplementation "org.lwjgl:lwjgl-shaderc:${lwjglVersion}"
     if (glIntegrationLwjglNatives != null) {
-        testRuntimeOnly "org.lwjgl:lwjgl:3.4.1:${glIntegrationLwjglNatives}"
-        testRuntimeOnly "org.lwjgl:lwjgl-shaderc:3.4.1:${glIntegrationLwjglNatives}"
+        testRuntimeOnly "org.lwjgl:lwjgl:${lwjglVersion}:${glIntegrationLwjglNatives}"
+        testRuntimeOnly "org.lwjgl:lwjgl-shaderc:${lwjglVersion}:${glIntegrationLwjglNatives}"
     }
 }
 
@@ -629,7 +666,7 @@ tasks.register('glIntegrationTest', Test) {
     group = 'verification'
     description = 'Runs the opt-in SDL window integration tests; requires a native display driver.'
     testClassesDirs = sourceSets.glIntegrationTest.output.classesDirs
-    classpath = sourceSets.glIntegrationTest.runtimeClasspath
+    classpath = sourceSets.glIntegrationTest.runtimeClasspath.filter { !it.name.startsWith('lwjglx-') }
     dependsOn validateGlIntegrationPlatform
     dependsOn tasks.named('compileGlIntegrationTestJava')
     useJUnitPlatform()
@@ -661,7 +698,15 @@ def verifyDistributedJar = tasks.register('verifyDistributedJar') {
             'com/dhj/actinium/Actinium.class',
             'org/taumc/celeritas/core/CeleritasLoadingPlugin.class',
             'com/gtnewhorizons/angelica/glsm/GLStateManager.class',
+            'com/gtnewhorizons/angelica/sdlgpu/SDLGPURenderBackend.class',
             'net/coderbot/iris/Iris.class',
+            // Early shader dependencies must be available from the production jar body before
+            // loader-owned NonModDeps are injected.
+            'com/gtnewhorizons/angelica/shadow/org/taumc/glsl/ShaderParser.class',
+            'com/gtnewhorizons/angelica/shadow/org/antlr/v4/runtime/Parser.class',
+            'com/gtnewhorizons/angelica/shadow/org/anarres/cpp/CppReader.class',
+            'org/lwjgl/util/shaderc/Shaderc.class',
+            'org/lwjgl/util/spvc/Spvc.class',
             'dhj/embeddedt/embeddium/impl/render/chunk/RenderSectionManager.class',
             'dhj/embeddedt/embeddium/impl/shadow/joml/Vector3f.class',
             'joml-1.10.5.jar',
@@ -688,6 +733,9 @@ def verifyDistributedJar = tasks.register('verifyDistributedJar') {
         if (manifest.getValue('FMLCorePlugin') != propertyString('coremod_plugin_class_name')) {
             throw new GradleException('Distributed mod jar has an invalid FMLCorePlugin manifest entry')
         }
+        if (manifest.getValue('ModType') != 'FML') {
+            throw new GradleException('Distributed mod jar must use the loader-neutral FML ModType')
+        }
         if (manifest.getValue('FMLAT') != propertyString('access_transformer_locations').tokenize('/\\').last()) {
             throw new GradleException('Distributed mod jar has an invalid FMLAT manifest entry')
         }
@@ -698,7 +746,7 @@ def verifyDistributedJar = tasks.register('verifyDistributedJar') {
                 throw new GradleException('Distributed mod jar is missing mcmod.info')
             }
             def metadata = new groovy.json.JsonSlurper().parse(jar.getInputStream(metadataEntry))
-            def mod = metadata[0]
+            def mod = metadata instanceof Map ? metadata.modList[0] : metadata[0]
             def expectedAuthors = propertyStringList('mod_authors', ',').collect { it.trim() }
             if (mod.description != propertyString('mod_description')
                     || mod.authorList != expectedAuthors
@@ -715,6 +763,101 @@ def verifyDistributedJar = tasks.register('verifyDistributedJar') {
     }
 }
 
+/**
+ * Executes a small probe against the actual production jar with no nested dependency jars on the
+ * Java class path. Parser classes therefore prove they are in the body. Host native archives are
+ * resolved separately for this verification because production jars leave native extraction to the loader.
+ */
+def verifyDistributedShaderDependencies = tasks.register('verifyDistributedShaderDependencies') {
+    group = 'verification'
+    description = 'Runs GLSL, JCPP, shaderc and SPIRV-Cross through an isolated distribution class path.'
+    dependsOn tasks.named('shadowRemapJar')
+    inputs.file(tasks.named('shadowRemapJar').flatMap { it.archiveFile })
+    inputs.file(layout.projectDirectory.file('gradle/fixtures/DistributedShaderDependencyProbe.java'))
+
+    doLast {
+        def distributedJar = tasks.named('shadowRemapJar').get().archiveFile.get().asFile
+        def fixture = layout.projectDirectory.file('gradle/fixtures/DistributedShaderDependencyProbe.java').asFile
+        def probeRoot = layout.buildDirectory.dir('distributed-shader-probe').get().asFile
+        def classesDir = new File(probeRoot, 'classes')
+        def nativeDir = new File(probeRoot, 'natives')
+        delete probeRoot
+        classesDir.mkdirs()
+        nativeDir.mkdirs()
+
+        def osName = System.getProperty('os.name').toLowerCase(Locale.ROOT)
+        def osArch = System.getProperty('os.arch').toLowerCase(Locale.ROOT)
+        def classifier = osName.startsWith('windows')
+            ? (osArch in ['aarch64', 'arm64'] ? 'natives-windows-arm64' : 'natives-windows')
+            : osName.startsWith('linux')
+                ? (osArch in ['aarch64', 'arm64'] ? 'natives-linux-arm64' : 'natives-linux')
+                : osName.startsWith('mac')
+                    ? (osArch in ['aarch64', 'arm64'] ? 'natives-macos-arm64' : 'natives-macos')
+                    : null
+        if (classifier == null) {
+            throw new GradleException("Unsupported platform for distributed shader probe: ${osName}/${osArch}")
+        }
+
+        def extractNativeJar = { InputStream stream ->
+            new java.util.jar.JarInputStream(stream).withCloseable { nested ->
+                java.util.jar.JarEntry entry
+                while ((entry = nested.nextJarEntry) != null) {
+                    if (entry.directory || !entry.name.matches('.*\\.(dll|so|dylib)$')) {
+                        continue
+                    }
+                    def target = new File(nativeDir, new File(entry.name).name)
+                    target.bytes = nested.readAllBytes()
+                }
+            }
+        }
+
+        ['lwjgl-shaderc', 'lwjgl-spvc'].each { module ->
+            def nativeArchive = configurations.detachedConfiguration(
+                dependencies.create("org.lwjgl:${module}:${lwjglVersion}:${classifier}") {
+                    transitive = false
+                }
+            ).singleFile
+            extractNativeJar(new FileInputStream(nativeArchive))
+        }
+
+        def coreNative = configurations.detachedConfiguration(
+            dependencies.create("org.lwjgl:lwjgl:${lwjglVersion}:${classifier}")
+        ).singleFile
+        extractNativeJar(new FileInputStream(coreNative))
+
+        def lwjglJava = configurations.detachedConfiguration(
+            dependencies.create("org.lwjgl:lwjgl:${lwjglVersion}")
+        ).singleFile
+        def compiler = javaToolchains.compilerFor {
+            languageVersion = JavaLanguageVersion.of(25)
+        }.get().executablePath.asFile
+        def launcher = javaToolchains.launcherFor {
+            languageVersion = JavaLanguageVersion.of(25)
+        }.get().executablePath.asFile
+        def classpath = [classesDir, distributedJar, lwjglJava].collect { it.absolutePath }.join(File.pathSeparator)
+
+        def runProcess = { File executable, List<String> arguments ->
+            def command = ([executable.absolutePath] + arguments).collect { it.toString() }
+            def process = new ProcessBuilder(command)
+                .directory(project.projectDir)
+                .inheritIO()
+                .start()
+            if (process.waitFor() != 0) {
+                throw new GradleException("Distributed shader probe process failed: ${executable.name}")
+            }
+        }
+        runProcess(compiler, ['--release', '21', '-encoding', 'UTF-8', '-cp',
+            "${distributedJar.absolutePath}${File.pathSeparator}${lwjglJava.absolutePath}",
+            '-d', classesDir.absolutePath, fixture.absolutePath])
+        runProcess(launcher, ['-Djava.library.path=' + nativeDir.absolutePath, '-cp', classpath,
+            'DistributedShaderDependencyProbe'])
+    }
+}
+
+verifyDistributedJar.configure {
+    dependsOn verifyDistributedShaderDependencies
+}
+
 def verifyModuleBoundaries = tasks.register('verifyModuleBoundaries') {
     dependsOn tasks.named('compileJava')
     dependsOn embeddedLibraryProjects.collect { it.tasks.named('classes') }
@@ -724,7 +867,8 @@ def verifyModuleBoundaries = tasks.register('verifyModuleBoundaries') {
             actinium: files(tasks.named('compileJava', JavaCompile).get().destinationDirectory),
             GTNHLib: project(':GTNHLib').sourceSets.main.output.classesDirs,
             glsm: project(':glsm').sourceSets.main.output.classesDirs,
-            celeritas: project(':celeritas-common').sourceSets.main.output.classesDirs
+            celeritas: project(':celeritas-common').sourceSets.main.output.classesDirs,
+            sdlgpu: project(':sdl-gpu').sourceSets.main.output.classesDirs
         ]
         def owners = [:]
         def duplicates = []

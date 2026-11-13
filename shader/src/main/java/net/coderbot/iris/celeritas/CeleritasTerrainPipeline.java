@@ -170,7 +170,10 @@ public class CeleritasTerrainPipeline {
         processShaderFuture(translucentFuture, translucentSource, transformedVertexSources, passInfoMap.get(IrisTerrainPass.GBUFFER_TRANSLUCENT));
         processShaderFuture(shadowFuture, shadowSource, transformedVertexSources, passInfoMap.get(IrisTerrainPass.SHADOW), passInfoMap.get(IrisTerrainPass.SHADOW_CUTOUT));
         processShaderFuture(shadowTranslucentFuture, shadowTranslucentSource.isPresent() ? shadowTranslucentSource : shadowSource, transformedVertexSources, passInfoMap.get(IrisTerrainPass.SHADOW_TRANSLUCENT));
-        this.vertexFormatRequirements = TerrainVertexFormatRequirements.analyze(transformedVertexSources);
+        this.vertexFormatRequirements = passInfoMap.values().stream()
+                .anyMatch(info -> info.sources.get(PatchShaderType.COMPUTE).isPresent())
+                ? TerrainVertexFormatRequirements.all()
+                : TerrainVertexFormatRequirements.analyze(transformedVertexSources);
         updateVertexFormatRequirements(this.vertexFormatRequirements);
     }
 
@@ -191,6 +194,7 @@ public class CeleritasTerrainPipeline {
                 target.setSource(PatchShaderType.VERTEX, vertexSource);
                 target.setSource(PatchShaderType.GEOMETRY, geometrySource);
                 target.setSource(PatchShaderType.FRAGMENT, targetFragment);
+                target.setSource(PatchShaderType.COMPUTE, result.get(PatchShaderType.COMPUTE));
                 if (targetFragment != null && !targetFragment.equals(fragmentSource)) {
                     PatchedShaderPrinter.debugPatchedShaders(sourceName + "_celeritas_" + target.pass().name().toLowerCase(Locale.ROOT),
                         null, null, targetFragment);
@@ -209,6 +213,11 @@ public class CeleritasTerrainPipeline {
         if (provider instanceof IrisCeleritasShaderProvider celeritasProvider) {
             celeritasProvider.setVertexFormatRequirements(requirements);
         }
+    }
+
+    public Optional<String> getShadowVoxelizationComputeSource() {
+        final PassInfo shadow = passInfoMap.get(IrisTerrainPass.SHADOW);
+        return shadow.sources.get(PatchShaderType.COMPUTE);
     }
 
     public PassInfo getPassInfo(IrisTerrainPass pass) {

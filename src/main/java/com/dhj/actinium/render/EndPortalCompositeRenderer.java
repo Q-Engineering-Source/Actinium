@@ -340,7 +340,7 @@ public final class EndPortalCompositeRenderer {
                 GLSMEnable.glIsEnabled(GL11.GL_DEPTH_TEST),
                 GLSMEnable.glIsEnabled(GL11.GL_SCISSOR_TEST),
                 GLSMEnable.glIsEnabled(GL11.GL_CULL_FACE),
-                GL30.glIsEnabledi(GL11.GL_BLEND, 0),
+                GLSMEnable.glIsEnabledi(GL11.GL_BLEND, 0),
                 GLStateManager.getClearColor().copy()
             );
         }

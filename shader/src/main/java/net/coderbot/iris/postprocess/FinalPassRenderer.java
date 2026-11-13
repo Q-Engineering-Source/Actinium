@@ -26,6 +26,8 @@ import net.coderbot.iris.gl.texture.TextureAccess;
 import net.coderbot.iris.pipeline.PatchedShaderPrinter;
 import net.coderbot.iris.pipeline.WorldRenderingPipeline;
 import net.coderbot.iris.pipeline.transform.PatchShaderType;
+import net.coderbot.iris.pipeline.transform.PreRasterComputeDispatcher;
+import net.coderbot.iris.pipeline.transform.RwImageStoreExtractor;
 import net.coderbot.iris.pipeline.transform.TransformPatcher;
 import net.coderbot.iris.rendertarget.IRenderTargetExt;
 import net.coderbot.iris.rendertarget.RenderTarget;
@@ -112,6 +114,11 @@ public class FinalPassRenderer {
 			final Map<PatchShaderType, String> transformed = getTransformed(source, precomputedTransformFuture, stageName);
 			pass.sourceName = source.getName();
 			pass.program = createProgramFromTransformed(source, transformed, flippedBuffers, flippedAtLeastOnce, context.shadowTargetsSupplier());
+            final String preComputeSource = transformed.get(PatchShaderType.COMPUTE);
+            pass.preRasterMode = RwImageStoreExtractor.parseSentinel(preComputeSource);
+            if (pass.preRasterMode != null) {
+                pass.preRasterCompute = buildPreRasterCompute(source.getName(), preComputeSource, flippedBuffers, flippedAtLeastOnce, context.shadowTargetsSupplier());
+            }
 			pass.computes = createComputes(pack.getFinalCompute(), flippedBuffers, flippedAtLeastOnce, context.shadowTargetsSupplier());
 			pass.stageReadsFromAlt = flippedBuffers;
 			pass.mipmappedBuffers = directives.getMipmappedBuffers();
@@ -190,6 +197,9 @@ public class FinalPassRenderer {
 	private static final class Pass {
 		Program program;
 		ComputeProgram[] computes;
+		@Nullable ComputeProgram preRasterCompute;
+		@Nullable RwImageStoreExtractor.RwExtractMode preRasterMode;
+		int preRasterTargetSizeLoc = PreRasterComputeDispatcher.LOC_UNRESOLVED;
 		ImmutableSet<Integer> stageReadsFromAlt;
 		ImmutableSet<Integer> mipmappedBuffers;
 		String sourceName;
@@ -199,6 +209,7 @@ public class FinalPassRenderer {
 
 		private void destroy() {
 			this.program.destroy();
+			if (preRasterCompute != null) preRasterCompute.destroy();
 		}
 	}
 
@@ -306,6 +317,11 @@ public class FinalPassRenderer {
 				}
 			}
 
+            if (finalPass.preRasterCompute != null) {
+                finalPass.preRasterTargetSizeLoc = PreRasterComputeDispatcher.dispatch(
+                    finalPass.preRasterCompute, finalPass.preRasterMode, finalPass.preRasterTargetSizeLoc,
+                    baseWidth, baseHeight, customUniforms);
+            }
 			applyBlendOverrides(finalPass);
 			finalPass.program.use();
             IrisGlDebug.check("final:use-program");
@@ -502,6 +518,40 @@ public class FinalPassRenderer {
         this.customUniforms.mapholderToPass(builder, build);
 
 		return build;
+	}
+
+	private ComputeProgram buildPreRasterCompute(String name, String computeSource, ImmutableSet<Integer> flipped, ImmutableSet<Integer> flippedAtLeastOnceSnapshot, Supplier<ShadowRenderTargets> shadowTargetsSupplier) {
+		PatchedShaderPrinter.debugPatchedShaders(name + "_pre_compute", null, null, null, computeSource);
+		final ProgramBuilder builder;
+		try {
+			builder = ProgramBuilder.beginCompute(name + "_pre", computeSource, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
+		} catch (RuntimeException e) {
+			throw new RuntimeException("Pre-raster compute compilation failed for " + name, e);
+		}
+		final ProgramSamplers.CustomTextureSamplerInterceptor customTextureSamplerInterceptor = ProgramSamplers.customTextureSamplerInterceptor(builder, customTextureIds, flippedAtLeastOnceSnapshot);
+
+		CommonUniforms.addDynamicUniforms(builder, FogMode.OFF);
+		this.customUniforms.assignTo(builder);
+
+		IrisSamplers.addRenderTargetSamplers(customTextureSamplerInterceptor, () -> flipped, renderTargets, true, pipeline);
+		IrisSamplers.addCustomImages(customTextureSamplerInterceptor, customImages);
+		IrisSamplers.addCustomTextures(customTextureSamplerInterceptor, irisCustomTextures);
+
+		IrisImages.addRenderTargetImages(builder, () -> flipped, renderTargets);
+		IrisImages.addCustomImages(builder, customImages);
+
+		IrisSamplers.addNoiseSampler(customTextureSamplerInterceptor, noiseTexture);
+		IrisSamplers.addCompositeSamplers(customTextureSamplerInterceptor, renderTargets);
+
+		if (IrisSamplers.hasShadowSamplers(customTextureSamplerInterceptor)) {
+			IrisSamplers.addShadowSamplers(customTextureSamplerInterceptor, shadowTargetsSupplier.get(), null, pipeline != null && pipeline.hasFeature(FeatureFlags.SEPARATE_HARDWARE_SAMPLERS));
+			IrisImages.addShadowColorImages(builder, shadowTargetsSupplier.get(), null);
+		}
+
+        centerDepthSampler.setUsage(builder.addDynamicSampler(centerDepthSampler::getCenterDepthTexture, "iris_centerDepthSmooth"));
+		final ComputeProgram cp = builder.buildCompute();
+		this.customUniforms.mapholderToPass(builder, cp);
+		return cp;
 	}
 
 	private ComputeProgram[] createComputes(ComputeSource[] compute, ImmutableSet<Integer> flipped, ImmutableSet<Integer> flippedAtLeastOnceSnapshot, Supplier<ShadowRenderTargets> shadowTargetsSupplier) {

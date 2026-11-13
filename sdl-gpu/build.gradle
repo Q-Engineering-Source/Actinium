@@ -1,0 +1,56 @@
+plugins {
+    id 'java-library'
+}
+
+repositories {
+    mavenCentral()
+}
+
+tasks.named('processResources') {
+    // Early host checks register this backend explicitly; legacy CRL must never instantiate it through ServiceLoader.
+    exclude 'META-INF/services/com.gtnewhorizons.angelica.glsm.backend.RenderBackend'
+}
+
+dependencies {
+    api project(':glsm')
+    compileOnly project(':celeritas-common')
+    compileOnly "org.lwjgl:lwjgl-sdl:${rootProject.ext.lwjglVersion}"
+    compileOnly "org.lwjgl:lwjgl-shaderc:${rootProject.ext.lwjglVersion}"
+    compileOnly "org.lwjgl:lwjgl-spvc:${rootProject.ext.lwjglVersion}"
+
+    testImplementation project(':celeritas-common')
+    testImplementation rootProject.ext.sharedMinecraftCompileClasspath()
+    testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testImplementation "org.lwjgl:lwjgl-sdl:${rootProject.ext.lwjglVersion}"
+    testImplementation "org.lwjgl:lwjgl-shaderc:${rootProject.ext.lwjglVersion}"
+    testImplementation "org.lwjgl:lwjgl-spvc:${rootProject.ext.lwjglVersion}"
+    if (rootProject.ext.lwjglNativesClassifier != null) {
+        ['lwjgl', 'lwjgl-sdl', 'lwjgl-shaderc', 'lwjgl-spvc'].each { module ->
+            testRuntimeOnly "org.lwjgl:${module}:${rootProject.ext.lwjglVersion}:${rootProject.ext.lwjglNativesClassifier}"
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    // SDL host adapters compile against Outlands' actual shim rather than the legacy compile-only jar.
+    classpath = classpath.filter { !it.name.startsWith('lwjglx-') }
+}
+
+tasks.named('test', Test) {
+    classpath = sourceSets.test.runtimeClasspath.filter { !it.name.startsWith('lwjglx-') }
+    useJUnitPlatform {
+        excludeTags 'gpu', 'sdl-gpu-device'
+    }
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+}
+
+tasks.register('gpuTest', Test) {
+    group = 'verification'
+    description = 'Runs SDL GPU device and readback tests on the local GPU.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath.filter { !it.name.startsWith('lwjglx-') }
+    useJUnitPlatform { includeTags 'sdl-gpu-device' }
+    maxParallelForks = 1
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+}

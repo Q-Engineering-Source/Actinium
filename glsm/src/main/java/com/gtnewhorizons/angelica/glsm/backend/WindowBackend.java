@@ -25,6 +25,11 @@ public interface WindowBackend {
     /** Changes exclusive fullscreen state. Must be called on the Minecraft client/main thread. */
     void setExclusiveFullscreen(boolean fullscreen);
 
+    /** Returns whether this window system supports a native exclusive fullscreen transition. */
+    default boolean supportsExclusiveFullscreen() {
+        return true;
+    }
+
     /**
      * Requests the given swap interval from the window system.
      *
