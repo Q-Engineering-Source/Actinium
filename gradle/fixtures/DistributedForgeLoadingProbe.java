@@ -20,6 +20,7 @@ public final class DistributedForgeLoadingProbe {
         "com.gtnewhorizons.angelica.loading.fml.transformers.AngelicaRedirectorTransformer";
     private static final String LOCK_FIX = "com.dhj.actinium.compat.MixinReEntranceLockFix";
     private static final List<String> REQUIRED_TRANSFORMERS = Arrays.asList(
+        "com.dhj.actinium.loading.fml.transformers.FastutilUpgraderTransformer",
         "com.dhj.actinium.loading.fml.transformers.LwjglContextVersionTransformer",
         "com.dhj.actinium.loading.fml.transformers.LwjglContextLifecycleTransformer",
         "com.dhj.actinium.loading.fml.transformers.SdlGpuHostTransformer"
@@ -89,6 +90,7 @@ public final class DistributedForgeLoadingProbe {
                 }
             }
 
+            Class.forName("it.unimi.dsi.fastutil.booleans.BooleanConsumer", false, loader);
             Class<?> nativeBufferType = loader.loadClass("dhj.embeddedt.embeddium.impl.common.util.NativeBuffer");
             Object nativeBuffer = nativeBufferType.getConstructor(int.class).newInstance(64);
             nativeBufferType.getMethod("ensureCapacity", int.class).invoke(nativeBuffer, 128);

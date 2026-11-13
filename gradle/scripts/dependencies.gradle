@@ -46,6 +46,7 @@ dependencies {
     forgeLoadingTestClasspath('net.sf.jopt-simple:jopt-simple:5.0.3') { transitive = false }
     forgeLoadingTestClasspath('it.unimi.dsi:fastutil:7.1.0') { transitive = false }
     legacyLwjgl('org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209') { transitive = false }
+    legacyFastutil('it.unimi.dsi:fastutil:7.1.0') { transitive = false }
 
     implementation 'org.joml:joml:1.10.5'
     contain 'org.joml:joml:1.10.5'

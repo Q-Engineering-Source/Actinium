@@ -111,6 +111,9 @@ configurations {
     vanillaLaunchwrapper
     forgeLoadingTestClasspath
     legacyLwjgl
+    // fastutil 7.1.0, the version vanilla Forge puts on the launch classpath. Packaging reads its
+    // entry list to tell which fastutil 8 classes have to be swapped in at class load time.
+    legacyFastutil
 }
 
 ext.lwjglVersion = '3.4.3'
@@ -447,13 +450,87 @@ tasks.named('runServer', JavaExec).configure {
 
 apply from: 'gradle/scripts/dependencies.gradle'
 
-processResources {
-    // Embed fastutil 8 jar so FastutilBootstrap can prepend it to the LaunchClassLoader search path
-    // ahead of Forge's bundled fastutil 7.1.0.
-    into('META-INF/actinium_libs') {
-        from(configurations.embeddedLibs)
-        rename { 'fastutil.jar' }
+/**
+ * Stages only the fastutil 8 classes the distribution actually links against.
+ *
+ * <p>Every type reachable from the compiled mod classes is collected, plus the fastutil types those
+ * classes reference in turn. Types that Forge's fastutil 7.1.0 also ships are written as .bin
+ * resources for {@code FastutilUpgraderTransformer}; types 8.x added stay at their real path so the
+ * launch loader can locate them before any transformer runs.</p>
+ */
+def prepareFastutil8 = tasks.register('prepareFastutil8') {
+    group = 'build'
+    description = 'Stages the fastutil 8 classes referenced by the compiled mod classes.'
+    def outputDir = layout.buildDirectory.dir('generated/fastutil8')
+    def seedClassDirs = files(
+        embeddedLibraryProjects.collect { it.sourceSets.main.output.classesDirs },
+        sourceSets.main.output.classesDirs
+    )
+    outputs.dir(outputDir)
+    inputs.files(configurations.embeddedLibs, configurations.legacyFastutil, seedClassDirs)
+
+    doLast {
+        def fastutilType = java.util.regex.Pattern.compile('it/unimi/dsi/fastutil/[A-Za-z0-9/$_]+')
+        def forgeEntries = new HashSet<String>()
+        new java.util.zip.ZipFile(configurations.legacyFastutil.singleFile).withCloseable { zip ->
+            zip.entries().each { entry ->
+                if (!entry.directory && entry.name.endsWith('.class')) {
+                    forgeEntries.add(entry.name)
+                }
+            }
+        }
+        def fastutilClasses = new HashMap<String, byte[]>()
+        new java.util.zip.ZipFile(configurations.embeddedLibs.singleFile).withCloseable { zip ->
+            zip.entries().each { entry ->
+                if (!entry.directory && entry.name.startsWith('it/unimi/dsi/fastutil/')
+                        && entry.name.endsWith('.class')) {
+                    fastutilClasses.put(entry.name, zip.getInputStream(entry).bytes)
+                }
+            }
+        }
+
+        def pending = new ArrayDeque<String>()
+        def collectTypes = { byte[] bytes ->
+            def matcher = fastutilType.matcher(new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1))
+            while (matcher.find()) {
+                pending.add(matcher.group())
+            }
+        }
+        seedClassDirs.each { dir ->
+            if (dir.isDirectory()) {
+                dir.eachFileRecurse { file ->
+                    if (file.name.endsWith('.class')) {
+                        collectTypes(file.bytes)
+                    }
+                }
+            }
+        }
+
+        def staged = new LinkedHashSet<String>()
+        def outputRoot = outputDir.get().asFile
+        outputRoot.deleteDir()
+        while (!pending.isEmpty()) {
+            def typeName = pending.poll()
+            if (!staged.add(typeName)) {
+                continue
+            }
+            def classBytes = fastutilClasses.get(typeName + '.class')
+            if (classBytes == null) {
+                continue
+            }
+            def target = forgeEntries.contains(typeName + '.class')
+                ? new File(outputRoot, 'META-INF/actinium_libs/fastutil8/' + typeName + '.bin')
+                : new File(outputRoot, typeName + '.class')
+            target.parentFile.mkdirs()
+            target.bytes = classBytes
+            collectTypes(classBytes)
+        }
+        logger.lifecycle("Staged ${staged.size()} fastutil 8 classes")
     }
+}
+
+processResources {
+    from(prepareFastutil8)
 
     def resourceProperties = [
         mod_id         : propertyString('mod_id'),
@@ -769,6 +846,42 @@ def verifyDistributedJar = tasks.register('verifyDistributedJar') {
             if (archive.matching { include entry }.isEmpty()) {
                 throw new GradleException("Distributed mod jar is missing required entry: ${entry}")
             }
+        }
+
+        // Every fastutil type a packaged class links against must be present: either as the .bin
+        // copy FastutilUpgraderTransformer serves over Forge's 7.1.0 classes, or at its real path
+        // for classes 7.1.0 does not ship at all.
+        def fastutilType = java.util.regex.Pattern.compile('it/unimi/dsi/fastutil/[A-Za-z0-9/$_]+')
+        def missingFastutilTypes = new TreeSet<String>()
+        new java.util.jar.JarFile(shadowOutput.get().asFile).withCloseable { jar ->
+            def entryNames = new HashSet<String>()
+            def entries = jar.entries()
+            while (entries.hasMoreElements()) {
+                entryNames.add(entries.nextElement().name)
+            }
+            entries = jar.entries()
+            while (entries.hasMoreElements()) {
+                def entry = entries.nextElement()
+                if (!entry.name.endsWith('.class') || entry.name.startsWith('META-INF/actinium_libs/')
+                        || entry.name.startsWith('it/unimi/')) {
+                    continue
+                }
+                def matcher = fastutilType.matcher(
+                    new String(jar.getInputStream(entry).bytes, java.nio.charset.StandardCharsets.ISO_8859_1)
+                )
+                while (matcher.find()) {
+                    def typeName = matcher.group()
+                    if (!entryNames.contains(typeName + '.class')
+                            && !entryNames.contains('META-INF/actinium_libs/fastutil8/' + typeName + '.bin')) {
+                        missingFastutilTypes.add(typeName)
+                    }
+                }
+            }
+        }
+        if (!missingFastutilTypes.isEmpty()) {
+            throw new GradleException(
+                "Distributed mod jar is missing linked fastutil 8 classes: ${missingFastutilTypes}"
+            )
         }
 
         // The shadow layout only holds relocated joml classes in the jar body; plain org.joml is
