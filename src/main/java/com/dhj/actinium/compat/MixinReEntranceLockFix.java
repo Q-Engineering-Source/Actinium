@@ -65,11 +65,22 @@ public final class MixinReEntranceLockFix {
      */
     public static void clearInvalidVanillaClasses() {
         try {
-            ClassLoader cl = MixinReEntranceLockFix.class.getClassLoader();
-            if (!(cl instanceof ActualClassLoader)) {
+            ClassLoader loader = MixinReEntranceLockFix.class.getClassLoader();
+            if (loader.getResource("top/outlands/foundation/boot/ActualClassLoader.class") == null) {
                 return;
             }
-            Set<String> invalid = ((ActualClassLoader) cl).getInvalidClasses();
+            Outlands.clearInvalidVanillaClasses(loader);
+        } catch (Throwable t) {
+            LOGGER.warn("Unable to clean the invalid-class cache", t);
+        }
+    }
+
+    private static final class Outlands {
+        private static void clearInvalidVanillaClasses(ClassLoader loader) {
+            if (!(loader instanceof ActualClassLoader)) {
+                return;
+            }
+            Set<String> invalid = ((ActualClassLoader) loader).getInvalidClasses();
             int removed = 0;
             for (Iterator<String> it = invalid.iterator(); it.hasNext(); ) {
                 if (it.next().startsWith("net.minecraft.")) {
@@ -80,8 +91,6 @@ public final class MixinReEntranceLockFix {
             if (removed > 0) {
                 LOGGER.warn("Removed {} vanilla class(es) from the invalid-class cache so they can be loaded for real", removed);
             }
-        } catch (Throwable t) {
-            LOGGER.warn("Unable to clean the invalid-class cache", t);
         }
     }
 

@@ -3,7 +3,7 @@
  */
 package com.gtnewhorizon.gtnhlib.bytebuf;
 
-import org.lwjgl.system.MemoryUtil;
+import com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities;
 
 final class MultiReleaseMemCopy {
 
@@ -14,7 +14,7 @@ final class MultiReleaseMemCopy {
     }
 
     static void copy(long src, long dst, long bytes) {
-        MemoryUtil.memCopy(src, dst, bytes);
+        MemoryUtilities.memCopy(src, dst, bytes);
     }
 
 }

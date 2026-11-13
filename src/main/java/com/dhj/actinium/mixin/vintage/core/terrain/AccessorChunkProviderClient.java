@@ -2,6 +2,7 @@ package com.dhj.actinium.mixin.vintage.core.terrain;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import net.minecraft.client.multiplayer.ChunkProviderClient;
+import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
@@ -10,4 +11,7 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 public interface AccessorChunkProviderClient {
     @Accessor("loadedChunks")
     Long2ObjectMap<Chunk> celeritas$getLoadedChunks();
+
+    @Accessor("world")
+    World celeritas$getWorld();
 }

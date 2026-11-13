@@ -1,8 +1,8 @@
 package com.gtnewhorizon.gtnhlib.bytebuf;
 
-import java.nio.ByteBuffer;
+import com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities;
 
-import org.lwjgl.system.MemoryUtil;
+import java.nio.ByteBuffer;
 
 /**
  * String decoding utilities.
@@ -21,6 +21,6 @@ final class MultiReleaseTextDecoding {
 
     /** @see MemoryUtilities#memUTF8(ByteBuffer, int, int) */
     static String decodeUTF8(long source, int length) {
-        return MemoryUtil.memUTF8(source, length);
+        return MemoryUtilities.memUTF8(source, length);
     }
 }

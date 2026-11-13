@@ -1,11 +1,13 @@
 package com.dhj.actinium.compat.modernsplash;
 
-import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 import gkappa.modernsplash.ModernSplash;
 import net.minecraft.launchwrapper.Launch;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import com.gtnewhorizons.angelica.glsm.GLSMTextures;
+
+import java.lang.reflect.Field;
+import java.util.Map;
 
 /**
  * Crash guard for Modern Splash (modid {@code modernsplash}, issue #200).
@@ -25,6 +27,8 @@ public final class ModernSplashOverlayCompat {
 
     private static final Logger LOGGER = LogManager.getLogger("ActiniumModernSplashCompat");
     private static final String MAIN_CLASS = "gkappa.modernsplash.ModernSplash";
+    private static final String ACTUAL_CLASS_LOADER_RESOURCE =
+        "top/outlands/foundation/boot/ActualClassLoader.class";
 
     private static boolean escapedRedirector;
 
@@ -38,13 +42,43 @@ public final class ModernSplashOverlayCompat {
      * registration, so the probe reflects the pre-registration state.
      */
     public static void markIfLoadedBeforeRedirector() {
-        if (!escapedRedirector && Launch.classLoader.isClassLoaded(MAIN_CLASS)) {
+        if (!escapedRedirector && isClassLoaded(MAIN_CLASS)) {
             escapedRedirector = true;
             LOGGER.warn(
                 "ModernSplash was class-loaded before Actinium's GL redirector was registered; "
                     + "its raw fixed-function GL calls cannot be rewritten. The main-menu logo fade "
                     + "will be skipped to avoid a core-profile crash (issue #200)."
             );
+        }
+    }
+
+    private static boolean isClassLoaded(String className) {
+        if (ModernSplashOverlayCompat.class.getClassLoader().getResource(ACTUAL_CLASS_LOADER_RESOURCE) != null) {
+            return Outlands.isClassLoaded(className);
+        }
+        return Legacy.isClassLoaded(className);
+    }
+
+    private static final class Outlands {
+        private static boolean isClassLoaded(String className) {
+            return Launch.classLoader.isClassLoaded(className);
+        }
+    }
+
+    private static final class Legacy {
+        /**
+         * Vanilla LaunchWrapper has no public loaded-class query. Read its cache instead of
+         * defining the class through Class.forName, which would change the startup sequence.
+         */
+        private static boolean isClassLoaded(String className) {
+            try {
+                Field cachedClassesField = Launch.classLoader.getClass().getDeclaredField("cachedClasses");
+                cachedClassesField.setAccessible(true);
+                Map<?, ?> cachedClasses = (Map<?, ?>) cachedClassesField.get(Launch.classLoader);
+                return cachedClasses.containsKey(className);
+            } catch (ReflectiveOperationException failure) {
+                throw new IllegalStateException("Could not inspect the LaunchWrapper class cache", failure);
+            }
         }
     }
 

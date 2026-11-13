@@ -118,6 +118,14 @@ class LwjglContextLifecycleTransformerTest {
             assertNotNull(stream);
             early = readClass(stream.readAllBytes());
         }
+        String registrationTypeName =
+            "com/dhj/actinium/loading/fml/transformers/OutlandsExplicitTransformerRegistration$Outlands";
+        ClassNode registrationType;
+        try (InputStream stream = LwjglContextLifecycleTransformerTest.class.getClassLoader()
+            .getResourceAsStream(registrationTypeName + ".class")) {
+            assertNotNull(stream);
+            registrationType = readClass(stream.readAllBytes());
+        }
 
         MethodNode getAsmTransformers = method(early, "getASMTransformerClass", "()[Ljava/lang/String;");
         Type lifecycleType = Type.getType(LwjglContextLifecycleTransformer.class);
@@ -125,12 +133,13 @@ class LwjglContextLifecycleTransformerTest {
             instruction instanceof LdcInsnNode ldc && lifecycleType.equals(ldc.cst)));
         assertTrue(meaningfulInstructions(getAsmTransformers).stream().anyMatch(instruction ->
             instruction instanceof MethodInsnNode call
-                && "registerExplicitTransformers".equals(call.name)
+                && "com/dhj/actinium/loading/fml/transformers/OutlandsExplicitTransformerRegistration".equals(call.owner)
+                && "register".equals(call.name)
                 && "()V".equals(call.desc)));
 
-        MethodNode registration = method(early, "registerExplicitTransformers", "()V");
+        MethodNode registration = method(registrationType, "register", "()V");
         assertEquals(Opcodes.ACC_SYNCHRONIZED, registration.access & Opcodes.ACC_SYNCHRONIZED);
-        long registerCalls = early.methods.stream()
+        long registerCalls = registrationType.methods.stream()
             .flatMap(method -> meaningfulInstructions(method).stream())
             .filter(instruction -> instruction instanceof MethodInsnNode call
                 && "top/outlands/foundation/TransformerDelegate".equals(call.owner)
@@ -143,7 +152,7 @@ class LwjglContextLifecycleTransformerTest {
                 && "getExplicitTransformers".equals(call.name)));
 
         Set<String> targetNames = new HashSet<>();
-        for (MethodNode method : early.methods) {
+        for (MethodNode method : registrationType.methods) {
             for (AbstractInsnNode instruction : meaningfulInstructions(method)) {
                 if (instruction instanceof LdcInsnNode ldc && ldc.cst instanceof String target) {
                     targetNames.add(target);

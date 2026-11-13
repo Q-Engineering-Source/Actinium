@@ -2,6 +2,7 @@ package com.dhj.actinium.debug;
 
 import com.dhj.actinium.compat.ForgeEarlyConfigCompat;
 import org.junit.jupiter.api.Test;
+import org.lwjgl.opengl.ContextAttribs;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -10,8 +11,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class CoreProfileContextAttributesTest {
+    @Test
+    void createsGl46WithoutTrippingLegacyConstructorLimit() {
+        assumeTrue(hasWritableVersionFields(), "Requires field-based LWJGL ContextAttribs");
+        ContextAttribs attributes = CoreProfileContextAttributes.create(4, 6, false);
+
+        assertEquals(4, attributes.getMajorVersion());
+        assertEquals(6, attributes.getMinorVersion());
+        assertTrue(attributes.isProfileCore());
+        assertTrue(attributes.isForwardCompatible());
+        assertFalse(attributes.isDebug());
+    }
+
     @Test
     void configuresTheOriginalContextInRequiredOrder() {
         RecordingContext attributes = new RecordingContext();
@@ -111,6 +125,15 @@ class CoreProfileContextAttributesTest {
             assertFalse(restored.debugContext());
         } finally {
             ForgeEarlyConfigCompat.restore(original);
+        }
+    }
+
+    private static boolean hasWritableVersionFields() {
+        try {
+            ContextAttribs.class.getDeclaredField("majorVersion");
+            return true;
+        } catch (NoSuchFieldException unavailable) {
+            return false;
         }
     }
 

@@ -101,25 +101,33 @@ class LwjglContextVersionTransformerTest {
             assertNotNull(stream);
             early = readClass(stream.readAllBytes());
         }
+        String registrationTypeName =
+            "com/dhj/actinium/loading/fml/transformers/OutlandsExplicitTransformerRegistration$Outlands";
+        ClassNode registrationType;
+        try (InputStream stream = LwjglContextVersionTransformerTest.class.getClassLoader()
+            .getResourceAsStream(registrationTypeName + ".class")) {
+            assertNotNull(stream);
+            registrationType = readClass(stream.readAllBytes());
+        }
 
         MethodNode getAsmTransformers = method(early, "getASMTransformerClass", "()[Ljava/lang/String;");
         Type versionType = Type.getType(LwjglContextVersionTransformer.class);
         assertTrue(meaningfulInstructions(getAsmTransformers).stream().anyMatch(instruction ->
             instruction instanceof LdcInsnNode ldc && versionType.equals(ldc.cst)));
 
-        MethodNode registration = method(early, "registerExplicitTransformers", "()V");
+        MethodNode registration = method(registrationType, "register", "()V");
         assertEquals(Opcodes.ACC_SYNCHRONIZED, registration.access & Opcodes.ACC_SYNCHRONIZED);
         List<AbstractInsnNode> instructions = meaningfulInstructions(registration);
         int versionRegistrations = 0;
         for (int index = 0; index + 2 < instructions.size(); index++) {
             if (instructions.get(index) instanceof FieldInsnNode field
                 && field.getOpcode() == Opcodes.GETSTATIC
-                && EARLY_PLUGIN.equals(field.owner)
-                && "EXPLICIT_VERSION_TRANSFORMER".equals(field.name)
+                && registrationTypeName.equals(field.owner)
+                && "VERSION".equals(field.name)
                 && instructions.get(index + 1) instanceof LdcInsnNode target
                 && CONTEXT_ATTRIBS.equals(target.cst)
                 && instructions.get(index + 2) instanceof MethodInsnNode call
-                && "registerExplicitTransformer".equals(call.name)
+                && "register".equals(call.name)
                 && REGISTER_EXPLICIT.equals(call.desc)) {
                 versionRegistrations++;
             }

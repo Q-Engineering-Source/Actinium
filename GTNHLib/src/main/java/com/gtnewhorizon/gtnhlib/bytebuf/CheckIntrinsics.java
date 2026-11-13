@@ -6,7 +6,6 @@ package com.gtnewhorizon.gtnhlib.bytebuf;
 import java.nio.ByteBuffer;
 import java.util.Objects;
 
-import org.lwjgl.system.MemoryUtil;
 
 /**
  * Simple index checks.
@@ -54,7 +53,7 @@ public final class CheckIntrinsics {
     }
 
     public static ByteBuffer NewDirectByteBuffer(long address, int capacity) {
-        return MemoryUtil.memByteBuffer(address, capacity);
+        return com.mitchej123.lwjgl.lwjgl2.memory.MemoryUtilities.memByteBuffer(address, capacity);
     }
 
     public static MemoryUtilities.MemoryAllocator getLwjgl3ifyAllocator() {

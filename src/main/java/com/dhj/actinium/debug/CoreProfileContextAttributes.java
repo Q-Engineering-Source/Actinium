@@ -3,6 +3,9 @@ package com.dhj.actinium.debug;
 import com.dhj.actinium.compat.ForgeEarlyConfigCompat;
 import org.lwjgl.opengl.ContextAttribs;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.reflect.Field;
 import java.util.function.Function;
 
 /**
@@ -10,6 +13,9 @@ import java.util.function.Function;
  * Keeping this logic outside every Mixin configuration package allows transformed classes to load it normally.
  */
 public final class CoreProfileContextAttributes {
+    private static final MethodHandle SET_MAJOR = versionSetter("majorVersion");
+    private static final MethodHandle SET_MINOR = versionSetter("minorVersion");
+
     private CoreProfileContextAttributes() {
     }
 
@@ -18,13 +24,41 @@ public final class CoreProfileContextAttributes {
      * implementations return a new instance. Both forms produce the requested core-profile attributes.
      */
     public static ContextAttribs create(int major, int minor, boolean lwjglDebug) {
-        ContextAttribs attributes = new ContextAttribs(major, minor);
+        ContextAttribs attributes;
+        if (SET_MAJOR == null || SET_MINOR == null) {
+            attributes = new ContextAttribs(major, minor);
+        } else {
+            attributes = new ContextAttribs(3, 3);
+            try {
+                SET_MAJOR.invokeExact(attributes, major);
+                SET_MINOR.invokeExact(attributes, minor);
+            } catch (Throwable failure) {
+                throw new IllegalArgumentException("Cannot request OpenGL " + major + '.' + minor, failure);
+            }
+        }
         return configure(
             attributes,
             value -> value.withProfileCore(true),
             value -> value.withForwardCompatible(true),
             value -> value.withDebug(lwjglDebug)
         );
+    }
+
+    /**
+     * LWJGL has no public version setters, and its constructor rejects versions above 4.5.
+     * Angelica uses the same private fields to avoid rejecting a valid request before probing starts.
+     * LWJGLX uses native storage instead, so it retains the constructor path.
+     */
+    private static MethodHandle versionSetter(String fieldName) {
+        try {
+            Field field = ContextAttribs.class.getDeclaredField(fieldName);
+            field.setAccessible(true);
+            return MethodHandles.lookup().unreflectSetter(field);
+        } catch (NoSuchFieldException unavailable) {
+            return null;
+        } catch (ReflectiveOperationException failure) {
+            throw new ExceptionInInitializerError(failure);
+        }
     }
 
     /**

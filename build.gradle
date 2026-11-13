@@ -1,6 +1,7 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.jetbrains.gradle.ext.Gradle
 import java.util.Locale
+import xyz.wagyourtail.jvmdg.gradle.task.DowngradeJar
 
 plugins {
     id 'java'
@@ -10,6 +11,7 @@ plugins {
     id 'org.jetbrains.gradle.plugin.idea-ext' version '1.4.1'
     id 'top.outlands.unimined' version '1.4.48'
     id 'net.kyori.blossom' version '2.2.0'
+    id 'xyz.wagyourtail.jvmdowngrader' version '1.3.5'
 }
 
 apply from: 'gradle/scripts/helpers.gradle'
@@ -93,6 +95,7 @@ java {
 configurations {
     contain
     implementation.extendsFrom(contain)
+    embeddedLibs
     // External classes bundled into the mod jar body under the shared shadow namespace, mirroring
     // the upstream Celeritas distribution layout. Kept separate from implementation so the plain
     // namespace jars stay on the compile/dev classpath for third-party mods that need them.
@@ -105,6 +108,12 @@ configurations {
     compileOnly.extendsFrom(modCompileOnly)
     modRuntimeOnly
     runtimeOnly.extendsFrom(modRuntimeOnly)
+    vanillaLaunchwrapper
+    forgeLoadingTestClasspath
+    legacyLwjgl
+    // fastutil 7.1.0, the version vanilla Forge puts on the launch classpath. Packaging reads its
+    // entry list to tell which fastutil 8 classes have to be swapped in at class load time.
+    legacyFastutil
 }
 
 ext.lwjglVersion = '3.4.3'
@@ -112,6 +121,7 @@ ext.lwjglVersion = '3.4.3'
 def embeddedLibraryProjects = [
     project(':GTNHLib'),
     project(':glsm'),
+    project(':lwjgl2-backend'),
     project(':celeritas-common'),
     project(':shader'),
     project(':sdl-gpu')
@@ -353,10 +363,27 @@ def shadowRemapJar = tasks.register('shadowRemapJar', ShadowJar) {
     relocate('org.anarres.cpp', 'com.gtnewhorizons.angelica.shadow.org.anarres.cpp')
     mergeServiceFiles()
     manifest.inheritFrom(tasks.named('jar').get().manifest)
+    destinationDirectory.set(layout.buildDirectory.dir('intermediates/shadow-remapped'))
+}
+
+def java8Jar = tasks.named('downgradeJar', DowngradeJar)
+java8Jar.configure {
+    group = 'build'
+    description = 'Builds the Java 8 compatible production mod jar.'
+    dependsOn shadowRemapJar
+    inputFile.set(shadowRemapJar.flatMap { it.archiveFile })
+    archiveBaseName.set(propertyString('mod_name'))
+    archiveVersion.set(finalVersion)
+    archiveClassifier.set('')
+    destinationDirectory.set(layout.buildDirectory.dir('libs'))
+    classpath = sourceSets.main.runtimeClasspath
+    downgradeTo.set(JavaVersion.VERSION_1_8)
+    multiReleaseOriginal.set(false)
+    multiReleaseVersions.set([] as Set)
 }
 
 // The Shadow plugin's default shadowJar produces an unremapped -all.jar that the project
-// does not distribute; the production artifact is shadowRemapJar.
+// does not distribute; shadowRemapJar is the pre-downgrade intermediate for java8Jar.
 tasks.named('shadowJar') {
     enabled = false
 }
@@ -408,7 +435,7 @@ tasks.named('preRunServer').configure {
 }
 
 tasks.named('assemble').configure {
-    dependsOn shadowRemapJar
+    dependsOn java8Jar
 }
 
 tasks.named('runClient', JavaExec).configure {
@@ -423,7 +450,88 @@ tasks.named('runServer', JavaExec).configure {
 
 apply from: 'gradle/scripts/dependencies.gradle'
 
+/**
+ * Stages only the fastutil 8 classes the distribution actually links against.
+ *
+ * <p>Every type reachable from the compiled mod classes is collected, plus the fastutil types those
+ * classes reference in turn. Types that Forge's fastutil 7.1.0 also ships are written as .bin
+ * resources for {@code FastutilUpgraderTransformer}; types 8.x added stay at their real path so the
+ * launch loader can locate them before any transformer runs.</p>
+ */
+def prepareFastutil8 = tasks.register('prepareFastutil8') {
+    group = 'build'
+    description = 'Stages the fastutil 8 classes referenced by the compiled mod classes.'
+    def outputDir = layout.buildDirectory.dir('generated/fastutil8')
+    def seedClassDirs = files(
+        embeddedLibraryProjects.collect { it.sourceSets.main.output.classesDirs },
+        sourceSets.main.output.classesDirs
+    )
+    outputs.dir(outputDir)
+    inputs.files(configurations.embeddedLibs, configurations.legacyFastutil, seedClassDirs)
+
+    doLast {
+        def fastutilType = java.util.regex.Pattern.compile('it/unimi/dsi/fastutil/[A-Za-z0-9/$_]+')
+        def forgeEntries = new HashSet<String>()
+        new java.util.zip.ZipFile(configurations.legacyFastutil.singleFile).withCloseable { zip ->
+            zip.entries().each { entry ->
+                if (!entry.directory && entry.name.endsWith('.class')) {
+                    forgeEntries.add(entry.name)
+                }
+            }
+        }
+        def fastutilClasses = new HashMap<String, byte[]>()
+        new java.util.zip.ZipFile(configurations.embeddedLibs.singleFile).withCloseable { zip ->
+            zip.entries().each { entry ->
+                if (!entry.directory && entry.name.startsWith('it/unimi/dsi/fastutil/')
+                        && entry.name.endsWith('.class')) {
+                    fastutilClasses.put(entry.name, zip.getInputStream(entry).bytes)
+                }
+            }
+        }
+
+        def pending = new ArrayDeque<String>()
+        def collectTypes = { byte[] bytes ->
+            def matcher = fastutilType.matcher(new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1))
+            while (matcher.find()) {
+                pending.add(matcher.group())
+            }
+        }
+        seedClassDirs.each { dir ->
+            if (dir.isDirectory()) {
+                dir.eachFileRecurse { file ->
+                    if (file.name.endsWith('.class')) {
+                        collectTypes(file.bytes)
+                    }
+                }
+            }
+        }
+
+        def staged = new LinkedHashSet<String>()
+        def outputRoot = outputDir.get().asFile
+        outputRoot.deleteDir()
+        while (!pending.isEmpty()) {
+            def typeName = pending.poll()
+            if (!staged.add(typeName)) {
+                continue
+            }
+            def classBytes = fastutilClasses.get(typeName + '.class')
+            if (classBytes == null) {
+                continue
+            }
+            def target = forgeEntries.contains(typeName + '.class')
+                ? new File(outputRoot, 'META-INF/actinium_libs/fastutil8/' + typeName + '.bin')
+                : new File(outputRoot, typeName + '.class')
+            target.parentFile.mkdirs()
+            target.bytes = classBytes
+            collectTypes(classBytes)
+        }
+        logger.lifecycle("Staged ${staged.size()} fastutil 8 classes")
+    }
+}
+
 processResources {
+    from(prepareFastutil8)
+
     def resourceProperties = [
         mod_id         : propertyString('mod_id'),
         mod_name       : propertyString('mod_name'),
@@ -599,6 +707,17 @@ test {
     javaLauncher = javaToolchains.launcherFor {
         languageVersion = JavaLanguageVersion.of(25)
     }
+    doFirst {
+        systemProperty 'actinium.vanillaLaunchwrapper', configurations.vanillaLaunchwrapper.singleFile.absolutePath
+        systemProperty 'actinium.forgeTestClasspath',
+            (sourceSets.main.output.files + configurations.forgeLoadingTestClasspath.files).collect {
+                it.absolutePath
+            }.join(File.pathSeparator)
+        systemProperty 'actinium.forgeDependencyClasspath',
+            (configurations.legacyLwjgl.files + configurations.forgeLoadingTestClasspath.files).collect {
+                it.absolutePath
+            }.join(File.pathSeparator)
+    }
     if (propertyBool('show_testing_output')) {
         testLogging {
             showStandardStreams = true
@@ -685,8 +804,8 @@ tasks.named('processResources').configure {
 }
 
 def verifyDistributedJar = tasks.register('verifyDistributedJar') {
-    dependsOn tasks.named('shadowRemapJar')
-    def shadowOutput = tasks.named('shadowRemapJar').flatMap { it.archiveFile }
+    dependsOn java8Jar
+    def shadowOutput = java8Jar.flatMap { it.archiveFile }
     inputs.file(shadowOutput)
 
     doLast {
@@ -698,6 +817,8 @@ def verifyDistributedJar = tasks.register('verifyDistributedJar') {
             'com/dhj/actinium/Actinium.class',
             'org/taumc/celeritas/core/CeleritasLoadingPlugin.class',
             'com/gtnewhorizons/angelica/glsm/GLStateManager.class',
+            'com/gtnewhorizons/angelica/glsm/backend/Lwjgl2GLRenderBackend.class',
+            'com/mitchej123/lwjgl/lwjgl2/LWJGL2Service.class',
             'com/gtnewhorizons/angelica/sdlgpu/SDLGPURenderBackend.class',
             'net/coderbot/iris/Iris.class',
             // Early shader dependencies must be available from the production jar body before
@@ -707,6 +828,12 @@ def verifyDistributedJar = tasks.register('verifyDistributedJar') {
             'com/gtnewhorizons/angelica/shadow/org/anarres/cpp/CppReader.class',
             'org/lwjgl/util/shaderc/Shaderc.class',
             'org/lwjgl/util/spvc/Spvc.class',
+            'xyz/wagyourtail/jvmdg/j9/stub/java_base/J_U_List.class',
+            'xyz/wagyourtail/jvmdg/j16/stub/java_base/J_L_Record.class',
+            'LICENSE.md',
+            'license/LGPLv2.1.md',
+            'license/COMMERCIAL.md',
+            'license/CLA.md',
             'dhj/embeddedt/embeddium/impl/render/chunk/RenderSectionManager.class',
             'dhj/embeddedt/embeddium/impl/shadow/joml/Vector3f.class',
             'joml-1.10.5.jar',
@@ -719,6 +846,42 @@ def verifyDistributedJar = tasks.register('verifyDistributedJar') {
             if (archive.matching { include entry }.isEmpty()) {
                 throw new GradleException("Distributed mod jar is missing required entry: ${entry}")
             }
+        }
+
+        // Every fastutil type a packaged class links against must be present: either as the .bin
+        // copy FastutilUpgraderTransformer serves over Forge's 7.1.0 classes, or at its real path
+        // for classes 7.1.0 does not ship at all.
+        def fastutilType = java.util.regex.Pattern.compile('it/unimi/dsi/fastutil/[A-Za-z0-9/$_]+')
+        def missingFastutilTypes = new TreeSet<String>()
+        new java.util.jar.JarFile(shadowOutput.get().asFile).withCloseable { jar ->
+            def entryNames = new HashSet<String>()
+            def entries = jar.entries()
+            while (entries.hasMoreElements()) {
+                entryNames.add(entries.nextElement().name)
+            }
+            entries = jar.entries()
+            while (entries.hasMoreElements()) {
+                def entry = entries.nextElement()
+                if (!entry.name.endsWith('.class') || entry.name.startsWith('META-INF/actinium_libs/')
+                        || entry.name.startsWith('it/unimi/')) {
+                    continue
+                }
+                def matcher = fastutilType.matcher(
+                    new String(jar.getInputStream(entry).bytes, java.nio.charset.StandardCharsets.ISO_8859_1)
+                )
+                while (matcher.find()) {
+                    def typeName = matcher.group()
+                    if (!entryNames.contains(typeName + '.class')
+                            && !entryNames.contains('META-INF/actinium_libs/fastutil8/' + typeName + '.bin')) {
+                        missingFastutilTypes.add(typeName)
+                    }
+                }
+            }
+        }
+        if (!missingFastutilTypes.isEmpty()) {
+            throw new GradleException(
+                "Distributed mod jar is missing linked fastutil 8 classes: ${missingFastutilTypes}"
+            )
         }
 
         // The shadow layout only holds relocated joml classes in the jar body; plain org.joml is
@@ -771,12 +934,12 @@ def verifyDistributedJar = tasks.register('verifyDistributedJar') {
 def verifyDistributedShaderDependencies = tasks.register('verifyDistributedShaderDependencies') {
     group = 'verification'
     description = 'Runs GLSL, JCPP, shaderc and SPIRV-Cross through an isolated distribution class path.'
-    dependsOn tasks.named('shadowRemapJar')
-    inputs.file(tasks.named('shadowRemapJar').flatMap { it.archiveFile })
+    dependsOn java8Jar
+    inputs.file(java8Jar.flatMap { it.archiveFile })
     inputs.file(layout.projectDirectory.file('gradle/fixtures/DistributedShaderDependencyProbe.java'))
 
     doLast {
-        def distributedJar = tasks.named('shadowRemapJar').get().archiveFile.get().asFile
+        def distributedJar = java8Jar.get().archiveFile.get().asFile
         def fixture = layout.projectDirectory.file('gradle/fixtures/DistributedShaderDependencyProbe.java').asFile
         def probeRoot = layout.buildDirectory.dir('distributed-shader-probe').get().asFile
         def classesDir = new File(probeRoot, 'classes')
@@ -854,8 +1017,64 @@ def verifyDistributedShaderDependencies = tasks.register('verifyDistributedShade
     }
 }
 
+def verifyDistributedForgeLoading = tasks.register('verifyDistributedForgeLoading') {
+    group = 'verification'
+    description = 'Loads the Java 8 distribution through vanilla Forge APIs without Outlands.'
+    dependsOn java8Jar
+    inputs.file(java8Jar.flatMap { it.archiveFile })
+    inputs.file(layout.projectDirectory.file('gradle/fixtures/DistributedForgeLoadingProbe.java'))
+    inputs.file(layout.projectDirectory.file('gradle/fixtures/DistributedForgeLoadingProbe-log4j2.xml'))
+    inputs.file(layout.projectDirectory.file('gradle/fixtures/DistributedForgeLoadingProbe-options.json'))
+    inputs.files(configurations.vanillaLaunchwrapper)
+    inputs.files(configurations.forgeLoadingTestClasspath)
+    inputs.files(configurations.legacyLwjgl)
+
+    doLast {
+        def distributedJar = java8Jar.get().archiveFile.get().asFile
+        def fixture = layout.projectDirectory.file('gradle/fixtures/DistributedForgeLoadingProbe.java').asFile
+        def log4jConfig = layout.projectDirectory.file('gradle/fixtures/DistributedForgeLoadingProbe-log4j2.xml').asFile
+        def optionsFixture = layout.projectDirectory.file('gradle/fixtures/DistributedForgeLoadingProbe-options.json').asFile
+        def probeRoot = layout.buildDirectory.dir('distributed-forge-probe').get().asFile
+        def classesDir = new File(probeRoot, 'classes')
+        delete probeRoot
+        classesDir.mkdirs()
+        def configDir = new File(probeRoot, 'config')
+        configDir.mkdirs()
+        new File(configDir, 'actinium-options.json').text = optionsFixture.text
+
+        def compiler = javaToolchains.compilerFor {
+            languageVersion = JavaLanguageVersion.of(25)
+        }.get().executablePath.asFile
+        def launcher = javaToolchains.launcherFor {
+            languageVersion = JavaLanguageVersion.of(8)
+        }.get().executablePath.asFile
+        def dependencyClasspath = ([distributedJar] + configurations.legacyLwjgl.files
+            + configurations.vanillaLaunchwrapper.files + configurations.forgeLoadingTestClasspath.files)
+        def classpath = ([classesDir] + dependencyClasspath).collect { it.absolutePath }.join(File.pathSeparator)
+
+        def runProcess = { File executable, List<String> arguments ->
+            def command = ([executable.absolutePath] + arguments).collect { it.toString() }
+            def process = new ProcessBuilder(command)
+                .directory(probeRoot)
+                .redirectErrorStream(true)
+                .start()
+            def output = new StringBuilder()
+            process.inputStream.eachLine('UTF-8') { output << it << '\n' }
+            if (process.waitFor() != 0) {
+                throw new GradleException("Distributed Forge loading probe failed: ${executable.name}\n${output}")
+            }
+        }
+        runProcess(compiler, ['--release', '8', '-encoding', 'UTF-8', '-cp',
+            dependencyClasspath.collect { it.absolutePath }.join(File.pathSeparator),
+            '-d', classesDir.absolutePath, fixture.absolutePath])
+        runProcess(launcher, ["-Dlog4j.configurationFile=${log4jConfig.toURI().toString()}",
+            '-cp', classpath, 'DistributedForgeLoadingProbe'])
+    }
+}
+
 verifyDistributedJar.configure {
     dependsOn verifyDistributedShaderDependencies
+    dependsOn verifyDistributedForgeLoading
 }
 
 def verifyModuleBoundaries = tasks.register('verifyModuleBoundaries') {
@@ -867,6 +1086,7 @@ def verifyModuleBoundaries = tasks.register('verifyModuleBoundaries') {
             actinium: files(tasks.named('compileJava', JavaCompile).get().destinationDirectory),
             GTNHLib: project(':GTNHLib').sourceSets.main.output.classesDirs,
             glsm: project(':glsm').sourceSets.main.output.classesDirs,
+            lwjgl2: project(':lwjgl2-backend').sourceSets.main.output.classesDirs,
             celeritas: project(':celeritas-common').sourceSets.main.output.classesDirs,
             sdlgpu: project(':sdl-gpu').sourceSets.main.output.classesDirs
         ]

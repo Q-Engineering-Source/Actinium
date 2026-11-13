@@ -61,7 +61,7 @@ public final class ActiniumStartupDebugConfig {
         }
 
         try (Reader reader = Files.newBufferedReader(path)) {
-            JsonElement root = JsonParser.parseReader(reader);
+            JsonElement root = new JsonParser().parse(reader);
             if (!root.isJsonObject()) {
                 return Snapshot.DEFAULT;
             }

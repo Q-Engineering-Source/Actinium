@@ -1,7 +1,6 @@
 package com.dhj.actinium.loading.fml.transformers;
 
 import com.dhj.actinium.startup.SdlGpuBootstrap;
-import net.minecraft.launchwrapper.IClassTransformer;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
@@ -17,12 +16,11 @@ import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
-import top.outlands.foundation.IExplicitTransformer;
 
 import java.util.List;
 
 /** Routes SDL display and shared drawable operations that remain renderer-specific. */
-public final class SdlGpuHostTransformer implements IClassTransformer, IExplicitTransformer {
+public final class SdlGpuHostTransformer implements ExplicitClassTransformer {
     private static final String HOOK = "com/dhj/actinium/startup/SdlGpuBootstrap";
     private static final String DISPLAY = "org/lwjgl/opengl/Display";
     private static final String DRAWABLE = "org/lwjgl/opengl/DrawableGL";
@@ -32,7 +30,7 @@ public final class SdlGpuHostTransformer implements IClassTransformer, IExplicit
     public static final List<String> TARGETS = List.of(DISPLAY, DRAWABLE).stream()
         .map(name -> name.replace('/', '.')).toList();
 
-    @Override public int getPriority() { return IClassTransformer.super.getPriority() + 100; }
+    @Override public int getPriority() { return ExplicitClassTransformer.super.getPriority() + 100; }
 
     @Override public byte[] transform(byte[] bytes) {
         String name = new ClassReader(bytes).getClassName().replace('/', '.');
@@ -40,8 +38,8 @@ public final class SdlGpuHostTransformer implements IClassTransformer, IExplicit
     }
 
     @Override public byte[] transform(String name, String transformedName, byte[] bytes) {
-        if (bytes == null || !SdlGpuBootstrap.isSupported()) return bytes;
-        if (!TARGETS.contains(name) && !TARGETS.contains(transformedName)) return bytes;
+        if (bytes == null || (!TARGETS.contains(name) && !TARGETS.contains(transformedName))) return bytes;
+        if (!SdlGpuBootstrap.isSupported()) return bytes;
         ClassReader reader = new ClassReader(bytes);
         ClassNode node = new ClassNode();
         reader.accept(node, ClassReader.EXPAND_FRAMES);

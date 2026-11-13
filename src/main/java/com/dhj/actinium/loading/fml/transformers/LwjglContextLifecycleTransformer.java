@@ -1,7 +1,6 @@
 package com.dhj.actinium.loading.fml.transformers;
 
 import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
-import net.minecraft.launchwrapper.IClassTransformer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.objectweb.asm.ClassReader;
@@ -16,12 +15,11 @@ import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
-import top.outlands.foundation.IExplicitTransformer;
 
 import java.util.List;
 
 /** Injects native context lifetime callbacks for supported LWJGL display implementations. */
-public final class LwjglContextLifecycleTransformer implements IClassTransformer, IExplicitTransformer {
+public final class LwjglContextLifecycleTransformer implements ExplicitClassTransformer {
     private static final Logger LOGGER = LogManager.getLogger("Actinium");
 
     private static final String DISPLAY = "org.lwjgl.opengl.Display";
@@ -48,7 +46,7 @@ public final class LwjglContextLifecycleTransformer implements IClassTransformer
 
     @Override
     public int getPriority() {
-        return IClassTransformer.super.getPriority();
+        return ExplicitClassTransformer.super.getPriority();
     }
 
     @Override
@@ -163,6 +161,14 @@ public final class LwjglContextLifecycleTransformer implements IClassTransformer
     private static boolean transformDrawable(ClassNode classNode) {
         requireField(classNode, "context", CONTEXT_DESCRIPTOR, false);
         requireMethod(classNode, "getContext", "()" + CONTEXT_DESCRIPTOR, false);
+
+        // DrawableGL is package-private in vanilla LWJGL 2, which prevents instanceof checks in GLStateManager.
+        // Promote it to public so the runtime access check passes.
+        final boolean accessChanged = (classNode.access & Opcodes.ACC_PUBLIC) == 0;
+        if (accessChanged) {
+            classNode.access = (classNode.access & ~(Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED)) | Opcodes.ACC_PUBLIC;
+        }
+
         final MethodNode createSharedContext = requireMethod(
             classNode,
             "createSharedContext",
@@ -180,7 +186,7 @@ public final class LwjglContextLifecycleTransformer implements IClassTransformer
             if (registerCalls == sharedContextReturns
                 && handleCalls == sharedContextReturns
                 && hasCompleteSharedContextInjections(createSharedContext)) {
-                return false;
+                return accessChanged;
             }
             throw transformationFailure(DRAWABLE_GL, "found a partial or duplicate shared-context injection");
         }

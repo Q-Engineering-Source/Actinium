@@ -1,0 +1,135 @@
+import net.minecraft.launchwrapper.Launch;
+import net.minecraft.launchwrapper.LaunchClassLoader;
+
+import java.io.File;
+import java.lang.reflect.Method;
+import java.net.URL;
+import java.nio.Buffer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+
+public final class DistributedForgeLoadingProbe {
+    private static final String FOUNDATION_RESOURCE = "top/outlands/foundation/TransformerDelegate.class";
+    private static final String MIXIN_EARLY = "com.dhj.actinium.mixins.MixinEarly";
+    private static final String LATE_INSTALLER = "com.dhj.actinium.loading.fml.transformers.LateRedirectorInstaller";
+    private static final String EARLY_REDIRECTOR =
+        "com.gtnewhorizons.angelica.loading.fml.transformers.EarlyRedirectorTransformer";
+    private static final String LATE_REDIRECTOR =
+        "com.gtnewhorizons.angelica.loading.fml.transformers.AngelicaRedirectorTransformer";
+    private static final String LOCK_FIX = "com.dhj.actinium.compat.MixinReEntranceLockFix";
+    private static final List<String> REQUIRED_TRANSFORMERS = Arrays.asList(
+        "com.dhj.actinium.loading.fml.transformers.FastutilUpgraderTransformer",
+        "com.dhj.actinium.loading.fml.transformers.LwjglContextVersionTransformer",
+        "com.dhj.actinium.loading.fml.transformers.LwjglContextLifecycleTransformer",
+        "com.dhj.actinium.loading.fml.transformers.SdlGpuHostTransformer"
+    );
+
+    private DistributedForgeLoadingProbe() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        if (DistributedForgeLoadingProbe.class.getClassLoader().getResource(FOUNDATION_RESOURCE) != null) {
+            throw new AssertionError("Outlands Foundation leaked into the Forge probe classpath");
+        }
+        List<URL> classpath = new ArrayList<URL>();
+        for (String entry : System.getProperty("java.class.path").split(File.pathSeparator)) {
+            classpath.add(new File(entry).toURI().toURL());
+        }
+
+        try (LaunchClassLoader loader = new LaunchClassLoader(classpath.toArray(new URL[0]))) {
+            Launch.blackboard = new HashMap<String, Object>();
+            Launch.classLoader = loader;
+            loader.loadClass("com.dhj.actinium.debug.ActiniumStartupDebugConfig")
+                .getMethod("enableLwjglDebug").invoke(null);
+            Class<?> earlyConfig = loader.loadClass("com.dhj.actinium.compat.ForgeEarlyConfigCompat");
+            Object snapshot = earlyConfig.getMethod("snapshot").invoke(null);
+            Class<?> snapshotType = loader.loadClass("com.dhj.actinium.compat.ForgeEarlyConfigCompat$Snapshot");
+            earlyConfig.getMethod("applyCoreProfile", int.class, int.class, boolean.class)
+                .invoke(null, 4, 6, false);
+            earlyConfig.getMethod("restoreCompatibilityProfile", int.class, int.class, boolean.class)
+                .invoke(null, 4, 6, false);
+            earlyConfig.getMethod("restore", snapshotType).invoke(null, snapshot);
+            earlyConfig.getMethod("persistCompatibilityProfile").invoke(null);
+            Class<?> attributeFactory = loader.loadClass("com.dhj.actinium.debug.CoreProfileContextAttributes");
+            Object attributes = attributeFactory.getMethod("create", int.class, int.class, boolean.class)
+                .invoke(null, 4, 6, false);
+            Class<?> attributeType = loader.loadClass("org.lwjgl.opengl.ContextAttribs");
+            if ((Integer) attributeType.getMethod("getMajorVersion").invoke(attributes) != 4
+                || (Integer) attributeType.getMethod("getMinorVersion").invoke(attributes) != 6) {
+                throw new AssertionError("GL 4.6 attributes were not preserved");
+            }
+            Class<?> memoryType = loader.loadClass("com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities");
+            Object memory = memoryType.getMethod("memAlloc", int.class).invoke(null, 16);
+            long address = (Long) memoryType.getMethod("memAddress", Buffer.class).invoke(null, memory);
+            if (address == 0L) {
+                throw new AssertionError("Native memory allocation returned a null address");
+            }
+            memoryType.getMethod("memFree", Buffer.class).invoke(null, memory);
+            Class<?> pluginType = loader.loadClass(MIXIN_EARLY);
+            Object plugin = pluginType.getDeclaredConstructor().newInstance();
+            String[] transformerArray = (String[]) pluginType.getMethod("getASMTransformerClass").invoke(plugin);
+            List<String> transformerNames = Arrays.asList(transformerArray);
+            if (!transformerNames.containsAll(REQUIRED_TRANSFORMERS)) {
+                throw new AssertionError("Early transformer entries are missing: " + transformerNames);
+            }
+            for (String transformerName : transformerNames) {
+                loader.registerTransformer(transformerName);
+            }
+            for (String requiredName : transformerNames) {
+                boolean registered = false;
+                for (Object transformer : loader.getTransformers()) {
+                    if (requiredName.equals(transformer.getClass().getName())) {
+                        registered = true;
+                        break;
+                    }
+                }
+                if (!registered) {
+                    throw new AssertionError("Forge did not register " + requiredName);
+                }
+            }
+
+            Class.forName("it.unimi.dsi.fastutil.booleans.BooleanConsumer", false, loader);
+            Class<?> nativeBufferType = loader.loadClass("dhj.embeddedt.embeddium.impl.common.util.NativeBuffer");
+            Object nativeBuffer = nativeBufferType.getConstructor(int.class).newInstance(64);
+            nativeBufferType.getMethod("ensureCapacity", int.class).invoke(nativeBuffer, 128);
+            if ((Integer) nativeBufferType.getMethod("getLength").invoke(nativeBuffer) != 128) {
+                throw new AssertionError("NativeBuffer did not grow to the requested capacity");
+            }
+            Buffer directBuffer = (Buffer) nativeBufferType.getMethod("getDirectBuffer").invoke(nativeBuffer);
+            if (directBuffer.capacity() != 128) {
+                throw new AssertionError("NativeBuffer direct view has capacity " + directBuffer.capacity());
+            }
+            nativeBufferType.getMethod("free").invoke(nativeBuffer);
+
+            Class<?> installer = loader.loadClass(LATE_INSTALLER);
+            installer.getMethod("prepareTweaker").invoke(null);
+            loader.addClassLoaderExclusion("com.gtnewhorizons.angelica.loading.fml.tweakers");
+            Class.forName("com.gtnewhorizons.angelica.loading.fml.tweakers.AngelicaLateTweaker", true, loader);
+            loader.loadClass("com.dhj.actinium.compat.modernsplash.ModernSplashOverlayCompat")
+                .getMethod("markIfLoadedBeforeRedirector").invoke(null);
+
+            Method install = installer.getMethod("install");
+            install.invoke(null);
+            install.invoke(null);
+
+            List<?> transformers = loader.getTransformers();
+            int lateRegistrations = 0;
+            int earlyRegistrations = 0;
+            for (Object transformer : transformers) {
+                if (LATE_REDIRECTOR.equals(transformer.getClass().getName())) {
+                    lateRegistrations++;
+                }
+                if (EARLY_REDIRECTOR.equals(transformer.getClass().getName())) {
+                    earlyRegistrations++;
+                }
+            }
+            if (lateRegistrations != 1 || earlyRegistrations != 0) {
+                throw new AssertionError("Unexpected transformer registry: " + transformers);
+            }
+            loader.loadClass(LOCK_FIX).getMethod("clearInvalidVanillaClasses").invoke(null);
+        }
+        System.out.println("Distributed Forge loading probe passed");
+    }
+}
