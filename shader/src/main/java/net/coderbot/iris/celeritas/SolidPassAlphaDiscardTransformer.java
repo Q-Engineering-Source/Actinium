@@ -61,7 +61,7 @@ final class SolidPassAlphaDiscardTransformer {
 
         GlslTransformUtils.restoreReservedWordsInTree(parsed.full());
         final String header = GlslTransformUtils.restoreReservedWords(
-            GlslTransformUtils.getFormattedShader(parsed.pre(), "").trim());
+            GlslTransformUtils.getFormattedShader(parsed.pre(), "").trim(), version);
         if (!header.contains("#version")) {
             throw new IllegalStateException("Stripped fragment source has no #version directive: " + pass);
         }

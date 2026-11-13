@@ -475,6 +475,15 @@ class CompatShaderTransformerTest {
     ) {}
 
     @Test
+    void reservedWordRestoreHonoursTheEmittedVersion() {
+        final String renamed = "vec4 actinium_renamed_sample = texelFetch(noise, ivec2(0), 0);";
+
+        assertEquals("vec4 sample = texelFetch(noise, ivec2(0), 0);",
+            GlslTransformUtils.restoreReservedWords(renamed, 330));
+        assertEquals(renamed, GlslTransformUtils.restoreReservedWords(renamed, 460));
+    }
+
+    @Test
     void diskCacheHitReplacesTransform(@TempDir Path dir) {
         final String src = """
             #version 120

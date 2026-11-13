@@ -64,6 +64,12 @@ public class GlslTransformUtils {
 
     private record ReservedWordRename(Pattern pattern, String replacement) {}
 
+    /**
+     * GLSL 4.00 added {@code sample} to the keyword list; {@code sampler} follows from the same
+     * version on. Below it both are ordinary identifiers, so the names can be written back.
+     */
+    private static final int RESERVED_FROM_VERSION = 400;
+
     private static final Map<Integer, List<ReservedWordRename>> VERSIONED_RESERVED_WORDS = Map.of(
         0, List.of(
             new ReservedWordRename(Pattern.compile("sample(?<=\\bsample)\\b"), RENAMED_PREFIX + "sample"),
@@ -133,11 +139,22 @@ public class GlslTransformUtils {
         return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
     }
 
-    public static String restoreReservedWords(String source) {
+    /**
+     * Undo {@link #renameReservedWords} for the identifiers the emitted shader can carry again.
+     *
+     * <p>A word the target version reserves must keep its renamed form: restoring it makes the
+     * shader declare a name its own {@code #version} directive forbids, and the compiler rejects the
+     * whole shader. Vanilla's {@code blur.fsh} names a local {@code sample}, which is legal at 330
+     * but a keyword from 400 on.
+     */
+    public static String restoreReservedWords(String source, int targetVersion) {
         source = source.replace(RENAMED_PREFIX + "texture", "texture");
-        source = source.replace(RENAMED_PREFIX + "sampler", "sampler");
-        source = source.replace(RENAMED_PREFIX + "sample", "sample");
         source = source.replace(RENAMED_PREFIX + "new", "new");
+        if (targetVersion < RESERVED_FROM_VERSION) {
+            // "sampler" first: the "sample" rename is a prefix of it.
+            source = source.replace(RENAMED_PREFIX + "sampler", "sampler");
+            source = source.replace(RENAMED_PREFIX + "sample", "sample");
+        }
         return source;
     }
 

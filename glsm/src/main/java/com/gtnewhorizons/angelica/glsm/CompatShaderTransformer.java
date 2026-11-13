@@ -157,7 +157,9 @@ public class CompatShaderTransformer {
     }
 
     static ShaderDiskCache.Key diskKey(String source, boolean isFragment) {
-        return ShaderDiskCache.key("compat").str(source).b(isFragment).i(minGlslVersion());
+        // "compat2": the reserved-word restore is version-gated, so entries written by earlier
+        // builds can hold sources that violate their own #version directive.
+        return ShaderDiskCache.key("compat2").str(source).b(isFragment).i(minGlslVersion());
     }
 
     private static boolean needsTransformation(String source) {
@@ -284,8 +286,8 @@ public class CompatShaderTransformer {
         final StringBuilder result = new StringBuilder();
         transformer.mutateTree(tree -> result.append(GlslTransformUtils.getFormattedShader(tree, header)));
 
-        // Restore pre-parse renames
-        String output = GlslTransformUtils.restoreReservedWords(result.toString());
+        // Restore pre-parse renames, except where the emitted version reserves the original word
+        String output = GlslTransformUtils.restoreReservedWords(result.toString(), targetVersion);
 
         // Core profile: attribute → in, varying → out (vertex) / in (fragment)
         output = fixupQualifiers(output, isFragment);
