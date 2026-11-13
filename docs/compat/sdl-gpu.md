@@ -20,6 +20,10 @@ LWJGL Java 绑定和 shaderc、SPIRV-Cross native 版本统一为 `3.4.3`。普�
 
 审查还修复了上游继承的两类等待错误：SDL fence 等待失败不再报告已完成；上传提交等待和传输线程退出收到中断后继续等待完成，再恢复中断标记。真实 GLSL 编译补获并修复了保留名称矩阵 uniform、零参调用识别和 integer sampler 的 `textureSize` 转换问题。
 
+## MoltenVK 分发
+
+`moltenvk/` 不并入 Actinium 主 jar，`distJar` 生成带 `FMLCorePlugin` 清单的 `actinium-moltenvk-<lwjgl>.jar`。构建从 `org.lwjgl:lwjgl-vulkan` 的 `natives-macos` 与 `natives-macos-arm64` 分类器提取 dylib，分别落到 `macos/x64/org/lwjgl/vulkan/` 与 `macos/arm64/org/lwjgl/vulkan/`；任一架构缺失会让构建失败。Core plugin 只登记 1.12.2 core mod，不注入 transformer。
+
 ## 验证场景
 
 自动化验证覆盖 SDL device 上传/回读、生产 shader 编译与离屏像素、scissor、压缩块原始回读和解码、上下文失败回滚、terrain 范围、indexed SSBO 状态恢复与 shader image 写入变换。2026-11-11 执行 `./gradlew check glIntegrationTest :sdl-gpu:gpuTest build --no-daemon --offline` 全部通过：根项目 1268 项测试无失败（4 项跳过），SDL 逻辑测试 292 项、GTNHLib 8 项通过；原生 GL 回归 272 项、真实 SDL GPU 测试 4 项通过。

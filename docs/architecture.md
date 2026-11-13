@@ -1,6 +1,6 @@
 # Actinium 架构说明
 
-最后更新：2026-11-08。
+最后更新：2026-11-13。
 
 ## 概述
 
@@ -8,13 +8,16 @@ Actinium 是一个客户端模组兼 coremod（`@Mod(clientSideOnly = true)` + `
 Minecraft 1.12.2 / Cleanroom Loader。目标是在旧版客户端引入现代化渲染管线，同时保持光影包、
 经典模组内容与性能渲染共存。
 
-渲染栈由根项目与四个内嵌 Gradle 子项目组成，最终所有 class 合并进同一个 Actinium jar：
+渲染栈由根项目与内嵌 Gradle 子项目组成，内嵌模块的 class 合并进同一个 Actinium jar；`moltenvk` 生成独立分发 jar：
 
 - 根项目 `src/main/`：生命周期、配置、兼容层、Mixin 注册与 Actinium 自有渲染代码。
 - `shader/`：Iris 风格光影管线（光影包解析、GLSL 变换、render targets、uniform、pipeline）。
 - `celeritas-common/`：区块构建、上传、裁剪与绘制引擎（几乎不依赖 Minecraft 类）。
 - `glsm/`：OpenGL 状态跟踪、重定向、固定管线模拟与调试设施。
 - `GTNHLib/`：渲染原语库（tessellator / VBO / VAO / 后处理 / 顶点格式）。
+- `sdl-gpu/`：SDL GPU device、资源、管线、材质与交换链后端。
+- `lwjgl2-backend/`：原版 Forge LWJGL 2 启动路径的渲染后端。
+- `moltenvk/`：macOS MoltenVK 原生库与独立 core plugin 分发 jar，不并入主 jar。
 
 ## 构建模型
 
@@ -22,6 +25,10 @@ Minecraft 1.12.2 / Cleanroom Loader。目标是在旧版客户端引入现代化
 
 ```
 GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compileOnly）
+                 ↑
+      lwjgl2-backend / sdl-gpu
+
+moltenvk（独立分发，不参与主 jar 合并）
 ```
 
 - `GTNHLib`：零子项目依赖，仅测试用 JUnit + LWJGL natives。
@@ -29,11 +36,14 @@ GTNHLib ← glsm ← celeritas-common ← shader ← 根项目 src/main（compil
   两个 source set 直接并入 main（LWJGL 服务抽象层，Angelica 遗留）。
 - `celeritas-common`：`api project(':glsm')`，无 resources。
 - `shader`：`api project(':glsm') + project(':GTNHLib') + project(':celeritas-common')`，无 resources。
+- `lwjgl2-backend`、`sdl-gpu`：渲染后端，依赖 `glsm`。
+- `moltenvk`：只打包 core plugin 与 macOS 原生库，输出独立 jar。
 
 ### 打包
 
-- 根项目通过 `mergeEmbeddedLibraryClasses` 把四个子项目输出 Sync 合并进主 jar
+- 根项目通过 `mergeEmbeddedLibraryClasses` 把六个内嵌子项目输出 Sync 合并进主 jar
   （`DuplicatesStrategy.FAIL`），`remapJar` 生成可安装的 SRG 产物。
+- `moltenvk` 通过自己的 `distJar` 生成独立分发产物，不进入主 jar。
 
 开发约束：
 

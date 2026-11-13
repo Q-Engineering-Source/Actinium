@@ -19,7 +19,7 @@
 
 ## 边界
 
-本台账只覆盖 1.12.2（Cleanroom Loader）+ LWJGL3 的 Actinium 目标。上游 `sdl-gpu/`、`moltenvk/`、`umbra/`、`tracy-client/`、`lwjgl2-backend/`、`experimental-surround/`、`modern/`、`ornithe/`、`forge122/`、`forge1710/` 与 `common/` 这些本地不存在的模块，其专用实现一律判为不适用；混合提交按 hunk 拆分，逐项写出通用代码去向与排除部分，不对提交整体判不适用。
+本台账只覆盖 1.12.2 的 Cleanroom、Forge 与 Outlands 启动目标，以及 OpenGL、LWJGL 2 与 SDL GPU 渲染后端。本地现已包含 `sdl-gpu/`、`moltenvk/` 与 `lwjgl2-backend/`；`umbra/`、`tracy-client/`、`experimental-surround/`、`modern/`、`ornithe/`、`forge122/`、`forge1710/` 与 `common/` 仍不存在，其专用实现判为不适用。混合提交按 hunk 拆分，逐项写出通用代码去向与排除部分，不对提交整体判不适用。SDL 专用条目由 `c53a6d21` 与 `feat/sdl-gpu-moltenvk` 覆盖，具体状态见「SDL-GPU 当前同步记录」。
 
 `.github/`、`gradle/`、`build.gradle.kts`、`settings.gradle.kts`、`dependencies.gradle.kts`、`buildSrc/`、`README`、`libs.versions.toml` 等 CI、发布、版本号与治理文件同样判不适用。
 
@@ -247,16 +247,18 @@
 
 SDL 主模块按当前 GLSM 和 Outlands 宿主适配，资源与管线完整导入；SDL 专用调试使用已有 GUI DEBUG 门控，Tracy 保持未启用原生采集。`check`、`glIntegrationTest`、`:sdl-gpu:gpuTest` 与 `build` 均通过。必要的 Iris image 写入消费者、sampler 合并/整数纹理转换、vertex replay、composite prepass 与 shadow terrain voxelization 同批接入；用户客户端实测待进行，详见 `docs/compat/sdl-gpu.md`。
 
+2026-11-13，`feat/sdl-gpu-moltenvk` 补齐 macOS 原生库分发：新增 `moltenvk/` 子项目，独立 `distJar` 携带 1.12.2 core plugin 与 x64、arm64 两份 `libMoltenVK.dylib`，提取缺失时构建失败。启用、驱动和呈现线程选项由本地高级视频设置页承担，不移植上游 `RendererOptionPages` 的宿主专属页面。
+
 ## SDL-GPU 后端引入顺序
 
-SDL-GPU 后端确定后续引入，台账中标注为排除的 `sdl-gpu/`、`moltenvk/` 文件属于延后同步，引入时按下列顺序补齐。通用侧接口必须先就位，`RenderBackend` 的新方法一律给默认实现，SDL 后端接入时覆写。
+台账中标注为排除的 `sdl-gpu/`、`moltenvk/` 文件按下列顺序补齐。通用侧接口必须先就位，`RenderBackend` 的新方法一律给默认实现，SDL 后端接入时覆写。
 
-| 顺序 | 范围 |
-|---|---|
-| 1 | `moltenvk/` 子项目与 `RendererOptionPages`、`SdlGpuDriver`、`RenderBackendChoice`（`2a8c8756`） |
-| 2 | `Device`、`SDLGPURenderBackend`、`SDLGPUGate` 与 `sdl-gpu/build.gradle.kts` |
-| 3 | 缓冲映射生命周期的 17 个文件（`12857006`）、`MainThreadPump` 的 present 三态（`1587a12c`） |
-| 4 | 采样器搬运与 `SamplerAliasDeduplicator` 的 SDL 接线（`49db8e11`）、`glsmSdlAgent`（`482dece0`） |
+| 顺序 | 范围 | 状态 |
+|---|---|---|
+| 1 | `moltenvk/` 子项目与 `RendererOptionPages`、`SdlGpuDriver`、`RenderBackendChoice`（`2a8c8756`） | `moltenvk/` 已落地；驱动与后端选择适配到本地视频设置 |
+| 2 | `Device`、`SDLGPURenderBackend`、`SDLGPUGate` 与 `sdl-gpu/build.gradle` | 已同步（`c53a6d21`） |
+| 3 | 缓冲映射生命周期的 17 个文件（`12857006`）、`MainThreadPump` 的 present 三态（`1587a12c`） | 已同步 |
+| 4 | 采样器搬运与 `SamplerAliasDeduplicator` 的 SDL 接线（`49db8e11`）、`glsmSdlAgent`（`482dece0`） | 采样器接线已同步；`glsmSdlAgent` 属测试基础设施，尚未移植 |
 
 ## 无 SDL 前提下的 PR 顺序
 

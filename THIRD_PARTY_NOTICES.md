@@ -76,7 +76,7 @@ See `gradle/scripts/dependencies.gradle` and `build.gradle` for the authoritativ
   MIT notice from commit `53ce894` is retained at
   `third-party/licenses/mesa-dist-win-MIT.txt`.
 
-SDL-GPU 使用 LWJGL 3.4.3 的 shaderc、SPIRV-Cross Java 绑定及 Windows、Linux、macOS 的 x64/arm64 native 包。macOS 同时包含 LWJGL Vulkan native 包中的 MoltenVK。Java 绑定嵌入 Actinium 主 jar，平台 native 保留原始 jar 与许可文件，通过现有 `ContainedDeps` 声明加载。
+SDL-GPU 使用 LWJGL 3.4.3 的 shaderc、SPIRV-Cross Java 绑定及 Windows、Linux、macOS 的 x64/arm64 native 包。Java 绑定嵌入 Actinium 主 jar，平台 native 保留原始 jar 与许可文件，通过现有 `ContainedDeps` 声明加载。macOS 的 MoltenVK 由独立的 `actinium-moltenvk` 分发 jar 提供，其中包含 LWJGL Vulkan native 包提取的 x64、arm64 `libMoltenVK.dylib` 与上游 `LICENSE-MoltenVK`。
 
 Java 8 降级运行时来自 `xyz.wagyourtail.jvmdowngrader:jvmdowngrader-java-api:1.3.5:downgraded-8`，其类嵌入 Actinium 主 jar。上游同时提供 LGPL-2.1 与商业许可；原始 `LICENSE.md`、`license/LGPLv2.1.md`、`license/COMMERCIAL.md` 和 `license/CLA.md` 均保留在分发 Jar 中。
 
