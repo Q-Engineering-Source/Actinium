@@ -61,7 +61,8 @@ import java.lang.management.ManagementFactory;
         useMetadata = true,
         clientSideOnly = true,
         acceptableRemoteVersions = "*",
-        guiFactory = "com.dhj.actinium.gui.ActiniumGuiFactory"
+        guiFactory = "com.dhj.actinium.gui.ActiniumGuiFactory",
+        dependencies = "required-after:mixinbooter"
 )
 public class Actinium {
     public static final String MODID = ActiniumRuntime.MODID;
