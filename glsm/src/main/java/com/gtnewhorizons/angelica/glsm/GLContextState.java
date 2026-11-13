@@ -37,6 +37,7 @@ import com.gtnewhorizons.angelica.glsm.states.ImageUnitArray;
 import com.gtnewhorizons.angelica.glsm.states.PixelStoreState;
 import com.gtnewhorizons.angelica.glsm.states.TextureUnitArray;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import org.joml.Matrix4fStack;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
@@ -242,6 +243,12 @@ public class GLContextState {
     public int boundPixelPackBuffer;
     public int boundCopyReadBuffer;
     public int boundCopyWriteBuffer;
+    /** Buffers mapped for writing since the last unmap, so the contents change without a respecification call. */
+    public final IntOpenHashSet writeMappedBuffers = new IntOpenHashSet();
+    /** Depth of draws the FFP layer issues on its own behalf; such draws skip the extended-attribute rebuild. */
+    public int internalDrawDepth;
+    /** Depth of buffer work the FFP layer issues on its own behalf; such calls do not invalidate the rebuild cache. */
+    public int internalGlDepth;
     /** Buffer bound to each indexed uniform buffer slot by {@code glBindBufferBase} and {@code glBindBufferRange}. */
     public final int[] uniformBufferBindings = new int[GLStateManager.INDEXED_BUFFER_SLOTS];
     /** Buffer bound to each indexed shader storage buffer slot, tracked the same way as the uniform slots. */

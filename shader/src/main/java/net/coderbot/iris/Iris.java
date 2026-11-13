@@ -5,6 +5,7 @@ import com.google.common.base.Throwables;
 import dhj.embeddedt.embeddium.api.shader.ShaderProvider;
 import dhj.embeddedt.embeddium.api.shader.ShaderProviderHolder;
 import com.gtnewhorizons.angelica.Tags;
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import com.gtnewhorizons.angelica.glsm.shader.ShaderDiskCache;
 import com.gtnewhorizons.angelica.glsm.threading.AngelicaWorkers;
@@ -922,6 +923,9 @@ public class Iris {
         destroyEverything();
 
         loadShaderpack();
+
+        // The program identifiers probed for the previous pack and the data rebuilt for its attributes are stale.
+        GLSMHooks.notifyShaderPackReloaded();
 
         // Very important - we need to re-create the pipeline straight away.
         // https://github.com/IrisShaders/Iris/issues/1330

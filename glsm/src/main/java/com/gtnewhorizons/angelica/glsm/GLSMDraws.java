@@ -12,6 +12,7 @@ import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandType;
+import com.gtnewhorizons.angelica.glsm.ffp.FfpExtendedAttribs;
 import com.gtnewhorizons.angelica.glsm.ffp.VAOManager;
 import com.gtnewhorizons.angelica.glsm.recording.CommandRecorder;
 import com.gtnewhorizons.angelica.glsm.recording.ImmediateModeRecorder;
@@ -293,16 +294,21 @@ public final class GLSMDraws {
                 drawLinesAsQuads(ctx(), lineElementsFromBuffer(mode, indices_count, type, indices_buffer_offset));
                 return;
             }
-            preDrawFFP();
-            prepareClientArrays();
-            if (DEBUG_DRAW_LOGS) {
-                GLSMDebug.logDrawElements("ebo-offset", mode, indices_count, type, indices_buffer_offset);
-            }
-            recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, indices_count);
-            if (mode == GL11.GL_QUADS) {
-                QuadConverter.drawQuadElementsAsTriangles(indices_count, type, indices_buffer_offset);
-            } else {
-                RENDER_BACKEND.drawElements(mode, indices_count, type, indices_buffer_offset);
+            final boolean ffpExt = FfpExtendedAttribs.maybeBindIndexed(ctx(), mode, indices_count, type, indices_buffer_offset);
+            try {
+                preDrawFFP();
+                prepareClientArrays();
+                if (DEBUG_DRAW_LOGS) {
+                    GLSMDebug.logDrawElements("ebo-offset", mode, indices_count, type, indices_buffer_offset);
+                }
+                recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, indices_count);
+                if (mode == GL11.GL_QUADS) {
+                    QuadConverter.drawQuadElementsAsTriangles(indices_count, type, indices_buffer_offset);
+                } else {
+                    RENDER_BACKEND.drawElements(mode, indices_count, type, indices_buffer_offset);
+                }
+            } finally {
+                if (ffpExt) FfpExtendedAttribs.unbind();
             }
         } finally {
             if (savedRecorder != null) {
@@ -334,20 +340,25 @@ public final class GLSMDraws {
             if (savedRecorder != null) DisplayListManager.resumeRecording(savedRecorder);
             return;
         }
-        preDrawFFP();
-        prepareClientArrays(first, count);
-        if (DEBUG_DRAW_LOGS) {
-            GLSMDebug.logDrawArrays("draw-arrays", mode, first, count);
-        }
-        recordGpuCommand(GpuCommandType.DRAW_ARRAYS, mode, count);
-        if (mode == GL11.GL_QUADS) {
-            QuadConverter.drawQuadsAsTriangles(first, count);
-        } else if (mode == GL11.GL_QUAD_STRIP) {
-            RENDER_BACKEND.drawArrays(GL11.GL_TRIANGLE_STRIP, first, count & ~1);
-        } else if (mode == GL11.GL_POLYGON) {
-            RENDER_BACKEND.drawArrays(GL11.GL_TRIANGLE_FAN, first, count);
-        } else {
-            RENDER_BACKEND.drawArrays(mode, first, count);
+        final boolean ffpExt = FfpExtendedAttribs.maybeBind(ctx(), mode, first, count);
+        try {
+            preDrawFFP();
+            prepareClientArrays(first, count);
+            if (DEBUG_DRAW_LOGS) {
+                GLSMDebug.logDrawArrays("draw-arrays", mode, first, count);
+            }
+            recordGpuCommand(GpuCommandType.DRAW_ARRAYS, mode, count);
+            if (mode == GL11.GL_QUADS) {
+                QuadConverter.drawQuadsAsTriangles(first, count);
+            } else if (mode == GL11.GL_QUAD_STRIP) {
+                RENDER_BACKEND.drawArrays(GL11.GL_TRIANGLE_STRIP, first, count & ~1);
+            } else if (mode == GL11.GL_POLYGON) {
+                RENDER_BACKEND.drawArrays(GL11.GL_TRIANGLE_FAN, first, count);
+            } else {
+                RENDER_BACKEND.drawArrays(mode, first, count);
+            }
+        } finally {
+            if (ffpExt) FfpExtendedAttribs.unbind();
         }
         if (savedRecorder != null) DisplayListManager.resumeRecording(savedRecorder);
     }

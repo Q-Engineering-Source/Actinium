@@ -1,6 +1,7 @@
 package com.dhj.actinium.mixin.vintage.core.startup;
 
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.ffp.FfpExtendedAttribs;
 import com.gtnewhorizons.angelica.glsm.recording.ImmediateModeRecorder;
 import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
 import com.dhj.actinium.compat.modernsplash.ModernSplashOverlayCompat;
@@ -47,6 +48,7 @@ public class MixinSplashProgress {
     private static void celeritas$finishSplash(CallbackInfo ci) {
         ImmediateModeRecorder.destroySplashTessellator();
         TessellatorStreamingDrawer.destroy();
+        FfpExtendedAttribs.reset();
         // Splash replacements (e.g. modernsplash's CustomSplash) can finish with the game on a
         // different GL context than the one startup used (issue #150). Container objects (VAOs)
         // from the startup context are invalid on the new one, while VBOs are shared and stay
