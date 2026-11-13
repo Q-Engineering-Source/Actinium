@@ -16,6 +16,7 @@ import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.MixinEnvironment;
 import zone.rong.mixinbooter.IEarlyMixinLoader;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -45,17 +46,21 @@ public class MixinEarly implements IFMLLoadingPlugin, IEarlyMixinLoader {
     @Override
     public @Nullable String[] getASMTransformerClass() {
         OutlandsExplicitTransformerRegistration.register();
-        return new String[] {
-            FastutilUpgraderTransformer.class.getName(),
-            MacDisplayForwardCompatTransformer.class.getName(),
-            LwjglContextVersionTransformer.class.getName(),
-            LwjglContextLifecycleTransformer.class.getName(),
-            SdlGpuHostTransformer.class.getName(),
-            StellarCoreHudCachingCompatTransformer.class.getName(),
-            GnetumHudCachingCompatTransformer.class.getName(),
-            "com.gtnewhorizons.angelica.loading.fml.transformers.EarlyRedirectorTransformer",
-            BetterFoliageHbmCompatTransformer.class.getName()
-        };
+        List<String> transformers = new ArrayList<>();
+        // Cleanroom puts fastutil 8 on the launch classpath itself; only vanilla Forge needs its
+        // bundled fastutil 7.1.0 classes replaced.
+        if (!OutlandsExplicitTransformerRegistration.isAvailable()) {
+            transformers.add(FastutilUpgraderTransformer.class.getName());
+        }
+        transformers.add(MacDisplayForwardCompatTransformer.class.getName());
+        transformers.add(LwjglContextVersionTransformer.class.getName());
+        transformers.add(LwjglContextLifecycleTransformer.class.getName());
+        transformers.add(SdlGpuHostTransformer.class.getName());
+        transformers.add(StellarCoreHudCachingCompatTransformer.class.getName());
+        transformers.add(GnetumHudCachingCompatTransformer.class.getName());
+        transformers.add("com.gtnewhorizons.angelica.loading.fml.transformers.EarlyRedirectorTransformer");
+        transformers.add(BetterFoliageHbmCompatTransformer.class.getName());
+        return transformers.toArray(new String[0]);
     }
 
     @Override

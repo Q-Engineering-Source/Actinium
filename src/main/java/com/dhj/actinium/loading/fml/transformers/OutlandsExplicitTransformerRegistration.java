@@ -16,9 +16,17 @@ public final class OutlandsExplicitTransformerRegistration {
     private OutlandsExplicitTransformerRegistration() {
     }
 
+    /**
+     * True when the Outlands Foundation API is on the classpath, i.e. the client runs on Cleanroom
+     * rather than on the vanilla Forge launch wrapper.
+     */
+    public static boolean isAvailable() {
+        return OutlandsExplicitTransformerRegistration.class.getClassLoader()
+            .getResource(TRANSFORMER_DELEGATE_RESOURCE) != null;
+    }
+
     public static void register() {
-        if (OutlandsExplicitTransformerRegistration.class.getClassLoader()
-            .getResource(TRANSFORMER_DELEGATE_RESOURCE) == null) {
+        if (!isAvailable()) {
             return;
         }
         Outlands.register();
