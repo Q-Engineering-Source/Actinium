@@ -25,12 +25,15 @@ public final class TessellatorEntityIds {
 
     /** Records that the packed ids changed while {@code previous} covered the vertices before this point. */
     public static void onIdsChanged(long previous, long next) {
-        final ITessellatorData tess = (ITessellatorData) Tessellator.getInstance();
-        if (tess == null || !tess.isDrawing() || tess.getVertexCount() == 0) return;
+        final Tessellator tess = Tessellator.getInstance();
+        // Only the tessellators that expose their vertex cursor can hold runs; the vanilla one keeps its state in
+        // BufferBuilder and is drawn by the buffer-builder streaming path, which has no per-vertex ids yet.
+        if (!(tess instanceof ITessellatorData data)) return;
+        if (!data.isDrawing() || data.getVertexCount() == 0) return;
 
-        final int start = tess.getVertexCount();
-        if (owner != tess) {
-            owner = tess;
+        final int start = data.getVertexCount();
+        if (owner != data) {
+            owner = data;
             runCount = 0;
         }
         if (runCount == 0) addRun(0, previous);
