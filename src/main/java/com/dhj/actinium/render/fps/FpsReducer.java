@@ -57,8 +57,11 @@ public final class FpsReducer {
 
     /** Re-evaluates the state from the window and the config, and applies any transition. */
     public static void evaluateFrame() {
-        pollMouseActivity();
         final SodiumGameOptions.ReducerSettings settings = settings();
+        // Nothing to do while the reducer is off and has never been applied; the per-frame polling below would
+        // otherwise touch the keyboard and window bridge for every frame of every session.
+        if (!settings.enabled && applied == State.DISABLED && !configDirty) return;
+        pollMouseActivity();
         final boolean created = settings.enabled && Display.isCreated();
         final boolean visible = !created || Display.isVisible();
         final boolean active = !created || Display.isActive();
