@@ -103,6 +103,18 @@ public class ActiniumGameOptionPages {
                 .build();
     }
 
+    private static OptionImpl<SodiumGameOptions, Void> createPerformanceIndicatorScreenOption() {
+        return OptionImpl.createBuilder(Void.class, sodiumOpts)
+                .setId(OptionIdentifier.create("actinium", "performance_indicator_settings", Void.class))
+                .setName(TextComponent.translatable("sodium.options.actinium.performance_indicator_settings.name"))
+                .setTooltip(TextComponent.translatable("sodium.options.actinium.performance_indicator_settings.tooltip"))
+                .setControl(option -> new ExternalButtonControl(option,
+                        IndicatorScreen::open,
+                        TextComponent.translatable("sodium.options.actinium.performance_indicator_settings.button")))
+                .setBinding((opts, value) -> { }, opts -> null)
+                .build();
+    }
+
     private static OptionImpl<SodiumGameOptions, Boolean> createModelRendererBatchingOption(TextComponent tooltip) {
         return OptionImpl.createBuilder(boolean.class, sodiumOpts)
                 .setId(StandardOptions.Option.MODEL_RENDERER_BATCHING.cast())
@@ -240,6 +252,16 @@ public class ActiniumGameOptionPages {
                         .setBinding((opts, value) -> opts.attackIndicator = value, (opts) -> opts.attackIndicator)
                         .setDefaultValue(1)
                         .build())
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create("actinium", "performance_indicator", boolean.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.performance_indicator.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.performance_indicator.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setBinding((opts, value) -> opts.performanceIndicator.enabled = value,
+                                opts -> opts.performanceIndicator.enabled)
+                        .setDefaultValue(false)
+                        .build())
+                .add(createPerformanceIndicatorScreenOption())
                 .build());
 
         return new OptionPage(StandardOptions.Pages.GENERAL, TextComponent.translatable("stat.generalButton"), ImmutableList.copyOf(groups));

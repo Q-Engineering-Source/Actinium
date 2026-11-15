@@ -10,6 +10,7 @@ import com.dhj.actinium.command.TogglePassCommand;
 import com.dhj.actinium.config.ActiniumConfig;
 import com.dhj.actinium.config.ActiniumRuntimeOptions;
 import com.dhj.actinium.debug.ActiniumDiagnostics;
+import com.dhj.actinium.hud.runtime.PerformanceIndicators;
 import com.dhj.actinium.mixin.vintage.core.terrain.AccessorEntityRenderer;
 import com.dhj.actinium.render.FastLitItemDisplayListCache;
 import com.dhj.actinium.render.terrain.ActiniumWorldRenderer;
@@ -253,15 +254,17 @@ public class Actinium {
     }
 
     /**
-     * Drives the perf debug report clock from the render loop so a window with no timed stage still
-     * reports the {@code DebugCounters} deltas, which the periodic stage timer alone would never
-     * reach when shaders are off and the PBR animation counters are the only thing moving.
+     * Hands every render tick to the per-frame parts of the mod. The perf debug report clock runs so a
+     * window with no timed stage still reports the {@code DebugCounters} deltas, which the periodic
+     * stage timer alone would never reach when shaders are off and the PBR animation counters are the
+     * only thing moving; the performance indicator records and draws on the same tick.
      */
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent event) {
         if (event.phase == TickEvent.Phase.END && GLSMPerfDebug.isEnabled()) {
             GLSMPerfDebug.pollCounters();
         }
+        PerformanceIndicators.onRenderTick(event);
     }
 
     @SubscribeEvent

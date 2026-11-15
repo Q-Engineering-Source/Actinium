@@ -3,6 +3,7 @@ package com.dhj.actinium.mixin.vintage.core;
 import net.coderbot.iris.debug.flight.GlFlightRecording;
 import net.coderbot.iris.debug.flight.GlFlightStreamingSource;
 import com.dhj.actinium.gui.ActiniumWindowModeController;
+import com.dhj.actinium.hud.runtime.PerformanceIndicators;
 import com.dhj.actinium.render.BufferBuilderStreamingDrawer;
 import com.dhj.actinium.render.EndPortalCompositeRenderer;
 import com.dhj.actinium.render.frame.FramePacer;
@@ -148,6 +149,11 @@ public class MixinMinecraft {
     @Inject(method = "shutdownMinecraftApplet", at = @At("RETURN"))
     private void actinium$shutdownGpuCulling(CallbackInfo ci) {
         GpuCulling.shutdown();
+    }
+
+    @Inject(method = "shutdownMinecraftApplet", at = @At("RETURN"))
+    private void actinium$shutdownPerformanceIndicator(CallbackInfo ci) {
+        PerformanceIndicators.shutdown();
     }
 
     @Unique

@@ -190,3 +190,34 @@ section metadata 仅在 compute 可用且启用时发布，CPU 路径不为每�
 `FogDistanceModeBridge` 选择 GLSM 的 eye-radial fog variant，Celeritas 区块着色器通过
 `GLStateManagerFogService` 选择 spherical fog shape。应用设置时重载区块渲染器，以刷新受雾遮挡
 影响的区块搜索范围。光影包自带的雾逻辑不读取该选项。
+
+## 性能指示器
+
+General 页 INDICATORS 组提供性能指示器总开关与独立设置界面入口。配置保存在
+`config/actinium-options.json` 的 `performance_indicator` 段：`enabled` 默认 `false`，
+`refresh_interval_millis` 默认 `500`，`rows` 默认 `["fps"]`。界面左列是启用行，右列是候选项，
+支持左列内拖动排序、右到左启用和左到右移除。布局只保存启用行，右列由六类指标减去启用行生成，
+因此每类最多出现一次。Save 写入草稿，Cancel 和 Escape 放弃草稿，空左列表示不绘制任何行。
+
+| 行 id | 游戏内显示内容 |
+| --- | --- |
+| `fps` | 当前 FPS、会话 min/max |
+| `fps_low` | 当前 1% Low FPS、会话 min/max |
+| `memory` | 系统物理内存占用、会话 min/max |
+| `cpu` | 全系统 CPU 占用、有效逻辑核心的平均当前频率 |
+| `gpu` | 当前渲染 GPU 的占用与核心频率 |
+| `vram` | 当前渲染 GPU 的专用显存占用、可用总容量与显存频率 |
+
+FPS 使用 1 秒滑动窗口。1% Low 使用 10 秒窗口，至少有 100 个帧间隔样本时才计算，取最差 1%
+帧的平均帧时长再换算为 FPS。min/max 只统计当前世界会话中的有效发布值，世界对象变化或总开关
+从关到开时重置，`N/A` 不参与极值。F1、F3 和任意 GUI 屏幕只隐藏 HUD，不重置统计；F2 截图包含 HUD。
+
+刷新间隔控制文本发布和 OSHI 采样周期。独立界面滑块范围为 100–2000ms，步进 100ms；调整间隔时
+重排原采样任务，保留已有采样值和 CPU/GPU 差分基线。手工写入的非步进值在只修改布局时保持原值，
+运行时仍按 100–2000ms 范围读取。
+
+硬件数据由 Cleanroom/Outlands 运行时提供的 OSHI 7.3.2 采集，Actinium 只声明 `compileOnly` 依赖。
+系统硬件采样要求 Java 25；低版本、缺少 OSHI、初始化失败或单个字段不受支持时，对应子项显示 `N/A`。
+每个不支持的字段在一次采样生命周期内记录一次日志。多 GPU 环境按渲染器名称唯一匹配显卡，无法唯一
+匹配时 GPU 与显存子项显示 `N/A`，不选择其他显卡代替。Windows Intel、部分 Linux 驱动和 macOS 的某些
+占用或频率字段可能不受支持，实际表现以硬件与驱动返回的数据为准。
