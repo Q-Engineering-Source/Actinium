@@ -268,12 +268,12 @@ SDL 主模块按当前 GLSM 和 Outlands 宿主适配，资源与管线完整导
 
 ### 批次一：收口
 
-已开工或已有前置的残项。第 3、4、5 项已完成，第 6 项取消，剩余第 1、2 项。
+已开工或已有前置的残项。第 2、3、4、5 项已完成，第 6 项取消，仅剩第 1 项的测试骨架。
 
 | # | 范围 | 覆盖上游 | 规模 | 前置 |
 |---|---|---|---|---|
 | 1 | 测试骨架：`ArchScan` 与 mixin 包隔离规则测试已落地（`src/test/java/com/dhj/actinium/architecture/`，覆盖 AGENTS.md 的 `IllegalClassLoadError` 规则）；剩余 `NoWildcardImportsTest`（需先清理现有通配 import）、`GlsmRedirectAgent`、`GLSMCoreExtension`、`FfpFixture` 与 `glIntegrationTest` 的 `javaagent` | `85d0641a`、`6c5e146f`、`85892c0f` 部分 | 2 新 10 改，约 700 行 | 无；`85892c0f` 的 `TextureTracker` 已在，`MultiListenerNotifier` 由 `StateUpdateNotifiers` 的单监听器承担 |
-| 2 | 逐顶点实体 ID：`TessellatorEntityIds`、`GLStateManager.setEntityIds`/`flushEntityIds`、`ImmediateExtendedAttribHandler.LOC_ENTITY_IDS`、Iris 侧 `EntityPatcher` 改写与 `CapturedRenderingState` 监听 | `ab3bf176` | 26 文件，本地需重新设计上传路径 | 无；本地停留在 `ffc324ba`（#1927，2026-09-03，台账范围外）之前的流式架构：该提交把 midTex/tangent 交织进流式缓冲，本地只取了它的 `FfpExtendedAttribs` 与 `ImmediateExtendedAttribs`，未取 `TessellatorStreamingDrawer` 的交织路径与 handler 的捕获接口。因此 Tessellator 路径目前不重建这两个属性，只有 `GLSMDraws` 的 FFP 入口会调用 `FfpExtendedAttribs.maybeBind`。照抄 `ab3bf176` 需先补 `ffc324ba` 的流式半，或按本地结构新增独立 ID VBO 与属性指针 |
+| 2 | 逐顶点实体 ID：`TessellatorEntityIds`、`GLStateManager.setEntityIds`/`flushEntityIds`、`ImmediateExtendedAttribHandler.LOC_ENTITY_IDS`、Iris 侧 `EntityPatcher` 改写与 `CapturedRenderingState` 监听 | `ab3bf176` | 已完成（`d2d2cbf0`） | 无；流式绘制器按 `ffc324ba` 的思路把 midTex/tangent 与 ID 交织进同一块缓冲，VAO 用 `StreamingVaos` 的 extended 槽位；单 run 的绘制仍由 `flushEntityIds` 写常量属性。未接实例化的 `iris_InstEntity` 分支，本地没有 TESR 批量；待实机确认 |
 | 3 | 帧率限制器 `FpsReducer`，含 `ReducerStateMachine`、配置项、三个 mixin、选项页与状态机测试 | `74ea5c47` 的 `FpsReducer` | 已完成 | 无；音量的重载路径改走 `SoundLoadEvent`，不再需要 `SoundManager$1` 的匿名类 mixin；`effectiveCap` 接到本地 `MixinMinecraft$actinium$paceFrame` 的 `FramePacer.endFrame` 之前 |
 | 4 | 阴影 pass 的逐层 stage 与全亮亮度对账 | `cbd16b1a` | 已完成 | 无；`DeferredWorldRenderingPipeline.java:935` 的 `inputsFor` 与 `SHADOW_INPUTS`、`MixinRenderGlobal.java:167-177` 的逐层 stage 均已对齐 |
 | 5 | 核心 profile 拒绝信息与探测上限对账 | `990dadc0` | 已完成 | 无；`CoreProfileDisplayCreator.describeFailure` 已产出同款文案，探测上限走 `RenderSystem.probeCapAfterRejection` |
