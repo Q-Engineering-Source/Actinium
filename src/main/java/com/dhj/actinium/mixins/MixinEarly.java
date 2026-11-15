@@ -11,6 +11,7 @@ import com.dhj.actinium.loading.fml.transformers.OutlandsExplicitTransformerRegi
 import com.dhj.actinium.loading.fml.transformers.StellarCoreHudCachingCompatTransformer;
 import com.dhj.actinium.loading.fml.transformers.SdlGpuHostTransformer;
 import com.dhj.actinium.startup.SdlGpuBootstrap;
+import com.gtnewhorizons.angelica.glsm.GlslTransformUtils;
 import net.minecraftforge.fml.relauncher.IFMLLoadingPlugin;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.MixinEnvironment;
@@ -75,6 +76,7 @@ public class MixinEarly implements IFMLLoadingPlugin, IEarlyMixinLoader {
 
     @Override
     public void injectData(Map<String, Object> data) {
+        GlslTransformUtils.warmupGrammar();
         SdlGpuBootstrap.initialize();
         LateRedirectorInstaller.prepareTweaker();
     }

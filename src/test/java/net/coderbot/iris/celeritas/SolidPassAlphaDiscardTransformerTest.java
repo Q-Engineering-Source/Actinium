@@ -208,7 +208,7 @@ class SolidPassAlphaDiscardTransformerTest {
 
         String stripped = SolidPassAlphaDiscardTransformer.forPass(IrisTerrainPass.GBUFFER_SOLID, shader);
 
-        assertEquals(stripped, GlslTransformUtils.restoreReservedWords(stripped),
+        assertEquals(stripped, GlslTransformUtils.restoreReservedWords(stripped, 330),
             "emitted shader still holds renamed keywords");
         ShaderParser.ParsedShader parsed = parseRenamed(stripped);
         assertEquals(0, parsed.parser().getNumberOfSyntaxErrors(), stripped);

@@ -14,6 +14,7 @@ import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.TerminalNode;
 import org.taumc.glsl.grammar.GLSLLexer;
 import org.taumc.glsl.grammar.GLSLParser;
+import org.taumc.glsl.grammar.GLSLPreParser;
 
 import java.util.List;
 import java.util.Map;
@@ -64,6 +65,12 @@ public class GlslTransformUtils {
 
     private record ReservedWordRename(Pattern pattern, String replacement) {}
 
+    /**
+     * GLSL 4.00 added {@code sample} to the keyword list; {@code sampler} follows from the same
+     * version on. Below it both are ordinary identifiers, so the names can be written back.
+     */
+    private static final int RESERVED_FROM_VERSION = 400;
+
     private static final Map<Integer, List<ReservedWordRename>> VERSIONED_RESERVED_WORDS = Map.of(
         0, List.of(
             new ReservedWordRename(Pattern.compile("sample(?<=\\bsample)\\b"), RENAMED_PREFIX + "sample"),
@@ -73,6 +80,16 @@ public class GlslTransformUtils {
             new ReservedWordRename(Pattern.compile("sampler(?<=\\bsampler)\\b(?!\\d)"), RENAMED_PREFIX + "sampler")
         )
     );
+
+    /**
+     * Initialises the ANTLR grammar classes during early startup, so their static tables are built
+     * before the late tweaker installs its transformer and the first shader transform runs.
+     */
+    public static void warmupGrammar() {
+        final GLSLLexer lexer = new GLSLLexer(CharStreams.fromString(""));
+        new GLSLPreParser(new CommonTokenStream(lexer));
+        new GLSLParser(new CommonTokenStream(new GLSLLexer(CharStreams.fromString(""))));
+    }
 
     public static String replaceTexture(String input) {
         Matcher matcher = TEXTURE_PATTERN.matcher(input);
@@ -133,11 +150,22 @@ public class GlslTransformUtils {
         return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
     }
 
-    public static String restoreReservedWords(String source) {
+    /**
+     * Undo {@link #renameReservedWords} for the identifiers the emitted shader can carry again.
+     *
+     * <p>A word the target version reserves must keep its renamed form: restoring it makes the
+     * shader declare a name its own {@code #version} directive forbids, and the compiler rejects the
+     * whole shader. Vanilla's {@code blur.fsh} names a local {@code sample}, which is legal at 330
+     * but a keyword from 400 on.
+     */
+    public static String restoreReservedWords(String source, int targetVersion) {
         source = source.replace(RENAMED_PREFIX + "texture", "texture");
-        source = source.replace(RENAMED_PREFIX + "sampler", "sampler");
-        source = source.replace(RENAMED_PREFIX + "sample", "sample");
         source = source.replace(RENAMED_PREFIX + "new", "new");
+        if (targetVersion < RESERVED_FROM_VERSION) {
+            // "sampler" first: the "sample" rename is a prefix of it.
+            source = source.replace(RENAMED_PREFIX + "sampler", "sampler");
+            source = source.replace(RENAMED_PREFIX + "sample", "sample");
+        }
         return source;
     }
 

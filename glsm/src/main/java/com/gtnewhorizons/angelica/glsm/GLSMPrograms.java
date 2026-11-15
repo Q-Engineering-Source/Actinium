@@ -12,6 +12,7 @@ import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandType;
 import com.gtnewhorizons.angelica.glsm.shader.ProgramBinaryCache;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.KHRDebug;
+import org.lwjgl.system.MemoryUtil;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
@@ -251,6 +252,12 @@ public final class GLSMPrograms {
         if (loc == -1 && TEXTURE.contentEquals(name)) {
             loc = RENDER_BACKEND.getUniformLocation(program, TEXTURE_RENAMED);
         }
+        if (loc == -1) {
+            // The program may carry the renamed form when the shader was emitted at a GLSL version
+            // that reserves this identifier.
+            final String renamed = GlslTransformUtils.renameReservedWords(name.toString(), RENDER_BACKEND.getMinGLSLVersion());
+            if (!renamed.contentEquals(name)) loc = RENDER_BACKEND.getUniformLocation(program, renamed);
+        }
         return loc;
     }
 
@@ -259,6 +266,11 @@ public final class GLSMPrograms {
         int loc = RENDER_BACKEND.getUniformLocation(program, name);
         if (loc == -1 && isTextureBuffer(name)) {
             loc = RENDER_BACKEND.getUniformLocation(program, TEXTURE_RENAMED);
+        }
+        if (loc == -1) {
+            final String text = MemoryUtil.memUTF8(name);
+            final String renamed = GlslTransformUtils.renameReservedWords(text, RENDER_BACKEND.getMinGLSLVersion());
+            if (!renamed.equals(text)) loc = RENDER_BACKEND.getUniformLocation(program, renamed);
         }
         return loc;
     }

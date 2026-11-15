@@ -48,3 +48,6 @@ celeritas-common/build/jmh/mesa-windows-x64/
 # Legacy location for locally unpacked Mesa EGL/GLES DLLs.
 celeritas-common/jmh-natives/
 /.tools/
+
+# RenderDoc captures
+.rdc
