@@ -6,6 +6,7 @@ import com.dhj.actinium.gui.ActiniumWindowModeController;
 import com.dhj.actinium.render.BufferBuilderStreamingDrawer;
 import com.dhj.actinium.render.EndPortalCompositeRenderer;
 import com.dhj.actinium.render.frame.FramePacer;
+import com.dhj.actinium.render.fps.FpsReducer;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.startup.SdlFrameLifecycle;
 import com.gtnewhorizons.angelica.glsm.GLSMTextureLifetime;
@@ -116,7 +117,9 @@ public class MixinMinecraft {
     )
     private void actinium$paceFrame(Operation<Void> original) {
         final Minecraft minecraft = (Minecraft) (Object) this;
-        final int capHz = minecraft.isFramerateLimitBelowMax() ? minecraft.getLimitFramerate() : 0;
+        FpsReducer.evaluateFrame();
+        final int userCap = minecraft.isFramerateLimitBelowMax() ? minecraft.getLimitFramerate() : 0;
+        final int capHz = FpsReducer.effectiveCap(userCap, minecraft.world == null && minecraft.currentScreen != null);
         FramePacer.endFrame(capHz, null);
         if (!FramePacer.pacedLastFrame()) {
             original.call();

@@ -28,6 +28,7 @@ public class CapturedRenderingState {
 	@Getter
 	private int currentRenderedItem = -1;
 	private Runnable itemIdListener = null;
+	private Runnable entityIdsListener = null;
 
     @Getter
     private final Vector4f currentEntityColor = new Vector4f();
@@ -42,6 +43,7 @@ public class CapturedRenderingState {
 		if (this.blockEntityIdListener != null) {
 			this.blockEntityIdListener.run();
 		}
+		notifyEntityIdsChanged();
 	}
 
     public void setCurrentBlockEntity(Block block, int metadata) {
@@ -64,6 +66,7 @@ public class CapturedRenderingState {
 		if (this.entityIdListener != null) {
 			this.entityIdListener.run();
 		}
+		notifyEntityIdsChanged();
         setCurrentRenderedItem(0);
 	}
 
@@ -84,6 +87,19 @@ public class CapturedRenderingState {
 
 		if (this.itemIdListener != null) {
 			this.itemIdListener.run();
+		}
+		notifyEntityIdsChanged();
+	}
+
+	/** Registers the listener told about every entity, block entity or item id change, and primes it once. */
+	public void setEntityIdsListener(Runnable listener) {
+		this.entityIdsListener = listener;
+		notifyEntityIdsChanged();
+	}
+
+	private void notifyEntityIdsChanged() {
+		if (this.entityIdsListener != null) {
+			this.entityIdsListener.run();
 		}
 	}
 

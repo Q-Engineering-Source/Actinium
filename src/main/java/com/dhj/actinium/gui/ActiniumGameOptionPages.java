@@ -19,6 +19,7 @@ import dhj.embeddedt.embeddium.api.options.control.TickBoxControl;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
 import dhj.embeddedt.embeddium.impl.gui.framework.TextComponent;
 import com.dhj.actinium.render.frame.FramePacer;
+import com.dhj.actinium.render.fps.FpsReducer;
 import dhj.embeddedt.embeddium.impl.render.chunk.MultiDrawMode;
 import dhj.embeddedt.embeddium.impl.render.culling.GpuCulling;
 import dhj.embeddedt.embeddium.impl.render.culling.GpuCullingMode;
@@ -571,6 +572,99 @@ public class ActiniumGameOptionPages {
                 .add(createModelRendererDisplayListsOption(TextComponent.translatable("sodium.options.model_renderer_display_lists.tooltip")))
                 .add(createFastLitItemRenderingOption(TextComponent.translatable("sodium.options.fast_lit_item_rendering.tooltip")))
                 .add(createFastLitItemDisplayListsOption(TextComponent.translatable("sodium.options.fast_lit_item_display_lists.tooltip")))
+                .build());
+
+        groups.add(OptionGroup.createBuilder()
+                .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer", Void.class))
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_enabled", boolean.class))
+                        .setName(TextComponent.translatable("options.actinium.fpsReducer.enabled"))
+                        .setTooltip(TextComponent.translatable("options.actinium.fpsReducer.enabled.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setBinding((opts, value) -> {
+                            opts.reducer.enabled = value;
+                            FpsReducer.markConfigChanged();
+                        }, opts -> opts.reducer.enabled)
+                        .setImpact(OptionImpact.MEDIUM)
+                        .setDefaultValue(false)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_unfocused_limit", int.class))
+                        .setName(TextComponent.translatable("options.actinium.fpsReducer.unfocusedLimit"))
+                        .setTooltip(TextComponent.translatable("options.actinium.fpsReducer.unfocusedLimit.tooltip"))
+                        .setControl(option -> new SliderControl(option, 5, 120, 5, ControlValueFormatter.fpsLimit()))
+                        .setBinding((opts, value) -> {
+                            opts.reducer.unfocusedFpsLimit = value;
+                            FpsReducer.markConfigChanged();
+                        }, opts -> opts.reducer.unfocusedFpsLimit)
+                        .setDefaultValue(10)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_idle_limit", int.class))
+                        .setName(TextComponent.translatable("options.actinium.fpsReducer.idleLimit"))
+                        .setTooltip(TextComponent.translatable("options.actinium.fpsReducer.idleLimit.tooltip"))
+                        .setControl(option -> new SliderControl(option, 5, 120, 5, ControlValueFormatter.fpsLimit()))
+                        .setBinding((opts, value) -> {
+                            opts.reducer.idleFpsLimit = value;
+                            FpsReducer.markConfigChanged();
+                        }, opts -> opts.reducer.idleFpsLimit)
+                        .setDefaultValue(30)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_idle_minutes", int.class))
+                        .setName(TextComponent.translatable("options.actinium.fpsReducer.idleMinutes"))
+                        .setTooltip(TextComponent.translatable("options.actinium.fpsReducer.idleMinutes.tooltip"))
+                        .setControl(option -> new SliderControl(option, 1, 30, 1, ControlValueFormatter.number()))
+                        .setBinding((opts, value) -> {
+                            opts.reducer.idleTimeoutMinutes = value;
+                            FpsReducer.markConfigChanged();
+                        }, opts -> opts.reducer.idleTimeoutMinutes)
+                        .setDefaultValue(5)
+                        .build())
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_limit_menu", boolean.class))
+                        .setName(TextComponent.translatable("options.actinium.fpsReducer.limitMenu"))
+                        .setTooltip(TextComponent.translatable("options.actinium.fpsReducer.limitMenu.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setBinding((opts, value) -> {
+                            opts.reducer.limitMenuFrameRate = value;
+                            FpsReducer.markConfigChanged();
+                        }, opts -> opts.reducer.limitMenuFrameRate)
+                        .setDefaultValue(true)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_unfocused_volume", int.class))
+                        .setName(TextComponent.translatable("options.actinium.fpsReducer.unfocusedVolume"))
+                        .setTooltip(TextComponent.translatable("options.actinium.fpsReducer.unfocusedVolume.tooltip"))
+                        .setControl(option -> new SliderControl(option, 0, 100, 5, ControlValueFormatter.percentage()))
+                        .setBinding((opts, value) -> {
+                            opts.reducer.unfocusedVolume = value;
+                            FpsReducer.markConfigChanged();
+                        }, opts -> opts.reducer.unfocusedVolume)
+                        .setDefaultValue(100)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_idle_volume", int.class))
+                        .setName(TextComponent.translatable("options.actinium.fpsReducer.idleVolume"))
+                        .setTooltip(TextComponent.translatable("options.actinium.fpsReducer.idleVolume.tooltip"))
+                        .setControl(option -> new SliderControl(option, 0, 100, 5, ControlValueFormatter.percentage()))
+                        .setBinding((opts, value) -> {
+                            opts.reducer.idleVolume = value;
+                            FpsReducer.markConfigChanged();
+                        }, opts -> opts.reducer.idleVolume)
+                        .setDefaultValue(100)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_minimized_volume", int.class))
+                        .setName(TextComponent.translatable("options.actinium.fpsReducer.minimizedVolume"))
+                        .setTooltip(TextComponent.translatable("options.actinium.fpsReducer.minimizedVolume.tooltip"))
+                        .setControl(option -> new SliderControl(option, 0, 100, 5, ControlValueFormatter.percentage()))
+                        .setBinding((opts, value) -> {
+                            opts.reducer.minimizedVolume = value;
+                            FpsReducer.markConfigChanged();
+                        }, opts -> opts.reducer.minimizedVolume)
+                        .setDefaultValue(100)
+                        .build())
                 .build());
 
         groups.add(OptionGroup.createBuilder()

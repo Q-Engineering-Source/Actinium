@@ -115,6 +115,11 @@ class FfpExtendedAttribsGLTest extends GLStateManagerIntegrationFixture {
         }
 
         @Override
+        public boolean wantsEntityIds() {
+            return false;
+        }
+
+        @Override
         public void buildPacked(long srcBase, int stride, int posOffset, int texOffset, int normalOffset,
                                 int vertexCount, int vertsPerPrim, long dstAddr, int dstStride) {
             for (int vertex = 0; vertex < vertexCount; vertex++) {

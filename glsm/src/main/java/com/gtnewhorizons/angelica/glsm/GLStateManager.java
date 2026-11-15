@@ -13,6 +13,7 @@ import com.gtnewhorizons.angelica.glsm.backend.VSyncMode;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GpuCheckpointTracker;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
+import com.gtnewhorizons.angelica.glsm.ffp.InstancedAttribs;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredAlphaHandler;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredBlendHandler;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredDepthColorHandler;
@@ -20,6 +21,8 @@ import com.gtnewhorizons.angelica.glsm.hooks.GLSMConfig;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMInitConfig;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandRecorder;
+import com.gtnewhorizons.angelica.glsm.hooks.ImmediateExtendedAttribHandler;
+import com.gtnewhorizons.angelica.glsm.streaming.TessellatorEntityIds;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandPhase;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandType;
 import com.gtnewhorizons.angelica.glsm.recording.CompiledDisplayList;
@@ -220,6 +223,35 @@ public class GLStateManager {
 
     public static boolean isMainThread() {
         return Thread.currentThread() == MainThread;
+    }
+
+    /**
+     * Records the entity, block entity and item ids of the draw being prepared. The ids only change at entity
+     * boundaries; the streaming drawer turns the recorded runs into one attribute value per vertex.
+     */
+    public static void setEntityIds(int entity, int blockEntity, int item) {
+        if (!isMainThread()) return;
+        final GLContextState glCtx = ctx();
+        final long ids = InstancedAttribs.packEntityInfo(entity, blockEntity, item);
+        if (ids == glCtx.entityIds) return;
+        TessellatorEntityIds.onIdsChanged(glCtx.entityIds, ids);
+        glCtx.entityIds = ids;
+        glCtx.dirtyEntityIdsAttrib = true;
+    }
+
+    /**
+     * Writes the recorded ids as the per-vertex attribute for draws that do not carry them in their buffer.
+     * Such draws cover a single entity, so the current value applies to every vertex.
+     */
+    public static void flushEntityIds(GLContextState glCtx) {
+        if (!glCtx.dirtyEntityIdsAttrib || glCtx.activeProgram == 0) return;
+        final ImmediateExtendedAttribHandler handler = GLSMHooks.immediateExtendedHandler;
+        if (handler == null || !handler.wantsEntityIds()) return;
+        final long ids = glCtx.entityIds;
+        RENDER_BACKEND.vertexAttrib4f(ImmediateExtendedAttribHandler.LOC_ENTITY_IDS,
+            InstancedAttribs.normalizedId(ids, 0), InstancedAttribs.normalizedId(ids, 16),
+            InstancedAttribs.normalizedId(ids, 32), 0.0f);
+        glCtx.dirtyEntityIdsAttrib = false;
     }
 
     @Getter static GLSMInitConfig initConfig;
