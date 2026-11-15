@@ -129,6 +129,7 @@ public final class ShaderManager {
         final boolean perfDebugEnabled = GLSMPerfDebug.isEnabled();
         final long perfStart = perfDebugEnabled ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.FFP_PREDRAW) : 0L;
         GLStateManager.flushDeferredVertexAttribs();
+        GLStateManager.flushEntityIds(GLStateManager.ctx());
         final DeferredBlendHandler bh = GLSMHooks.blendHandler;
         if (bh != null) bh.flushDeferredBlend();
 

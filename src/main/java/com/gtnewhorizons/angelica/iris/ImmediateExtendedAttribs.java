@@ -35,6 +35,7 @@ public final class ImmediateExtendedAttribs implements ImmediateExtendedAttribHa
 
     private static final int WANTS_MID = 1;
     private static final int WANTS_TANGENT = 2;
+    private static final int WANTS_ENTITY_IDS = 4;
 
     private static final int NEUTRAL_TANGENT = NormI8.pack(1.0f, 0.0f, 0.0f, 1.0f);
     private static final ResourceLocation ITEMS_ATLAS = new ResourceLocation("textures/atlas/items.png");
@@ -55,6 +56,7 @@ public final class ImmediateExtendedAttribs implements ImmediateExtendedAttribHa
             wants = 0;
             if (GLSMPrograms.glGetAttribLocation(program, "mc_midTexCoord") >= 0) wants |= WANTS_MID;
             if (GLSMPrograms.glGetAttribLocation(program, "at_tangent") >= 0) wants |= WANTS_TANGENT;
+            if (GLSMPrograms.glGetAttribLocation(program, "iris_Entity") == ImmediateExtendedAttribHandler.LOC_ENTITY_IDS) wants |= WANTS_ENTITY_IDS;
             programWantsExtCache.put(program, wants);
         }
         currentProgramWants = wants;
@@ -84,6 +86,11 @@ public final class ImmediateExtendedAttribs implements ImmediateExtendedAttribHa
     @Override
     public boolean wantsTangent() {
         return (currentProgramWants & WANTS_TANGENT) != 0;
+    }
+
+    @Override
+    public boolean wantsEntityIds() {
+        return programWants(WANTS_ENTITY_IDS);
     }
 
     private static boolean programWants(int mask) {
