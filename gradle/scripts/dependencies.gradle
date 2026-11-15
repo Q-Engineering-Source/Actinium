@@ -211,7 +211,10 @@ dependencies {
     modImplementation "curse.maven:thermal-expansion-69163:2926431"
     modImplementation "curse.maven:thermal-foundation-222880:2926428"
     modImplementation "curse.maven:redstone-flux-270789:2920436"
-    modImplementation "curse.maven:codechicken-lib-cre-1328922:6898525"
+    // CodeChickenLib is optional at runtime: its compat lives in the conditional mixins.actinium.ccl.json, so the
+    // library only has to be on the compile classpath. The dev runtime therefore runs without it, matching a pack
+    // that does not ship CCL.
+    modCompileOnly "curse.maven:codechicken-lib-cre-1328922:6898525"
 
     // HammerLib 12.2.66 (issue #40: its GL20.glGetActiveUniform(int, int, int) -> String call is redirected to
     // GLSM GLStateManager, which must expose the same descriptor)
