@@ -4,13 +4,16 @@ import com.gtnewhorizons.angelica.glsm.hooks.ImmediateExtendedAttribHandler;
 import net.coderbot.iris.gl.shader.ShaderType;
 import net.coderbot.iris.pipeline.transform.parameter.AttributeParameters;
 import org.taumc.glsl.Transformer;
+import org.taumc.glsl.grammar.GLSLParser;
 
 /**
  * Turns the per-draw entity uniforms into values read from the {@code iris_Entity} vertex attribute, so a
  * single draw can carry a different entity, block entity and item id for every vertex.
  *
- * <p>The vertex stage unpacks the attribute into a flat {@code iris_entityInfo} varying; the other stages
- * declare the same varying and copy it into locals with the names the pack uses.</p>
+ * <p>The vertex stage unpacks the attribute into a flat {@code iris_entityInfo} varying; every stage that uses
+ * one of the ids reads the matching component of that varying. Uses are rewritten in place rather than replaced
+ * by a local variable of the same name: packs declare these ids themselves as uniforms, and re-declaring them
+ * makes the shader fail to compile.</p>
  */
 class EntityPatcher {
 
@@ -25,29 +28,21 @@ class EntityPatcher {
             || parameters.type == ShaderType.TESSELATION_EVAL);
         final String info = arrayVarying ? "iris_entityInfo[0]" : "iris_entityInfo";
 
-        final StringBuilder assignments = new StringBuilder();
-        for (int i = 0; i < ID_NAMES.length; i++) {
-            final String name = ID_NAMES[i];
-            if (!transformer.containsCall(name)) continue;
-            if (transformer.hasVariable(name)) transformer.removeVariable(name);
-            transformer.injectVariable("int " + name + ";");
-            assignments.append(name).append(" = ").append(info).append(ID_COMPONENTS[i]).append("; ");
-        }
-
         if (vertexStage) {
             transformer.injectVariable("layout(location = " + ImmediateExtendedAttribHandler.LOC_ENTITY_IDS
                 + ") in vec4 iris_Entity;");
             transformer.injectVariable("flat out ivec3 iris_entityInfo;");
             transformer.prependMain("{ ivec3 iris_ids = ivec3(round(iris_Entity.xyz * 65535.0)); "
                 + "iris_entityInfo = ivec3(iris_ids.x == 65535 ? -1 : iris_ids.x, "
-                + "iris_ids.y == 65535 ? -1 : iris_ids.y, iris_ids.z == 65535 ? -1 : iris_ids.z); "
-                + assignments + "}");
-            return;
+                + "iris_ids.y == 65535 ? -1 : iris_ids.y, iris_ids.z == 65535 ? -1 : iris_ids.z); }");
+        } else {
+            transformer.injectVariable(arrayVarying ? "flat in ivec3 iris_entityInfo[];" : "flat in ivec3 iris_entityInfo;");
         }
 
-        transformer.injectVariable(arrayVarying ? "flat in ivec3 iris_entityInfo[];" : "flat in ivec3 iris_entityInfo;");
-        if (assignments.length() > 0) {
-            transformer.prependMain("{ " + assignments + "}");
+        for (int i = 0; i < ID_NAMES.length; i++) {
+            final String name = ID_NAMES[i];
+            if (!transformer.containsCall(name)) continue;
+            transformer.replaceExpression(name, info + ID_COMPONENTS[i], GLSLParser::postfix_expression);
         }
     }
 
