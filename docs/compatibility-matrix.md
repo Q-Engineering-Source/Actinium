@@ -1,6 +1,6 @@
 # Actinium 兼容性矩阵
 
-最后更新：2026-11-07。
+最后更新：2026-11-15。
 
 状态定义：`已验证` 表示在记录的版本和场景中通过；`部分` 表示能运行但存在已知缺口；
 `无法启用` 表示光影包不能成功开启；`未验证` 不代表不兼容。更新记录时必须填写 Actinium commit、
@@ -8,6 +8,15 @@
 
 本轮验证环境：Actinium `30c7ffb`、Java 25.0.3、Cleanroom 0.5.12-alpha、Distant Horizons 3.1.2-b、
 Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
+
+> 2026-11-15 追加：性能指示器（issue #247，Actinium `06228a414f26`）加入独立双列拖放设置界面、
+> FPS / 1% Low / 内存 / CPU / GPU / 显存六类指标和 100–2000ms 刷新间隔。HUD 在
+> `RenderTickEvent.END` 绘制，避开 StellarCore/Gnetum 的 HUD 缓存；OSHI 采样使用独立守护线程，
+> 不受支持的字段显示 `N/A` 并记录日志。`./gradlew check build --no-daemon` 通过。
+> crl_t 生产实例验证环境为 Windows 11、Java 25.0.4.1、RTX 5070 Laptop（驱动 621.24）和
+> SDL GPU/Vulkan；用户在该环境发现 1% Low 文案显示 `Format error`，已定位为 `.lang` 中 `%` 未转义，
+> 三份语言文件改为 `%%` 并加入真实 `Locale.formatMessage` 回归测试。六类硬件数据、拖放与刷新频率、
+> 光影及 StellarCore/Gnetum HUD 缓存组合仍待完整实机回归。
 
 > 2026-11-07 追加：Derivative Main d24.4.14 的普通草与部分单格花不摆动、双格高草上下段分离已修复。
 > ID 映射只在显式声明 `11202` 时使用旧版分支，其他包统一使用现代条目；修复条件块续行丢失
