@@ -206,14 +206,12 @@ dependencies {
     modImplementation 'curse.maven:better-foliage-228529:3393955'
     modCompileOnly "curse.maven:rlfoliage-970462:7645701"
 
-    modImplementation "curse.maven:cofh-core-69162:2920433"
-    modImplementation "curse.maven:cofh-world-271384:2920434"
-    modImplementation "curse.maven:thermal-expansion-69163:2926431"
-    modImplementation "curse.maven:thermal-foundation-222880:2926428"
-    modImplementation "curse.maven:redstone-flux-270789:2920436"
-    // CodeChickenLib is optional at runtime: its compat lives in the conditional mixins.actinium.ccl.json, so the
-    // library only has to be on the compile classpath. The dev runtime therefore runs without it, matching a pack
-    // that does not ship CCL.
+    // The COFH family, Thermal and Redstone Flux are compiled against only. They pull CodeChickenLib in at runtime,
+    // and the CCL compat is a conditional mixin configuration, so the dev runtime runs without the whole set.
+    modCompileOnly "curse.maven:cofh-core-69162:2920433"
+    modCompileOnly "curse.maven:cofh-world-271384:2920434"
+    modCompileOnly "curse.maven:thermal-expansion-69163:2926431"
+    modCompileOnly "curse.maven:thermal-foundation-222880:2926428"
     modCompileOnly "curse.maven:codechicken-lib-cre-1328922:6898525"
 
     // HammerLib 12.2.66 (issue #40: its GL20.glGetActiveUniform(int, int, int) -> String call is redirected to
