@@ -1,6 +1,7 @@
 package com.gtnewhorizons.angelica.glsm.streaming;
 
 import com.gtnewhorizons.angelica.glsm.ITessellatorData;
+import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.Tessellator;
 
 import java.util.Arrays;
@@ -16,7 +17,7 @@ import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memPutLong;
  */
 public final class TessellatorEntityIds {
 
-    private static ITessellatorData owner;
+    private static Object owner;
     private static int runCount;
     private static int[] runStarts = new int[8];
     private static long[] runIds = new long[8];
@@ -26,14 +27,20 @@ public final class TessellatorEntityIds {
     /** Records that the packed ids changed while {@code previous} covered the vertices before this point. */
     public static void onIdsChanged(long previous, long next) {
         final Tessellator tess = Tessellator.getInstance();
-        // Only the tessellators that expose their vertex cursor can hold runs; the vanilla one keeps its state in
-        // BufferBuilder and is drawn by the buffer-builder streaming path, which has no per-vertex ids yet.
-        if (!(tess instanceof ITessellatorData data)) return;
-        if (!data.isDrawing() || data.getVertexCount() == 0) return;
-
-        final int start = data.getVertexCount();
-        if (owner != data) {
-            owner = data;
+        final Object key;
+        final int start;
+        if (tess instanceof ITessellatorData data) {
+            if (!data.isDrawing() || data.getVertexCount() == 0) return;
+            key = data;
+            start = data.getVertexCount();
+        } else {
+            final BufferBuilder buffer = tess.getBuffer();
+            if (buffer == null || buffer.getVertexCount() == 0) return;
+            key = buffer;
+            start = buffer.getVertexCount();
+        }
+        if (owner != key) {
+            owner = key;
             runCount = 0;
         }
         if (runCount == 0) addRun(0, previous);
@@ -46,15 +53,15 @@ public final class TessellatorEntityIds {
     }
 
     /** Drops the tracked runs when the tessellator resets. */
-    public static void onReset(ITessellatorData tess) {
-        if (tess != owner) return;
+    public static void onReset(Object tessellator) {
+        if (tessellator != owner) return;
         owner = null;
         runCount = 0;
     }
 
-    /** @return how many id runs cover the first {@code vertexCount} vertices */
-    public static int runsFor(ITessellatorData tess, int vertexCount) {
-        if (tess != owner) return 0;
+    /** @return how many id runs cover the first {@code vertexCount} vertices of the given tessellator or buffer */
+    public static int runsFor(Object tessellator, int vertexCount) {
+        if (tessellator != owner) return 0;
         int runs = runCount;
         while (runs > 0 && runStarts[runs - 1] >= vertexCount) runs--;
         return runs;
