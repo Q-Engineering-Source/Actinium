@@ -12,6 +12,7 @@ import com.dhj.actinium.config.ActiniumRuntimeOptions;
 import com.dhj.actinium.debug.ActiniumDiagnostics;
 import com.dhj.actinium.mixin.vintage.core.terrain.AccessorEntityRenderer;
 import com.dhj.actinium.render.FastLitItemDisplayListCache;
+import com.dhj.actinium.render.fps.FpsReducer;
 import com.dhj.actinium.render.terrain.ActiniumWorldRenderer;
 import com.dhj.actinium.render.terrain.GpuCullingSettings;
 import com.dhj.actinium.runtime.ActiniumRuntime;
@@ -186,6 +187,7 @@ public class Actinium {
         KirinoCompat.install();
         NeverEnoughAnimationsAlphaOverride.install();
         ClientProxy.configureShaderDiskCache();
+        FpsReducer.init();
 
         ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
                 .registerReloadListener(resourceManager -> MissingModelCompat.onResourceManagerReload());

@@ -61,6 +61,9 @@
     "features.textures.MixinTextureAtlas",
     "features.textures.MixinTextureAtlasSprite",
     "fontrenderer.MixinFontRenderer",
+    "fpsreducer.MixinGameSettingsFpsReducer",
+    "fpsreducer.MixinGuiScreenFpsReducerInput",
+    "fpsreducer.MixinMinecraftFpsReducerInput",
     "gui.MixinGuiMainMenu"
   ],
   "injectors": {

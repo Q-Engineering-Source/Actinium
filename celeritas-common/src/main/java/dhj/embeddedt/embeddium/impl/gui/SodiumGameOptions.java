@@ -44,6 +44,7 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
     public final NotificationSettings notifications = new NotificationSettings();
     public final DebugSettings debug = new DebugSettings();
     public final WindowSettings window = new WindowSettings();
+    public final ReducerSettings reducer = new ReducerSettings();
 
     private boolean readOnly;
 
@@ -181,6 +182,22 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
     public static class WindowSettings {
         public String fullscreenMode;
         public String lastFullscreenMode;
+    }
+
+    /**
+     * Frame-rate and volume reductions applied while the window is unfocused, minimized or idle.
+     * Frame limits are frames per second, volumes are percentages of the user's setting; the
+     * reducer that consumes them lives in the root project.
+     */
+    public static class ReducerSettings {
+        public boolean enabled = false;
+        public int unfocusedFpsLimit = 10;
+        public int idleFpsLimit = 30;
+        public int idleTimeoutMinutes = 5;
+        public boolean limitMenuFrameRate = true;
+        public int unfocusedVolume = 100;
+        public int idleVolume = 100;
+        public int minimizedVolume = 100;
     }
 
     /** Driver identifiers understood by SDL, exposed without depending on a native backend. */
