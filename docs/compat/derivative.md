@@ -37,3 +37,14 @@
 ## 已知疑点（与本次修复无关）
 
 - 同一日志中 DoF **关闭**、管线创建成功时也出现 `checkpoint=composite:matrices` / `final:quad-end error=1282`（GL_INVALID_OPERATION）以及 "Unexpected; somehow the Opaque + Translucent pass ran with shaders on."，疑似独立问题，如复现请单独反馈。
+
+## SDL GPU 下的天空绿线（deferred6 未赋值输出）
+
+- 症状：SDL GPU（Vulkan）后端加载本包，转动视角时天空沿窗口右边与上边出现高亮断续绿线，并随视角残留；同机位 OpenGL 后端无此现象。
+- 定位方式：RenderDoc 抓帧后在 854x480 的整帧上逐 pass 采样附件。探针像素 (851,4)（右上角绿线最亮处）上，第一个出现异常值的 pass 是 `deferred6`（`world0/deferred6.fsh` 转发到 `lib/Surface/ScreenSpaceReflections.glsl`），它把 colortex2 写成 `[0, 65504, 0, 0]`；65504 是 RGBA16F 的上限，来自 Inf 截断。
+- 触发机制：该像素 `colortex0 = [1, 0, 0, 0]`，按 `lib/Head/Material.inc` 的 `GetMaterialData(vec2)` 解码得到 `roughness = 1.0`、`hasReflections = max(0, 0.625 - roughness) = 0`，`main()` 里 `if (material.hasReflections)` 整段跳过，唯一输出 `reflectionData` 从未赋值。GLSL 未赋值输出是未定义值：GL 驱动写出 0，SPIR-V/Vulkan 路径写出寄存器残留（Inf）。
+- 放大链路：`deferred7`（`program/ReflectionFilter.frag`）把该 Inf 过滤后写回 colortex2；`deferred2`（`program/Deferred2.glsl`）的时域上采样把它混进 colortex1 历史缓冲，且棋盘格分支在非刷新相位直接 `skyboxData = prevData`，污染每帧原样保留。因此只在天空、只在转动时可见，呈网格状断续线。
+- 完整的源码、SPIR-V 与规范语义分析见 `docs/glsl-unwritten-fragment-output.md`。
+- 修复位置在光影包侧，不在 Actinium：`world0/deferred6.fsh` 的 `main()` 开头补 `reflectionData = vec4(0.0);`。修复包为 `shaderpacks/[真实&电影]Derivative Main d24.4.14-fix1.zip`，未修改的原包留作对照。
+- 验证记录：用户实机确认（2026-11-15，crl_t 整合包生产环境，SDL GPU/vulkan，NVIDIA 621.24）：同一场景同一机位切到修复包后绿线消失；切回原包必现。加载修复包的日志无着色器编译错误。
+- 同类潜在问题（当前未观察到可见异常，暂不改动）：`program/Deferred0.glsl` 的 `colortex5Out` 在 `x == skyCaptureRes.x` 且 `y` 不属于 0 到 3、5 时不赋值，`transmittanceOut` 只在原始天空图分支赋值，两者同样依赖未定义输出在该分支下的具体取值。
