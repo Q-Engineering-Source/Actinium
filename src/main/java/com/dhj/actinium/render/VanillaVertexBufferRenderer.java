@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
 import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
+import com.gtnewhorizons.angelica.glsm.hooks.ImmediateExtendedAttribHandler;
 import com.gtnewhorizons.angelica.glsm.GLSMVertexInput;
 
 public final class VanillaVertexBufferRenderer {
@@ -142,6 +143,37 @@ public final class VanillaVertexBufferRenderer {
                 + " actualVbo=" + actualVbo
                 + " format=" + format);
         }
+        GLSMVertexInput.glBindVertexArray(savedVao);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVbo);
+        return vao;
+    }
+
+
+    /**
+     * Creates a streaming vertex array whose vertices carry the rebuilt {@code mc_midTexCoord} and
+     * {@code at_tangent} attributes after the format's own elements, so a draw can read them without a second
+     * buffer and a second rebuild.
+     */
+    public static int createExtendedStreamingVertexArray(VertexFormat format, int vbo, int combinedStride) {
+        final int savedVao = GLStateManager.getBoundVAO();
+        final int savedVbo = GLStateManager.getBoundVBO();
+        final int vao = GLSMVertexInput.glGenVertexArrays();
+        VAO_CONTEXTS.put(vao, RENDER_BACKEND.getContextHandle());
+        GLSMVertexInput.glBindVertexArray(vao);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+        for (int i = 0; i < format.getElementCount(); i++) {
+            final VertexFormatElement element = format.getElement(i);
+            final int location = attributeLocation(element);
+            if (location < 0) {
+                reportUnsupportedElement(element);
+                continue;
+            }
+            GLSMVertexInput.glEnableVertexAttribArray(location);
+            GLSMVertexInput.glVertexAttribPointer(location, element.getElementCount(),
+                element.getType().getGlConstant(), isNormalized(element), combinedStride, format.getOffset(i));
+        }
+        ImmediateExtendedAttribHandler.setupExtAttribPointers(format.getSize(), combinedStride);
+        QuadConverter.attachSharedEboToCurrentVao();
         GLSMVertexInput.glBindVertexArray(savedVao);
         GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVbo);
         return vao;
