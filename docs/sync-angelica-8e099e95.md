@@ -37,7 +37,7 @@
 | 序 | 短 SHA | 上游标题 | 日期 | 状态 | 目标 PR | 处置说明 |
 |---|---|---|---|---|---|---|
 | 1 | `939e3146` | More Cloud Optimizations (#2114) | 2026-09-19 | 待同步 | F01 | 本地无云层渲染设施（`CloudRenderer`、`CloudVertexMesh`、`CloudShape` 均缺失），F01 需先建立该设施 |
-| 2 | `b6a4497f` | Redirected Util.checkGLError to respect disableErrorChecks (#2110) | 2026-09-19 | 待同步 | G03 | 重定向本身本地已有（`GLSMRedirector` 的 `org/lwjgl/opengl/Util checkGLError()V` desc 重定向与 `GLStateManager.checkGLError`，见 `glsm/src/main/java/com/gtnewhorizons/angelica/glsm/GLStateManager.java:5752`），但本地 `glGetError`（同类第 5746 行）没有 `isNoErrorChecks()` 短路，`GLSMInitConfig` 也没有该开关。上游在 `02f0b0fc` 时 `glGetError` 已带此门控，该提交让 `checkGLError` 与之对齐；本地缺这门控，不能称行为等价，需随 G03 一并补上开关与短路 |
+| 2 | `b6a4497f` | Redirected Util.checkGLError to respect disableErrorChecks (#2110) | 2026-09-19 | 已同步（G03） | G03 | 门控已在本地对齐：`glsm/src/main/java/com/gtnewhorizons/angelica/glsm/GLSMQueries.java:547` 的 `glGetError` 带 `config.isNoErrorChecks()` 短路，`hooks/GLSMInitConfig.java:48` 提供该开关，`GLSMRedirector` 的 `org/lwjgl/opengl/Util checkGLError()V` 表项与 `GLStateManager.checkGLError` 已就位 |
 | 3 | `ef68af58` | Fix texture filtering sampling regression (#2115) | 2026-09-19 | 待同步 | S02 | 修正 `TERRAIN_NO_MIPS` 与 `USE_TEXEL_SNAP` 采样路径；本地 `block_layer_opaque.fsh` 无该分支，地形选项也无 texel snap 开关 |
 | 4 | `c578970a` | Fix edge cases with cloud wraps (#2122) | 2026-09-20 | 待同步 | F01 | 云盘包裹边界，依赖 F01 云层实现 |
 | 5 | `87c83f06` | fix asm class dumper following rfb changes (#2123) | 2026-09-21 | 不适用 | — | 修正 RFB `ClassNodeHandle` 转储路径；本地 `AngelicaClassDump` 直接处理字节数组，不经过该 API |
@@ -48,7 +48,7 @@
 | 10 | `888a4de0` | Add Galaxy Space compat and fix culling issues (#2131) | 2026-09-25 | 待同步 | F01 | 银河空间云层兼容与剔除修正，依赖 F01 云层重写 |
 | 11 | `1babfd96` | Properly reset/flush state for crash interceptors (#2133) | 2026-09-25 | 分 hunk 同步 | G05 | 取通用 hunks：`glsm/GLDebug`、`GLStateManager`、`backend/RenderBackend`、`glsm/ffp/ShaderManager`、`client/font/BatchingFontRenderer`、`commands/AngelicaCommand`、`compat/bettercrashes/BetterCrashesCompat`、`hudcaching/HUDCaching`、`rendering/RenderRecovery`、`rendering/tesr/ModelPartBatcher`、`TesrBatchRenderer`、`TesrBlendScope`、`MixinTileEntityRendererDispatcher`。本地缺 `RenderRecovery`、`HUDCaching`、`BetterCrashesCompat`。排除：`sdl-gpu/SDLGPURenderBackend`、`sdl-gpu/frame/ContextState` 两个 SDL 帧状态文件 |
 | 12 | `762c5661` | Stop blocking chunk workers on deferred ISBRH blocks (#2136) | 2026-09-26 | 已同步（C09） | C09 | 延迟区块任务不用上游的 ISBRH 分类：Cleanroom 1.12.2 没有 `ISimpleBlockRenderingHandler`/`RenderBlocks` 宿主，判据改为 `performance.deferred_block_ids`（`BlockRenderSafetyRegistry.canRenderOffThread`），列表为空时所有方块保持构建线程路径。已落地 `DeferredMeshScheduler`、`DeferredSectionMesh`（含 `DeferredCapture` native 顶点池）、`DeferredFinishTask`、`DeferredBlock`、`ObjectPool`；mesher 增加 16³ 预扫与 `long[64]` 掩码、主线程 `captureDeferred`、构建线程 `finishDeferred`，manager 增加 `trimPools`/`runImportant` 与固定退出顺序；`DeferredBlocksScreen` 提供编辑入口。未创建 `IsbrhDispatch`、`ThreadSafeISBRH`、`IRenderingRegistryExt`、`MixinRenderingRegistry`（本地无宿主）。已在 `minecraft:stone` 强制 handoff 下完成实机对照；普通捕获分周期执行，队列保留最近的有限任务，被淘汰的任务释放后重新登记重建 |
-| 13 | `b7628404` | Fix shader packs in modded dimensions (#2137) | 2026-09-26 | 待同步 | P01 | 模组维度光影包解析；本地 `ShaderPack.getProgramSet` 无 `resolveDimensionFolder`，也没有 `legacyDefaultFolder` |
+| 13 | `b7628404` | Fix shader packs in modded dimensions (#2137) | 2026-09-26 | 已同步 | P01 | `shader/src/main/java/net/coderbot/iris/shaderpack/ShaderPack.java:705` 已调用 `resolveDimensionFolder`，`:92` 有 `legacyDefaultFolder`，模组维度按维度号解析目录并回落到 legacy 名字 |
 | 14 | `44c930f4` | Fix scissor clears wiping the whole screen on SDL-GPU (#2138) | 2026-09-26 | 分 hunk 同步 | G03 | 取 `glsm` 侧 `ScissorState`、`ScissorStateStack`、`Feature`、`FeedbackManager`、`CowDispatch` 与对应测试；排除 `sdl-gpu/` 的 `AttachmentClear`、`PixelOps` 与 SDL 清除跟踪测试 |
 | 15 | `7f3fb35e` | Use actual camera when doing cloud related culling and fuctions (#2139) | 2026-09-26 | 待同步 | F01 | 云剔除改用真实相机，依赖 F01 |
 | 16 | `7c28a69b` | Optimize Enchant Glint Rendering (#2140) | 2026-09-26 | 待同步 | F02 | 附魔闪光合并渲染，本地缺 `CombinedGlint`、`GlintClock`、`ModelPartBatcher` |
@@ -67,7 +67,7 @@
 | 29 | `977db3d6` | Add option to change mouse movement from Cinematic to Standard while in Angelica Zoom (#2166) | 2026-09-29 | 待同步 | F10 | 缩放期间鼠标模式选项，本地无 `Zoom`、`Settings` |
 | 30 | `97057224` | Fix Depth Mask Issue for Nametags, etc for Text (#2168) | 2026-09-29 | 待同步 | F05 | 字体深度掩码按分段记录；本地 `BatchingFontRenderer` 无 `deferredSegments` 结构与 `depthMask` 分段字段，`glDepthMask` 在该文件中不出现，需先有分段批量结构再引入该修正 |
 | 31 | `fa71eda3` | Font Texture Crash Fix on Splash Screen (#2169) | 2026-09-29 | 待同步 | F05 | splash 字体纹理绑定回退；本地 `MixinFontRenderer` 有 splash 分支，但 `BatchingFontRenderer` 无 `textureFor` 回退 |
-| 32 | `cd0a9608` | Fix async atlas with KaizPatchX (#2175) | 2026-09-30 | 待同步 | S02 + F12 | 异步图集与 KaizPatchX，本地缺 `AtlasPackPolicy`、`EmissiveTextureAutoloader` |
+| 32 | `cd0a9608` | Fix async atlas with KaizPatchX (#2175) | 2026-09-30 | 待同步 | S02 | 异步图集与 KaizPatchX，本地缺 `AtlasPackPolicy`、`EmissiveTextureAutoloader`；`com/prupe` 的 `TexturePackAPI` 属 1.7.10 MCPatcher，不移植 |
 | 33 | `cbd16b1a` | Fix shadow pass receiving a full-bright lightmap constant and misreporting terrain renderStage (#2170) | 2026-10-01 | 待同步 | P01 | 阴影 pass 全亮亮度常量与 terrain renderStage 误报；本地 `ShadowRenderer` 无对应设置点 |
 | 34 | `9cb35c67` | Dark mode text recoloring with resource packs configs (#2118) | 2026-10-01 | 待同步 | F06 | 深色模式文字重着色，本地无 `DarkModeFontTransform`、`DarkModeUtils` |
 | 35 | `a8e95f70` | Improve biome blending and improve compat (#2180) | 2026-10-01 | 待同步 | F11 | 生物群系混色兼容，依赖 `BiomeVertexBlender` |
@@ -81,9 +81,9 @@
 | 43 | `db7d3284` | Stop shaders from forever breaking entity instancing (#2187) | 2026-10-02 | 待同步 | F02 | 实例化被光影永久禁用，本地缺 `EntityRenderScope` |
 | 44 | `80e5b544` | Fix voxeliation performance under SDL GPU (#2188) | 2026-10-02 | 分 hunk 同步 | F04 | 取通用 hunks：`rendering/voxelization/ShadowVoxelizer`、`VoxelRangeTable`、`VoxelRangeTableTest`、`ShadowVoxelizerTest`、`glsm/backend/RenderBackend` 的体素区域绑定接口、Iris 的 `RwImageStoreExtractor` 与 `RwImageStoreExtractorTest`、`rendering/celeritas/AngelicaChunkRenderer` 的体素调用点。本地 Iris 侧 `ShadowRenderer` 已有 voxelization 引用。排除：`sdl-gpu/SDLGPURenderBackend`、`sdl-gpu/compute/VoxelizationDispatcher`、`VoxelizationDispatcherTest`、`GlsmSdlVoxelRegionBindTest`、`MslCrossCompileTest`，以及 `SdlShadowVoxelizationSink`（SDL 专用）、`profiling/TracyFramePlots` |
 | 45 | `12fa08ab` | Cut redundant GLSM state tracking (#2189) | 2026-10-02 | 待同步 | G03 | 冗余 GLSM 状态跟踪削减，依赖 `CowDepths`、`CowStateStack` |
-| 46 | `38b1d9a0` | Speed up boot (#2190) | 2026-10-02 | 分 hunk 同步 | S03 + F12 | 取 `GlslTransformUtils` 与 `com/prupe` 的 `CITUtils`、`CTMUtils`、`TileLoader`（F12）；排除 `sdlgpu/shader/ShaderManager`。已同步（批次二第 19 项）的 `GlslTransformUtils` 半：保留字正则改为 `sample(?<=\bsample)\b`、`new(?<=\bnew)\b`、`sampler(?<=\bsampler)\b(?!\d)`，`parseFullQuiet` 改走 SLL + `BailErrorStrategy`，失败时 `reset()` 后切 `DefaultErrorStrategy` + LL 重试；`com/prupe` 半属第 38 项 |
+| 46 | `38b1d9a0` | Speed up boot (#2190) | 2026-10-02 | 分 hunk 同步 | S03 | 取 `GlslTransformUtils`，排除 `sdlgpu/shader/ShaderManager`。已同步（批次二第 19 项）的 `GlslTransformUtils` 半：保留字正则改为 `sample(?<=\bsample)\b`、`new(?<=\bnew)\b`、`sampler(?<=\bsampler)\b(?!\d)`，`parseFullQuiet` 改走 SLL + `BailErrorStrategy`，失败时 `reset()` 后切 `DefaultErrorStrategy` + LL 重试；`com/prupe` 的 `CITUtils`、`CTMUtils`、`TileLoader` 属 1.7.10 MCPatcher，不移植 |
 | 47 | `1587a12c` | Work around SDL Metal fence bugs and pump during present (#2191) | 2026-10-02 | 分 hunk 同步 | G05 + S03 | 取通用 hunks：`glsm/backend/MainThreadPump` 与 `MainThreadPumpTest`（G05 主线程泵）、`glsm/profiling/DebugCounters`（S03 的计数器设施）与 `debug/flyby/FlybyRunner` 的计数器采集。排除 `sdl-gpu/` 的 23 个文件（fence 探测、presenter、transfer thread 与对应测试） |
-| 48 | `85892c0f` | Fix DSA binding restore and liquid colors (#2192) | 2026-10-02 | 分 hunk 同步 | G03 + F12 | 取 DSA 绑定恢复、`TextureTracker` 与 `MultiListenerNotifier`（G03）；`mcpatcherforge` 的 `MixinRenderBlocks` 重组归 F12；排除 SDL 绑定查询测试与 Lwjgl2 后端 |
+| 48 | `85892c0f` | Fix DSA binding restore and liquid colors (#2192) | 2026-10-02 | 分 hunk 同步 | G03 | 取 DSA 绑定恢复与 `TextureTracker`（G03），`MultiListenerNotifier` 本地由 `StateUpdateNotifiers` 的单监听器承担；`mcpatcherforge` 的 `MixinRenderBlocks` 重组属 1.7.10 注入面，不移植；排除 SDL 绑定查询测试与 Lwjgl2 后端 |
 | 49 | `d876a203` | Cut more per-frame allocations in terrain and rendering (#2193) | 2026-10-02 | 已同步（C09 通用部分） | C09 | 地形与渲染每帧分配削减，依赖 `FenceQueue`、`GlStreamingRing`、`RenderListPool`。C09 承担的部分已落地：`RenderListPool` 的两个轮换槽与 `ChunkRenderList.reset()`（`RenderListPoolTest`）、延迟路径的 `ObjectPool` 与 `DeferredCapture` native 顶点池、mesher 预扫掩码改由 build context 持有（每段构建不再分配 `long[64]`）、捕获区间按顶点数截取而不复制整层 buffer。`FenceQueue` 与 `GlStreamingRing` 已在 `feat/glsm-streaming-ring` 落地，见第 114 行 |
 | 50 | `37afddab` | Cache transformed and compiled shaders on disk (#2194) | 2026-10-02 | 分 hunk 同步 | S01 + S04 + S05 | 取 `glsm/shader` 的 `ShaderDiskCache`、`ShaderCacheIO` 与 `CompatShaderTransformer` 接线；排除 `sdlgpu/shader` 的交叉编译缓存与阶段序列化。已同步（批次二第 18 项）：`ShaderCacheIO`、`ShaderDiskCache` 落 `glsm/src/main/java/com/gtnewhorizons/angelica/glsm/shader/`；`CompatShaderTransformer.transform` 改为先查内存缓存、再查磁盘、最后走 AST 变换，并抽出 `minGlslVersion()` 与 `diskKey()`；`SpirvCompiler` 增加磁盘层与 `compile(..., boolean diskCache)` 重载；`ClientProxy.configureShaderDiskCache` 由 `Actinium.onInit` 调用。`ShaderDiskCache.resetForTesting()` 替代上游 `testutil.Reflect` 的静态字段写入，因为本地无该测试工具且 AGENTS.md 禁止测试用反射。`@Lwjgl3Aware` 注解未移植，本地无 lwjgl3ify 依赖 |
 | 51 | `bdcb4d18` | Fix Complementary + Euphoria Patches ULTRA on SDL-GPU (#2195) | 2026-10-02 | 分 hunk 同步 | S05 | 取 `GlslVulkanPreprocess` 与 Iris `ShaderTransformer` 修正；排除 SDL/GLES 交叉编译与预热测试。已同步（批次二第 19 项）：`GlslVulkanPreprocess` 的 `TARGET_RESERVED` C++ 保留字集合与 `IDENTIFIER_RENAMES` 内置标识符重命名；Iris 侧的 `isSDLGPU` 分支与 `extractRwImageStores` 改签名未移植，本地无 `RwImageStoreExtractor`，`ShaderTransformerTest` 依赖 `StageArtifact` 也未移植 |
@@ -129,7 +129,7 @@
 | 91 | `46f81570` | New workflow (#2252) | 2026-10-11 | 不适用 | — | CI 工作流替换 |
 | 92 | `85d0641a` | Speed up tests and run SDL-GPU device tests on CI (#2253) | 2026-10-12 | 分 hunk 同步 | G01 | 取架构约束测试思路，落在根项目 `src/test/java/com/dhj/actinium/architecture/`（现有 `DependencyDirectionTest.java` 即为该目录）；SDL 设备测试与 kts 构建脚本排除 |
 | 93 | `0cae2be1` | Fix Chisel energised voidstone missing its border corners (#2254) | 2026-10-12 | 待同步 | F11 | 凿子充能虚空石边角，本地缺 `QuadMaterialSelector` |
-| 94 | `01ff612d` | Make animation interpolation respect alpha (#2258) | 2026-10-14 | 待同步 | S02 | 交错纹理动画 alpha；本地无 `jss/notfine` 包，需随 S02 一并建立 |
+| 94 | `01ff612d` | Make animation interpolation respect alpha (#2258) | 2026-10-14 | 不适用 | — | 交错纹理动画的 alpha 处理；NotFine 仅 1.7.10，上游把它的代码并进 `jss/notfine` 包，本地不引入该包，也没有交错动画设施，没有可改动的目标 |
 | 95 | `bd9a3c3c` | initial commit for witchery-cauldron-not-drawing-base (#2260) | 2026-10-14 | 待同步 | F02 | 命名牌绘制与炼药锅基座渲染，依赖 `ModelPartBatcher`、`RetainedTesrGroups` 与 `TessellatorStreamingDrawer` 签名调整 |
 | 96 | `49db8e11` | Allow Iris to use "more" Samplers on SDL-GPU (#2256) | 2026-10-14 | 分 hunk 同步 | G05 | 取 `glsm/shader` 的采样器别名去重（`SamplerAliasDeduplicator`）；SDL 采样器搬运、`Device`、`SamplerBinder` 排除 |
 | 97 | `f81ee4b0` | fixed some osx metal compability with Distant horizon 1.7.10 backport (#2261) | 2026-10-15 | 不适用 | — | macOS Metal 能力垫片，全部 `sdl-gpu/` |
@@ -138,7 +138,7 @@
 | 100 | `cfc6e12e` | Minor Compute Cull Optimizations (#2263) | 2026-10-17 | 分 hunk 同步 | C01 | 取通用 hunks：`glsm/GLContextState` 新增的 `uniformBufferBindings`、`storageBufferBindings` 数组与 `GLStateManager` 的 `INDEXED_BUFFER_SLOTS`、`trackIndexedBufferBinding`、`glBindBufferBase` 跟踪、`glDeleteBuffers` 的绑定清理（本地 `glBindBufferBase` 为直接转发，无跟踪），以及 `GLSM_DeletedBufferBinding_GLTest`；通用绑定跟踪已由批次二第 17 项落地，并补齐 `glBindBufferRange`、索引查询、`RenderSystem`/`GlUniformBlock` 调用入口、ASM 重定向和 splash 迁移清理。排除：`GpuDrivenChunkCuller`、`GpuTerrainCuller` 的 GPU 剔除器改动（本地无这两个类，随 C01 的剔除设施一并补齐） |
 | 101 | `ab3bf176` | Set entity, block entity and item IDs per vertex (#2265) | 2026-10-17 | 分 hunk 同步 | G07 | 取通用 hunks：`glsm/streaming/TessellatorEntityIds`、`StreamingVaos`、`TessellatorStreamingDrawer`、`glsm/ffp/InstancedAttribs`、`ShaderManager`、`glsm/hooks/ImmediateExtendedAttribHandler`、`glsm/GLContextState`、`GLStateManager`、`iris/ImmediateExtendedAttribs`、`iris/IrisGLSMBridge`、`iris/gl/shader/ProgramCreator`、`iris/uniforms/CapturedRenderingState`、`MixinTessellator_CoreProfile`、`rendering/tesr/ModelPartBatcher`，以及 `TessellatorEntityIdsGLTest`、`InstancedFFPDrawGLTest`、`IrisInstancingGLTest`、`AttributeTransformerInstancedTest`（落根项目 `src/test`）。排除：`sdl-gpu/glsm/GlsmSdlAttribBindingTest`、`GlsmSdlFfpTest`、`GlsmSdlTessellatorEntityIdsTest` 与 `glsm/testFixtures` 的 `EntityIdsOnlyHandler`、`TessellatorEntityIdsFixture`、`FfpFixture` |
 | 102 | `482dece0` | Expand SDL-GPU's GLSM redirector to GLSM and remove unredirected GL workarounds and move action back to master (#2268) | 2026-10-17 | 分 hunk 同步 | G05 | 取 `glsm` 侧重定向代理与测试夹具（`GlsmRedirectAgent`、`GLSMCoreExtension`）；`sdl-gpu/src/glsmSdlAgent` 与构建脚本排除 |
-| 103 | `69019b9a` | Implement metadata checking into the NBT path of block.properties parsing (#2267) | 2026-10-18 | 待同步 | P01 | block.properties 的 NBT 路径加入元数据判定；本地 `NbtConditionalIdMap.addCondition` 无 `metas` 参数，`NbtCondition` 无元数据集合 |
+| 103 | `69019b9a` | Implement metadata checking into the NBT path of block.properties parsing (#2267) | 2026-10-18 | 已同步 | P01 | `shader/src/main/java/net/coderbot/iris/block_rendering/NbtConditionalIdMap.java:43` 的 `addCondition` 已收 `Set<Integer> metas`，`:34` 的 `NbtCondition` 记录元数据集合，`:116` 在匹配时按元数据过滤 |
 | 104 | `fa8842a6` | Fix birch and spruce leaves showing the oak biome color with fancy biome blending (#2273) | 2026-10-18 | 待同步 | F11 | 桦木与云杉树叶混色，依赖 `BiomeVertexBlender` |
 | 105 | `2d9d1a45` | initial commit for entity-atlases (#2272) | 2026-10-18 | 分 hunk 同步 | F03 + S03 | 取通用 hunks：`rendering/tesr/EntityTextureAtlas`（新增）、`InstancedTemplateRenderer`、`ModelBoxCapture`、`ModelPartBatcher`、`RetainedTesrGroups`、`TesrLifecycle`；`rendering/items/BlockRenderListManager`、`DroppedItemInstancer`；`glsm/ffp/CubeParams`、`glsm/texture/TextureInfo`、`TextureInfoCache`、`RenderSystem`、`GLStateManager`；`MixinItemRenderer_Instanced`、`MixinRenderItem_Instanced`、`MixinModelBox_CubeParams`、`MixinRender_EntityFireBatch`（新增，实体火焰批量）、`itemrenderer/MixinRenderBlocks`；`AngelicaConfig`/`Mixins`/`ClientProxy` 接线与 `EntityTextureAtlasGLTest`、`ModelBoxCaptureTest`、`RetainedTesrGroups(Test\|GLTest)`。`DeferredWorldRenderingPipeline` 归 F03：该 hunk 在 pipeline 里接入实体图集与 instances 分支。`PBRTextureManager` 归 S03：该 hunk 调整 PBR 资源索引与加载顺序，属着色器资源加载链。排除：`sdl-gpu/SDLGPURenderBackend`、`sdl-gpu/resource/FboState`、`sdl-gpu/glsm/GlsmSdlCopyBlitTest`、`glsm/testFixtures/CubeParityFixture`（本地无 testFixtures 源集） |
 | 106 | `32f8eef1` | Fixes a startup CME when BLS (#2274) | 2026-10-18 | 待同步 | F05 | 启动期离线程字体测量的 CME；本地 `FontStrategist.getFontProvider` 目前没有现代字形查找分支，因此该路径暂不存在，但 F05 引入字体表后会立刻成立。守卫条件 `GLStateManager.isMainThread()` 本地已具备（`glsm/src/main/java/com/gtnewhorizons/angelica/glsm/GLStateManager.java:162`），随 F05 一并加在字形查找入口 |
@@ -147,12 +147,12 @@
 | 109 | `ed260a34` | Fix tests & SDL-GPU framebuffers losing attachments on resize or texture delete (#2282) | 2026-10-21 | 不适用 | — | SDL 帧缓冲附件与对应测试 |
 | 110 | `a037a96f` | Update to Celeritas 2.5.13-GTNH (#2283) | 2026-10-21 | 不适用 | — | 依赖版本号提升 |
 | 111 | `67ca46a2` | why min 16 (#2278) | 2026-10-22 | 不适用 | — | 本地无 `mobSpawnerRenderDistance` 选项与 `SodiumGameOptionPages`，选项下限无同步基础 |
-| 112 | `98703a11` | Read only the mcmeta in the interpolated icon check (#2284) | 2026-10-22 | 待同步 | S02 | 交错图标检测只读 mcmeta；本地无 `jss/notfine` 包，也没有 `notfine_at.cfg`，该优化随 S02 的 interpolated texture 实现一并移植（实现时需同时补 `FallbackResourceManager` 的 access transformer 条目） |
+| 112 | `98703a11` | Read only the mcmeta in the interpolated icon check (#2284) | 2026-10-22 | 不适用 | — | 交错图标检测只读 mcmeta，依赖 `jss/notfine` 与 `notfine_at.cfg`；NotFine 仅 1.7.10，本地不引入该包，1.12.2 若要同名功能按 `TextureMap` 与 mcmeta 路径另做，不涉及 access transformer |
 | 113 | `69124e3f` | Stop capping mailbox present mode to the refresh rate (#2279) | 2026-10-21 | 已同步 | F09 | `resolveTearFreeMode` 默认回 `VSyncMode.ON`；MAILBOX 在 GLFW 路径由 `supportsVSyncMode` 标记为不支持，选项只暴露 ON/OFF |
 | 114 | `73d61d38` | initial commit for gl-fences (#2285) | 2026-10-21 | 已同步 | G05 | glsm 侧由 `feat/glsm-streaming-ring` 落地：新建 `FenceQueue` 与 `GlStreamingRing`，`PersistentStreamingBuffer` 改为薄包装，删除 `GlFence` 与 `StreamingBuffer` 接口，fence 时机、容量阈值、10ms 等待切片与 5s 总超时、`forcedReclaims` 计数与上游逐项一致。`Uniforms.invalidateBinding` 随 FFPUniformBlock+UBO ring 一并排除（本地逐 uniform 上传）；TESR/particle 侧的 `InstanceRing`、`ModelPartBatcher`、`TesrBatchRenderer`、`ParticleInstancer` 随 F03；Tracy 帧图与脚本排除 |
 | 115 | `e84c8c8d` | Stop stalls on some GPUs when closing the questbook (#2286) | 2026-10-22 | 分 hunk 同步 | G05 | 取 GLSM 延迟纹理删除、`FrameHooks`、`TextureTargets` 与 `DSAUnsupported`；SDL 采样器与 `Lwjgl2GLRenderBackend` 排除 |
 | 116 | `fc8d3e8b` | Keep armor and held-item glint materials separate (#2289) | 2026-10-22 | 待同步 | F02 | 盔甲与手持附魔材质分离，本地缺 `EntityMaterials`、`ItemGlint` |
-| 117 | `8af9340b` | Initial commit for shadow-pass-camera (#2291) | 2026-10-22 | 待同步 | P01 | 阴影 pass 相机同步；本地 `ShadowRenderer` 只保存与恢复 `renderManager.viewerPos*`，未设置 `cacheActiveRenderInfo` 与 `TileEntityRendererDispatcher.staticPlayer*` |
+| 117 | `8af9340b` | Initial commit for shadow-pass-camera (#2291) | 2026-10-22 | 已同步（P01 部分） | P01 | `shader/src/main/java/net/coderbot/iris/pipeline/ShadowRenderer.java:660` 的 `cacheActiveRenderInfo` 已同时设置 `renderManager` 相机与 `TileEntityRendererDispatcher.staticPlayer*`；同提交的逐层 stage 归第 4 项对账 |
 | 118 | `102c6cad` | Initial commit for glsm-exit-state-capture (#2292) | 2026-10-24 | 已同步 | G07 | 退出状态捕获已落地：`ExitState`、`ExitStateCapture`、`hooks/BatchStateGuard` 三个新类，`GLStateManager` 的入口按门面拆到 8 个 `GLSM*` 类，`RenderSystem` 与 Iris 桥接各补一处。`hooks/TextureUtilHooks`、`MixinTextureUtil`、`VanillaLayerRig` 因本地缺类跳过；门面里的 `rejectExitCapture` 守卫留到 54 个缺失方法那一批 |
 | 119 | `713509a8` | Entity Shadow Replay (#2294) | 2026-10-24 | 待同步 | F04 | 实体阴影重放，本地缺 `EntityShadowReplay`、`RetainedTesrGroups` |
 | 120 | `ea50e0a0` | Bunch of rendering fixes (#2295) | 2026-10-25 | 待同步 | F01 | 云着色属性与玻璃板渲染等一组渲染修正 |
@@ -165,7 +165,7 @@
 | 127 | `9bbb0537` | Backport modern F3 debug screen + debug overlays (#2301) | 2026-10-25 | 分 hunk 同步 | F07 | 取通用 hunks：`api/debug/` 的调试屏 API（`DebugContext`、`DebugEntryCategory`、`DebugEntryHandle`、`DebugEntrySpec`、`DebugFact`、`DebugFactLines`、`DebugGroupHandle`、`DebugGroupSpec`、`DebugScreenApi` 等）、`glsm/` 侧的调试注册点与 `src/main/java` 的调试条目、`src/mixin/java` 的注入点、`src/main/resources` 的文案，以及 `src/test` 的对应测试。本地无 `api/debug` 包。排除：`sdl-gpu/SDLGPURenderBackend`、`sdl-gpu/device/Device`、`sdl-gpu/resource/ResourceManager` 与 `scripts/flyby-*` 采集脚本、`dependencies.gradle.kts` |
 | 128 | `91e67f8d` | Split up GLStateManager and add public GLState API (#2305) | 2026-10-26 | 分 hunk 同步 | G06 | 取通用 hunks：`glsm/` 下的公开 API 拆分（`GLSMBlend`、`GLSMDraws`、`GLSMEnable`、`GLSMFog`、`GLSMFramebuffer`、`GLSMLighting`、`GLSMMatrices`、`GLSMPrograms`、`GLSMQueries`、`GLSMRasterizer`、`GLSMTexEnvGen`、`GLSMTextures`、`GLSMVertexInput` 等）、`GLContextState`、`Feature`、`FeedbackManager`、`CompatUniformManager`、`DisplayListManager`、`ExitStateCapture`，以及 `src/main/java` 与 `src/mixin/java` 的调用点改造。本地 `glsm/` 只有单一 `GLStateManager`，没有拆分后的公开面。排除 `experimental-surround/`、`sdl-gpu/src/main`、`sdl-gpu/src/test` 与 `glsm/src/testFixtures` |
 | 129 | `ed6dd12d` | Move deferred chunk meshing back off the main thread (#2306) | 2026-10-26 | 已同步（C09） | C09 | 延迟区块网格构建移回工作线程：`DeferredFinishTask` 在 `ChunkBuilder` 的构建线程上调用 `finishDeferred`，把 capture 条目按有界 ByteBuffer 视图逐条交给 `VintageChunkBuildContext.copyBlockData`，再 `groupFromBuildBuffers` 生成正式 `ChunkBuildOutput`；主线程只做原始顶点捕获。`DeferredFinishTask` 是 job 的结果消费者，mesh 在运行 finish 的线程上释放；`ChunkJobCollector.onJobSkipped` 区分未提交的失败与真正完成的 finish，保证 `runImportant` 仍等待已提交的 finish。普通捕获分周期执行；`update()` 释放 obsolete mesh，普通队列最多保留 `max(2, worker 数 × 2)` 个最近任务，淘汰项取消后经 `scheduleSectionForRebuild` 重新登记 |
-| 130 | `08aa3771` | Only animate PBR textures that are visible (#2310) | 2026-10-28 | 待同步 | S03 | 只动画可见 PBR 纹理；本地 `PBRAtlasTexture.cycleAnimationFrames` 仍遍历全部动画精灵 |
+| 130 | `08aa3771` | Only animate PBR textures that are visible (#2310) | 2026-10-28 | 已同步 | S03 | 已随 #279 落地：`PBRAtlasTexture` 的 normal/specular 动画继承基础纹理的可见标记，隐藏时只推进帧计数、不上传新帧，`SpriteAnimationGate` 与 `SpriteAnimationTicker` 承担门控 |
 | 131 | `bbbdc12b` | Cut terrain rebuilds and draw-buffer churn (#2312) | 2026-10-29 | 分 hunk 同步 | C04 | 取 `GLSMAttribStack`、`GLSMBuffers`、`VAOManager` 与地形重建削减；`sdlgpu/resource/ResourceManager` 与版本号文件排除 |
 | 132 | `8e099e95` | Free chunk-meshing memory when leaving a world (#2313) | 2026-10-29 | 已同步（C09 通用部分） | C09 | 取通用 hunks：`rendering/celeritas/` 的 `AngelicaRenderSectionManager`、`DeferredMeshScheduler`、`ObjectPool` 与 `DeferredMeshSchedulerTest`、`ObjectPoolTest`（落根项目 `src/test`）、`rendering/AngelicaRenderQueue`、`debug/profiling/AsprofRecorder`、`glsm/config/SystemProperties` 的配置项。本地缺 `ObjectPool` 与 `DeferredMeshScheduler`。排除：`tracy-client/TracyClientBackend`、`scripts/flyby-smoke.sh`、`scripts/flyby-smoke-check.py`、`debug/flyby/FlybyHeapCheck`、`FlybyRunner`。C09 落地情况：`AngelicaRenderSectionManager` 对应本地 `VintageRenderSectionManager`，已加池裁剪、important 队列排空与 `markDestroyed → super.destroy → runImportant → releaseOrphans → captureContext.destroy` 的退出顺序；`DeferredMeshScheduler`、`ObjectPool`、`DeferredMeshSchedulerTest`、`ObjectPoolTest` 已落根项目 `src/test`；`AngelicaRenderQueue` 对应 `RenderSectionManager.scheduleAsyncTask`/`cancelAsyncTask`（按引用移除共享 `runNext`）；`glsm/config/SystemProperties` 的配置项与 Tracy/Asprof 采集未取。新增 `ChunkJobUnstartedContextTest` 覆盖取消未启动任务只释放一次快照 |
 
@@ -220,7 +220,7 @@
 | F09 | `338d9419`、`69124e3f`、`74ea5c47`（`FpsReducer`） |
 | F10 | `977db3d6`、`74ea5c47`（`Zoom`） |
 | F11 | `233c74e0`、`a8e95f70`、`fa8842a6`、`0cae2be1`、`1946c2ad`、`bfb66d84`、`cae4fea2`、`3d3d0f9e`、`23e36f2b`、`d29a8278`、`2f1f380e`（通用兼容） |
-| F12 | `com/prupe`、`jss/notfine` 相关提交（`38b1d9a0`、`85892c0f`、`cd0a9608`） |
+| F12 | 1.12.2 ConnectedTexturesMod 兼容（本地实现，无对应上游提交）；`38b1d9a0`、`85892c0f`、`cd0a9608` 的 `com/prupe` 与 mcpatcherforge 半属 1.7.10 MCPatcher，不移植 |
 
 ## G05 落地顺序
 
@@ -260,15 +260,53 @@ SDL 主模块按当前 GLSM 和 Outlands 宿主适配，资源与管线完整导
 | 3 | 缓冲映射生命周期的 17 个文件（`12857006`）、`MainThreadPump` 的 present 三态（`1587a12c`） | 已同步 |
 | 4 | 采样器搬运与 `SamplerAliasDeduplicator` 的 SDL 接线（`49db8e11`）、`glsmSdlAgent`（`482dece0`） | 采样器接线已同步；`glsmSdlAgent` 属测试基础设施，尚未移植 |
 
-## 无 SDL 前提下的 PR 顺序
+## 剩余工作的三批顺序
 
-SDL 后端暂缓期间可推进的全部工作，共 38 个 PR，分三批。批次之间无依赖，可交叉并行；批内编号即顺序。
+原表按基线 `ef01e10c` 的全量 38 个 PR 划分。截至 `faf5055b`，`main` 之后推进 43 个提交、41 个合并 PR：原批次一 9 项完成 7 项，剩第 3、9 项；原批次二 13 项全部完成，含台账里仍标「待同步」的第 12 项 `7e5e9d7e`（SPI 登记已删、`ChunkShaderEnvironment` 已在）；原批次三 16 项完成第 23、35 项，第 25、27 项部分完成，其余 11 项未开始。
 
-评估前提：只按本地已有的类与接口判定可落性，纯 SDL / MoltenVK / Tracy 原生采集 / `src/sdl-gpu` 的内容一律不计。G01、G02、G03 的绝大部分已在 #249、#252、#253 落地，台账里仍标「待同步」的行属滞后记录，实际差集见下表的补丁项。
+下面的三批只列剩余工作，编号 1 到 17 重排。批内编号即顺序，批间可交叉并行，跨批前置在「前置」列标注。评估前提不变：只按本地已有的类与接口判定可落性，纯 SDL / MoltenVK / Tracy 原生采集 / `src/sdl-gpu` 的内容一律不计。
 
-### 批次一：GLSM 收尾
+### 批次一：收口
 
-已在 PR #263 上合并：第 1、2、10、12、24 项。第 5 项（`ExitStateCapture`）在后续 PR 上，它不依赖 Tracy no-op 门面；`TextureUtilHooks`、`MixinTextureUtil`、`VanillaLayerRig` 三个上游文件因本地缺类整体跳过，`rejectExitCapture` 守卫留给第 6 项与那 54 个门面方法一起做。
+已开工或已有前置的残项。第 3、4、5 项已完成，第 6 项取消，剩余第 1、2 项。
+
+| # | 范围 | 覆盖上游 | 规模 | 前置 |
+|---|---|---|---|---|
+| 1 | 测试骨架：`ArchScan` 与 mixin 包隔离规则测试已落地（`src/test/java/com/dhj/actinium/architecture/`，覆盖 AGENTS.md 的 `IllegalClassLoadError` 规则）；剩余 `NoWildcardImportsTest`（需先清理现有通配 import）、`GlsmRedirectAgent`、`GLSMCoreExtension`、`FfpFixture` 与 `glIntegrationTest` 的 `javaagent` | `85d0641a`、`6c5e146f`、`85892c0f` 部分 | 2 新 10 改，约 700 行 | 无；`85892c0f` 的 `TextureTracker` 已在，`MultiListenerNotifier` 由 `StateUpdateNotifiers` 的单监听器承担 |
+| 2 | 逐顶点实体 ID：`TessellatorEntityIds`、`GLStateManager.setEntityIds`/`flushEntityIds`、`ImmediateExtendedAttribHandler.LOC_ENTITY_IDS`、Iris 侧 `EntityPatcher` 改写与 `CapturedRenderingState` 监听 | `ab3bf176` | 26 文件，本地需重新设计上传路径 | 无；本地 `TessellatorStreamingDrawer` 没有上游的扩展属性合并路径（midTex/tangent 由 `FfpExtendedAttribs` 单独重建），`StreamingVaos` 也没有布局维度，逐顶点 ID 需按本地结构新增独立的 ID VBO 与属性指针 |
+| 3 | 帧率限制器 `FpsReducer`，含 `ReducerStateMachine`、配置项、三个 mixin、选项页与状态机测试 | `74ea5c47` 的 `FpsReducer` | 已完成 | 无；音量的重载路径改走 `SoundLoadEvent`，不再需要 `SoundManager$1` 的匿名类 mixin；`effectiveCap` 接到本地 `MixinMinecraft$actinium$paceFrame` 的 `FramePacer.endFrame` 之前 |
+| 4 | 阴影 pass 的逐层 stage 与全亮亮度对账 | `cbd16b1a` | 已完成 | 无；`DeferredWorldRenderingPipeline.java:935` 的 `inputsFor` 与 `SHADOW_INPUTS`、`MixinRenderGlobal.java:167-177` 的逐层 stage 均已对齐 |
+| 5 | 核心 profile 拒绝信息与探测上限对账 | `990dadc0` | 已完成 | 无；`CoreProfileDisplayCreator.describeFailure` 已产出同款文案，探测上限走 `RenderSystem.probeCapAfterRejection` |
+| 6 | 取消：云层与缩放需要的配置键随各自功能落地 | — | 0 | 原计划抽取 `jss/notfine` 的 `Settings`，该包属 1.7.10 专有；两侧键集不相交（云层 `MODE_CLOUDS`、`RENDER_DISTANCE_CLOUDS`、`CLOUD_SCALE`，缩放 `ZOOM_CINEMATIC`、`ZOOM_SMOOTH`、`ZOOM_SMOOTH_SPEED`），单独建一份没有消费方的配置违反不得留占位配置的约束，分别归第 13、7 项 |
+
+### 批次二：独立中件
+
+彼此无前置，可五路并行。
+
+| # | 范围 | 覆盖上游 | 规模 | 前置 |
+|---|---|---|---|---|
+| 7 | 缩放与鼠标模式选项 `Zoom`，同时落地 `ZOOM_CINEMATIC`、`ZOOM_SMOOTH`、`ZOOM_SMOOTH_SPEED` | `977db3d6`、`74ea5c47` 的 `Zoom` | 2 新 2 改，约 200 行 | 无 |
+| 8 | 字体改进：分段深度掩码、splash 纹理回退、抗锯齿外扩、自定义字体提供者 | `9081f4c3`、`97057224`、`fa71eda3`、`75a02781`、`5457df53`、`32f8eef1`、`d16c1e7c` | 2 新 9 改，约 700 行 | 无 |
+| 9 | GUI 物品超采样 `GuiBlockSupersampling` | `17a2ed7f` | 3 新 13 改，约 560 行 | 无 |
+| 10 | 生物群系混色 `BiomeVertexBlender`、`SmoothBiomeColorCache`、`SkyColorCache` | `233c74e0`、`a8e95f70`、`fa8842a6`、`bfb66d84` | 10 新 8 改，约 900 行 | 无 |
+| 11 | 现代 F3 调试屏，含 `api/debug` 整包与 `DebugKeyHandler` | `9bbb0537`、`c9d46e70` 的 `DebugKeyHandler` | 40 新 8 改，约 6000 行 | 无 |
+
+### 批次三：大件与依赖链
+
+前三项互不依赖，后三项成一条链。
+
+| # | 范围 | 覆盖上游 | 规模 | 前置 |
+|---|---|---|---|---|
+| 12 | 深色模式与离上下文字体创建 | `61bb779d`、`acedba4e`、`9cb35c67`、`66d2a548`、`8387b4e9`、`231a2ab2`、`0d959c2b` | 6 新 10 改，约 1300 行 | 8 |
+| 13 | 云层重写与云 culling，同时落地 `MODE_CLOUDS`、`RENDER_DISTANCE_CLOUDS`、`CLOUD_SCALE` | `939e3146`、`c578970a`、`7f3fb35e`、`888a4de0`、`21a054a4`、`ea50e0a0` 的云部分 | 16 新 4 改，约 2600 行 | 无；云层参数走本地配置，不读 `jss/notfine` |
+| 14 | 自定义方块渲染的光影属性（`StateAwareTessellator`、`ImmediateExtendedAttribs`、方块材质属性） | `fe67e22d` | 5 新 4 改加 4 个 mixin，约 350 行 | 2 |
+| 15 | TESR 批处理、实体图集与实体阴影重放 | `9814a96b`、`1f274a64`、`2f4ac2a9`、`7c28a69b`、`69428c12`、`fc8d3e8b`、`9f19d94c`、`db7d3284`、`bc08e4ba`、`7cc9cea3`、`af599f29`、`5ed1c925`、`c9d46e70` 的 `shouldRenderLightBlockEntities`、`2d9d1a45`、`b446968e`、`713509a8`、`8537835d` | 45 新 20 改，约 8000 行 | 2 |
+| 16 | 区块材质选择与 ISBRH 派发 | `0cae2be1`、`1946c2ad`、`cae4fea2` | 6 新 4 改，约 500 行 | 15 |
+| 17 | 与 1.12.2 ConnectedTexturesMod（`Chisel-Team/ConnectedTexturesMod` 的 `1.12/dev` 分支，本地参照 `D:/Code/CTM-Vintage`）兼容：核对 `Block.getExtendedState`、`Block.canRenderInLayer`、`TextureMap.registerSprite` 三个注入点，以及 `getModelForState` 与 `preparedModel` 短路是否拿到 CTM 按扩展状态包裹的 `IModelCTM` 模型 | 无对应上游提交 | 2 新 6 改，约 400 行 | 16；`SelectionBoxRenderer` 已由本地 `BoundingBoxOutline` 承担，不移植 |
+
+### 已收口记录（原表编号）
+
+以下内容按原表编号记录实现方式与偏差，编号不指上面的新批次。已在 PR #263 上合并：第 1、2、10、12、24 项。第 5 项（`ExitStateCapture`）在后续 PR 上，它不依赖 Tracy no-op 门面；`TextureUtilHooks`、`MixinTextureUtil`、`VanillaLayerRig` 三个上游文件因本地缺类整体跳过，`rejectExitCapture` 守卫留给第 6 项与那 54 个门面方法一起做。
 
 第 6 项的 `GLSMTextureLifetime` 拆出已在 `feat/glsm-texture-lifetime` 分支完成：`glsm/profiling/Tracy` 落 no-op 门面（无原生采集、无 `TracyBackend`、无 `tracy-client` 子项目），`GLSMTextureLifetime` 用 `Int2LongOpenHashMap` 状态机接管延迟删除，`GLStateManager.deferDeleteTexture`/`flushDeferredTextureDeletes` 改为委托、签名与调用点不变。`beginAttach` 里上游的 `TextureInfoCache.onWrittenOutsideUploads` 一项因本地无该字段跳过，`TextureStaging` 属第 7 项；上游 `FrameHooks.frameEnd()` 的帧计数改由 `MixinMinecraft` 在 `updateDisplay` 前调用 `GLSMTextureLifetime.onFrameEnd()`。
 
@@ -278,7 +316,13 @@ SDL 后端暂缓期间可推进的全部工作，共 38 个 PR，分三批。批
 
 第 7 项已在 `feat/texture-staging` 落地：`TextureStaging` 的默认 CPU 路径使用 16 槽精确容量缓存，提交 BGRA 上传或放弃后回收；同一块只能归还一次，重复归还与跨后端使用直接抛异常。`GLSMTextures` 缓存全部纹理 target，按名称绑定 2D 与非 2D 纹理，批量 image/sampler 绑定及 `glCreateTextures` 重载接入统一门面。1D/3D 上传经过 GLSM 绑定并恢复 pixel-unpack buffer，命名 framebuffer layer/renderbuffer 复用普通挂接以维持引用计数，通用纹理、附件、DSA 与 EXT 重定向已补齐。最近 target 非 2D 时，2D 对象与 `TextureInfo` 查询读取驱动保留的 2D 绑定，跨单元查询恢复 active unit，DSA 三参绑定保留调用方 target，避免影响上传、uniform 与 mipmap。延迟删除复用第 6 项状态机，帧结束仍由 `MixinMinecraft` 驱动；未引入 SDL 或 `EntityTextureAtlas` 回调。新增 GL 覆盖延迟释放、immutable 纹理、3D 绑定、暂存像素与缓冲生命周期、批量 image/sampler 调用及上述 2D/PBO 回归，另以无 GL 测试覆盖缓存淘汰和非法重复归还。
 
-| # | 范围 | 覆盖上游 | 规模 | 前置 |
+台账各行里的「批次一第 N 项」「批次二第 N 项」指原表编号。原表已由上方的三批替换，收口项的范围与处置保留下表；原表第 1 到 22 项全部收口，第 23、35 项已完成，其余项在新批次中的对应关系：24→5、25→4、26→14、27→3、28→7、29→8、30→12、31→13、32→9、33→11、34→10、36→15、37→16、38→17。
+
+#### 原表批次一与批次二（收口留档）
+
+下表按原表编号保留 #1 到 #22 的范围与处置，供台账各行引用对照；「原前置」列是当时的依赖关系，编号指原表。
+
+| # | 范围 | 覆盖上游 | 规模 | 原前置 |
 |---|---|---|---|---|
 | 1 | `GLSMRedirector` 的 `Util.checkGLError` 表项与 `glGenerateMipmapEXT` 别名、`ImageUnitBinding` 的 `reset` 与默认值、`glBindImageTexture` 跟踪、`MultiListenerNotifier` | `b6a4497f`、`6dfb0312`、`e98c927a`、`85892c0f` | 5 改 1 新，约 200 行 | 无 |
 | 2 | COW 剪枝：`GLContextState.savesState`、`CowStateStack.beforeModify` 提前返回、`popState` 的 `claimedAt` 守卫 | `12fa08ab` | 4 改 1 新，约 150 行 | 无 |
@@ -289,11 +333,6 @@ SDL 后端暂缓期间可推进的全部工作，共 38 个 PR，分三批。批
 | 7 | 延迟纹理删除入口与 `TextureStaging` | `e84c8c8d` 阶段二、`c10d30b2` 的 CPU 暂存 | 已完成（`feat/texture-staging`）：4 新 7 改 | 6；复用第 6 项状态机，补齐纹理目标缓存与外围入口 |
 | 8 | 宽线 `LineQuads` 与 `LineDrawHandler`，`ImmediateModeRecorder.processDrawElementsFromAttribs`，删除 `GeometryShaderGenerator` | `2f1f380e` | 已完成（`feat/glsm-line-quads`）：2 新 11 改 1 删 | 7；`WideLineClipGLTest` 依赖 `GLStateManagerIntegrationFixture.routeVertexFormats` 覆盖 `VertexFormat.setupBufferState`，因为集成测试环境没有 ASM redirector |
 | 9 | 逐顶点实体 ID：`TessellatorEntityIds`、`ImmediateExtendedAttribHandler`、`setFfpInstancing` | `ab3bf176` | 2 新 12 改，约 800 行 | 8，且需 F02 的 `FfpExtendedAttribs` 与 `InstancedAttribs` |
-
-### 批次二：Celeritas 与着色器
-
-| # | 范围 | 覆盖上游 | 规模 | 前置 |
-|---|---|---|---|---|
 | 10 | bitraster 远平面判定与半透明排序鲁棒性 | `48eb54f5`、`625b6f40`、`f33e50ce` | 5 改 1 新，约 120 行 | 无 |
 | 11 | 着色器降级迁入 `ShaderLoader` 与 GLES 护栏 | `c64f4225`、`98c1af33`、`c9d46e70` 的 `MixinShaderLoader` | 5 改 1 新，约 90 行 | 无。已完成 |
 | 12 | 移除 `FogService` 的 SPI 登记，改走 `ChunkShaderEnvironment` | `7e5e9d7e` | 8 改 1 新 1 删，约 90 行 | 无 |
@@ -308,36 +347,17 @@ SDL 后端暂缓期间可推进的全部工作，共 38 个 PR，分三批。批
 | 21 | 纹理过滤、PBR 可见性与 `DebugCounters` | `08aa3771`、`1587a12c` 的 `DebugCounters` | 8 改 1 新，约 250 行 | 18。已完成（`feat/texture-pbr-debug-counters`）：PBR normal/specular 动画继承基础纹理的可见标记，隐藏时只推进帧计数，不上传新帧；无动画元数据或缺 Mixin 时持续上传，开关关闭时全部上传。`SpriteAnimationGate` 与 `SpriteAnimationTicker` 隔离 shader 和根项目配置，`DebugCounters` 保留累计值并按周期输出差值，接入 `GLSMPerfDebug`。旧 `VisibleTextureIterator` 已删除。`MainThreadPump`、fence 与 SDL 部分留对应路线 |
 | 22 | Iris 着色器缓存开关与图集接口改名 | `0a4d4896` 的 Iris 半、`af599f29` 的图集半 | 8 改，约 350 行 | 18。已完成（`feat/iris-cache-atlas-api`）：缓存开关保留现有视频设置项，开启只保存设置，不触发重载或自动完整编译，关闭通过 `IrisConfig` 删除全部程序缓存与完成标记。选择性预编译继续逐帧执行，只有玩家明确选中某包全部目录并成功完成后才写整包完成标记并裁剪该包缓存，部分目录不触发整包裁剪；新队列会关闭被取代的未完成会话。`RetainedPrograms`、`beginFullCompile`/`finishFullCompile`/`wasCompiledFor` 的保留路径与异步 marker 即时可见已接通。图集接口统一为 `angelica$` 前缀，PBR 动画行为不变，新增缓存生命周期、选择性队列与 section 动画复播测试 |
 
-### 批次三：光影包与功能
-
-| # | 范围 | 覆盖上游 | 规模 | 前置 |
-|---|---|---|---|---|
-| 23 | 维度文件夹解析与 NBT 材质映射 | `b7628404`、`69019b9a` | 6 改 1 新，约 80 行 | 无 |
-| 24 | 核心 profile 拒绝信息与探测上限 | `990dadc0` | 2 改 1 新，约 60 行 | 无 |
-| 25 | 阴影 pass 索尼相机与逐层 stage | `cbd16b1a`、`8af9340b` | 3 改，约 60 行 | 无 |
-| 26 | 自定义方块渲染的光影属性（`StateAwareTessellator`、`ImmediateExtendedAttribs`、方块材质属性） | `fe67a22d` | 5 新 4 改加 4 个 mixin，约 350 行 | 23、9 |
-| 27 | 帧节奏：`PacerCore`、`FramePacer`（`FpsReducer` 未移植） | `338d9419`、`69124e3f`、`74ea5c47` 的 `FpsReducer` | 5 新 7 改，约 1000 行 | 无 |
-| 28 | 缩放与鼠标模式选项 | `977db3d6`、`74ea5c47` 的 `Zoom` | 2 新 2 改，约 200 行 | 27 |
-| 29 | 字体改进：分段深度掩码、splash 纹理回退、抗锯齿外扩、自定义字体提供者 | `9081f4c3`、`97057224`、`fa71eda3`、`75a02781`、`5457df53`、`32f8eef1`、`d16c1e7c` | 2 新 9 改，约 700 行 | 无 |
-| 30 | 深色模式与离上下文字体创建 | `61bb779d`、`acedba4e`、`9cb35c67`、`66d2a548`、`8387b4e9`、`231a2ab2`、`0d959c2b` | 6 新 10 改，约 1300 行 | 29 |
-| 31 | 云层重写与云 culling | `939e3146`、`c578970a`、`7f3fb35e`、`888a4de0`、`21a054a4`、`ea50e0a0` 的云部分 | 16 新 2 改，约 2600 行 | 无，需剥离 `jss/notfine` 依赖 |
-| 32 | GUI 物品超采样 | `17a2ed7f` | 3 新 13 改，约 560 行 | 无 |
-| 33 | 现代 F3 调试屏（拆两次提交） | `9bbb0537`、`c9d46e70` 的 `DebugKeyHandler` | 40 新 8 改，约 6000 行 | 无 |
-| 34 | 生物群系混色 | `233c74e0`、`a8e95f70`、`fa8842a6`、`bfb66d84` | 10 新 8 改，约 900 行 | 无 |
-| 35 | 第三方 API 与 RC 灯笼 | `d29a8278`、`3d3d0f9e` | 3 新 1 改，约 80 行 | 无 |
-| 36 | TESR 批处理与实体图集、体素阴影：先 `FfpExtendedAttribs` 与 `InstancedAttribs` 骨架，再实体图集，再完整批量，最后体素与重放 | `9814a96b`、`1f274a64`、`2f4ac2a9`、`7c28a69b`、`69428c12`、`fc8d3e8b`、`9f19d94c`、`db7d3284`、`bc08e4ba`、`7cc9cea3`、`af599f29`、`5ed1c925`、`c9d46e70` 的 `shouldRenderLightBlockEntities`、`2d9d1a45`、`b446968e`、`713509a8`、`80e5b544`、`8537835d` | 45 新 20 改，约 8000 行 | 9、18 |
-| 37 | 区块材质选择与 ISBRH 派发 | `0cae2be1`、`1946c2ad`、`cae4fea2` | 6 新 4 改，约 500 行 | 36 |
-| 38 | CTM 与 notfine 启动路径 | `38b1d9a0` 的 `com/prupe` 半、`85892c0f` 的 mcpatcherforge 半、`cd0a9608` 的 `com/prupe` 半、`2f1f380e` 的 `SelectionBoxRenderer` | 12 新 3 改，约 1200 行 | 37 |
-
 ### 关键路径与阻塞
 
-`ExitStateCapture`（#5）是 G06 剩余 54 个方法的硬前置，也是 #6、#7 的前置，整条批次一的价值都压在它上面。`Tracy` 在本地没有 `profiling` 包，不落 no-op 门面的话 `GLSMTextureLifetime` 无法编译，这是 #5 必须先解决的问题。
+第 6 项取消后，云层与缩放的配置键分别归第 13、7 项，两套键互不相交，不需要共享设置类。上游这两处读 `jss/notfine` 的 `Settings`，NotFine 仅 1.7.10，本地没有该包。
 
-`FfpExtendedAttribs` 与 `InstancedAttribs` 同时是 #9 与 #36 的前置，建议在 #36 的第一步单独成一个 PR，先于两者落地。
+第 2 项是第 14、15 项的前置：`StateAwareTessellator` 与 TESR 批量都要读逐顶点实体 ID。`FfpExtendedAttribs` 与 `InstancedAttribs` 已随 #297 落地，不再需要单开骨架 PR。
+
+第 15 到 16 到 17 是一条链：TESR 批量提供 `ModelPartBatcher`、`RetainedTesrGroups` 与 `DrawState`，区块材质选择依赖它们，1.12.2 CTM 兼容（第 17 项）又建立在区块材质选择之上。
 
 `C001` 到 `C09` 的多数 SHA 在 `D:/Code/celeritas` 仓库而非 Angelica，两条台账（本文件与 `docs/sync-celeritas-b2a70f7f28.md`）必须一起读。`69e91690`、`6bf6a433`、`f33e50ce`、`14cb5f7f`、`77aec052` 在本地两个仓库都不存在，只能用 `gh api repos/GTNewHorizons/Celeritas/commits/<sha>` 取证。
 
-`F12`（#38）需要整包引入 `com/prupe/mcpatcher` 与 `jss/notfine`，这两个包在本地完全不存在；`jss/notfine/core/Settings` 同时是 #31 云渲染与 #28 缩放的依赖，先落 #38 的 `Settings` 部分可以少一次改造成本。
+`com/prupe/mcpatcher` 与 mcpatcherforge 是 1.7.10 的 MCPatcher 注入面，`jss/notfine` 是 1.7.10 专有模组被并进上游的包，三者都不移植。第 17 项按 1.12.2 CTM 的注入面核对：`VintageBlockRenderer.java:153` 已调 `getExtendedState`，`ChunkBuilderMeshingTask.java:389` 已调 `canRenderInLayer`，`TextureMap.registerSprite` 随图集加载时序验证，模型侧还要确认 `getModelForState` 与 `preparedModel` 短路能拿到 CTM 的 `IModelCTM` 包装。第 15 项里的体素化（`ShadowVoxelizer`、`VoxelRangeTable`、`SdlShadowVoxelizationSinkImpl`）已接进 `VintageRenderSectionManager`，范围里只剩顶点重放与体素阴影的重放侧。
 
 ## 多目标提交的归属拆解
 
@@ -349,7 +369,7 @@ SDL 后端暂缓期间可推进的全部工作，共 38 个 PR，分三批。批
 | `af599f29` | 实例化与 batching 的 Iris 交互（`InstancedAttribs`、`FfpExtendedAttribs`、`BatchStateGuard`、`recording/` 命令扩展）→ F02；图集与纹理动画（`IPatchedTextureAtlasSprite`、`MixinTextureAtlasSprite`、`DisplayListTextureAnimationTest`）→ S06 |
 | `5ed1c925` | Dragon API 与发光束、眼渲染 → F02；顶点重放与 `AttributeTransformer` 扩展 → G07 |
 | `8537835d` | 玩家反射捕获 → F04；顶点重写回放判定 → G07 |
-| `cd0a9608` | 图集加载策略与异步图集 → S02；`com/prupe` 的 `TexturePackAPI` → F12 |
+| `cd0a9608` | 图集加载策略与异步图集 → S02；`com/prupe` 的 `TexturePackAPI` 属 1.7.10 MCPatcher，不移植 |
 | `2f1f380e` | recording/LineQuads 与 FFP 宽线、`AttributeTransformer` 同属一次宽线重写（`LineQuads` 数据、`GLStateManager` 拦截、FFP 顶点着色器三处必须同批落地），合并在 G07；`SelectionBoxRenderer` 等通用兼容 → F11 |
 | `1587a12c` | `MainThreadPump` → G05；`DebugCounters` 与 `FlybyRunner` 采集 → S03 |
 | `74ea5c47` | `rendering/FpsReducer` 帧率限制器 → F09；`zoom/Zoom` 的 key category 整理（无 mixin）→ F10 |
@@ -357,8 +377,8 @@ SDL 后端暂缓期间可推进的全部工作，共 38 个 PR，分三批。批
 | `37afddab` | 着色器磁盘缓存（S01）、S04、S05 的共享部分，按 `docs` 中 S 系列定义切分 |
 | `38af64f1` | 着色器加载优化，横跨 S01、S04、S05、S06、S07 |
 | `0a4d4896` | Iris 着色器缓存 → S06；缓存开关 → S08 |
-| `38b1d9a0` | 通用启动优化 → S03；`com/prupe` 启动路径 → F12 |
-| `85892c0f` | DSA 绑定恢复与纹理跟踪 → G03；`mcpatcherforge` 的 `MixinRenderBlocks` 重组 → F12 |
+| `38b1d9a0` | 通用启动优化 → S03；`com/prupe` 启动路径属 1.7.10 MCPatcher，不移植 |
+| `85892c0f` | DSA 绑定恢复与纹理跟踪 → G03；`mcpatcherforge` 的 `MixinRenderBlocks` 重组属 1.7.10 注入面，不移植 |
 | `fe82cd32` | `StateSet` 修正 → G01；`BatchDrawDefaults` 与 `TextDrawState` → F02；字体与选项页 → F05 |
 | `ab3bf176` | 每顶点实体 ID 的 streaming、Iris 与 FFP 侧同属一条数据链（`TessellatorEntityIds` 读 `Tessellator` 顶点游标，写入由 `ImmediateExtendedAttribHandler` 消费，调用方在 Iris 的 `CapturedRenderingState`），合并在 G07 |
 
@@ -367,6 +387,8 @@ SDL 后端暂缓期间可推进的全部工作，共 38 个 PR，分三批。批
 条目数按上游提交逐行枚举，每个上游提交在台账中只占一行，多目标写在同一行的“目标 PR”列。`未分配` 条目为 0，132 行全部落到具体 PR 或“不适用”。
 
 混合提交的判定方法：逐个提交用 `git show <sha> --name-status` 取出完整清单，人工判断每个文件是否属于本地存在的模块，并确认保留的文件块与排除的文件块各自可独立说明。判定结果分两类：保留通用实现并排除平台专用或治理文件的写“分 hunk 同步”并列出排除清单；整提交目标代码都落在本地不存在的模块、平台或治理文件里的写“不适用”。不按目录前缀机械统计，分类结果以本表逐行的处置说明为准。
+
+进度口径：状态列只在写入时成立，回填滞后于实际合并。核对进度以代码为准，逐个上游提交在本地按类名与文件名定位，能找到等价实现即记「已同步」，找不到缺失类才计入未落地；状态列与本小节的批次表不一致时，以代码核对结果为准。按此口径，132 行里未落地的集中在上面三批的 17 项。
 
 ## PR 0 已完成的自动化验证
 
