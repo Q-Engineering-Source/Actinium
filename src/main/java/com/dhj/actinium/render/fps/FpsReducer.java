@@ -17,6 +17,7 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.client.registry.ClientRegistry;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
+import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.Display;
 
@@ -36,6 +37,7 @@ public final class FpsReducer {
     private static KeyBinding disableKey;
 
     private static final boolean[] MOUSE_BUTTONS = new boolean[3];
+    private static final boolean[] KEY_STATES = new boolean[Keyboard.KEYBOARD_SIZE];
 
     private static State applied;
     private static int appliedVolumePercent = 100;
@@ -99,17 +101,29 @@ public final class FpsReducer {
     }
 
     /**
-     * Feeds mouse activity to the idle timer. The keyboard side is hooked in the tick loop; mouse
-     * events are consumed there before the reducer runs, so buttons and deltas are read directly.
+     * Feeds mouse and keyboard activity to the idle timer. The game consumes the input queues inside
+     * {@code runTick}/{@code runTickKeyboard} before the reducer runs, so both are polled as held state and a
+     * rising edge counts as input.
      */
     private static void pollMouseActivity() {
-        if (!Mouse.isCreated()) return;
-        for (int button = 0; button < MOUSE_BUTTONS.length; button++) {
-            final boolean down = Mouse.isButtonDown(button);
-            if (down && !MOUSE_BUTTONS[button]) MACHINE.onInput();
-            MOUSE_BUTTONS[button] = down;
+        if (Mouse.isCreated()) {
+            for (int button = 0; button < MOUSE_BUTTONS.length; button++) {
+                final boolean down = Mouse.isButtonDown(button);
+                if (down && !MOUSE_BUTTONS[button]) MACHINE.onInput();
+                MOUSE_BUTTONS[button] = down;
+            }
+            if (Mouse.getDX() != 0 || Mouse.getDY() != 0) MACHINE.onInput();
         }
-        if (Mouse.getDX() != 0 || Mouse.getDY() != 0) MACHINE.onInput();
+        pollKeyboardActivity();
+    }
+
+    private static void pollKeyboardActivity() {
+        if (!Keyboard.isCreated()) return;
+        for (int key = 0; key < KEY_STATES.length; key++) {
+            final boolean down = Keyboard.isKeyDown(key);
+            if (down && !KEY_STATES[key]) MACHINE.onInput();
+            KEY_STATES[key] = down;
+        }
     }
 
     private static void applyTransition(SodiumGameOptions.ReducerSettings settings) {

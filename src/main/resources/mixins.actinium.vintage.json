@@ -63,7 +63,6 @@
     "fontrenderer.MixinFontRenderer",
     "fpsreducer.MixinGameSettingsFpsReducer",
     "fpsreducer.MixinGuiScreenFpsReducerInput",
-    "fpsreducer.MixinMinecraftFpsReducerInput",
     "gui.MixinGuiMainMenu"
   ],
   "injectors": {
