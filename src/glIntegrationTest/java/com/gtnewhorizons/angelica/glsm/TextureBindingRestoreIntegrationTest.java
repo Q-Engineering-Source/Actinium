@@ -11,6 +11,20 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class TextureBindingRestoreIntegrationTest extends GLStateManagerIntegrationFixture {
     @Test
+    void negativeTextureNameBindPreservesCacheAndDriver() {
+        GLSMTextures.glActiveTexture(GL13.GL_TEXTURE0);
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+        try {
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, -1);
+
+            assertEquals(-1, GLStateManager.getTextures().getTextureUnitBindings(0).getBinding());
+            assertEquals(-1, driverTextureBinding(0));
+        } finally {
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+        }
+    }
+
+    @Test
     void glBindTextureUnitRestoresCacheAndDriver() {
         assumeTextureUnitDsa();
         int textureA = createInitializedTexture();

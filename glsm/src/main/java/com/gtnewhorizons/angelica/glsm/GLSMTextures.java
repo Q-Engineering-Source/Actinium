@@ -133,7 +133,7 @@ public final class GLSMTextures {
         // Rebinding a deferred-delete texture rescues it (Mesa/compat-profile behavior)
         final long claim = GLSMTextureLifetime.claimForBind(texture, target);
         if (claim == GLSMTextureLifetime.BIND_REJECTED) return;
-        if (texture != 0) {
+        if (texture > 0) {
             TextureInfoCache.INSTANCE.getInfo(texture).setTarget(target);
         }
 
