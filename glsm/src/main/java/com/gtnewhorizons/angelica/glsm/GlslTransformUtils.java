@@ -14,6 +14,7 @@ import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.TerminalNode;
 import org.taumc.glsl.grammar.GLSLLexer;
 import org.taumc.glsl.grammar.GLSLParser;
+import org.taumc.glsl.grammar.GLSLPreParser;
 
 import java.util.List;
 import java.util.Map;
@@ -79,6 +80,16 @@ public class GlslTransformUtils {
             new ReservedWordRename(Pattern.compile("sampler(?<=\\bsampler)\\b(?!\\d)"), RENAMED_PREFIX + "sampler")
         )
     );
+
+    /**
+     * Initialises the ANTLR grammar classes during early startup, so their static tables are built
+     * before the late tweaker installs its transformer and the first shader transform runs.
+     */
+    public static void warmupGrammar() {
+        final GLSLLexer lexer = new GLSLLexer(CharStreams.fromString(""));
+        new GLSLPreParser(new CommonTokenStream(lexer));
+        new GLSLParser(new CommonTokenStream(new GLSLLexer(CharStreams.fromString(""))));
+    }
 
     public static String replaceTexture(String input) {
         Matcher matcher = TEXTURE_PATTERN.matcher(input);
