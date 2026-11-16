@@ -442,3 +442,30 @@ PR 0 的任务 1 恢复了 GL 集成测试入口（`glIntegrationTest` source se
 6. **判定**：FPS 与 CPU frame time 的差值超出两次同构建重复采集的波动范围才计入回归。
 
 在采集到数据之前，任何 PR 都不得声称性能改进或回归；计时数据的解读以 `.superpowers/sdd/pr0-task2-report.md` 记录的采样语义为准（`BUFFERBUILDER_*` 按默认节奏采样，`SHADOW_*` 每次采样）。
+
+### 第 15 项依赖闭包与 1.12.2 适配清单
+
+TESR 批处理簇的完整依赖闭包是 233 个上游文件、26369 行。剔除 `sdl-gpu`、`lwjgl3`、`glsm/loading`、`TracyBackend`、`TracyOptions` 后仍需 168 个文件；其中 65 个是 1.7.10 专有依赖，按下列规则处置。
+
+| 上游依赖 | 1.12.2 情况 | 处置 |
+|---|---|---|
+| `jss.notfine` | 无，仅 1.7.10 | 用本地配置键替代；`MODE_GLINT_WORLD` → `QualitySettings.glintWorld` |
+| `me.jellysquid.mods.sodium`（1.7.10 移植） | 无 | 映射到 `dhj.embeddedt.embeddium` |
+| `me.flashyreese.mods.reeses_sodium_options` | 本地设置界面即该框架 | 映射到 `dhj.embeddedt.embeddium.api.options` 与 `ActiniumGameOptionPages` |
+| `com.prupe.mcpatcher` | 仅 1.7.10 | 去除 |
+| `com.gtnewhorizon.gtnhmixins` | 仅 1.7.10 | 去除，本地用 mixinbooter |
+| `com.cardinalstar.cubicchunks` | 1.12.2 是 `io.github.opencubicchunks` | 去除 |
+| `mods.battlegear2` | 无 1.12.2 | 去除 |
+| `com.gtnewhorizons.neid` | 1.12.2 无 ID 上限，JEID 承担扩展 | 去除 |
+| `baubles` / `thaumcraft` / `lain.mods.cos` / `mega.fluidlogged` / `xaero` / `com.kentington.thaumichorizons` | 有 1.12.2 版本 | 条件化适配 |
+| `de.odysseus.ithaka.digraph` | 上游自带源码 | 直接复制，22 类 2838 行，只依赖 fastutil |
+| `com.gtnewhorizon.gtnhlib.client.renderer.MatrixHelper` | 本地 GTNHLib 缺 | 已补，`getNormalMatrix` 用 joml 实现 |
+| `com.gtnewhorizons.angelica.sdlgpu` / `lwjgl3` | 本地 `sdl-gpu` 子项目已有 | 保留，不删 |
+
+已确认可行的 1.7.10 → 1.12.2 映射：`Vec3` → `Vec3d`（字段 `x/y/z`）、`MathHelper` → `net.minecraft.util.math.MathHelper`、`floor_double` → `floor`、`IRenderHandler` 由接口变抽象类、`EntityFX` → `Particle`、`RendererLivingEntity` → `RenderLivingBase`、`Frustrum` → `Frustum`、`Block.isOpaqueCube()` → `isOpaqueCube(state)`、`Block.getRenderBlockPass()` → `getRenderLayer()`、`ItemStack.hasEffect(int)` → `hasEffect()`、`Entity.getBrightnessForRender(f)` → `getBrightnessForRender()`、`Tessellator.setTranslation(float,float,float)` → `(double,double,double)`、`ModelBox.render(Tessellator,float)` → `(BufferBuilder,float)`。
+
+仍阻塞的三处结构性差异：
+
+1. `DirectTessellator` 在 1.7.10 是 `Tessellator` 子类，1.12.2 不是。`TesrMeshSink.beginCapture` 返回 `Tessellator`、`AngelicaTesrMeshCache.beginCapture` 返回 `direct`，需要把接口返回类型改成 `DirectTessellator` 并调整所有调用方。
+2. `RenderLivingBase` 没有 1.7.10 的 `renderPassModel` 字段，`DeferredEntityOverlay` 的渲染分支要按 1.12.2 的 `LayerRenderer` 重写。
+3. `ParticleCaptureTessellator` 需要 `Tessellator` 的 1.7.10 构造器与 `draw()` 返回值契约，1.12.2 的 `BufferBuilder` 体系无对应，粒子实例化要按 `ParticleManager` 重写。
