@@ -2,11 +2,13 @@ package com.dhj.actinium.mixin.vintage.features.textures;
 
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.texture.TextureMapExtension;
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.mixins.interfaces.IPatchedTextureAtlasSprite;
 import com.llamalad7.mixinextras.sugar.Local;
 import dhj.embeddedt.embeddium.impl.util.collections.quadtree.QuadTree;
 import dhj.embeddedt.embeddium.impl.util.collections.quadtree.Rect2i;
 import net.coderbot.iris.texture.SpriteAnimationGate;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.Stitcher;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureMap;
@@ -38,6 +40,10 @@ public class MixinTextureAtlas implements TextureMapExtension, SpriteAnimationGa
         Rect2i treeRect = new Rect2i(0, 0, celeritas$width, celeritas$height);
         int minSize = this.mapUploadedSprites.values().stream().mapToInt(sprite -> Math.max(sprite.getIconWidth(), sprite.getIconHeight())).min().getAsInt();
         this.celeritas$quadTree = new QuadTree<>(treeRect, minSize, this.mapUploadedSprites.values(), sprite -> new Rect2i(sprite.getOriginX(), sprite.getOriginY(), sprite.getIconWidth(), sprite.getIconHeight()));
+        // Sprites are padded by 2^mipmapLevels texels, which is the area the supersampling snippet keeps its
+        // samples inside; without mipmaps there is no gutter and the shader stays on plain sampling.
+        GLStateManager.markTextureAsAtlas(((TextureMap) (Object) this).getGlTextureId(),
+            1 << Minecraft.getMinecraft().gameSettings.mipmapLevels);
     }
 
     @Override

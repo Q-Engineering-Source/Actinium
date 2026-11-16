@@ -392,6 +392,17 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.LOW)
                         .setDefaultValue(true)
                         .build())
+                .add(OptionImpl.createBuilder(SodiumGameOptions.GuiSupersampling.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "gui_block_supersampling",
+                                SodiumGameOptions.GuiSupersampling.class))
+                        .setName(TextComponent.translatable("options.actinium.guiSupersampling.name"))
+                        .setTooltip(TextComponent.translatable("options.actinium.guiSupersampling.tooltip"))
+                        .setControl(option -> new CyclingControl<>(option, SodiumGameOptions.GuiSupersampling.class))
+                        .setBinding((opts, value) -> opts.quality.guiBlockSupersampling = value,
+                                opts -> opts.quality.guiBlockSupersampling)
+                        .setImpact(OptionImpact.LOW)
+                        .setDefaultValue(SodiumGameOptions.GuiSupersampling.OFF)
+                        .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "circular_fog", boolean.class))
                         .setName(TextComponent.translatable("sodium.options.actinium.circular_fog.name"))

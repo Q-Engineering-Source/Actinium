@@ -63,6 +63,9 @@
     "fontrenderer.MixinFontRenderer",
     "fpsreducer.MixinGameSettingsFpsReducer",
     "fpsreducer.MixinGuiScreenFpsReducerInput",
+    "guisupersampling.MixinEntityRendererGuiSupersampling",
+    "guisupersampling.MixinRenderItemGuiSupersampling",
+    "guisupersampling.MixinTileEntityItemStackRendererGuiSupersampling",
     "gui.MixinGuiMainMenu"
   ],
   "injectors": {
