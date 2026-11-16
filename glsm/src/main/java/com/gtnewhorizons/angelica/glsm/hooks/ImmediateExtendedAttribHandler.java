@@ -39,6 +39,17 @@ public interface ImmediateExtendedAttribHandler {
     /** Whether the program in use reads the per-vertex entity ids. */
     boolean wantsEntityIds();
 
+    /** Whether quads without a normal need one computed from their four corners. */
+    boolean wantsFaceNormals();
+
+    /**
+     * Writes the face normal of every quad into the packed vertex buffer.
+     *
+     * @param rawBuffer vanilla vertex buffer, eight ints per vertex, normal at index 6
+     * @param vertexCount number of vertices, a multiple of four
+     */
+    void writeFaceNormals(int[] rawBuffer, int vertexCount);
+
     /**
      * Fills the rebuilt attribute range for one draw.
      *

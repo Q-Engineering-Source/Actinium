@@ -7,10 +7,10 @@ import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.glsm.hooks.ImmediateExtendedAttribHandler;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import net.coderbot.iris.Iris;
-import net.coderbot.iris.uniforms.ItemIdManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.ITextureObject;
 import net.minecraft.client.renderer.texture.TextureMap;
+import com.dhj.actinium.render.RenderingState;
 import net.coderbot.iris.vertices.IrisQuadView;
 import net.coderbot.iris.vertices.NormI8;
 import net.coderbot.iris.vertices.NormalHelper;
@@ -36,6 +36,8 @@ public final class ImmediateExtendedAttribs implements ImmediateExtendedAttribHa
     private static final int WANTS_MID = 1;
     private static final int WANTS_TANGENT = 2;
     private static final int WANTS_ENTITY_IDS = 4;
+    private static final int VANILLA_VERTEX_INTS = 8;
+    private static final int VANILLA_NORMAL_INDEX = 6;
 
     private static final int NEUTRAL_TANGENT = NormI8.pack(1.0f, 0.0f, 0.0f, 1.0f);
     private static final ResourceLocation ITEMS_ATLAS = new ResourceLocation("textures/atlas/items.png");
@@ -91,6 +93,53 @@ public final class ImmediateExtendedAttribs implements ImmediateExtendedAttribHa
     @Override
     public boolean wantsEntityIds() {
         return programWants(WANTS_ENTITY_IDS);
+    }
+
+    @Override
+    public boolean wantsFaceNormals() {
+        return RenderingState.isRenderingWorld();
+    }
+
+    /**
+     * Computes the face normal of each quad from its diagonals and writes it into the packed normal slot. Vanilla
+     * fills a constant normal when a draw carries none, which leaves flat-shaded geometry facing the wrong way
+     * under a shader pack; the quads drawn outside chunk meshing need the real normal instead.
+     */
+    @Override
+    public void writeFaceNormals(int[] rawBuffer, int vertexCount) {
+        for (int v = 0; v + 3 < vertexCount; v += 4) {
+            final int base = v * VANILLA_VERTEX_INTS;
+            final float dx1 = Float.intBitsToFloat(rawBuffer[base + 2 * VANILLA_VERTEX_INTS])
+                - Float.intBitsToFloat(rawBuffer[base]);
+            final float dy1 = Float.intBitsToFloat(rawBuffer[base + 2 * VANILLA_VERTEX_INTS + 1])
+                - Float.intBitsToFloat(rawBuffer[base + 1]);
+            final float dz1 = Float.intBitsToFloat(rawBuffer[base + 2 * VANILLA_VERTEX_INTS + 2])
+                - Float.intBitsToFloat(rawBuffer[base + 2]);
+            final float dx2 = Float.intBitsToFloat(rawBuffer[base + 3 * VANILLA_VERTEX_INTS])
+                - Float.intBitsToFloat(rawBuffer[base + VANILLA_VERTEX_INTS]);
+            final float dy2 = Float.intBitsToFloat(rawBuffer[base + 3 * VANILLA_VERTEX_INTS + 1])
+                - Float.intBitsToFloat(rawBuffer[base + VANILLA_VERTEX_INTS + 1]);
+            final float dz2 = Float.intBitsToFloat(rawBuffer[base + 3 * VANILLA_VERTEX_INTS + 2])
+                - Float.intBitsToFloat(rawBuffer[base + VANILLA_VERTEX_INTS + 2]);
+
+            float nx = dy1 * dz2 - dz1 * dy2;
+            float ny = dz1 * dx2 - dx1 * dz2;
+            float nz = dx1 * dy2 - dy1 * dx2;
+            final float length = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+            if (length > 1.0e-6f) {
+                nx /= length;
+                ny /= length;
+                nz /= length;
+            } else {
+                nx = 0.0f;
+                ny = 1.0f;
+                nz = 0.0f;
+            }
+            final int packed = NormI8.pack(nx, ny, nz, 0.0f);
+            for (int i = 0; i < 4; i++) {
+                rawBuffer[(v + i) * VANILLA_VERTEX_INTS + VANILLA_NORMAL_INDEX] = packed;
+            }
+        }
     }
 
     private static boolean programWants(int mask) {

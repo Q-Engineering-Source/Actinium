@@ -111,9 +111,17 @@ public class TessellatorStreamingDrawer {
             return result;
         }
 
+        // A quad draw without normals still needs one per face when the active program reads them; the handler
+        // derives it from the four corners instead of the constant vanilla fills in.
+        final ImmediateExtendedAttribHandler normalHandler = GLSMHooks.immediateExtendedHandler;
+        final boolean faceNormals = !tess.hasNormals() && normalHandler != null
+            && ImmediateExtendedAttribHandler.extPrimVerts(tess.getDrawMode(), vertexCount) == 4
+            && normalHandler.wantsFaceNormals();
+        final boolean hasNormals = tess.hasNormals() || faceNormals;
+
         // Determine the optimal vertex format from the tessellator's flags
-        GLStateManager.requireExitVertexDefaults(!tess.hasNormals(), !tess.hasTexture(), !tess.hasColor(), !tess.hasBrightness());
-        final int flags = VertexFlags.convertToFlags(tess.hasTexture(), tess.hasColor(), tess.hasNormals(), tess.hasBrightness());
+        GLStateManager.requireExitVertexDefaults(!hasNormals, !tess.hasTexture(), !tess.hasColor(), !tess.hasBrightness());
+        final int flags = VertexFlags.convertToFlags(tess.hasTexture(), tess.hasColor(), hasNormals, tess.hasBrightness());
         final VertexFormat format = DefaultVertexFormat.ALL_FORMATS[flags];
         final int vertexSize = format.getVertexSize();
 
@@ -122,6 +130,7 @@ public class TessellatorStreamingDrawer {
 
         final int[] rawBuffer = tess.getRawBuffer();
         final int rawBufferIndex = tess.getRawBufferIndex();
+        if (faceNormals) normalHandler.writeFaceNormals(rawBuffer, vertexCount);
         final int packedBytes = packRawVertices(repackIntBuffer, rawBuffer, rawBufferIndex, flags);
         final long writePtr;
         if (packedBytes >= 0) {
