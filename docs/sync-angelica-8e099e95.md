@@ -281,12 +281,12 @@ SDL 主模块按当前 GLSM 和 Outlands 宿主适配，资源与管线完整导
 
 ### 批次二：独立中件
 
-彼此无前置，可五路并行。
+彼此无前置。第 7、8 项已由其他人承接，本地队列保留第 9、10、11 项；这三项互不依赖，可并行。
 
 | # | 范围 | 覆盖上游 | 规模 | 前置 |
 |---|---|---|---|---|
-| 7 | 缩放与鼠标模式选项 `Zoom`，同时落地 `ZOOM_CINEMATIC`、`ZOOM_SMOOTH`、`ZOOM_SMOOTH_SPEED` | `977db3d6`、`74ea5c47` 的 `Zoom` | 2 新 2 改，约 200 行 | 无 |
-| 8 | 字体改进：分段深度掩码、splash 纹理回退、抗锯齿外扩、自定义字体提供者 | `9081f4c3`、`97057224`、`fa71eda3`、`75a02781`、`5457df53`、`32f8eef1`、`d16c1e7c` | 2 新 9 改，约 700 行 | 无 |
+| 7 | 缩放与鼠标模式选项 `Zoom`（外部承接，本地不再推进），同时落地 `ZOOM_CINEMATIC`、`ZOOM_SMOOTH`、`ZOOM_SMOOTH_SPEED` | `977db3d6`、`74ea5c47` 的 `Zoom` | 2 新 2 改，约 200 行 | 无 |
+| 8 | 字体改进（外部承接，本地不再推进）：分段深度掩码、splash 纹理回退、抗锯齿外扩、自定义字体提供者 | `9081f4c3`、`97057224`、`fa71eda3`、`75a02781`、`5457df53`、`32f8eef1`、`d16c1e7c` | 2 新 9 改，约 700 行 | 无 |
 | 9 | GUI 物品超采样 `GuiBlockSupersampling` | `17a2ed7f` | 3 新 13 改，约 560 行 | 无 |
 | 10 | 生物群系混色 `BiomeVertexBlender`、`SmoothBiomeColorCache`、`SkyColorCache` | `233c74e0`、`a8e95f70`、`fa8842a6`、`bfb66d84` | 10 新 8 改，约 900 行 | 无 |
 | 11 | 现代 F3 调试屏，含 `api/debug` 整包与 `DebugKeyHandler` | `9bbb0537`、`c9d46e70` 的 `DebugKeyHandler` | 40 新 8 改，约 6000 行 | 无 |
