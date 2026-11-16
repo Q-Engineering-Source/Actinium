@@ -172,6 +172,11 @@ public final class ShaderManager {
         observer.beforeDraw(vertexFlags);
     }
 
+    /** @return whether the bound FFP program samples its atlas a whole texel at a time */
+    boolean isTextureSupersampling() {
+        return currentProgram != null && currentProgram.getFragmentKey().textureSupersamplingSamples() > 1;
+    }
+
     public synchronized void preDraw(int vertexFlags) {
         setCurrentVertexFlags(vertexFlags);
         if (DEBUG_DRAW_LOGS) GLSMDebug.logFfpPreDraw(vertexFlags);
