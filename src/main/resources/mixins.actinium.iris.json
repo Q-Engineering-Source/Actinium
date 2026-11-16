@@ -11,6 +11,7 @@
   "client": [
     "core.terrain.BufferBuilderMixin",
     "core.vertex.MixinVertexFormat",
+    "features.clouds.MixinWorldProviderClouds",
     "features.iris.ActiveRenderInfoIrisMixin",
     "features.iris.EntityRendererIrisMixin",
     "features.iris.FramebufferIrisMixin",

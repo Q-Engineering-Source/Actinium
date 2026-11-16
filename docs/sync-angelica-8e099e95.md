@@ -304,6 +304,18 @@ SDL 主模块按当前 GLSM 和 Outlands 宿主适配，资源与管线完整导
 | 16 | 区块材质选择与 ISBRH 派发 | `0cae2be1`、`1946c2ad`、`cae4fea2` | 6 新 4 改，约 500 行 | 15 |
 | 17 | 与 1.12.2 ConnectedTexturesMod（`Chisel-Team/ConnectedTexturesMod` 的 `1.12/dev` 分支，本地参照 `D:/Code/CTM-Vintage`）兼容：核对 `Block.getExtendedState`、`Block.canRenderInLayer`、`TextureMap.registerSprite` 三个注入点，以及 `getModelForState` 与 `preparedModel` 短路是否拿到 CTM 按扩展状态包裹的 `IModelCTM` 模型 | 无对应上游提交 | 2 新 6 改，约 400 行 | 16；`SelectionBoxRenderer` 已由本地 `BoundingBoxOutline` 承担，不移植 |
 
+### 批次三第 13 项：云层重写
+
+11 个类与 5 个着色器已落地：`api/clouds/CloudLayer`、`CloudLayerProvider`，`render/CloudShape`、`CloudDisc`、`CloudFaceMesh`、`CloudVertexMesh`、`CloudPlateCover`、`CloudRenderer`、`CloudLayerRenderer`、`CloudRenderResources`、`CloudUniforms`、`CloudView`，`compat/galaxyspace/GalaxySpaceClouds`，以及 `assets/actinium/shaders` 下的 `cloud.vert`、`cloud.frag`、`cloud_faces.vert`、`cloud_faces.frag` 与 `include/cloud_fog.glsl`（命名空间由 `angelica` 改为 `actinium`）。
+
+接入点用 Forge 的云 hook，不注入 `RenderGlobal.renderClouds`。1.12.2 的 `RenderGlobal.renderClouds` 首行调用 `FMLClientHandler.renderClouds`，该方法在 `WorldProvider.getCloudRenderer()` 非空时直接采用该渲染器，否则回落到 `net.minecraftforge.client.CloudRenderer`。`MixinWorldProviderClouds` 只在维度没有自己的云渲染器时返回 Actinium 的实例，模组设置的渲染器仍然优先；`cloudTickCounter` 由 `actinium_at.cfg` 公开后直接读取。`IRenderHandler` 在 1.12.2 是抽象类，`CloudRenderer` 用 `extends`，`WorldClient` 与 `getRenderViewEntity()` 替换 1.7.10 的 `World` 与私有字段。
+
+远平面不通过放大 `EntityRenderer.farPlaneDistance` 处理，因为该字段同时决定雾的终点。`CloudLayerRenderer` 改用传入的投影矩阵，`CloudRenderer` 以当前投影的 near 与视场重建一份只把 far 推到云盘半径的投影，渲染前后经 `GLSMMatrices` 的投影栈压入与弹出，程序路径与光影下的固定管线路径共用这一份。
+
+`QualitySettings` 新增 `cloudRenderDistanceChunks`（0 表示跟随原版渲染距离）与 `cloudScale`，选项页两项滑杆与 `en_us`、`zh_cn`、`ru_ru` 三份语言文件同步补齐。云模式仍取原版 `GameSettings.clouds`（0 关闭、1 快速、2 精细），不引入 `jss/notfine`。
+
+与上游的差异：`getCloudTextureWidth`、`getScaleMult` 与 `supportsLayers` 在本地没有消费方（前两者由 `shader` 子项目的 `IrisExclusiveUniforms` 使用，而子项目不得引用 `com.dhj.actinium`），未移植；`getRequiredFarPlaneDistance` 并入渲染器内部的 `requiredFarPlane`；`ea50e0a0` 的玻璃板部分不在云层范围。
+
 ### 已收口记录（原表编号）
 
 以下内容按原表编号记录实现方式与偏差，编号不指上面的新批次。已在 PR #263 上合并：第 1、2、10、12、24 项。第 5 项（`ExitStateCapture`）在后续 PR 上，它不依赖 Tracy no-op 门面；`TextureUtilHooks`、`MixinTextureUtil`、`VanillaLayerRig` 三个上游文件因本地缺类整体跳过，`rejectExitCapture` 守卫留给第 6 项与那 54 个门面方法一起做。
