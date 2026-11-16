@@ -1,6 +1,9 @@
 package com.gtnewhorizons.angelica.iris;
 
 import com.gtnewhorizons.angelica.client.rendering.TextureTracker;
+import com.gtnewhorizons.angelica.glsm.CompatShaderTransformer;
+import com.gtnewhorizons.angelica.glsm.shader.ShaderType;
+import com.gtnewhorizons.angelica.sdlgpu.SDLGPUGate;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredAlphaHandler;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredBlendHandler;
@@ -104,6 +107,7 @@ public final class IrisGLSMBridge {
 
         IrisGlDebug.logDebugInfo("glsm-bridge register defaultTexUnit={} lightmapTexUnit={}", OpenGlHelper.defaultTexUnit, OpenGlHelper.lightmapTexUnit);
 
+        installPostTransformHook();
         IrisSamplers.initRenderer();
         GLSMHooks.immediateExtendedHandler = new ImmediateExtendedAttribs();
         GLSMHooks.shaderPackReloaded = ImmediateExtendedAttribs::onShaderPackChanged;
@@ -407,5 +411,15 @@ public final class IrisGLSMBridge {
             }
             deferredPipeline.restorePassAfterModProgram(event.newProgram);
         });
+    }
+
+    /**
+     * Hands every transformed shader to the SDL backend so it can build SPIR-V from the parsed tree,
+     * sparing the backend a second parse of the same source.
+     */
+    private static void installPostTransformHook() {
+        CompatShaderTransformer.setPostTransformListener((source, tree, headerLength, fragment) ->
+            SDLGPUGate.prewarmSpirv(source, tree, headerLength,
+                fragment ? ShaderType.FRAGMENT.id : ShaderType.VERTEX.id));
     }
 }
