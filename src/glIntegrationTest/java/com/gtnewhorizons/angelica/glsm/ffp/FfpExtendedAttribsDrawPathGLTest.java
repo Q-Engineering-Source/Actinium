@@ -373,6 +373,15 @@ class FfpExtendedAttribsDrawPathGLTest extends GLStateManagerIntegrationFixture 
         }
 
         @Override
+        public boolean wantsFaceNormals() {
+            return false;
+        }
+
+        @Override
+        public void writeFaceNormals(int[] rawBuffer, int vertexCount) {
+        }
+
+        @Override
         public void buildPacked(long srcBase, int stride, int posOffset, int texOffset, int normalOffset,
                                 int vertexCount, int vertsPerPrim, long dstAddr, int dstStride) {
             builds++;
