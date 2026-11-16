@@ -155,6 +155,13 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         public float biomeColorNoiseGrassIntensity = 0.08F;
         public float biomeColorNoiseFoliageIntensity = 0.08F;
         public float biomeColorNoiseWaterIntensity = 0.08F;
+
+        // Zero keeps the vanilla render distance; a larger value widens the cloud disc beyond the terrain
+        // render distance so the layer stays populated when the player looks at the horizon.
+        public int cloudRenderDistanceChunks = 0;
+
+        // Multiplies the cloud cell footprint. One matches the vanilla 12x12 fancy cell.
+        public int cloudScale = 1;
     }
 
 
