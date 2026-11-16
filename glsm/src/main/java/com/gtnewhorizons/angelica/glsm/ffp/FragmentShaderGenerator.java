@@ -2,12 +2,20 @@ package com.gtnewhorizons.angelica.glsm.ffp;
 
 import org.lwjgl.opengl.GL11;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+
 /**
  * Generates GLSL 330 core fragment shaders for FFP emulation.
  * Supports per-unit texenv chain including GL_COMBINE mode.
  * Follows Mesa's ff_fragment_shader.c and st_nir_lower_fog.c.
  */
 public final class FragmentShaderGenerator {
+
+    /** Atlas supersampling snippet, loaded once; it is assembled with the sample count as a define. */
+    private static final String SUPERSAMPLING_SOURCE = loadSupersamplingSource();
 
     private FragmentShaderGenerator() {}
 
@@ -37,6 +45,18 @@ public final class FragmentShaderGenerator {
         sb.append("}\n");
 
         return sb.toString();
+    }
+
+    private static String loadSupersamplingSource() {
+        try (InputStream stream = FragmentShaderGenerator.class
+            .getResourceAsStream("/assets/actinium/shaders/texture_supersampling.glsl")) {
+            if (stream == null) {
+                throw new IllegalStateException("Missing /assets/actinium/shaders/texture_supersampling.glsl");
+            }
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException failure) {
+            throw new UncheckedIOException("Could not read the texture supersampling shader source", failure);
+        }
     }
 
     private static void emitInputs(StringBuilder sb, FragmentKey key) {
