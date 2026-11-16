@@ -289,7 +289,7 @@ SDL 主模块按当前 GLSM 和 Outlands 宿主适配，资源与管线完整导
 | 8 | 字体改进（外部承接，本地不再推进）：分段深度掩码、splash 纹理回退、抗锯齿外扩、自定义字体提供者 | `9081f4c3`、`97057224`、`fa71eda3`、`75a02781`、`5457df53`、`32f8eef1`、`d16c1e7c` | 2 新 9 改，约 700 行 | 无 |
 | 9 | GUI 物品超采样 `GuiBlockSupersampling` | `17a2ed7f` | 3 新 13 改，约 560 行 | 无 |
 | 10 | 生物群系混色（已有等价）：本地 `MixinBiomeColorHelper` 已按 `legacyBiomeBlendRadius` 做邻域平均，`WorldSlice.biomeColorCache` 提供与 `SmoothBiomeColorCache` 等价的缓存，`BiomeColorNoise` 叠加位置噪声；1.12.2 的树叶颜色由 `BlockColors` 按方块区分，不存在上游 `fa8842a6` 的橡木串色。无等价物的只有 `SkyColorCache` 的天空色平滑 | `233c74e0`、`a8e95f70`、`fa8842a6`、`bfb66d84` | 0 | 无；`bfb66d84` 改的是 1.7.10 的 `BiomeGenBase`，本地无该类 |
-| 11 | 现代 F3 调试屏，含 `api/debug` 整包与 `DebugKeyHandler` | `9bbb0537`、`c9d46e70` 的 `DebugKeyHandler` | 40 新 8 改，约 6000 行 | 无 |
+| 11 | 现代 F3 调试屏，含 `api/debug` 整包与 `DebugKeyHandler` | `9bbb0537`、`c9d46e70` 的 `DebugKeyHandler` | 40 新 8 改，约 6000 行 | 第 8 项：`DebugScreenOverlay` 直接依赖 `BatchingFontRenderer`、`GlyphSettings`、`TextMesh`，这三者与 `FontProviderCache`、`RetainedTextStore` 同属该提交里的字体改造，本地都不存在；第 8 项由其他人承接，因此本项等其落地后再接 |
 
 ### 批次三：大件与依赖链
 
