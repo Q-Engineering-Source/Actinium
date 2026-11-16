@@ -322,6 +322,8 @@ SDL 主模块按当前 GLSM 和 Outlands 宿主适配，资源与管线完整导
 
 两批都还没有实机路径：`setFfpInstancing` 尚无调用方，实例化变体不会触发；`angelica$cubeParams()` 尚无读取方。剩余两批是 TESR 模板实例化与实体图集、实体阴影重放。
 
+15-3 再拆四段。15-3a（`4b5b4408`）是 `api/tesr` 的公开接口：`TesrMeshProvider`、`TesrMeshSink`、`TesrMeshBuilder`、`ModelPartMeshBuilder`、`TesrShader`、`TesrShaderUniforms`、`TesrShaders`、`TesrMaterial` 与 `package-info`，`cpw.mods.fml.common.API` 改为 `net.minecraftforge.fml.common.API`。`ModelPartBatch` 与 `TesrMeshCache` 依赖 `ModelPartBatcher`、`AngelicaTesrMeshCache`，随 15-3c 一起落。15-3b 是网格缓存与模板（`AngelicaTesrMeshCache`、`TemplateBuffer`、`TemplateCapture`、`VertexTransform`、`MeshBuffer`），15-3c 是批处理（`ModelPartBatcher`、`TesrBatchRenderer`、`RetainedTesrGroups`、`DrawState`、`BatchEligibility`、`BatchDrawDefaults`），15-3d 是宿主接入（`MixinTileEntityRendererDispatcher`、`EntityTextureAtlas`、`InstancedTemplateRenderer`）。
+
 ### 已收口记录（原表编号）
 
 以下内容按原表编号记录实现方式与偏差，编号不指上面的新批次。已在 PR #263 上合并：第 1、2、10、12、24 项。第 5 项（`ExitStateCapture`）在后续 PR 上，它不依赖 Tracy no-op 门面；`TextureUtilHooks`、`MixinTextureUtil`、`VanillaLayerRig` 三个上游文件因本地缺类整体跳过，`rejectExitCapture` 守卫留给第 6 项与那 54 个门面方法一起做。
