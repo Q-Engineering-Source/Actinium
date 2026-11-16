@@ -374,6 +374,28 @@ public class ActiniumGameOptionPages {
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .setDefaultValue(0)
                         .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "cloud_render_distance", int.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.cloud_render_distance.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.cloud_render_distance.tooltip"))
+                        .setControl(o -> new SliderControl(o, 0, 32, 1,
+                                ControlValueFormatter.translateDisabledOrVariable(
+                                        "sodium.options.actinium.cloud_render_distance.vanilla",
+                                        "sodium.options.actinium.cloud_render_distance.value")))
+                        .setImpact(OptionImpact.MEDIUM)
+                        .setBinding((opts, value) -> opts.quality.cloudRenderDistanceChunks = value,
+                                opts -> opts.quality.cloudRenderDistanceChunks)
+                        .setDefaultValue(0)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "cloud_scale", int.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.cloud_scale.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.cloud_scale.tooltip"))
+                        .setControl(o -> new SliderControl(o, 1, 4, 1, ControlValueFormatter.multiplier()))
+                        .setImpact(OptionImpact.LOW)
+                        .setBinding((opts, value) -> opts.quality.cloudScale = value, opts -> opts.quality.cloudScale)
+                        .setDefaultValue(1)
+                        .build())
                 .add(OptionImpl.createBuilder(boolean.class, vanillaOpts)
                         .setId(StandardOptions.Option.ENTITY_SHADOWS.cast())
                         .setName(TextComponent.translatable("options.entityShadows"))

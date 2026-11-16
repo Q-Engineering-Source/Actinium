@@ -11,6 +11,7 @@ import com.dhj.actinium.config.ActiniumConfig;
 import com.dhj.actinium.config.ActiniumRuntimeOptions;
 import com.dhj.actinium.debug.ActiniumDiagnostics;
 import com.dhj.actinium.mixin.vintage.core.terrain.AccessorEntityRenderer;
+import com.dhj.actinium.render.CloudRenderer;
 import com.dhj.actinium.render.FastLitItemDisplayListCache;
 import com.dhj.actinium.render.fps.FpsReducer;
 import com.dhj.actinium.render.terrain.ActiniumWorldRenderer;
@@ -19,7 +20,9 @@ import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.startup.SdlGpuBootstrap;
 import com.gtnewhorizons.angelica.proxy.ClientProxy;
 import com.gtnewhorizon.gtnhlib.compat.Mods;
+import net.coderbot.iris.celeritas.WorldRendererCompatBridge;
 import net.coderbot.iris.debug.IrisDebugOptions;
+import net.coderbot.iris.uniforms.CloudAnimationCycle;
 import com.gtnewhorizon.gtnhlib.client.renderer.RuntimeOptionsBridge;
 import com.gtnewhorizon.gtnhlib.client.renderer.postprocessing.PostProcessingBridge;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
@@ -87,8 +90,8 @@ public class Actinium {
         PostProcessingBridge.setNightVisionBrightnessInvoker(
             (entity, partialTicks) -> ((AccessorEntityRenderer) Minecraft.getMinecraft().entityRenderer)
                 .invokeGetNightVisionBrightness(entity, partialTicks));
-        net.coderbot.iris.celeritas.WorldRendererCompatBridge.setProvider(
-            com.dhj.actinium.render.terrain.ActiniumWorldRenderer::instanceNullable);
+        WorldRendererCompatBridge.setProvider(ActiniumWorldRenderer::instanceNullable);
+        CloudAnimationCycle.setTicks(CloudRenderer::cloudCycleTicks);
         IrisDebugOptions.setBridge(new IrisDebugOptions.Bridge() {
             @Override
             public boolean pbrDebugEnabled() {
