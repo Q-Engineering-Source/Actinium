@@ -289,7 +289,7 @@ SDL 主模块按当前 GLSM 和 Outlands 宿主适配，资源与管线完整导
 | 8 | 字体改进（外部承接，本地不再推进）：分段深度掩码、splash 纹理回退、抗锯齿外扩、自定义字体提供者 | `9081f4c3`、`97057224`、`fa71eda3`、`75a02781`、`5457df53`、`32f8eef1`、`d16c1e7c` | 2 新 9 改，约 700 行 | 无 |
 | 9 | GUI 物品超采样 `GuiBlockSupersampling` | `17a2ed7f` | 3 新 13 改，约 560 行 | 无 |
 | 10 | 生物群系混色（已有等价）：本地 `MixinBiomeColorHelper` 已按 `legacyBiomeBlendRadius` 做邻域平均，`WorldSlice.biomeColorCache` 提供与 `SmoothBiomeColorCache` 等价的缓存，`BiomeColorNoise` 叠加位置噪声；1.12.2 的树叶颜色由 `BlockColors` 按方块区分，不存在上游 `fa8842a6` 的橡木串色。无等价物的只有 `SkyColorCache` 的天空色平滑 | `233c74e0`、`a8e95f70`、`fa8842a6`、`bfb66d84` | 0 | 无；`bfb66d84` 改的是 1.7.10 的 `BiomeGenBase`，本地无该类 |
-| 11 | 现代 F3 调试屏，含 `api/debug` 整包与 `DebugKeyHandler` | `9bbb0537`、`c9d46e70` 的 `DebugKeyHandler` | 40 新 8 改，约 6000 行 | 无 |
+| 11 | 现代 F3 调试屏，含 `api/debug` 整包与 `DebugKeyHandler` | `9bbb0537`、`c9d46e70` 的 `DebugKeyHandler` | 40 新 8 改，约 6000 行 | 第 8 项：`DebugScreenOverlay` 直接依赖 `BatchingFontRenderer`、`GlyphSettings`、`TextMesh`，这三者与 `FontProviderCache`、`RetainedTextStore` 同属该提交里的字体改造，本地都不存在；第 8 项由其他人承接，因此本项等其落地后再接 |
 
 ### 批次三：大件与依赖链
 
@@ -358,6 +358,16 @@ SDL 主模块按当前 GLSM 和 Outlands 宿主适配，资源与管线完整导
 `C001` 到 `C09` 的多数 SHA 在 `D:/Code/celeritas` 仓库而非 Angelica，两条台账（本文件与 `docs/sync-celeritas-b2a70f7f28.md`）必须一起读。`69e91690`、`6bf6a433`、`f33e50ce`、`14cb5f7f`、`77aec052` 在本地两个仓库都不存在，只能用 `gh api repos/GTNewHorizons/Celeritas/commits/<sha>` 取证。
 
 `com/prupe/mcpatcher` 与 mcpatcherforge 是 1.7.10 的 MCPatcher 注入面，`jss/notfine` 是 1.7.10 专有模组被并进上游的包，三者都不移植。第 17 项按 1.12.2 CTM 的注入面核对：`VintageBlockRenderer.java:153` 已调 `getExtendedState`，`ChunkBuilderMeshingTask.java:389` 已调 `canRenderInLayer`，`TextureMap.registerSprite` 随图集加载时序验证，模型侧还要确认 `getModelForState` 与 `preparedModel` 短路能拿到 CTM 的 `IModelCTM` 包装。第 15 项里的体素化（`ShadowVoxelizer`、`VoxelRangeTable`、`SdlShadowVoxelizationSinkImpl`）已接进 `VintageRenderSectionManager`，范围里只剩顶点重放与体素阴影的重放侧。
+
+## 待查：光影下的方块与粒子亮度
+
+现象：启用光影后，区块网格之外的方块绘制（下落方块、破坏进度、方块实体）比区块内同一方块暗，部分包下粒子同样偏暗。已排除的方向与已取证的事实：
+
+- 顶点数据不是问题：`BLOCK` 与粒子格式的光照贴图元素映射到属性槽 3、偏移 24，逐绘制日志显示天空光 15、方块光 0 的白天正常值。
+- 下落方块在 `ENTITIES` 阶段绘制，每帧两套程序（主 pass 与阴影 pass），与地形阶段无关。
+- Revelation 的 `gbuffers_entities.vsh` 用 `materialID = uint(entityId - 10000)` 直接由 `entityId` 推导材质，`entityId` 越界会落到错误材质；#302 之后该值来自常量属性 `iris_Entity`，由 `flushEntityIds` 写入，值得先核对这条链在下落方块绘制时的取值。
+- `BlockRenderingSettings.shouldDisableDirectionalShading()` 本地没有消费方，包要求关闭原版方向性明暗时仍会叠加一层 `BlockModelRenderer` 的环境光遮蔽；临时把 `AmbientOcclusionFace.vertexColorMultiplier` 置 1 未消除现象，已回退。
+- Complementary 下粒子正常、下落方块暗；Revelation 下两者都暗，说明粒子属包侧差异，下落方块是通用路径。
 
 ## 多目标提交的归属拆解
 
