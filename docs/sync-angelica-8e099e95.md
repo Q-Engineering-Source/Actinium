@@ -469,3 +469,20 @@ TESR 批处理簇的完整依赖闭包是 233 个上游文件、26369 行。剔�
 1. `DirectTessellator` 在 1.7.10 是 `Tessellator` 子类，1.12.2 不是。`TesrMeshSink.beginCapture` 返回 `Tessellator`、`AngelicaTesrMeshCache.beginCapture` 返回 `direct`，需要把接口返回类型改成 `DirectTessellator` 并调整所有调用方。
 2. `RenderLivingBase` 没有 1.7.10 的 `renderPassModel` 字段，`DeferredEntityOverlay` 的渲染分支要按 1.12.2 的 `LayerRenderer` 重写。
 3. `ParticleCaptureTessellator` 需要 `Tessellator` 的 1.7.10 构造器与 `draw()` 返回值契约，1.12.2 的 `BufferBuilder` 体系无对应，粒子实例化要按 `ParticleManager` 重写。
+
+### 第 15 项逐文件依赖链与 GTNHLib/glsm 缺口
+
+TESR 批处理的引入顺序按依赖链固定下来，每一步只需新增文件或补一个方法。
+
+1. `net.coderbot.batchedentityrendering.impl` 的 `TransparencyType`、`BlendingStateHolder`、`BatchVertexFormats`。前两个逐字复制；`BatchVertexFormats` 把 `IVertexAttributeWriter` 的参数从 1.7.10 的 `Tessellator` 改为 GTNHLib 的 `DirectTessellator`。
+2. `com.gtnewhorizons.angelica.compat.mojang.RenderLayer`。本地 `net.coderbot.iris.layer.RenderLayer` 只是 `solid/cutout/translucent` 的占位类，不能替代；完整版依赖主项目的 `api/tesr`、`rendering/tesr`、`shadercompat`，因此放在主项目而不是 `glsm`。
+3. `shader` 的 `PassOverride` 加 `GbufferPrograms` 的 pass 栈：`getSpecialCondition`、`getDeclaredTranslucency`、`getOverridePhase`、`push/popOverridePhase`、`begin/endTranslucencyDeclaration`、`begin/endNestedEntityPhase`，以及 `WorldRenderingPipeline.setDeclaredTranslucency` 与两个管线实现的对应方法。
+4. `shader` 的 `CapturedRenderingState` 补 `StateRecorder` 接口与实体栈：`setCurrentEntityAndItem`、`push/popCurrentEntityAndItem`、`push/popCurrentEntityColor`、`push/popCurrentRenderedItem`、`push/popEntityState`、`setCurrentNamedEntity`、`setCurrentNamedItem`、`setCurrentRenderedItem(Item,int)`。录制部分经 `StateRecorder` 交给主项目，避免 `shader` 反向引用。
+5. `glsm` 的补丁：`GLSMConfig.packBrightness/packedLastBrightness/extendedAttribsExpected/expandVertexFormats`、`DisplayListManager.recordStateCommand/recordStateCommandIfChanged/abortIfLeaked`、`Uniforms.rescaleFactor`、`GLSMPrograms.setFfpInstancing`、`GLSMDraws.drawCalls`、`FrameHooks` 的 `pushGroup` 单参调用。
+6. `GTNHLib` 的 `DirectTessellator` 还缺 `getVertexCount()` 与 `getDrawMode()`（上游 `D:\Code\GTNHLib` 的 470/498 行有），本地移植版只有 private 字段；`MatrixHelper` 从上游 `client/renderer/MatrixHelper.java` 取，`getNormalMatrix` 用 joml 实现以避开未移植的 `NormalHelper`。
+7. 主项目的 `rendering/tesr` 全目录、`rendering/{RenderFailures,GlintClock,SkippedGlintBlock,BlockMaterialAttribute,DeferredEntityOverlay}`、`shadercompat/ShaderGlint`、`iris/IrisDisplayListState`、`config/AngelicaConfig`（门面，读 `SodiumGameOptions` 的六个新开关与 `glintWorld`）。
+8. 宿主接入留到最后：`MixinTileEntityRendererDispatcher`、`MixinModelRenderer`、`MixinRenderItem_Instanced`。
+
+本轮实测卡在两处：`PassOverride.of(boolean, boolean)` 在 `ModelPartBatcher:504` 的调用与上游三参签名不一致，需要按上游重新确认调用点参数；`DeferredEntityOverlay` 的 `renderPassModel` 在 1.12.2 不存在，只能按 `LayerRenderer` 遍历护甲层重放，直接用 `getMainModel()` 会丢护甲层。
+
+粒子实例化与掉落物实例化各自单开一项：`ParticleCaptureTessellator` 依赖 `Tessellator` 的 1.7.10 构造与 `draw()` 返回值契约，`DroppedItemInstancer` 与 `BlockRenderListManager` 依赖 1.12.2 已移除的 `RenderBlocks`，两者都需要按 `ParticleManager` 与 `BlockModelRenderer` 重写。
