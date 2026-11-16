@@ -314,7 +314,7 @@ SDL 主模块按当前 GLSM 和 Outlands 宿主适配，资源与管线完整导
 
 `QualitySettings` 新增 `cloudRenderDistanceChunks`（0 表示跟随原版渲染距离）与 `cloudScale`，选项页两项滑杆与 `en_us`、`zh_cn`、`ru_ru` 三份语言文件同步补齐。云模式仍取原版 `GameSettings.clouds`（0 关闭、1 快速、2 精细），不引入 `jss/notfine`。
 
-与上游的差异：`getCloudTextureWidth`、`getScaleMult` 与 `supportsLayers` 在本地没有消费方（前两者由 `shader` 子项目的 `IrisExclusiveUniforms` 使用，而子项目不得引用 `com.dhj.actinium`），未移植；`getRequiredFarPlaneDistance` 并入渲染器内部的 `requiredFarPlane`；`ea50e0a0` 的玻璃板部分不在云层范围。
+与上游的差异：`getCloudTextureWidth`、`getScaleMult` 与 `supportsLayers` 未按原样保留，前两者的取值经 `CloudAnimationCycle` 供给 `shader` 子项目的 `cloudTime` uniform（周期等于纹理宽度乘 400 再乘云缩放），后者的判断并入渲染器的 `describeLayers`；`getRequiredFarPlaneDistance` 并入渲染器内部的 `requiredFarPlane`；`ea50e0a0` 的玻璃板部分不在云层范围。
 
 ### 已收口记录（原表编号）
 

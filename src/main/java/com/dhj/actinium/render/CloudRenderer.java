@@ -67,6 +67,18 @@ public class CloudRenderer extends IRenderHandler implements IResourceManagerRel
         return instance;
     }
 
+    /**
+     * Returns the tick period of the cloud texture scroll.
+     *
+     * <p>Iris derives the {@code cloudTime} uniform from this period, so it has to follow the texture
+     * width and the cell scale the layer renders at.</p>
+     */
+    public static long cloudCycleTicks() {
+        if (instance == null) return 256L * 400L;
+        final int width = instance.resources.texture(VANILLA_TEXTURE).width;
+        return (long) (width > 0 ? width : 256) * 400L * Math.max(1, instance.scaleMult);
+    }
+
     public void checkSettings() {
         if (world != mc.world) {
             clearLayers();
