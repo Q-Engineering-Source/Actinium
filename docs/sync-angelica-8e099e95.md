@@ -299,7 +299,7 @@ SDL 主模块按当前 GLSM 和 Outlands 宿主适配，资源与管线完整导
 |---|---|---|---|---|
 | 12 | 深色模式与离上下文字体创建 | `61bb779d`、`acedba4e`、`9cb35c67`、`66d2a548`、`8387b4e9`、`231a2ab2`、`0d959c2b` | 6 新 10 改，约 1300 行 | 8 |
 | 13 | 云层重写与云 culling，同时落地 `MODE_CLOUDS`、`RENDER_DISTANCE_CLOUDS`、`CLOUD_SCALE` | `939e3146`、`c578970a`、`7f3fb35e`、`888a4de0`、`21a054a4`、`ea50e0a0` 的云部分 | 16 新 4 改，约 2600 行 | 无；云层参数走本地配置，不读 `jss/notfine` |
-| 14 | 自定义方块渲染的光影属性（`StateAwareTessellator`、`ImmediateExtendedAttribs`、方块材质属性） | `fe67e22d` | 5 新 4 改加 4 个 mixin，约 350 行 | 2 |
+| 14 | 自定义方块渲染的光影属性：只落地面法线（`wantsFaceNormals`/`writeFaceNormals`，`TessellatorStreamingDrawer` 对无法线的四边形计算真实法线）。该绘制器只服务 OldResearch 的 Tessellator，1.12.2 主路径走 `BufferBuilderStreamingDrawer`，因此本地无实际效果。`StateAwareTessellator` 是给 GT5uNH/GTNHLib 的 API，本地无消费者；`mc_Entity` 写入实测有害已回退；显示列表的常量属性录制与构建上下文覆盖 ID 未移植 | `fe67a22d` | 2 改 1 新，约 120 行 | 2（部分完成） |
 | 15 | TESR 批处理、实体图集与实体阴影重放 | `9814a96b`、`1f274a64`、`2f4ac2a9`、`7c28a69b`、`69428c12`、`fc8d3e8b`、`9f19d94c`、`db7d3284`、`bc08e4ba`、`7cc9cea3`、`af599f29`、`5ed1c925`、`c9d46e70` 的 `shouldRenderLightBlockEntities`、`2d9d1a45`、`b446968e`、`713509a8`、`8537835d` | 45 新 20 改，约 8000 行 | 2 |
 | 16 | 区块材质选择与 ISBRH 派发 | `0cae2be1`、`1946c2ad`、`cae4fea2` | 6 新 4 改，约 500 行 | 15 |
 | 17 | 与 1.12.2 ConnectedTexturesMod（`Chisel-Team/ConnectedTexturesMod` 的 `1.12/dev` 分支，本地参照 `D:/Code/CTM-Vintage`）兼容：核对 `Block.getExtendedState`、`Block.canRenderInLayer`、`TextureMap.registerSprite` 三个注入点，以及 `getModelForState` 与 `preparedModel` 短路是否拿到 CTM 按扩展状态包裹的 `IModelCTM` 模型 | 无对应上游提交 | 2 新 6 改，约 400 行 | 16；`SelectionBoxRenderer` 已由本地 `BoundingBoxOutline` 承担，不移植 |
