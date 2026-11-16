@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 
 final class FragmentShaderGeneratorTest {
-    private static final int GLOBAL_BITS = 13;
+    private static final int GLOBAL_BITS = 14;
     private static final int BIT_NR_ENABLED_UNITS = 7;
     private static final int BIT_OVERLAY_ENABLED = 10;
     private static final int BIT_LINE_STIPPLE = 11;

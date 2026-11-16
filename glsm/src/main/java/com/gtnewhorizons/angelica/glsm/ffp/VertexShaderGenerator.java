@@ -43,6 +43,7 @@ public final class VertexShaderGenerator {
     }
 
     private static void emitAttributes(StringBuilder sb, VertexKey key) {
+        final Instancing kind = key.instancing();
         sb.append("// Vertex attributes\n");
         sb.append("layout(location = ").append(VertexFormatElement.Usage.POSITION.getAttributeLocation()).append(") in vec3 a_Position;\n");
         if (key.hasVertexColor()) {
@@ -52,24 +53,29 @@ public final class VertexShaderGenerator {
         // yields q == 1.0 (OpenGL fills the missing z/w with 0/1); the fragment stage divides
         // coord.st / q, so a wrong q would be fatal. Units 2/3 (issue #175) get their own attribute
         // slot so they are no longer a per-draw constant.
-        if (key.hasVertexTexCoord()) {
-            sb.append("layout(location = ").append(VertexFormatElement.Usage.PRIMARY_UV.getAttributeLocation()).append(") in vec4 a_TexCoord0;\n");
-        }
-        if (key.hasVertexLightmap()) {
-            sb.append("layout(location = ").append(VertexFormatElement.Usage.SECONDARY_UV.getAttributeLocation(1)).append(") in vec4 a_TexCoord1;\n");
-        }
-        for (int i = 2; i < VertexKey.MAX_UNITS; i++) {
-            if (key.hasUnitVertexTexCoord(i)) {
-                sb.append("layout(location = ").append(VertexFormatElement.Usage.SECONDARY_UV.getAttributeLocation(i)).append(") in vec4 a_TexCoord").append(i).append(";\n");
+        if (kind != Instancing.CUBE) {
+            if (key.hasVertexTexCoord()) {
+                sb.append("layout(location = ").append(VertexFormatElement.Usage.PRIMARY_UV.getAttributeLocation()).append(") in vec4 a_TexCoord0;\n");
+            }
+            if (key.hasVertexLightmap()) {
+                sb.append("layout(location = ").append(VertexFormatElement.Usage.SECONDARY_UV.getAttributeLocation(1)).append(") in vec4 a_TexCoord1;\n");
+            }
+            for (int i = 2; i < VertexKey.MAX_UNITS; i++) {
+                if (key.hasUnitVertexTexCoord(i)) {
+                    sb.append("layout(location = ").append(VertexFormatElement.Usage.SECONDARY_UV.getAttributeLocation(i)).append(") in vec4 a_TexCoord").append(i).append(";\n");
+                }
             }
         }
-        if (key.hasVertexNormal() || key.lineQuads()) {
+        if (key.hasVertexNormal() || kind == Instancing.CUBE || key.lineQuads()) {
             if (key.hasVertexNormal()) {
                 sb.append("layout(location = ").append(VertexFormatElement.Usage.NORMAL.getAttributeLocation()).append(") in vec3 a_Normal;\n");
             } else {
                 // Line quads carry the segment's other endpoint in the normal slot
                 sb.append("layout(location = ").append(VertexFormatElement.Usage.NORMAL.getAttributeLocation()).append(") in vec3 a_LineOtherEnd;\n");
             }
+        }
+        for (String decl : InstancedGlslHelpers.attributeDecls("a_", kind)) {
+            sb.append(decl).append('\n');
         }
         sb.append('\n');
     }
@@ -209,6 +215,9 @@ public final class VertexShaderGenerator {
     private static void emitOutputs(StringBuilder sb, VertexKey key) {
         sb.append("// Outputs\n");
         sb.append("out vec4 v_Color;\n");
+        if (key.instancing().hasInstanceHead()) {
+            sb.append("out vec4 v_Overlay;\n");
+        }
         if (key.lineStipple()) {
             sb.append("flat out vec2 v_LineStart;\n");
         }
@@ -232,6 +241,14 @@ public final class VertexShaderGenerator {
 
     private static void emitPositionTransform(StringBuilder sb, VertexKey key) {
         sb.append("  // Position transform\n");
+        if (key.instancing().hasInstanceHead()) {
+            sb.append("  mat4 instMV = ").append(InstancedGlslHelpers.mat4FromRows("a_InstRow0", "a_InstRow1", "a_InstRow2")).append(";\n");
+            sb.append("  vec4 pos4 = vec4(a_Position, 1.0);\n");
+            sb.append("  vec4 eyePos = instMV * pos4;\n");
+            sb.append("  gl_Position = u_ProjectionMatrix * eyePos;\n");
+            sb.append("  v_Overlay = a_InstOverlay;\n\n");
+            return;
+        }
         sb.append("  vec4 pos4 = vec4(a_Position, 1.0);\n");
         sb.append("  gl_Position = u_MVPMatrix * pos4;\n");
         if (key.lineQuads()) {
@@ -295,7 +312,10 @@ public final class VertexShaderGenerator {
 
     private static void emitNormalTransform(StringBuilder sb, VertexKey key) {
         sb.append("  // Normal transform\n");
-        if (key.hasVertexNormal()) {
+        if (key.instancing().hasInstanceHead()) {
+            sb.append("  mat3 instNormal = ").append(InstancedGlslHelpers.mat3FromRows("a_InstRow0", "a_InstRow1", "a_InstRow2")).append(";\n");
+            sb.append("  vec3 normal = instNormal * ").append(key.hasVertexNormal() ? "a_Normal" : "u_CurrentNormal").append(";\n");
+        } else if (key.hasVertexNormal()) {
             sb.append("  vec3 normal = u_NormalMatrix * a_Normal;\n");
         } else {
             sb.append("  vec3 normal = u_NormalMatrix * u_CurrentNormal;\n");
@@ -410,20 +430,42 @@ public final class VertexShaderGenerator {
 
     private static void emitColorPassthrough(StringBuilder sb, VertexKey key) {
         sb.append("  // Color passthrough (no lighting)\n");
-        if (key.hasVertexColor()) {
-            sb.append("  v_Color = a_Color;\n");
+        final String src = key.hasVertexColor() ? "a_Color" : "u_CurrentColor";
+        if (key.instancing().hasInstanceHead()) {
+            sb.append("  v_Color = ").append(src).append(" * a_InstColor;\n");
         } else {
-            sb.append("  v_Color = u_CurrentColor;\n");
+            sb.append("  v_Color = ").append(src).append(";\n");
         }
         sb.append('\n');
     }
 
+    /**
+     * Emits the cube texture net: the instance carries the box mid point and per-face delta, so the
+     * shader rebuilds the U/V of every corner from the vertex normal and the lightmap scale.
+     */
+    private static void emitCubeTexCoord(StringBuilder sb) {
+        sb.append("  // Cube texture net\n");
+        sb.append("  ").append(InstancedGlslHelpers.cubePrelude("", "a_CubeMid", "a_CubeDelta", "a_Normal", "a_CubeTex", "\n  ")).append('\n');
+        sb.append("  vec4 cubeUv = ").append(InstancedGlslHelpers.cubeUv("a_CubeTex", "a_InstLightmapScale", "cubeU.x", "cubeU.y", "cubeV.x", "cubeV.y")).append(";\n\n");
+    }
+
     private static void emitTexCoordPassthrough(StringBuilder sb, VertexKey key) {
+        final boolean cube = key.instancing() == Instancing.CUBE;
+        final boolean unit0FromCube = cube && !key.texGenEnabled() && (key.unitTexCoordEnabled(0) || key.hasVertexTexCoord());
+        final boolean unit23FromCube = cube && key.unit23UvFromUnit0() && (key.unitTexCoordEnabled(2) || key.unitTexCoordEnabled(3));
+        if (unit0FromCube || unit23FromCube) {
+            emitCubeTexCoord(sb);
+        }
         if (key.texGenEnabled()) {
             emitTexGenCoordGeneration(sb, key);
         } else if (key.unitTexCoordEnabled(0) || key.hasVertexTexCoord()) {
             sb.append("  // Texture coordinates - unit 0\n");
-            final String src = key.hasVertexTexCoord() ? "a_TexCoord0" : "u_CurrentTexCoord";
+            final String src;
+            if (unit0FromCube) {
+                src = "cubeUv";
+            } else {
+                src = key.hasVertexTexCoord() ? "a_TexCoord0" : "u_CurrentTexCoord";
+            }
             if (key.unitTexMatEnabled(0)) {
                 sb.append("  v_TexCoord0 = u_TextureMatrix0 * ").append(src).append(";\n");
             } else {
@@ -431,7 +473,11 @@ public final class VertexShaderGenerator {
             }
         }
         if (key.lightmapEnabled()) {
-            if (key.hasVertexLightmap()) {
+            if (cube) {
+                sb.append("  v_TexCoord1 = u_LightmapTextureMatrix * vec4(a_InstLightmapScale.xy, 0.0, 1.0);\n");
+            } else if (key.instancing().hasInstanceHead()) {
+                sb.append("  v_TexCoord1 = u_LightmapTextureMatrix * vec4(a_InstLightmap, 0.0, 1.0);\n");
+            } else if (key.hasVertexLightmap()) {
                 sb.append("  v_TexCoord1 = u_LightmapTextureMatrix * a_TexCoord1;\n");
             } else {
                 sb.append("  v_TexCoord1 = u_LightmapTextureMatrix * vec4(u_CurrentLightmapCoord, 0.0, 1.0);\n");
