@@ -129,6 +129,31 @@ class DisplayListStateCommandIntegrationTest extends GLStateManagerIntegrationFi
     }
 
     @Test
+    void abortIfLeakedPopsStatePushedByOuterCompileAndExecuteLists() {
+        final int outer = GLSMDraws.glGenLists(1);
+        final int inner = GLSMDraws.glGenLists(1);
+        final int entryDepth = GLStateManager.getAttribDepth();
+        try {
+            GLSMDraws.glNewList(outer, GL11.GL_COMPILE_AND_EXECUTE);
+            GLStateManager.pushState(StateSet.BLEND);
+            GLSMDraws.glNewList(inner, GL11.GL_COMPILE_AND_EXECUTE);
+            GLStateManager.pushState(StateSet.CULL);
+
+            DisplayListManager.abortIfLeaked();
+
+            assertFalse(DisplayListManager.isRecording());
+            assertEquals(entryDepth, GLStateManager.getAttribDepth(),
+                "every aborted level must pop the state it pushed, including the outer list");
+        } finally {
+            while (GLStateManager.getAttribDepth() > entryDepth) {
+                GLStateManager.popState();
+            }
+            GLSMDraws.glDeleteLists(outer, 1);
+            GLSMDraws.glDeleteLists(inner, 1);
+        }
+    }
+
+    @Test
     void abortIfLeakedIsANoOpWhileNotRecording() {
         assertFalse(DisplayListManager.isRecording());
         assertDoesNotThrow(DisplayListManager::abortIfLeaked);

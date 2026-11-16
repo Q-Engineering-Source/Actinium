@@ -979,9 +979,7 @@ public class DisplayListManager {
             TessellatorManager.stopCapturingDirect();
         }
 
-        while (hasLiveStateScope()) {
-            GLStateManager.popState();
-        }
+        closeAbortedStateScopes();
 
         if (currentRecorder != null) {
             currentRecorder.free();
@@ -993,6 +991,23 @@ public class DisplayListManager {
         }
         compilationStack.clear();
         resetCompilationState();
+    }
+
+    /**
+     * Pops the state pushed by every aborted level. Scopes stack LIFO across nested lists and
+     * {@link #hasLiveStateScope()} only recognises the compilation id of the current level, so each level selects its
+     * id before its scopes are drained, from the innermost list outward.
+     */
+    private static void closeAbortedStateScopes() {
+        while (hasLiveStateScope()) {
+            GLStateManager.popState();
+        }
+        for (CompilationContext level : compilationStack) {
+            compilationId = level.compilationId();
+            while (hasLiveStateScope()) {
+                GLStateManager.popState();
+            }
+        }
     }
 
     /** Frame-boundary recovery: closes a list that a caller left open, so the next frame records from a clean state. */
