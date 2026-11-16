@@ -316,6 +316,12 @@ SDL 主模块按当前 GLSM 和 Outlands 宿主适配，资源与管线完整导
 
 与上游的差异：`getCloudTextureWidth`、`getScaleMult` 与 `supportsLayers` 未按原样保留，前两者的取值经 `CloudAnimationCycle` 供给 `shader` 子项目的 `cloudTime` uniform（周期等于纹理宽度乘 400 再乘云缩放），后者的判断并入渲染器的 `describeLayers`；`getRequiredFarPlaneDistance` 并入渲染器内部的 `requiredFarPlane`；`ea50e0a0` 的玻璃板部分不在云层范围。
 
+### 批次三第 15 项：进行中
+
+第 15 项按四批推进，前两批已落地。15-1（`24ee0432`）是 FFP 实例化变体层：`Instancing`、`CubeInstancedAttribs`、`InstancedGlslHelpers`，`VertexKey` 的 `BIT_INSTANCING`、`GLContextState.ffpInstancing`、`GLSMPrograms.setFfpInstancing`，以及顶点与片元生成器的模板、立方体分支（实例矩阵构造 `eyePos`、法线走实例 `mat3`、颜色乘 `a_InstColor`、立方体 UV 由 `a_CubeMid` 与 `a_CubeDelta` 重建、`v_Overlay` 承担伤害叠加色）；`FragmentKey.GLOBAL_BITS` 由 13 扩到 14 容纳叠加色实例位。15-2（`a9f94563`）是立方体数据：`UnitCubeMesh`、`CubeParams`、`ModelBoxCapture`、`ModelBoxData` 与 `MixinModelBoxCubeParams`，捕获结果写到 `ModelBox` 的注入接口，`CubeInstanceDataTest` 覆盖顶点流、面法线与 UV 网。
+
+两批都还没有实机路径：`setFfpInstancing` 尚无调用方，实例化变体不会触发；`angelica$cubeParams()` 尚无读取方。剩余两批是 TESR 模板实例化与实体图集、实体阴影重放。
+
 ### 已收口记录（原表编号）
 
 以下内容按原表编号记录实现方式与偏差，编号不指上面的新批次。已在 PR #263 上合并：第 1、2、10、12、24 项。第 5 项（`ExitStateCapture`）在后续 PR 上，它不依赖 Tracy no-op 门面；`TextureUtilHooks`、`MixinTextureUtil`、`VanillaLayerRig` 三个上游文件因本地缺类整体跳过，`rejectExitCapture` 守卫留给第 6 项与那 54 个门面方法一起做。
