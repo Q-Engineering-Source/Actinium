@@ -149,10 +149,39 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         // Biome color position noise (issue #56, inspired by Ambient Environment). Applied after
         // biome blending so the per-position variation survives blend averaging, with a
         // multiplicative factor of 1 +/- intensity so the result stays centered on the mean.
+        public GuiSupersampling guiBlockSupersampling = GuiSupersampling.OFF;
+
         public boolean useBiomeColorNoise = true;
         public float biomeColorNoiseGrassIntensity = 0.08F;
         public float biomeColorNoiseFoliageIntensity = 0.08F;
         public float biomeColorNoiseWaterIntensity = 0.08F;
+    }
+
+
+    /** Atlas sample factors offered for GUI item rendering; the shader accepts powers of two up to sixteen. */
+    public enum GuiSupersampling implements TextProvider {
+        OFF(1, "options.actinium.guiSupersampling.off"),
+        X2(2, "options.actinium.guiSupersampling.x2"),
+        X4(4, "options.actinium.guiSupersampling.x4"),
+        X8(8, "options.actinium.guiSupersampling.x8"),
+        X16(16, "options.actinium.guiSupersampling.x16");
+
+        private final int samples;
+        private final String translationKey;
+
+        GuiSupersampling(int samples, String translationKey) {
+            this.samples = samples;
+            this.translationKey = translationKey;
+        }
+
+        public int samples() {
+            return samples;
+        }
+
+        @Override
+        public TextComponent getLocalizedName() {
+            return TextComponent.translatable(translationKey);
+        }
     }
 
     public static class NotificationSettings {

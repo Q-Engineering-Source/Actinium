@@ -3,6 +3,7 @@ package com.gtnewhorizons.angelica.glsm.ffp;
 import java.util.Arrays;
 
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.texture.TextureInfoCache;
 import com.gtnewhorizons.angelica.glsm.states.TexEnvState;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
@@ -72,7 +73,7 @@ public final class FragmentKey {
     private static final int BIT_ALPHA_TEST        = 2;  // 1 bit
     private static final int BIT_ALPHA_FUNC        = 3;  // 3 bits
     private static final int BIT_SEPARATE_SPECULAR = 6;  // 1 bit
-    private static final int BIT_NR_ENABLED_UNITS  = 7;  // 3 bits
+    private static final int BIT_TEXTURE_SUPERSAMPLING = 7; // 3 bits, log2(samples)
     private static final int BIT_OVERLAY_ENABLED   = 10; // 1 bit
     private static final int BIT_LINE_STIPPLE      = 11; // 1 bit
     private static final int BIT_COLOR_SUM         = 12; // 1 bit
@@ -160,7 +161,10 @@ public final class FragmentKey {
         }
 
         final int nrEnabled = highestEnabled + 1;
-        global |= ((long) (nrEnabled & 0x7)) << BIT_NR_ENABLED_UNITS;
+        if (GLStateManager.ctx().textureSupersamplingSamples > 1 && (unit0Bits & 1L) != 0
+            && TextureInfoCache.INSTANCE.getInfo(GLStateManager.getTextures().getTextureUnitBindings(0).getBinding()).getAtlasGutter() > 0) {
+            global |= (long) Integer.numberOfTrailingZeros(GLStateManager.ctx().textureSupersamplingSamples) << BIT_TEXTURE_SUPERSAMPLING;
+        }
         global |= (unit0Bits << GLOBAL_BITS);
         out[0] = global;
 
@@ -247,7 +251,8 @@ public final class FragmentKey {
     public boolean separateSpecular() { return ((packed[0] >> BIT_SEPARATE_SPECULAR) & 1) != 0; }
     public boolean colorSum()         { return ((packed[0] >> BIT_COLOR_SUM) & 1) != 0; }
     public boolean lineStipple()      { return ((packed[0] >> BIT_LINE_STIPPLE) & 1) != 0; }
-    public int nrEnabledUnits()       { return (int) ((packed[0] >> BIT_NR_ENABLED_UNITS) & 0x7); }
+    public int nrEnabledUnits()       { return packed.length == 1 && !unitEnabled(0) ? 0 : packed.length; }
+    public int textureSupersamplingSamples() { return 1 << (int) ((packed[0] >> BIT_TEXTURE_SUPERSAMPLING) & 0x7); }
     public boolean overlayEnabled()   { return ((packed[0] >> BIT_OVERLAY_ENABLED) & 1) != 0; }
 
     private long unitBits(int i) {

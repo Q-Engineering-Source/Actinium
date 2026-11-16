@@ -35,6 +35,8 @@ public class TextureInfo {
     @Setter protected float maxAnisotropy = UNSET_FLOAT;
 
     @Getter @Setter protected boolean generateMipmap = false;
+    /** Texels between this atlas texture's sprites, or {@code 0} when it is not an atlas. */
+    @Getter @Setter protected int atlasGutter = 0;
 
     @Getter protected int uploadGeneration;
 

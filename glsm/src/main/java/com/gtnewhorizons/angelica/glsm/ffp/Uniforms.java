@@ -8,6 +8,7 @@ import com.gtnewhorizons.angelica.glsm.states.LightState;
 import com.gtnewhorizons.angelica.glsm.states.LineState;
 import com.gtnewhorizons.angelica.glsm.states.MaterialState;
 import com.gtnewhorizons.angelica.glsm.states.TexGenState;
+import com.gtnewhorizons.angelica.glsm.texture.TextureInfoCache;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMConfig;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
@@ -51,8 +52,22 @@ public class Uniforms {
      * Upload all relevant uniforms to the given FFP program based on current GLSM state.
      * Uses generation counters to skip categories that haven't changed since last upload.
      */
+
+    /**
+     * Uploads the atlas gutter the supersampling snippet keeps its samples inside. The value belongs to the
+     * texture bound to unit 0, so it is re-read for every draw that supersamples instead of being cached across
+     * programs.
+     */
+    private void uploadAtlasGutter(Program program) {
+        if (program.locAtlasGutter == -1 || program.getFragmentKey().textureSupersamplingSamples() <= 1) return;
+        final int texture = GLStateManager.getTextures().getTextureUnitBindings(0).getBinding();
+        RENDER_BACKEND.uniform1f(program.locAtlasGutter,
+            TextureInfoCache.INSTANCE.getInfo(texture).getAtlasGutter());
+    }
+
     public void upload(Program program) {
         final ProgramUniformState uploaded = program.getUniformState();
+        uploadAtlasGutter(program);
 
         final int mvGen = GLStateManager.getMvGeneration();
         final int projGen = GLStateManager.getProjGeneration();

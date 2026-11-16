@@ -100,6 +100,7 @@ public class Program {
     // Fragment uniforms
     public final int[] locSampler = { -1, -1, -1, -1 };
     public int locAlphaRef = -1;
+    public int locAtlasGutter = -1;
     public final int[] locTexEnvColor = { -1, -1, -1, -1 };
     public int locOverlayColor = -1;
     public int locSecondaryColor = -1;
@@ -185,6 +186,7 @@ public class Program {
             locSampler[i] = loc("u_Sampler" + i);
         }
         locAlphaRef = loc("u_AlphaRef");
+        locAtlasGutter = loc("u_AtlasGutter");
         for (int i = 0; i < 4; i++) {
             locTexEnvColor[i] = loc("u_TexEnvColor" + i);
         }
