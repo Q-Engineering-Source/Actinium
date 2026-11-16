@@ -12,6 +12,7 @@ import com.gtnewhorizons.angelica.glsm.texture.TextureInfoCache;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMConfig;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.joml.Vector4f;
 
 import java.nio.FloatBuffer;
@@ -42,7 +43,7 @@ public class Uniforms {
 
     // Temp vectors for light product and normal scale computation
     private final Vector4f tempVec4 = new Vector4f();
-    private final org.joml.Vector3f tempVec3 = new org.joml.Vector3f();
+    private final Vector3f tempVec3 = new Vector3f();
 
     // Pre-computed constants for fog params (Mesa STATE_FOG_PARAMS_OPTIMIZED)
     private static final double LN2 = Math.log(2.0);
@@ -180,9 +181,7 @@ public class Uniforms {
 
             // Normal scale (for GL_RESCALE_NORMAL without GL_NORMALIZE)
             if (program.locNormalScale != -1) {
-                // Scale factor = 1/length of first column of normal matrix
-                final float scale = 1.0f / normalMatrix.getColumn(0, tempVec3).length();
-                RENDER_BACKEND.uniform1f(program.locNormalScale, scale);
+                RENDER_BACKEND.uniform1f(program.locNormalScale, rescaleFactor(normalMatrix, tempVec3));
             }
         }
 
@@ -229,6 +228,15 @@ public class Uniforms {
                 RENDER_BACKEND.uniformMatrix4(program.locTextureMatrix3, false, mat4Buf);
             }
         }
+    }
+
+    /**
+     * Reciprocal length of the modelview bottom row, which is the scale GL applies to normals for
+     * GL_RESCALE_NORMAL. A degenerate matrix keeps the factor at 1 instead of dividing by zero.
+     */
+    static float rescaleFactor(Matrix3f normalMatrix, Vector3f scratch) {
+        final float f = normalMatrix.getColumn(2, scratch).lengthSquared();
+        return f > 1.0e-12f ? 1.0f / (float) Math.sqrt(f) : 1.0f;
     }
 
     private void uploadLighting(Program program) {

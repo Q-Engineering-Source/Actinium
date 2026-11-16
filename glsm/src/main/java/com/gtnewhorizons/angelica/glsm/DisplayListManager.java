@@ -620,6 +620,22 @@ public class DisplayListManager {
         currentRecorder.recordComplexCommand(cmd);
     }
 
+    /**
+     * Records a Java-side state command. Unlike {@link #recordComplexCommand} the command changes render state for
+     * the draws that follow it, so it closes the pending draw merge.
+     */
+    public static void recordStateCommand(DisplayListCommand cmd) {
+        drawBarrier();
+        currentRecorder.recordComplexCommand(cmd);
+    }
+
+    /** Records a state command only when the same command is not already the tail of the stream. */
+    public static void recordStateCommandIfChanged(DisplayListCommand cmd) {
+        if (!currentRecorder.isLastCommand(cmd)) {
+            recordStateCommand(cmd);
+        }
+    }
+
     public static void recordLoadMatrix(Matrix4f matrix) {
         if (currentRecorder != null) currentRecorder.recordLoadMatrix(matrix);
     }
@@ -927,18 +943,63 @@ public class DisplayListManager {
             // Note: TessellatorManager callback stack was popped by stopCompiling()
             // Parent's COMPILING callback is now active again
         } else {
-            currentRecorder = null;
-            recordingThread = null;
-            accumulatedDraws = null;
-            relativeTransform = null;
-            compilationStackTrace = null;
-            pendingTransformOps = null;
-            multMatrixSources = null;
-            drawRangeSources = null;
-            glListId = -1;
-            glListMode = 0;
-            recordedStatePushes = 0;
-            compilationId = 0;
+            resetCompilationState();
+        }
+    }
+
+    private static void resetCompilationState() {
+        currentRecorder = null;
+        recordingThread = null;
+        accumulatedDraws = null;
+        relativeTransform = null;
+        compilationStackTrace = null;
+        pendingTransformOps = null;
+        multMatrixSources = null;
+        drawRangeSources = null;
+        glListId = -1;
+        glListMode = 0;
+        recordedStatePushes = 0;
+        compilationId = 0;
+    }
+
+    /**
+     * Discards an open compilation and restores the state it was started from. Every capture level is released so
+     * later compilations do not inherit this one, and the state pushed by the list is popped.
+     */
+    public static synchronized void abortCompilation() {
+        if (recordingThread != null && recordingThread != Thread.currentThread()) {
+            throw new IllegalStateException("Cannot abort another thread's display list compilation");
+        }
+        if (glListMode == 0 && compilationStack.isEmpty()) {
+            return;
+        }
+
+        final int levels = compilationStack.size() + (glListMode != 0 ? 1 : 0);
+        for (int i = 0; i < levels; i++) {
+            TessellatorManager.stopCapturingDirect();
+        }
+
+        while (hasLiveStateScope()) {
+            GLStateManager.popState();
+        }
+
+        if (currentRecorder != null) {
+            currentRecorder.free();
+        }
+        for (CompilationContext ctx : compilationStack) {
+            if (ctx.recorder() != null) {
+                ctx.recorder().free();
+            }
+        }
+        compilationStack.clear();
+        resetCompilationState();
+    }
+
+    /** Frame-boundary recovery: closes a list that a caller left open, so the next frame records from a clean state. */
+    public static void abortIfLeaked() {
+        if (Thread.currentThread() == recordingThread && (glListMode != 0 || !compilationStack.isEmpty())) {
+            GLStateManager.warnOnce("frame-leak", "Display list {} left open across a frame boundary - aborting to recover", glListId);
+            abortCompilation();
         }
     }
 

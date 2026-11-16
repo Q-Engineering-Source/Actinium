@@ -605,6 +605,7 @@ public class TessellatorStreamingDrawer {
     }
 
     private static void drawWithQuadConversion(int drawMode, int firstVertex, int vertexCount, boolean singleQuadFastPath) {
+        GLSMDraws.drawCalls++;
         FfpExtendedAttribs.beginInternalDraw();
         try {
             if (drawMode == GL11.GL_QUADS) {

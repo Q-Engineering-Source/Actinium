@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.glsm.hooks;
 
+import com.gtnewhorizons.angelica.glsm.GLContextState;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 
 public final class GLSMConfig {
@@ -11,6 +12,23 @@ public final class GLSMConfig {
     public static float getLastBrightnessY() {
         return GLStateManager.getLastBrightnessY();
     }
+
+    /** Packs lightmap coordinates into the 32-bit attribute value the FFP vertex path consumes. */
+    public static int packBrightness(float x, float y) {
+        return ((int) y << 16) | ((int) x & 0xFFFF);
+    }
+
+    /** Lightmap coordinates of the last {@code setLightmapTextureCoords} call, packed as an attribute value. */
+    public static int packedLastBrightness() {
+        final GLContextState glCtx = GLStateManager.ctx();
+        return packBrightness(glCtx.lastBrightnessX, glCtx.lastBrightnessY);
+    }
+
+    /** Whether recorded vertex formats are expected to carry the extended attributes. */
+    public static boolean extendedAttribsExpected;
+
+    /** Whether recorded vertex data is widened to the extended attribute layout. */
+    public static volatile boolean expandVertexFormats;
 
     // True while StellarCore renders HUD content into its cached framebuffer
     // (HUDCaching.renderingCacheOverride). Mirrors the alpha-factor override

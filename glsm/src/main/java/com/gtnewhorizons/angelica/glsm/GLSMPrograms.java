@@ -40,6 +40,11 @@ public final class GLSMPrograms {
 
     private GLSMPrograms() {}
 
+    /** Selects the instancing layout that the next FFP program selection compiles for. */
+    public static void setFfpInstancing(Instancing mode) {
+        ctx().ffpInstancing = mode;
+    }
+
     public static void glUseProgram(int program) {
         rejectExitCapture();
         final RecordMode mode = DisplayListManager.getRecordMode();
