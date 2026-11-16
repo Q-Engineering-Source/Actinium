@@ -13,13 +13,12 @@ import org.spongepowered.asm.mixin.Mixin;
 public class MixinRenderItemGuiSupersampling {
 
     @WrapMethod(method = "renderItemIntoGUI(Lnet/minecraft/item/ItemStack;II)V")
-    private void actinium$supersampleGuiItem(RenderItem instance, ItemStack stack, int x, int y,
-                                             Operation<Void> original) {
+    private void actinium$supersampleGuiItem(ItemStack stack, int x, int y, Operation<Void> original) {
         final boolean previousItem = RenderingState.isRenderingGuiItem();
         RenderingState.setRenderingGuiItem(true);
         final int previousSamples = GuiBlockSupersampling.begin();
         try {
-            original.call(instance, stack, x, y);
+            original.call(stack, x, y);
         } finally {
             GuiBlockSupersampling.end(previousSamples);
             RenderingState.setRenderingGuiItem(previousItem);

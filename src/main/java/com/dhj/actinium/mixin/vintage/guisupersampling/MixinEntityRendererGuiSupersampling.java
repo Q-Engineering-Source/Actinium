@@ -11,12 +11,11 @@ import org.spongepowered.asm.mixin.Mixin;
 public class MixinEntityRendererGuiSupersampling {
 
     @WrapMethod(method = "renderWorld(FJ)V")
-    private void actinium$markWorldRendering(EntityRenderer instance, float partialTicks, long finishTimeNano,
-                                             Operation<Void> original) {
+    private void actinium$markWorldRendering(float partialTicks, long finishTimeNano, Operation<Void> original) {
         final boolean previousWorld = RenderingState.isRenderingWorld();
         RenderingState.setRenderingWorld(true);
         try {
-            original.call(instance, partialTicks, finishTimeNano);
+            original.call(partialTicks, finishTimeNano);
         } finally {
             RenderingState.setRenderingWorld(previousWorld);
         }
