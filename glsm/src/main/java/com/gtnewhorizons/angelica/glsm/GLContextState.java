@@ -242,6 +242,8 @@ public class GLContextState {
     public long entityIds = InstancedAttribs.DEFAULT_ENTITY_IDS;
     /** Whether the per-vertex id attribute still has to be written for the draw being prepared. */
     public boolean dirtyEntityIdsAttrib = true;
+    /** Samples the fixed-function fragment shader takes per atlas texel, or 1 for no supersampling. */
+    public int textureSupersamplingSamples = 1;
     public int boundVBO;
     public int boundVAO;
     public int boundPixelUnpackBuffer;

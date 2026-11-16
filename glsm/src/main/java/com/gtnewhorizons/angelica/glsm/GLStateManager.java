@@ -267,6 +267,28 @@ public class GLStateManager {
     private static volatile boolean workerContextsActive;
     private static int workerContextCount;
 
+    /**
+     * Sets how many samples the fixed-function fragment shader takes per atlas texel. Only powers of two up to
+     * sixteen are meaningful; anything else is a caller bug.
+     *
+     * @return the previous setting, so the caller can restore it
+     */
+    public static int setTextureSupersamplingSamples(int samples) {
+        if (samples < 1 || samples > 16 || (samples & (samples - 1)) != 0) {
+            throw new IllegalArgumentException("Texture supersampling requires 1, 2, 4, 8, or 16 samples");
+        }
+        final GLContextState glCtx = ctx();
+        final int previous = glCtx.textureSupersamplingSamples;
+        glCtx.textureSupersamplingSamples = samples;
+        return previous;
+    }
+
+    /** Records the texel gutter of an atlas so the fragment shader can keep sampling inside a sprite. */
+    public static void markTextureAsAtlas(int texture, int gutter) {
+        if (texture <= 0) return;
+        TextureInfoCache.INSTANCE.getInfo(texture).setAtlasGutter(gutter);
+    }
+
     public static GLContextState ctx() {
         if (Thread.currentThread() == MainThread) {
             final GLContextState current = mainCtx;
