@@ -419,4 +419,99 @@ class AttributeTransformerInstancedTest {
         assertEquals(InstancedAttribs.LOC_LIGHTMAP, locationOf(byLocation, "iris_InstLightmap"));
         assertEquals(InstancedAttribs.LOC_ENTITY, locationOf(byLocation, "iris_InstEntity"));
     }
+
+    @Test
+    void lightmapOnlyAvailabilityStillBuildsAnInstancedVariant() {
+        final Map<PatchShaderType, String> result = TransformPatcher.patchAttributesInstanced(
+            VERTEX, null, null, null, FRAGMENT, InputAvailability.of(false, true), Instancing.TEMPLATE);
+        assertNotNull(result, "the lightmap-only availability is queried by untextured batched draws");
+
+        final String v = result.get(PatchShaderType.VERTEX);
+        assertHas(v, "iris_MultiTexCoord1 = vec4(iris_InstLightmap, 0.0, 1.0)");
+        assertHas(v, "layout(location = " + InstancedAttribs.LOC_LIGHTMAP + ") in vec2 iris_InstLightmap");
+        assertHas(v, "iris_TextureMatrix * vec4(240.0, 240.0, 0.0, 1.0)");
+        assertLacks(v, "iris_TextureMatrix * iris_MultiTexCoord0");
+
+        final Map<PatchShaderType, String> textured = TransformPatcher.patchAttributesInstanced(
+            VERTEX, null, null, null, FRAGMENT, TEX_LM, Instancing.TEMPLATE);
+        assertFalse(squash(v).equals(squash(textured.get(PatchShaderType.VERTEX))),
+            "the lightmap-only key must not reuse the textured transform");
+    }
+
+    private static final String TES_VERTEX = """
+        #version 150
+        uniform int entityId;
+        uniform vec4 entityColor;
+        varying vec4 tint;
+        void main() {
+            tint = entityColor + vec4(float(entityId));
+            gl_Position = ftransform();
+        }
+        """;
+
+    private static final String TES_CONTROL = """
+        #version 400
+        layout(vertices = 3) out;
+        in vec4 tint[];
+        out vec4 tintTCS[];
+        void main() {
+            gl_TessLevelOuter[0] = 1.0;
+            gl_TessLevelOuter[1] = 1.0;
+            gl_TessLevelOuter[2] = 1.0;
+            gl_TessLevelInner[0] = 1.0;
+            tintTCS[gl_InvocationID] = tint[gl_InvocationID];
+            gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
+        }
+        """;
+
+    private static final String TES_EVAL = """
+        #version 400
+        layout(triangles) in;
+        in vec4 tintTCS[];
+        out vec4 tintTES;
+        void main() {
+            gl_Position = gl_in[0].gl_Position;
+            tintTES = tintTCS[0];
+        }
+        """;
+
+    private static final String TES_FRAGMENT = """
+        #version 400
+        uniform int entityId;
+        uniform vec4 entityColor;
+        in vec4 tintTES;
+        void main() {
+            gl_FragData[0] = tintTES + entityColor + vec4(float(entityId));
+        }
+        """;
+
+    @Test
+    void tessellationStagesCarryTheEntityVaryingsWithoutAGeometryStage() {
+        final Map<PatchShaderType, String> result = TransformPatcher.patchAttributesInstanced(
+            TES_VERTEX, null, TES_CONTROL, TES_EVAL, TES_FRAGMENT, TEX_LM, Instancing.TEMPLATE);
+        assertNotNull(result);
+        for (PatchShaderType type : new PatchShaderType[] {
+                PatchShaderType.VERTEX, PatchShaderType.TESS_CONTROL, PatchShaderType.TESS_EVAL, PatchShaderType.FRAGMENT}) {
+            assertNotNull(result.get(type));
+            ShaderParser.parseShader(result.get(type));
+        }
+
+        final String tcs = result.get(PatchShaderType.TESS_CONTROL);
+        assertNotNull(tcs);
+        assertHas(tcs, "patch out vec4 entityColorTCS;");
+        assertHas(tcs, "entityColorTCS = entityColor[gl_InvocationID];");
+        assertHas(tcs, "flat out ivec3 iris_entityInfoTCS[];");
+
+        final String tes = result.get(PatchShaderType.TESS_EVAL);
+        assertNotNull(tes);
+        assertHas(tes, "out vec4 entityColorTES;");
+        assertHas(tes, "patch in vec4 entityColorTCS;");
+        assertHas(tes, "entityColorTES = entityColorTCS;");
+
+        final String fragment = result.get(PatchShaderType.FRAGMENT);
+        assertHas(fragment, "in vec4 entityColorTES;");
+        assertLacks(fragment, "in vec4 entityColor;");
+        assertHas(fragment, "flat in ivec3 iris_entityInfoTES;");
+        assertLacks(fragment, "flat in ivec3 iris_entityInfoGS;");
+    }
 }

@@ -33,14 +33,18 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
+import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -158,6 +162,53 @@ class IrisInstancingGLTest extends GLStateManagerIntegrationFixture {
             bool shadowed = isFortyTwo(42);
             { int blockEntityId = 7; shadowed = shadowed && blockEntityId == 7; }
             gl_FragData[0] = matches && shadowed ? vec4(0, 1, 0, 1) : vec4(1, 0, 0, 1);
+        }
+        """;
+
+    private static final String TES_VERTEX = """
+        #version 400
+        uniform int entityId;
+        uniform vec4 entityColor;
+        out vec4 tint;
+        void main() {
+            tint = entityColor + vec4(float(entityId));
+            gl_Position = ftransform();
+        }
+        """;
+
+    private static final String TES_CONTROL = """
+        #version 400
+        layout(vertices = 3) out;
+        in vec4 tint[];
+        out vec4 tintTCS[];
+        void main() {
+            gl_TessLevelOuter[0] = 1.0;
+            gl_TessLevelOuter[1] = 1.0;
+            gl_TessLevelOuter[2] = 1.0;
+            gl_TessLevelInner[0] = 1.0;
+            tintTCS[gl_InvocationID] = tint[gl_InvocationID];
+            gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
+        }
+        """;
+
+    private static final String TES_EVAL = """
+        #version 400
+        layout(triangles) in;
+        in vec4 tintTCS[];
+        out vec4 tintTES;
+        void main() {
+            gl_Position = gl_in[0].gl_Position;
+            tintTES = tintTCS[0];
+        }
+        """;
+
+    private static final String TES_FRAGMENT = """
+        #version 400
+        uniform int entityId;
+        uniform vec4 entityColor;
+        in vec4 tintTES;
+        void main() {
+            gl_FragData[0] = tintTES + entityColor + vec4(float(entityId));
         }
         """;
 
@@ -337,6 +388,27 @@ class IrisInstancingGLTest extends GLStateManagerIntegrationFixture {
         return new int[] { pixels.get(0) & 0xFF, pixels.get(1) & 0xFF, pixels.get(2) & 0xFF, pixels.get(3) & 0xFF };
     }
 
+    @Test
+    void tessellationVariantLinksTheEntityVaryingsWithoutAGeometryStage() {
+        assumeTrue(GL.getCapabilities().OpenGL40, "tessellation stages need a GL 4.0 context");
+        final int previous = RenderSystem.getMaxGlslVersion();
+        RenderSystem.initializeGlslCapabilityForTesting(460);
+        ShaderTransformer.init();
+        TransformPatcher.clearCache();
+        try {
+            final Map<PatchShaderType, String> result = TransformPatcher.patchAttributesInstanced(
+                TES_VERTEX, null, TES_CONTROL, TES_EVAL, TES_FRAGMENT, TEX_LM, Instancing.TEMPLATE);
+            assertNotNull(result);
+            assertNotNull(result.get(PatchShaderType.TESS_CONTROL));
+            assertNotNull(result.get(PatchShaderType.TESS_EVAL));
+            linkAndDiscard("templateTess", result);
+        } finally {
+            RenderSystem.initializeGlslCapabilityForTesting(previous);
+            TransformPatcher.clearCache();
+            ShaderTransformer.init();
+        }
+    }
+
     private static void linkAndDiscard(String name, Map<PatchShaderType, String> result) {
         GLSMPrograms.glDeleteProgram(linkProgram(name, result));
     }
@@ -344,23 +416,30 @@ class IrisInstancingGLTest extends GLStateManagerIntegrationFixture {
     private static int linkProgram(String name, Map<PatchShaderType, String> result) {
         final String vertex = result.get(PatchShaderType.VERTEX);
         final String geometry = result.get(PatchShaderType.GEOMETRY);
+        final String tessControl = result.get(PatchShaderType.TESS_CONTROL);
+        final String tessEval = result.get(PatchShaderType.TESS_EVAL);
         final String fragment = result.get(PatchShaderType.FRAGMENT);
         assertNotNull(vertex);
         assertNotNull(fragment);
 
-        final GlShader vertexShader = new GlShader(ShaderType.VERTEX, name + "Vertex", vertex);
-        final GlShader geometryShader = geometry == null ? null : new GlShader(ShaderType.GEOMETRY, name + "Geometry", geometry);
-        final GlShader fragmentShader = new GlShader(ShaderType.FRAGMENT, name + "Fragment", fragment);
+        final List<GlShader> shaders = new ArrayList<>(4);
         try {
-            return geometryShader == null
-                ? ProgramCreator.create(name, vertexShader, fragmentShader)
-                : ProgramCreator.create(name, vertexShader, geometryShader, fragmentShader);
-        } finally {
-            vertexShader.destroy();
-            if (geometryShader != null) {
-                geometryShader.destroy();
+            shaders.add(new GlShader(ShaderType.VERTEX, name + "Vertex", vertex));
+            if (tessControl != null) {
+                shaders.add(new GlShader(ShaderType.TESSELATION_CONTROL, name + "TessControl", tessControl));
             }
-            fragmentShader.destroy();
+            if (tessEval != null) {
+                shaders.add(new GlShader(ShaderType.TESSELATION_EVAL, name + "TessEval", tessEval));
+            }
+            if (geometry != null) {
+                shaders.add(new GlShader(ShaderType.GEOMETRY, name + "Geometry", geometry));
+            }
+            shaders.add(new GlShader(ShaderType.FRAGMENT, name + "Fragment", fragment));
+            return ProgramCreator.create(name, shaders.toArray(new GlShader[0]));
+        } finally {
+            for (GlShader shader : shaders) {
+                shader.destroy();
+            }
         }
     }
 
