@@ -5,6 +5,7 @@ import com.gtnewhorizons.angelica.api.tesr.TesrMaterial;
 import com.gtnewhorizons.angelica.compat.mojang.RenderLayer;
 import com.gtnewhorizons.angelica.glsm.ffp.CubeParams;
 import com.gtnewhorizons.angelica.glsm.profiling.Tracy;
+import com.gtnewhorizons.angelica.rendering.DeferredEntityOverlay;
 import com.gtnewhorizons.angelica.rendering.tesr.EntityShadowReplay.Rejection;
 import com.gtnewhorizons.angelica.rendering.tesr.RetainedTesrGroups.InstanceColumns;
 import com.gtnewhorizons.angelica.rendering.tesr.RetainedTesrGroups.InstanceRange;
@@ -30,6 +31,7 @@ final class EntityRenderCommands {
     private final Pool<ItemGlint> itemGlints = new Pool<>(ItemGlint::new, ItemGlint::clear);
     private final Pool<Stream> streams = new Pool<>(Stream::new, Stream::clear);
     private final Pool<InstanceRange> ranges = new Pool<>(InstanceRange::new, InstanceRange::clear);
+    private final Pool<Overlay> overlays = new Pool<>(Overlay::new, Overlay::clear);
     private final Matrix4f glintPose = new Matrix4f();
     long sharedParts, sharedRanges, streamEntries;
     private int mergeStart;
@@ -115,6 +117,12 @@ final class EntityRenderCommands {
         stream.capture(vertices, vertexCount);
     }
 
+    void overlay(DeferredEntityOverlay.DeferredEntry source) {
+        final Overlay overlay = overlays.acquire();
+        commands.add(overlay);
+        overlay.captured.copyFrom(source);
+    }
+
     Rejection validate(int start, int end) {
         for (int i = start; i < end; i++) {
             final Rejection reason = commands.get(i).validate();
@@ -145,6 +153,7 @@ final class EntityRenderCommands {
         itemGlints.clear();
         streams.clear();
         ranges.clear();
+        overlays.clear();
         mergeStart = 0;
     }
 
@@ -155,6 +164,7 @@ final class EntityRenderCommands {
         itemGlints.release();
         streams.release();
         ranges.release();
+        overlays.release();
     }
 
     abstract static class Command {
@@ -358,6 +368,20 @@ final class EntityRenderCommands {
         @Override
         void replay() {
             ModelPartBatcher.INSTANCE.replay(this);
+        }
+    }
+
+    /** An overlay layer the shadow pass recorded; the main view queues it for the deferred flush. */
+    private static final class Overlay extends Command {
+        final DeferredEntityOverlay.DeferredEntry captured = new DeferredEntityOverlay.DeferredEntry();
+
+        @Override
+        void replay() {
+            DeferredEntityOverlay.queueReplay(captured, ModelPartBatcher.INSTANCE.replayTransform);
+        }
+
+        void clear() {
+            captured.clear();
         }
     }
 }

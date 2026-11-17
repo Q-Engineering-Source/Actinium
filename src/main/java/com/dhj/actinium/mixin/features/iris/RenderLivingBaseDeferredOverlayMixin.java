@@ -41,7 +41,7 @@ public abstract class RenderLivingBaseDeferredOverlayMixin implements RenderLivi
         float headPitch,
         float scale
     ) {
-        return !DeferredEntityOverlay.maybeDefer(this, layer, entity,
+        return !DeferredEntityOverlay.handleLayer(this, layer, entity,
             limbSwing, limbSwingAmount, partialTicks, ageInTicks, netHeadYaw, headPitch, scale,
             ((AccessorRenderOutlines) this).actinium$isRenderOutlines());
     }

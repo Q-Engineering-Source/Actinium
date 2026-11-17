@@ -9,6 +9,7 @@ import com.gtnewhorizons.angelica.glsm.states.AlphaState;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredAlphaHandler;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredDepthColorHandler;
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMConfig;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import org.lwjgl.opengl.GL11;
 
@@ -41,6 +42,11 @@ public final class GLSMDepthStencilAlpha {
     }
 
     public static void glDepthMask(boolean mask) {
+        // The deferred entity overlay replay keeps depth writes off for every caller, including a
+        // layer that asks for them itself or a mod subclass that overrides the layer.
+        if (mask && GLSMConfig.forceDepthMaskOff) {
+            mask = false;
+        }
         ctx().exitCapture.writeDepthColor(ExitStateCapture.DEPTH_MASK);
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {

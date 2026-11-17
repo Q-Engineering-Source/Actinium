@@ -10,6 +10,7 @@ import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
 import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.profiling.Tracy;
+import com.gtnewhorizons.angelica.rendering.DeferredEntityOverlay;
 import com.gtnewhorizons.angelica.rendering.tesr.EntityRenderCommands.DrawInputs;
 import com.gtnewhorizons.angelica.rendering.tesr.RetainedTesrGroups.InstanceColumns;
 import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
@@ -274,6 +275,16 @@ public final class EntityShadowReplay {
         inputs.inheritedOffsetValues = (offsetWrites & ExitState.POLYGON_OFFSET_VALUES_WRITTEN) == 0;
         inputs.inheritedLighting = !GLStateManager.isExitLightingWritten();
         return true;
+    }
+
+    /**
+     * Records an overlay layer the shadow pass drew inline, so the main view can queue it for the
+     * deferred flush when the entity's draws replay instead of running the renderer again.
+     */
+    public static void recordDeferredOverlay(DeferredEntityOverlay.DeferredEntry overlay) {
+        if (isRecording()) {
+            commands.overlay(overlay);
+        }
     }
 
     static boolean isRecording() {

@@ -24,6 +24,13 @@ public final class GLSMConfig {
         return packBrightness(glCtx.lastBrightnessX, glCtx.lastBrightnessY);
     }
 
+    /**
+     * Forces every depth write off. The deferred entity overlay replay sets it for the duration of
+     * one replayed layer, so the layer and any subclass it calls cannot turn depth writes back on;
+     * a layer that issues {@code depthMask(true)} itself would otherwise defeat the replay.
+     */
+    public static boolean forceDepthMaskOff;
+
     /** Whether recorded vertex formats are expected to carry the extended attributes. */
     public static boolean extendedAttribsExpected;
 

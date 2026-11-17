@@ -9,6 +9,8 @@ import com.gtnewhorizons.angelica.glsm.GLSMEnable;
 import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.StateSet;
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMConfig;
+import com.gtnewhorizons.angelica.rendering.tesr.EntityShadowReplay;
 import net.coderbot.iris.layer.GbufferPrograms;
 import net.coderbot.iris.layer.PassOverride;
 import net.coderbot.iris.uniforms.CapturedRenderingState;
@@ -21,6 +23,8 @@ import net.minecraft.client.renderer.entity.layers.LayerWitherAura;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.boss.EntityWither;
 import net.minecraft.entity.monster.EntityCreeper;
+import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 
@@ -36,13 +40,22 @@ import java.util.List;
  * <p>1.12.2 replaced the 1.7.10 {@code renderPassModel} / {@code shouldRenderPass} pair with
  * {@link LayerRenderer} instances that {@code RenderLivingBase.renderLayers} visits one by one.
  * Deferral therefore skips a single iteration of that loop and records the real
- * {@link RenderLivingBase} and the real {@link LayerRenderer} instance, then re-invokes
- * {@code layer.doRenderLayer} on the same instances during the flush. Mod subclasses, mod layers
- * and the armor layer's four-slot walk keep running their own code; no model is substituted.</p>
+ * {@link RenderLivingBaseOverlayAccess} renderer and the real {@link LayerRenderer} instance, then
+ * re-invokes {@code layer.doRenderLayer} on the same instances during the flush. Mod subclasses, mod
+ * layers and the armor layer's four-slot walk keep running their own code; no model is
+ * substituted.</p>
+ *
+ * <p>Two capture points feed the same flush. The main view captures the layer where it would have
+ * run and skips it there. The shadow pass draws the layer inline, because the shadow map only stores
+ * depth and a replay with depth writes off would drop the aura's shadow, and records the same layer
+ * so the main pass can queue it: when the shadow pass recorded the entity, the main view does not run
+ * the renderer at all, so nothing else would queue the overlay. A recorded overlay is therefore drawn
+ * exactly once per view.</p>
  *
  * <p>Replay runs outside {@code renderLayers}, so it never re-enters the entity's main model or the
- * other layers. The state a layer reads back from the renderer, its brightness texenv and the
- * gbuffer pass are captured with the entry and restored around the replay call.</p>
+ * other layers. The state a layer reads back from the renderer, its brightness texture environment,
+ * the current colour and the gbuffer pass are captured with the entry and restored around the replay
+ * call.</p>
  */
 public final class DeferredEntityOverlay {
 
@@ -59,6 +72,7 @@ public final class DeferredEntityOverlay {
     private static final List<DeferredEntry> pool = new ArrayList<>(INITIAL_CAPACITY);
 
     private static final FloatBuffer MATRIX_BUF = BufferUtils.createFloatBuffer(16);
+    private static final Matrix4f REPLAY_MATRIX = new Matrix4f();
 
     private static boolean replaying;
 
@@ -75,26 +89,224 @@ public final class DeferredEntityOverlay {
         LAYERS.add(new LayerRule(layerType, predicate));
     }
 
-    /**
-     * Whether the given layer type is registered.
-     *
-     * <p>Separate from {@link #canDefer} so the registry can be inspected without a live entity,
-     * which 1.12.2 only produces once the game has bootstrapped.</p>
-     */
+    /** Whether the given layer type is registered, so its layers may be deferred. */
     public static boolean isRegistered(Class<?> layerType) {
         return ruleFor(layerType) != null;
     }
 
     /**
-     * Whether the given layer of the given entity has to be deferred now.
+     * Whether the given layer has to be deferred to the flush.
      *
-     * <p>The shadow pass only carries depth, so a replay with depth writes off would drop the
-     * aura's shadow entirely; the outline pass renders into its own framebuffer. Both keep the
-     * layer inline. Layers that are not registered keep vanilla's inline path.</p>
+     * <p>The shadow pass and the outline pass keep the layer inline; layers that are not registered,
+     * and entities the registered predicate rejects, take vanilla's inline path.</p>
      */
     public static boolean canDefer(LayerRenderer<?> layer, EntityLivingBase entity, boolean outlineActive) {
         if (replaying || outlineActive) return false;
         if (ShadowRenderingState.areShadowsCurrentlyBeingRendered()) return false;
+        return matches(layer, entity);
+    }
+
+    /**
+     * Handles one layer call made by {@code renderLayers}.
+     *
+     * @return whether the caller has to skip the layer now; {@code false} means it runs inline
+     */
+    public static boolean handleLayer(RenderLivingBaseOverlayAccess renderer, LayerRenderer<?> layer,
+                                      EntityLivingBase entity, float limbSwing, float limbSwingAmount,
+                                      float partialTicks, float ageInTicks, float netHeadYaw, float headPitch,
+                                      float scale, boolean outlineActive) {
+        if (replaying || outlineActive || !matches(layer, entity)) return false;
+
+        if (ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
+            // The shadow map needs the layer drawn inline, but the main view will not run the renderer
+            // when the entity's draws replay, so the layer is recorded here to be queued there instead.
+            final DeferredEntry recorded = captureShadowOverlay(renderer, layer, entity, limbSwing, limbSwingAmount,
+                partialTicks, ageInTicks, netHeadYaw, headPitch, scale);
+            EntityShadowReplay.recordDeferredOverlay(recorded);
+            recycle(recorded);
+            return false;
+        }
+
+        final DeferredEntry entry = capture(renderer, layer, entity, limbSwing, limbSwingAmount, partialTicks,
+            ageInTicks, netHeadYaw, headPitch, scale);
+        entry.pass = PassOverride.capture();
+        deferred.add(entry);
+        return true;
+    }
+
+    /**
+     * Captures one eligible layer for the shadow-pass record.
+     *
+     * <p>The caller has already established that the layer is deferred and that the shadow pass is
+     * drawing it inline; the record outlives this entry, which the caller recycles right after
+     * {@code EntityShadowReplay} copied it.</p>
+     */
+    public static DeferredEntry captureShadowOverlay(RenderLivingBaseOverlayAccess renderer, LayerRenderer<?> layer,
+                                                     EntityLivingBase entity, float limbSwing, float limbSwingAmount,
+                                                     float partialTicks, float ageInTicks, float netHeadYaw,
+                                                     float headPitch, float scale) {
+        return capture(renderer, layer, entity, limbSwing, limbSwingAmount, partialTicks, ageInTicks, netHeadYaw,
+            headPitch, scale);
+    }
+
+    /**
+     * Queues an overlay recorded in the shadow pass for the main-view flush.
+     *
+     * <p>The recorded matrix is the shadow view's, so it is composed with the transform that maps
+     * the shadow view onto the main view. The gbuffer pass is taken from the main view at queue
+     * time, which is where the layer would have run had the entity not been replayed.</p>
+     */
+    public static void queueReplay(DeferredEntry recorded, Matrix4fc mainFromShadow) {
+        final DeferredEntry entry = acquire();
+        entry.copyFrom(recorded);
+        REPLAY_MATRIX.set(recorded.matrix).mulLocal(mainFromShadow).get(entry.matrix);
+        entry.pass = PassOverride.capture();
+        deferred.add(entry);
+    }
+
+    /** Whether a replay is in progress. Layers must not defer their own replay. */
+    public static boolean isReplaying() {
+        return replaying;
+    }
+
+    /**
+     * Drops every entry captured so far. Called at the start of Forge render pass 0, so an entry
+     * from an aborted frame cannot reach the next one.
+     */
+    public static void clear() {
+        recycle();
+        replaying = false;
+    }
+
+    /** Replays every captured layer. Called once per render pass, before that pass's block entities. */
+    public static void renderAll() {
+        if (deferred.isEmpty()) return;
+
+        final int count = deferred.size();
+        try {
+            for (int i = 0; i < count; i++) {
+                replay(deferred.get(i));
+            }
+        } finally {
+            recycle();
+        }
+    }
+
+    static void replay(DeferredEntry entry) {
+        final EntityLivingBase entity = entry.entity;
+        final RenderLivingBaseOverlayAccess access = entry.renderer;
+        final ModelBase mainModel = access.actinium$mainModel();
+
+        // StateSet.BATCH does not carry the current colour, and the layers recolour themselves
+        // without restoring it, so the colour is saved and put back explicitly.
+        final float colorRed = GLSMCurrentAttribs.getColor().getRed();
+        final float colorGreen = GLSMCurrentAttribs.getColor().getGreen();
+        final float colorBlue = GLSMCurrentAttribs.getColor().getBlue();
+        final float colorAlpha = GLSMCurrentAttribs.getColor().getAlpha();
+        final float savedSwingProgress = mainModel.swingProgress;
+        final boolean savedIsRiding = mainModel.isRiding;
+        final boolean savedIsChild = mainModel.isChild;
+
+        GLSMMatrices.glMatrixMode(GL11.GL_MODELVIEW);
+        GLSMMatrices.glPushMatrix();
+
+        boolean statePushed = false;
+        int stateDepth = 0;
+        boolean passApplied = false;
+        boolean brightnessSet = false;
+        boolean entityPushed = false;
+        Throwable failure = null;
+        replaying = true;
+        GLSMConfig.forceDepthMaskOff = true;
+        try {
+            // Still inside the try whose finally pops the matrix: a failing pushState must not leave
+            // the matrix pushed.
+            stateDepth = GLSMAttribStack.pushState(StateSet.BATCH);
+            statePushed = true;
+
+            MATRIX_BUF.clear();
+            MATRIX_BUF.put(entry.matrix);
+            MATRIX_BUF.flip();
+            GLSMMatrices.glLoadMatrix(MATRIX_BUF);
+            GLSMCurrentAttribs.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, entry.lightmapX, entry.lightmapY);
+
+            entry.pass.apply();
+            passApplied = true;
+            CapturedRenderingState.INSTANCE.pushCurrentEntityAndItem();
+            entityPushed = true;
+            CapturedRenderingState.INSTANCE.setCurrentEntity(EntityIdHelper.getEntityId(entity));
+
+            final GbufferPrograms.EntityPhase phase = GbufferPrograms.enterEntityPhase();
+            try {
+                mainModel.swingProgress = entry.swingProgress;
+                mainModel.isRiding = entry.isRiding;
+                mainModel.isChild = entry.isChild;
+
+                brightnessSet = access.actinium$setBrightness(entity, entry.partialTicks, entry.combineTextures);
+                GLSMEnable.glDisable(GL11.GL_CULL_FACE);
+                GLSMDepthStencilAlpha.glDepthMask(false);
+                invokeLayer(entry.layer, entity, entry);
+            } finally {
+                if (brightnessSet) failure = run(failure, () -> access.actinium$unsetBrightness());
+                failure = run(failure, phase::close);
+                if (entityPushed) failure = run(failure, () -> CapturedRenderingState.INSTANCE.popCurrentEntityAndItem());
+            }
+        } catch (Throwable bodyFailure) {
+            failure = RenderFailures.suppress(failure, bodyFailure);
+        } finally {
+            if (passApplied) failure = run(failure, entry.pass::clear);
+            replaying = false;
+            // The depth lock has to be off before the write state is restored, otherwise the restore
+            // would be forced back to false as well.
+            GLSMConfig.forceDepthMaskOff = false;
+            failure = run(failure, DeferredEntityOverlay::restoreDrawState);
+            failure = run(failure, () -> restoreColor(colorRed, colorGreen, colorBlue, colorAlpha));
+            failure = run(failure, () -> restoreModel(mainModel, savedSwingProgress, savedIsRiding, savedIsChild));
+            if (statePushed) {
+                final int depth = stateDepth;
+                failure = run(failure, () -> GLSMAttribStack.popStateTo(depth));
+            }
+            failure = run(failure, GLSMMatrices::glPopMatrix);
+            RenderFailures.rethrowWrapped(failure);
+        }
+    }
+
+    private static void restoreDrawState() {
+        GLSMDepthStencilAlpha.glDepthMask(true);
+        GLSMEnable.glEnable(GL11.GL_CULL_FACE);
+    }
+
+    private static void restoreColor(float red, float green, float blue, float alpha) {
+        GLSMCurrentAttribs.glColor4f(red, green, blue, alpha);
+    }
+
+    private static void restoreModel(ModelBase model, float swingProgress, boolean isRiding, boolean isChild) {
+        model.swingProgress = swingProgress;
+        model.isRiding = isRiding;
+        model.isChild = isChild;
+    }
+
+    /** Runs one cleanup step, keeping the first failure and attaching later ones to it. */
+    private static Throwable run(Throwable failure, Runnable step) {
+        try {
+            step.run();
+        } catch (Throwable cleanupFailure) {
+            return RenderFailures.suppress(failure, cleanupFailure);
+        }
+        return failure;
+    }
+
+    /**
+     * Re-invokes the recorded layer. {@link LayerRenderer} is typed per entity, and the entry holds
+     * the layer and the entity it was captured with, so the cast is the one that pairing guarantees.
+     */
+    @SuppressWarnings("unchecked")
+    private static void invokeLayer(LayerRenderer<?> layer, EntityLivingBase entity, DeferredEntry entry) {
+        ((LayerRenderer<EntityLivingBase>) layer).doRenderLayer(entity, entry.limbSwing, entry.limbSwingAmount,
+            entry.partialTicks, entry.ageInTicks, entry.netHeadYaw, entry.headPitch, entry.scale);
+    }
+
+    private static boolean matches(LayerRenderer<?> layer, EntityLivingBase entity) {
         final LayerRule rule = ruleFor(layer.getClass());
         return rule != null && rule.predicate.shouldDefer(entity);
     }
@@ -109,15 +321,10 @@ public final class DeferredEntityOverlay {
         return null;
     }
 
-    /**
-     * Captures the layer for the flush. Returns {@code true} when the caller must skip the layer
-     * now, in which case the entry holds everything the replay needs.
-     */
-    public static boolean maybeDefer(RenderLivingBaseOverlayAccess renderer, LayerRenderer<?> layer, EntityLivingBase entity,
-                                     float limbSwing, float limbSwingAmount, float partialTicks, float ageInTicks,
-                                     float netHeadYaw, float headPitch, float scale, boolean outlineActive) {
-        if (!canDefer(layer, entity, outlineActive)) return false;
-
+    private static DeferredEntry capture(RenderLivingBaseOverlayAccess renderer, LayerRenderer<?> layer,
+                                         EntityLivingBase entity, float limbSwing, float limbSwingAmount,
+                                         float partialTicks, float ageInTicks, float netHeadYaw, float headPitch,
+                                         float scale) {
         final ModelBase mainModel = renderer.actinium$mainModel();
         final DeferredEntry entry = acquire();
         entry.renderer = renderer;
@@ -136,97 +343,8 @@ public final class DeferredEntityOverlay {
         entry.isChild = mainModel.isChild;
         entry.lightmapX = GLStateManager.getLastBrightnessX();
         entry.lightmapY = GLStateManager.getLastBrightnessY();
-        entry.pass = PassOverride.capture();
         GLSMMatrices.getModelViewMatrix().get(entry.matrix);
-        deferred.add(entry);
-        return true;
-    }
-
-    /** Whether a replay is in progress. Layers must not defer their own replay. */
-    public static boolean isReplaying() {
-        return replaying;
-    }
-
-    /** Drops every captured entry without drawing it. */
-    public static void clear() {
-        recycle();
-        replaying = false;
-    }
-
-    /** Replays every captured layer. */
-    public static void renderAll() {
-        if (deferred.isEmpty()) return;
-
-        final int count = deferred.size();
-        try {
-            for (int i = 0; i < count; i++) {
-                replay(deferred.get(i));
-            }
-        } finally {
-            recycle();
-        }
-    }
-
-    static void replay(DeferredEntry entry) {
-        final EntityLivingBase entity = entry.entity;
-        final RenderLivingBaseOverlayAccess access = entry.renderer;
-
-        GLSMMatrices.glMatrixMode(GL11.GL_MODELVIEW);
-        GLSMMatrices.glPushMatrix();
-        final int state = GLSMAttribStack.pushState(StateSet.BATCH);
-        boolean brightnessSet = false;
-        boolean phaseEntered = false;
-        boolean entityPushed = false;
-        replaying = true;
-        try {
-            MATRIX_BUF.clear();
-            MATRIX_BUF.put(entry.matrix);
-            MATRIX_BUF.flip();
-            GLSMMatrices.glLoadMatrix(MATRIX_BUF);
-            GLSMCurrentAttribs.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, entry.lightmapX, entry.lightmapY);
-
-            entry.pass.apply();
-            CapturedRenderingState.INSTANCE.pushCurrentEntityAndItem();
-            entityPushed = true;
-            if (entity != null) {
-                CapturedRenderingState.INSTANCE.setCurrentEntity(EntityIdHelper.getEntityId(entity));
-            }
-
-            final GbufferPrograms.EntityPhase phase = GbufferPrograms.enterEntityPhase();
-            phaseEntered = true;
-            try {
-                final ModelBase mainModel = access.actinium$mainModel();
-                mainModel.swingProgress = entry.swingProgress;
-                mainModel.isRiding = entry.isRiding;
-                mainModel.isChild = entry.isChild;
-
-                brightnessSet = access.actinium$setBrightness(entity, entry.partialTicks, entry.combineTextures);
-                GLSMEnable.glDisable(GL11.GL_CULL_FACE);
-                GLSMDepthStencilAlpha.glDepthMask(false);
-                invokeLayer(entry.layer, entity, entry);
-            } finally {
-                if (brightnessSet) access.actinium$unsetBrightness();
-                if (phaseEntered) phase.close();
-                if (entityPushed) CapturedRenderingState.INSTANCE.popCurrentEntityAndItem();
-            }
-        } finally {
-            replaying = false;
-            entry.pass.clear();
-            GLSMDepthStencilAlpha.glDepthMask(true);
-            GLSMEnable.glEnable(GL11.GL_CULL_FACE);
-            GLSMAttribStack.popStateTo(state);
-            GLSMMatrices.glPopMatrix();
-        }
-    }
-
-    /**
-     * Re-invokes the recorded layer. {@link LayerRenderer} is typed per entity, and the entry holds
-     * the layer and the entity it was captured with, so the cast is the one that pairing guarantees.
-     */
-    @SuppressWarnings("unchecked")
-    private static void invokeLayer(LayerRenderer<?> layer, EntityLivingBase entity, DeferredEntry entry) {
-        ((LayerRenderer<EntityLivingBase>) layer).doRenderLayer(entity, entry.limbSwing, entry.limbSwingAmount,
-            entry.partialTicks, entry.ageInTicks, entry.netHeadYaw, entry.headPitch, entry.scale);
+        return entry;
     }
 
     private static DeferredEntry acquire() {
@@ -237,10 +355,14 @@ public final class DeferredEntityOverlay {
         return new DeferredEntry();
     }
 
+    private static void recycle(DeferredEntry entry) {
+        entry.clear();
+        pool.add(entry);
+    }
+
     private static void recycle() {
         for (int i = 0, n = deferred.size(); i < n; i++) {
-            deferred.get(i).clear();
-            pool.add(deferred.get(i));
+            recycle(deferred.get(i));
         }
         deferred.clear();
     }
@@ -256,7 +378,7 @@ public final class DeferredEntityOverlay {
     }
 
     /** One captured layer call: the real renderer, the real layer, the entity and its anim state. */
-    static final class DeferredEntry {
+    public static final class DeferredEntry {
         final float[] matrix = new float[16];
         RenderLivingBaseOverlayAccess renderer;
         LayerRenderer<?> layer;
@@ -276,7 +398,30 @@ public final class DeferredEntityOverlay {
         float lightmapX;
         float lightmapY;
 
-        void clear() {
+        /** Copies every field, including the matrix, so a record can outlive the capture it came from. */
+        public void copyFrom(DeferredEntry source) {
+            renderer = source.renderer;
+            layer = source.layer;
+            entity = source.entity;
+            pass = source.pass;
+            limbSwing = source.limbSwing;
+            limbSwingAmount = source.limbSwingAmount;
+            partialTicks = source.partialTicks;
+            ageInTicks = source.ageInTicks;
+            netHeadYaw = source.netHeadYaw;
+            headPitch = source.headPitch;
+            scale = source.scale;
+            combineTextures = source.combineTextures;
+            swingProgress = source.swingProgress;
+            isRiding = source.isRiding;
+            isChild = source.isChild;
+            lightmapX = source.lightmapX;
+            lightmapY = source.lightmapY;
+            System.arraycopy(source.matrix, 0, matrix, 0, matrix.length);
+        }
+
+        /** Drops the fields so a pooled entry cannot keep a renderer, layer or entity alive. */
+        public void clear() {
             renderer = null;
             layer = null;
             entity = null;
