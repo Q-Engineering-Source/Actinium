@@ -15,17 +15,19 @@ public final class TileEntityLight {
     /**
      * Computes the packed light of a tile entity whose block renders with neighbour brightness.
      *
-     * <p>The sky and block light are sampled from the world again and the result replaces the value
-     * the tile entity dispatcher passed in. Celeritas Dynamic Lights merges its level into the
-     * dispatcher's combined light, and the recomputed value carries none of it, so the level is
-     * merged into the recomputed packed light as well. Blocks that do not use neighbour brightness
-     * keep the caller's value.</p>
+     * <p>Celeritas Dynamic Lights merges its level into the combined light of the tile entity
+     * dispatcher. This method either returns the caller's value for a block that does not use
+     * neighbour brightness or replaces it with the sky and block light sampled from the world, so
+     * the level is merged into the value it returns on both paths. Blocks that do not use neighbour
+     * brightness keep the caller's light apart from that merge.</p>
      */
     public static int packedLight(World world, int x, int y, int z, int vanillaLight) {
         final BlockPos pos = new BlockPos(x, y, z);
         final IBlockState state = world.getBlockState(pos);
         final Block block = state.getBlock();
-        if (!block.getUseNeighborBrightness(state) || block.getLightOpacity(state) != 0) return vanillaLight;
+        if (!block.getUseNeighborBrightness(state) || block.getLightOpacity(state) != 0) {
+            return CeleritasDynamicLightsCompat.mergeDynamicLight(pos, vanillaLight);
+        }
         final int sky = world.provider.hasSkyLight() ? world.getLightFor(EnumSkyBlock.SKY, pos) : 0;
         final int blockLight = Math.max(world.getLightFor(EnumSkyBlock.BLOCK, pos), state.getLightValue());
         return CeleritasDynamicLightsCompat.mergeDynamicLight(pos, sky << 20 | blockLight << 4);

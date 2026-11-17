@@ -1,5 +1,6 @@
 package com.dhj.actinium.mixin.features.tesr;
 
+import com.dhj.actinium.compat.celeritasdynamiclights.CeleritasDynamicLightsCompat;
 import com.gtnewhorizons.angelica.rendering.tesr.TesrLightCache;
 import com.gtnewhorizons.angelica.rendering.tesr.TileEntityLight;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
@@ -23,6 +24,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * cached per position for one tick. Under a shader pack the packed value is then post-processed by
  * {@link TileEntityLight}, which reproduces the modern neighbour-brightness behaviour the fixed
  * function pipeline never had.</p>
+ *
+ * <p>Both branches return a value this injection produced, so the dynamic light level Celeritas
+ * Dynamic Lights merges into the dispatcher's combined light is merged into that value as well: the
+ * cached value is merged here, and {@link TileEntityLight} merges its early return and its
+ * neighbour-brightness branch. The merge keeps the larger block light and is therefore idempotent
+ * when the cached value already carries the level.</p>
  */
 @Mixin(TileEntityRendererDispatcher.class)
 public abstract class MixinTileEntityRendererDispatcherTesrLight {
@@ -38,7 +45,7 @@ public abstract class MixinTileEntityRendererDispatcherTesrLight {
         if (te == null) return vanillaLight;
         final BlockPos pos = te.getPos();
         final int cached = TesrLightCache.getLightBrightnessForSkyBlocks(this.world, pos.getX(), pos.getY(), pos.getZ(), 0);
-        if (!IrisApi.getInstance().isShaderPackInUse()) return cached;
+        if (!IrisApi.getInstance().isShaderPackInUse()) return CeleritasDynamicLightsCompat.mergeDynamicLight(pos, cached);
         return TileEntityLight.packedLight(this.world, pos.getX(), pos.getY(), pos.getZ(), cached);
     }
 
