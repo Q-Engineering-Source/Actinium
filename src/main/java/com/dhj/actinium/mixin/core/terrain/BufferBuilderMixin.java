@@ -73,13 +73,14 @@ public abstract class BufferBuilderMixin implements BufferBuilderExtension, Proj
     private long actinium$bufferAddress;
 
     @Unique
-    private final List<VanillaQuadContext> actinium$quadContexts = new ArrayList<>();
+    private List<VanillaQuadContext> actinium$quadContexts;
 
     @Unique
     private @Nullable VanillaQuadContext actinium$activeQuadContext;
 
     @Inject(method = "<init>", at = @At("TAIL"))
     private void actinium$init(int bufferSizeIn, CallbackInfo ci) {
+        this.actinium$quadContexts = new ArrayList<>();
         this.actinium$refreshBufferAddress();
     }
 
