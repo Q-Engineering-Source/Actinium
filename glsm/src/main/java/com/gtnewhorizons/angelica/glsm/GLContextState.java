@@ -129,6 +129,13 @@ public class GLContextState {
     public final int[] savedColorGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
     public final int[] savedNormalGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
     public final int[] savedTexCoordGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
+    /**
+     * Counts state changes the batched TESR path has to flush for. An attrib scope records it on
+     * push and compares it on pop, so a scope that changed uncaptured state flushes the batch that
+     * spans it.
+     */
+    public int batchStateGeneration;
+    public final int[] savedBatchStateGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
     public final ShaderManager ffp = new ShaderManager();
     public final Vec3fStack normalStack = member(ffp.normalStack);
     public final Vec4fStack texCoordStack = member(ffp.texCoordStack);

@@ -6,6 +6,7 @@ import com.gtnewhorizon.gtnhlib.client.renderer.stacks.IStateStack;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFlags;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormatElement.Usage;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
+import com.gtnewhorizons.angelica.glsm.hooks.BatchStateGuard;
 import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
 import com.gtnewhorizons.angelica.glsm.backend.GLDebugMessageListener;
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
@@ -208,6 +209,44 @@ public class GLStateManager {
     static void recordExitTextureBind(GLContextState glCtx, int target, int unit) {
         if (target == GL11.GL_TEXTURE_2D && unit == 0) glCtx.exitCapture.write(ExitStateCapture.TEXTURE_BINDING);
         else glCtx.exitCapture.reject();
+    }
+
+    /**
+     * Called before a state change the batched TESR path cannot replay per draw, so a batch that is
+     * still open has to be flushed first.
+     *
+     * <p>State the batch does capture (blend function, depth test, alpha test, texture binding on
+     * unit 0, modelview) needs no guard; everything else does, otherwise the queued vertices would
+     * be drawn under state that belongs to the next draw.</p>
+     */
+    public static void beforeUncapturedStateChange() {
+        rejectExitCapture();
+        if (BatchStateGuard.isSuspended()) return;
+        if (DisplayListManager.getRecordMode() == RecordMode.COMPILE) return;
+        BatchStateGuard.beforeChange();
+        ctx().batchStateGeneration++;
+    }
+
+    /**
+     * Guard for capability toggles the batch does not record per draw: fog, scissor, stencil,
+     * colour logic, colour sum, rasterizer discard, multisampling and clip planes.
+     */
+    public static void beforeUncapturedCapabilityChange(int cap) {
+        if (cap == GL11.GL_FOG || cap == GL11.GL_SCISSOR_TEST || cap == GL11.GL_STENCIL_TEST
+            || cap == GL11.GL_COLOR_LOGIC_OP || cap == GL14.GL_COLOR_SUM || cap == GL30.GL_RASTERIZER_DISCARD
+            || cap == GL13.GL_SAMPLE_ALPHA_TO_COVERAGE || cap == GL13.GL_SAMPLE_ALPHA_TO_ONE || cap == GL13.GL_SAMPLE_COVERAGE
+            || (cap >= GL11.GL_CLIP_PLANE0 && cap < GL11.GL_CLIP_PLANE0 + MAX_CLIP_PLANES)) {
+            beforeUncapturedStateChange();
+        }
+    }
+
+    /**
+     * Guard for per-texture-unit capabilities. Enabling {@code GL_TEXTURE_2D} on units 0 and 1 is
+     * part of the captured draw state, everything else is not.
+     */
+    public static void beforeUncapturedTextureUnitChange(int cap, int unit) {
+        if (cap == GL11.GL_TEXTURE_2D && unit <= 1) return;
+        beforeUncapturedStateChange();
     }
 
     public static final Logger LOGGER = LogManager.getLogger("GLSM");
@@ -1073,8 +1112,13 @@ public class GLStateManager {
         if (foreignDrawDepth <= 0) {
             throw new IllegalStateException("Foreign draw scope underflow");
         }
-        if (--foreignDrawDepth == 0 && GLSMHooks.FOREIGN_DRAW_END.hasListeners()) {
-            GLSMHooks.FOREIGN_DRAW_END.post(GLSMHooks.foreignDrawEndEvent);
+        if (--foreignDrawDepth == 0) {
+            // A pass change requested while the foreign renderer owned the program runs now, before
+            // the next batch decides which program it draws with.
+            GLSMHooks.resolvePendingProgram();
+            if (GLSMHooks.FOREIGN_DRAW_END.hasListeners()) {
+                GLSMHooks.FOREIGN_DRAW_END.post(GLSMHooks.foreignDrawEndEvent);
+            }
         }
     }
 
@@ -1234,6 +1278,9 @@ public class GLStateManager {
     static void changeSecondaryColor(float red, float green, float blue) {
         final GLContextState glCtx = ctx();
         if (!isCachingEnabled() || red != glCtx.secondaryColor.getRed() || green != glCtx.secondaryColor.getGreen() || blue != glCtx.secondaryColor.getBlue()) {
+            // The secondary colour reaches the fragment only through colour sum, which the batch
+            // does not record per draw.
+            if (glCtx.colorSumState.isEnabled()) beforeUncapturedStateChange();
             mod(glCtx.secondaryColor);
             glCtx.secondaryColor.setRed(red);
             glCtx.secondaryColor.setGreen(green);
@@ -2184,6 +2231,7 @@ public class GLStateManager {
         }
         final int depth = glCtx.attribDepth;
         glCtx.attribSets[depth] = set;
+        glCtx.savedBatchStateGen[depth] = glCtx.batchStateGeneration;
         snapshotGenerations(glCtx, set.bump);
         glCtx.modifiedCount[depth] = 0;
 
@@ -2231,6 +2279,9 @@ public class GLStateManager {
         final GLContextState glCtx = ctx();
         if (glCtx.attribDepth <= 0) {
             throw new IllegalStateException("Attrib stack underflow");
+        }
+        if (glCtx.attribDepth > 0 && glCtx.savedBatchStateGen[glCtx.attribDepth - 1] != glCtx.batchStateGeneration) {
+            beforeUncapturedStateChange();
         }
         final int poppedDepth = glCtx.attribDepth;
         final StateSet set = glCtx.attribSets[poppedDepth - 1];
@@ -2335,6 +2386,8 @@ public class GLStateManager {
             public static void applyRetainedState(RetainedState in) { GLSMAttribStack.applyRetainedState(in); }
 
     static void applyRetainedChanges(GLContextState glCtx, RetainedState in, int first) {
+        // Replaying a retained snapshot changes state the batch did not record per draw.
+        beforeUncapturedStateChange();
         final boolean blendSnapshotted = snapshotVanillaBlendFunc();
         final int blendSrcRgbBeforeRestore = glCtx.blendState.getSrcRgb();
         final int blendDstRgbBeforeRestore = glCtx.blendState.getDstRgb();
@@ -3831,6 +3884,7 @@ public class GLStateManager {
      * GL_TEXTURE_ENV parameters including GL_COMBINE sub-params are tracked in per-unit TexEnvState.
      */
     static void handleTexEnvScalar(int target, int pname, float param) {
+        beforeUncapturedStateChange();
         if (target == GL14.GL_TEXTURE_FILTER_CONTROL) {
             // LOD bias via legacy glTexEnv path — remap to core-profile glTexParameterf
             glTexParameterf(GL11.GL_TEXTURE_2D, GL14.GL_TEXTURE_LOD_BIAS, param);

@@ -20,6 +20,7 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.BYPASS_CACHE;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.beforeUncapturedStateChange;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.MAX_CLIP_PLANES;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
@@ -86,6 +87,7 @@ public final class GLSMRasterizer {
                 return;
             }
         }
+        beforeUncapturedStateChange();
         RENDER_BACKEND.viewport(x, y, width, height);
         if (isCachingEnabled()) {
             mod(ctx().viewportState).setViewPort(x, y, width, height);
@@ -228,6 +230,7 @@ public final class GLSMRasterizer {
             }
         }
         if (needsUpdate) {
+            beforeUncapturedStateChange();
             RENDER_BACKEND.polygonMode(GL11.GL_FRONT_AND_BACK, polygonMode);
         }
     }
@@ -259,6 +262,7 @@ public final class GLSMRasterizer {
                 return;
             }
         }
+        beforeUncapturedStateChange();
         RENDER_BACKEND.scissor(x, y, width, height);
         if (isCachingEnabled()) {
             mod(ctx().scissorState).setScissor(x, y, width, height);
@@ -275,6 +279,7 @@ public final class GLSMRasterizer {
         final int index = plane - GL11.GL_CLIP_PLANE0;
         if (index < 0 || index >= MAX_CLIP_PLANES) return;
         final int pos = equation.position();
+        beforeUncapturedStateChange();
         ctx().clipPlaneState.setPlane(index, equation.get(pos), equation.get(pos + 1), equation.get(pos + 2), equation.get(pos + 3), ctx().modelViewMatrix);
         ctx().clipPlaneGeneration++;
     }
@@ -366,6 +371,7 @@ public final class GLSMRasterizer {
             if (DisplayListManager.isRecording()) {
                 throw new UnsupportedOperationException("glSampleCoverage in display lists not yet implemented - if you see this, please report!");
             }
+            beforeUncapturedStateChange();
             RENDER_BACKEND.sampleCoverage(value, invert);
         }
 

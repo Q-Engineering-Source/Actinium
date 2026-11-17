@@ -13,6 +13,7 @@ import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import org.lwjgl.opengl.GL11;
 
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.BYPASS_CACHE;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.beforeUncapturedStateChange;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.isCachingEnabled;
@@ -112,6 +113,7 @@ public final class GLSMDepthStencilAlpha {
         }
         final boolean caching = isCachingEnabled();
         if (BYPASS_CACHE || !caching || ctx().stencilState.getFuncFront() != func || ctx().stencilState.getRefFront() != ref || ctx().stencilState.getValueMaskFront() != mask) {
+            beforeUncapturedStateChange();
             if (caching) {
                 mod(ctx().stencilState).setFunc(func, ref, mask);
             }
@@ -130,6 +132,7 @@ public final class GLSMDepthStencilAlpha {
         }
         final boolean caching = isCachingEnabled();
         if (BYPASS_CACHE || !caching || ctx().stencilState.getWriteMaskFront() != mask) {
+            beforeUncapturedStateChange();
             if (caching) {
                 mod(ctx().stencilState).setWriteMask(mask);
             }
@@ -148,6 +151,7 @@ public final class GLSMDepthStencilAlpha {
         }
         final boolean caching = isCachingEnabled();
         if (BYPASS_CACHE || !caching || ctx().stencilState.getFailOpFront() != fail || ctx().stencilState.getZFailOpFront() != zfail || ctx().stencilState.getZPassOpFront() != zpass) {
+            beforeUncapturedStateChange();
             if (caching) {
                 mod(ctx().stencilState).setOp(fail, zfail, zpass);
             }
@@ -192,6 +196,7 @@ public final class GLSMDepthStencilAlpha {
             }
         }
         if (needsUpdate) {
+            beforeUncapturedStateChange();
             if (caching) {
                 if (face == GL11.GL_FRONT || face == GL11.GL_FRONT_AND_BACK) {
                     mod(ctx().stencilState).setFuncFront(func);
@@ -227,6 +232,7 @@ public final class GLSMDepthStencilAlpha {
             }
         }
         if (needsUpdate) {
+            beforeUncapturedStateChange();
             if (caching) {
                 if (face == GL11.GL_FRONT || face == GL11.GL_FRONT_AND_BACK) {
                     mod(ctx().stencilState).setWriteMaskFront(mask);
@@ -258,6 +264,7 @@ public final class GLSMDepthStencilAlpha {
             }
         }
         if (needsUpdate) {
+            beforeUncapturedStateChange();
             if (caching) {
                 if (face == GL11.GL_FRONT || face == GL11.GL_FRONT_AND_BACK) {
                     mod(ctx().stencilState).setFailOpFront(sfail);
@@ -354,6 +361,7 @@ public final class GLSMDepthStencilAlpha {
 
     public static void glDepthRange(double near, double far) {
         rejectExitCapture();
+        if (!isCachingEnabled() || ctx().viewportState.depthRangeNear != near || ctx().viewportState.depthRangeFar != far) beforeUncapturedStateChange();
             if (isCachingEnabled()) mod(ctx().viewportState).setDepthRange(near, far);
             RENDER_BACKEND.depthRange(near, far);
         }

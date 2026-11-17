@@ -12,6 +12,7 @@ import com.gtnewhorizons.angelica.glsm.recording.ImmediateModeRecorder;
 import org.lwjgl.opengl.GL13;
 
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.changeColor;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.beforeUncapturedStateChange;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.changeSecondaryColor;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
@@ -102,6 +103,7 @@ public final class GLSMCurrentAttribs {
     }
 
     public static void glVertexAttrib4f(int index, float v0, float v1, float v2, float v3) {
+        beforeUncapturedStateChange();
         RENDER_BACKEND.vertexAttrib4f(index, v0, v1, v2, v3);
     }
 
@@ -125,6 +127,7 @@ public final class GLSMCurrentAttribs {
                 if (DisplayListManager.isRecording() || ImmediateModeRecorder.isDrawing()) {
                     ctx().unit23TexCoordSetDuringDraw = true;
                 }
+                beforeUncapturedStateChange();
                 ShaderManager.setCurrentTexCoord(unit, s, t, 0.0f, 1.0f);
             } else {
                 ctx().exitCapture.reject();

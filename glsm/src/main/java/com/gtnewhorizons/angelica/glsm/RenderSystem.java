@@ -564,11 +564,13 @@ public class RenderSystem {
 
     public static void bindTextureToUnit(int unit, int texture) {
         if (unit == 0) GLStateManager.recordExitTextureBind(GL11.GL_TEXTURE_2D, 0);
+        else if (GLSMTextures.getBoundTextureForServerState(unit) != texture) GLStateManager.beforeUncapturedStateChange();
         dsaState.bindTextureToUnit(unit, texture);
     }
 
     public static void bindTextureToUnit(int target, int unit, int texture) {
         if (unit == 0) GLStateManager.recordExitTextureBind(target, 0);
+        else if (GLSMTextures.getBoundTextureForServerState(unit) != texture) GLStateManager.beforeUncapturedStateChange();
         dsaState.bindTextureToUnit(target, unit, texture);
     }
 

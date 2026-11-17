@@ -47,6 +47,7 @@ public class BooleanState implements ISettableState<BooleanState> {
     public void setEnabled(boolean enabled) {
         final boolean bypass = GLStateManager.shouldBypassCache();
         if (stateUnknown || bypass || enabled != this.enabled || (this.glCap == GL11.GL_BLEND && GLStateManager.vendorIsAMD() && GLStateManager.isPoppingAttributes())) {
+            GLStateManager.beforeUncapturedCapabilityChange(glCap);
             stateUnknown = false;
             if (!bypass) {
                 this.enabled = enabled;
