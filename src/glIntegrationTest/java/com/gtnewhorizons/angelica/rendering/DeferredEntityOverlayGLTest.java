@@ -50,13 +50,18 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
 
     private static final float EPSILON = 0.000001F;
 
+    private static final float LIMB_SWING = 10.0F;
+    private static final float LIMB_SWING_AMOUNT = 0.5F;
+    private static final float PARTIAL_TICKS = 0.25F;
+    private static final float AGE_IN_TICKS = 20.0F;
+    private static final float NET_HEAD_YAW = 30.0F;
+    private static final float HEAD_PITCH = 40.0F;
+    private static final float SCALE = 0.0625F;
+
     /** Records what the replay did while the layer was running. */
     private static class RecordingLayer implements LayerRenderer<EntityLivingBase> {
         final List<float[]> calls = new ArrayList<>();
         final Matrix4f matrixDuringCall = new Matrix4f();
-        float swingProgressDuringCall;
-        boolean isRidingDuringCall;
-        boolean isChildDuringCall;
         boolean replayingDuringCall;
         boolean depthMaskDuringCall;
         boolean cullEnabledDuringCall;
@@ -121,9 +126,12 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
 
     /** Registered to prove a registration only catches its own type. */
     private static final class NeverLayer implements LayerRenderer<EntityLivingBase> {
+        int calls;
+
         @Override
         public void doRenderLayer(EntityLivingBase entity, float limbSwing, float limbSwingAmount, float partialTicks,
                                   float ageInTicks, float netHeadYaw, float headPitch, float scale) {
+            calls++;
         }
 
         @Override
@@ -155,6 +163,27 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
 
     private TestAccess renderer;
     private RecordingLayer layer;
+
+    /**
+     * Mirrors what the mixin does with one layer call: ask the overlay what to do, run the layer
+     * inline when it says so, and close the suppression window the shadow-pass case opened.
+     */
+    private boolean runLayer(LayerRenderer<?> target, boolean outlineActive) {
+        final DeferredEntityOverlay.LayerAction action = DeferredEntityOverlay.beginLayer(renderer, target, null,
+            LIMB_SWING, LIMB_SWING_AMOUNT, PARTIAL_TICKS, AGE_IN_TICKS, NET_HEAD_YAW, HEAD_PITCH, SCALE, outlineActive);
+        if (action == DeferredEntityOverlay.LayerAction.SKIP) {
+            return false;
+        }
+        try {
+            target.doRenderLayer(null, LIMB_SWING, LIMB_SWING_AMOUNT, PARTIAL_TICKS, AGE_IN_TICKS, NET_HEAD_YAW,
+                HEAD_PITCH, SCALE);
+        } finally {
+            if (action == DeferredEntityOverlay.LayerAction.RUN_SUPPRESSED) {
+                DeferredEntityOverlay.endLayer();
+            }
+        }
+        return true;
+    }
 
     @BeforeAll
     static void registerTestLayers() {
@@ -198,20 +227,23 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
 
     @Test
     void keepsLayersThatAreNotRegisteredInline() {
-        assertFalse(DeferredEntityOverlay.canDefer(new NeverLayer(), null, false));
-        assertFalse(DeferredEntityOverlay.handleLayer(renderer, new NeverLayer(), null,
-            11.0F, 12.0F, 13.0F, 14.0F, 15.0F, 16.0F, 0.0625F, false));
+        final NeverLayer never = new NeverLayer();
+
+        assertFalse(DeferredEntityOverlay.canDefer(never, null, false));
+        assertTrue(runLayer(never, false));
+        assertEquals(1, never.calls);
 
         DeferredEntityOverlay.renderAll();
 
-        assertEquals(0, layer.calls.size());
+        assertEquals(1, never.calls);
     }
 
     @Test
     void keepsTheLayerInlineDuringTheOutlinePass() {
         assertFalse(DeferredEntityOverlay.canDefer(layer, null, true));
-        assertFalse(DeferredEntityOverlay.handleLayer(renderer, layer, null,
-            11.0F, 12.0F, 13.0F, 14.0F, 15.0F, 16.0F, 0.0625F, true));
+        assertTrue(runLayer(layer, true));
+        assertEquals(1, layer.calls.size());
+
         assertTrue(DeferredEntityOverlay.canDefer(layer, null, false));
     }
 
@@ -221,15 +253,14 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
         try {
             assertFalse(DeferredEntityOverlay.canDefer(layer, null, false));
             // The layer still runs inline for the shadow map; recording it must not defer it as well.
-            assertFalse(DeferredEntityOverlay.handleLayer(renderer, layer, null,
-                11.0F, 12.0F, 13.0F, 14.0F, 15.0F, 16.0F, 0.0625F, false));
+            assertTrue(runLayer(layer, false));
         } finally {
             InternalShadowRenderingState.end();
         }
 
+        assertEquals(1, layer.calls.size());
         DeferredEntityOverlay.renderAll();
-
-        assertEquals(0, layer.calls.size());
+        assertEquals(1, layer.calls.size());
         assertTrue(DeferredEntityOverlay.canDefer(layer, null, false));
     }
 
@@ -242,7 +273,7 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
         GLSMCurrentAttribs.setLightmapTextureCoords(GL13.GL_TEXTURE1, 240.0F, 192.0F);
         layer.combining = true;
 
-        assertTrue(DeferredEntityOverlay.handleLayer(renderer, layer, null,
+        assertEquals(DeferredEntityOverlay.LayerAction.SKIP, DeferredEntityOverlay.beginLayer(renderer, layer, null,
             11.0F, 12.0F, 13.0F, 14.0F, 15.0F, 16.0F, 0.0625F, false));
         assertEquals(0, layer.calls.size());
 
@@ -278,8 +309,7 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
         model.isChild = true;
 
         final ModelReadingLayer modelReader = new ModelReadingLayer(model);
-        assertTrue(DeferredEntityOverlay.handleLayer(renderer, modelReader, null,
-            10.0F, 0.5F, 0.25F, 20.0F, 30.0F, 40.0F, 0.0625F, false));
+        assertFalse(runLayer(modelReader, false));
 
         // Later entities reuse the same renderer and overwrite the shared model state.
         model.swingProgress = 0.125F;
@@ -301,8 +331,7 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
         GLSMDepthStencilAlpha.glDepthMask(true);
         final DepthWritingLayer depthWriter = new DepthWritingLayer();
 
-        assertTrue(DeferredEntityOverlay.handleLayer(renderer, depthWriter, null,
-            10.0F, 0.5F, 0.25F, 20.0F, 30.0F, 40.0F, 0.0625F, false));
+        assertFalse(runLayer(depthWriter, false));
         DeferredEntityOverlay.renderAll();
 
         assertFalse(depthWriter.depthMaskDuringCall);
@@ -315,8 +344,7 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
         GLSMEnable.glEnable(GL11.GL_CULL_FACE);
         GLSMBlend.enableBlend();
 
-        assertTrue(DeferredEntityOverlay.handleLayer(renderer, layer, null,
-            10.0F, 0.5F, 0.25F, 20.0F, 30.0F, 40.0F, 0.0625F, false));
+        assertFalse(runLayer(layer, false));
         DeferredEntityOverlay.renderAll();
 
         assertFalse(layer.cullEnabledDuringCall);
@@ -338,8 +366,7 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
             }
         };
 
-        assertTrue(DeferredEntityOverlay.handleLayer(renderer, recolouring, null,
-            10.0F, 0.5F, 0.25F, 20.0F, 30.0F, 40.0F, 0.0625F, false));
+        assertFalse(runLayer(recolouring, false));
         DeferredEntityOverlay.renderAll();
 
         assertEquals(0.25F, GLSMCurrentAttribs.getColor().getRed(), EPSILON);
@@ -350,23 +377,28 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
     @Test
     void balancesThePassAndEntityStateStacks() {
         final PassOverride passBefore = PassOverride.capture();
-        CapturedRenderingState.INSTANCE.setCurrentEntity(7);
         CapturedRenderingState.INSTANCE.setCurrentEntityAndItem(7, 3);
 
-        assertTrue(DeferredEntityOverlay.handleLayer(renderer, layer, null,
-            10.0F, 0.5F, 0.25F, 20.0F, 30.0F, 40.0F, 0.0625F, false));
+        assertFalse(runLayer(layer, false));
         DeferredEntityOverlay.renderAll();
 
         assertEquals(7, CapturedRenderingState.INSTANCE.getCurrentRenderedEntity());
         assertEquals(3, CapturedRenderingState.INSTANCE.getCurrentRenderedItem());
         assertSame(passBefore, PassOverride.capture());
-        // A balanced stack accepts another round trip; an unbalanced one throws on the pop.
-        PassOverride.capture().apply();
-        PassOverride.capture().clear();
+
+        // A balanced stack accepts another round trip, and the state it restores is the captured one.
+        final PassOverride roundTrip = PassOverride.capture();
+        try {
+            roundTrip.apply();
+        } finally {
+            roundTrip.clear();
+        }
+        assertSame(passBefore, PassOverride.capture());
     }
 
     @Test
     void keepsAnEntryFromBeingCapturedAgainWhileItReplays() {
+        final DeferredEntityOverlay.LayerAction[] nested = new DeferredEntityOverlay.LayerAction[1];
         final RecordingLayer reentrant = new RecordingLayer() {
             @Override
             public void doRenderLayer(EntityLivingBase entity, float limbSwing, float limbSwingAmount,
@@ -374,17 +406,19 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
                                       float scale) {
                 super.doRenderLayer(entity, limbSwing, limbSwingAmount, partialTicks, ageInTicks, netHeadYaw,
                     headPitch, scale);
-                calls.add(new float[] {DeferredEntityOverlay.handleLayer(renderer, this, null,
-                    limbSwing, limbSwingAmount, partialTicks, ageInTicks, netHeadYaw, headPitch, scale, false)
-                    ? 1.0F : 0.0F});
+                nested[0] = DeferredEntityOverlay.beginLayer(renderer, this, null, limbSwing, limbSwingAmount,
+                    partialTicks, ageInTicks, netHeadYaw, headPitch, scale, false);
+                if (nested[0] == DeferredEntityOverlay.LayerAction.RUN_SUPPRESSED) {
+                    DeferredEntityOverlay.endLayer();
+                }
             }
         };
 
-        assertTrue(DeferredEntityOverlay.handleLayer(renderer, reentrant, null,
-            10.0F, 0.5F, 0.25F, 20.0F, 30.0F, 40.0F, 0.0625F, false));
+        assertFalse(runLayer(reentrant, false));
         DeferredEntityOverlay.renderAll();
 
-        assertEquals(2, reentrant.calls.size());
-        assertEquals(0.0F, reentrant.calls.get(1)[0], 0.0F);
+        assertEquals(1, reentrant.calls.size());
+        // The replay must keep the layer inline instead of capturing it a second time.
+        assertEquals(DeferredEntityOverlay.LayerAction.RUN, nested[0]);
     }
 }

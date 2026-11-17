@@ -46,6 +46,7 @@ final class EntityRenderCommands {
     }
 
     Model model(int recordStart, InstanceColumns source, RenderLayer layer, DrawInputs inputs, int entityId, boolean cubesInsideTexture, Matrix4fc modelView, Matrix4fc texMatrix) {
+        if (EntityShadowReplay.isOverlayOnlyRecording()) return null;
         if (source != null && size() > recordStart && size() > mergeStart && commands.get(size() - 1) instanceof Model previous) {
             if (previous.source == source && previous.sourceVersion == source.version && previous.end == source.size - 1 && previous.shadowLayer == layer && previous.inputs.matches(inputs) && previous.entityId == entityId
                 && previous.cubesInsideTexture == cubesInsideTexture && previous.glint == null && (texMatrix == null ? !previous.hasTextureMatrix : previous.hasTextureMatrix && previous.textureMatrix.equals(texMatrix))) {
@@ -73,6 +74,7 @@ final class EntityRenderCommands {
     }
 
     ModelGlint modelGlint(int start, int end, DrawInputs inputs) {
+        if (EntityShadowReplay.isOverlayOnlyRecording()) return null;
         for (int i = start; i < end; i++) {
             if (!(commands.get(i) instanceof Model model) || model.cannotAddGlint()) return null;
         }
@@ -91,6 +93,7 @@ final class EntityRenderCommands {
     }
 
     ItemGlint itemGlint(Matrix4fc modelView, DrawInputs inputs) {
+        if (EntityShadowReplay.isOverlayOnlyRecording()) return null;
         if (!(commands.get(size() - 1) instanceof Model base) || base.cannotAddGlint() || base.drawsCubes() || base.sharedRangeChanged()) return null;
         final Matrix4fc pose = base.source != null ? base.source.pose(base.end - 1, glintPose) : base.modelView;
         if (!pose.equals(modelView)) return null;
@@ -109,6 +112,7 @@ final class EntityRenderCommands {
     }
 
     void stream(Matrix4fc modelView, int[] vertices, int vertexCount, int entityId, DrawInputs inputs) {
+        if (EntityShadowReplay.isOverlayOnlyRecording()) return;
         final Stream stream = streams.acquire();
         commands.add(stream);
         stream.inputs.copyFrom(inputs);

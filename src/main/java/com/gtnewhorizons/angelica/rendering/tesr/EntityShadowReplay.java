@@ -50,6 +50,7 @@ public final class EntityShadowReplay {
     private static final Matrix4f shadowInverse = new Matrix4f();
     private static final Matrix4f mainFromShadow = new Matrix4f();
     private static Record recording;
+    private static int overlayOnlyDepth;
     @Setter private static ICamera mainView;
     private static Class<?> lastType;
     private static boolean lastExcluded;
@@ -81,6 +82,7 @@ public final class EntityShadowReplay {
 
     private static void resetRecords() {
         if (recording != null && recording.capturingState) GLStateManager.cancelExitCapture();
+        overlayOnlyDepth = 0;
         records.clear();
         commands.clear();
         recordPool.clear();
@@ -287,7 +289,35 @@ public final class EntityShadowReplay {
         }
     }
 
-    static boolean isRecording() {
+    /**
+     * Opens the window in which one inline overlay layer runs.
+     *
+     * <p>The layer draws its own model parts for the shadow map, and those draws must not enter the
+     * record: the main view replays the record's model commands and then flushes the deferred
+     * overlay, which would draw the same shells twice. While the window is open the record keeps no
+     * model, stream or glint command, so the overlay command is the only thing the flush adds.</p>
+     *
+     * <p>Windows nest: a suppressed layer that renders another entity's layers increments the
+     * counter again, and only the outermost close ends the suppression.</p>
+     */
+    public static void beginOverlayOnlyRecording() {
+        overlayOnlyDepth++;
+    }
+
+    /** Closes the window opened by {@link #beginOverlayOnlyRecording}. */
+    public static void endOverlayOnlyRecording() {
+        if (overlayOnlyDepth == 0) {
+            throw new IllegalStateException("No overlay-only recording window is open");
+        }
+        overlayOnlyDepth--;
+    }
+
+    /** Whether model, stream and glint submissions are being dropped for one inline overlay layer. */
+    static boolean isOverlayOnlyRecording() {
+        return overlayOnlyDepth > 0;
+    }
+
+    public static boolean isRecording() {
         return recording != null && recording.rejection == null;
     }
 

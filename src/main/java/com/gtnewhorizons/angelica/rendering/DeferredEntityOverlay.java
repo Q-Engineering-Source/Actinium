@@ -73,6 +73,7 @@ public final class DeferredEntityOverlay {
 
     private static final FloatBuffer MATRIX_BUF = BufferUtils.createFloatBuffer(16);
     private static final Matrix4f REPLAY_MATRIX = new Matrix4f();
+    private static final Matrix4f RECORDED_MATRIX = new Matrix4f();
 
     private static boolean replaying;
 
@@ -106,32 +107,51 @@ public final class DeferredEntityOverlay {
         return matches(layer, entity);
     }
 
+    /** What the caller of {@link #beginLayer} has to do with the layer call. */
+    public enum LayerAction {
+        /** Run the layer inline; its model draws stay part of the shadow-pass record. */
+        RUN,
+        /** Run the layer inline, but keep only its overlay command in the record. */
+        RUN_SUPPRESSED,
+        /** The layer was captured for the flush; skip the call now. */
+        SKIP
+    }
+
     /**
-     * Handles one layer call made by {@code renderLayers}.
+     * Decides what happens to one layer call made by {@code renderLayers}.
      *
-     * @return whether the caller has to skip the layer now; {@code false} means it runs inline
+     * <p>The shadow map needs an eligible layer drawn inline, but the main view will not run the
+     * renderer when the entity's draws replay, so the layer is recorded there and queued for the
+     * flush instead. The model parts that inline call submits are dropped from the record, otherwise
+     * the replay would draw them and the flushed overlay on top of them.</p>
      */
-    public static boolean handleLayer(RenderLivingBaseOverlayAccess renderer, LayerRenderer<?> layer,
-                                      EntityLivingBase entity, float limbSwing, float limbSwingAmount,
-                                      float partialTicks, float ageInTicks, float netHeadYaw, float headPitch,
-                                      float scale, boolean outlineActive) {
-        if (replaying || outlineActive || !matches(layer, entity)) return false;
+    public static LayerAction beginLayer(RenderLivingBaseOverlayAccess renderer, LayerRenderer<?> layer,
+                                         EntityLivingBase entity, float limbSwing, float limbSwingAmount,
+                                         float partialTicks, float ageInTicks, float netHeadYaw, float headPitch,
+                                         float scale, boolean outlineActive) {
+        if (replaying || outlineActive || !matches(layer, entity)) return LayerAction.RUN;
 
         if (ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
-            // The shadow map needs the layer drawn inline, but the main view will not run the renderer
-            // when the entity's draws replay, so the layer is recorded here to be queued there instead.
-            final DeferredEntry recorded = captureShadowOverlay(renderer, layer, entity, limbSwing, limbSwingAmount,
-                partialTicks, ageInTicks, netHeadYaw, headPitch, scale);
-            EntityShadowReplay.recordDeferredOverlay(recorded);
-            recycle(recorded);
-            return false;
+            if (EntityShadowReplay.isRecording()) {
+                final DeferredEntry recorded = captureShadowOverlay(renderer, layer, entity, limbSwing, limbSwingAmount,
+                    partialTicks, ageInTicks, netHeadYaw, headPitch, scale);
+                EntityShadowReplay.recordDeferredOverlay(recorded);
+                recycle(recorded);
+            }
+            EntityShadowReplay.beginOverlayOnlyRecording();
+            return LayerAction.RUN_SUPPRESSED;
         }
 
         final DeferredEntry entry = capture(renderer, layer, entity, limbSwing, limbSwingAmount, partialTicks,
             ageInTicks, netHeadYaw, headPitch, scale);
         entry.pass = PassOverride.capture();
         deferred.add(entry);
-        return true;
+        return LayerAction.SKIP;
+    }
+
+    /** Closes the window a {@link LayerAction#RUN_SUPPRESSED} call opened, after the layer returns. */
+    public static void endLayer() {
+        EntityShadowReplay.endOverlayOnlyRecording();
     }
 
     /**
@@ -159,7 +179,9 @@ public final class DeferredEntityOverlay {
     public static void queueReplay(DeferredEntry recorded, Matrix4fc mainFromShadow) {
         final DeferredEntry entry = acquire();
         entry.copyFrom(recorded);
-        REPLAY_MATRIX.set(recorded.matrix).mulLocal(mainFromShadow).get(entry.matrix);
+        // Same order as the model replay: the shadow-to-main transform is applied on the left.
+        RECORDED_MATRIX.set(recorded.matrix);
+        REPLAY_MATRIX.set(mainFromShadow).mul(RECORDED_MATRIX).get(entry.matrix);
         entry.pass = PassOverride.capture();
         deferred.add(entry);
     }
