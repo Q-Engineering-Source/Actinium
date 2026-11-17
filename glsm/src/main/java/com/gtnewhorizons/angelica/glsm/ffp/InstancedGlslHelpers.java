@@ -7,9 +7,10 @@ import java.util.ArrayList;
 /**
  * GLSL fragments shared by the instanced fixed-function vertex shaders.
  *
- * <p>Only the template layout, used by batched tile entity renderers, and the cube layout, used by
- * instanced block models, are generated here. The particle and weather layouts belong to their own
- * batches and are added together with the attribute definitions they point at.</p>
+ * <p>The template layout, used by batched tile entity renderers, the cube layout, used by instanced
+ * block models, and the particle layout, used by the batched particle runs, are generated here. The
+ * weather layout belongs to its own batch and is added together with the attribute definitions it
+ * points at.</p>
  */
 public final class InstancedGlslHelpers {
 
@@ -28,6 +29,17 @@ public final class InstancedGlslHelpers {
             + "normalize(vec3(" + row0 + ".x, " + row1 + ".x, " + row2 + ".x)), "
             + "normalize(vec3(" + row0 + ".y, " + row1 + ".y, " + row2 + ".y)), "
             + "normalize(vec3(" + row0 + ".z, " + row1 + ".z, " + row2 + ".z)))";
+    }
+
+    public static String particlePos(String centerHalf, String offset) {
+        return "vec4(" + centerHalf + ".xyz + " + offset + " * " + centerHalf + ".w, 1.0)";
+    }
+
+    public static String particleUv(String uv, String corner) {
+        return "vec4("
+            + "mix(" + uv + ".x, " + uv + ".z, " + corner + ".x), "
+            + "mix(" + uv + ".y, " + uv + ".w, " + corner + ".y), "
+            + "0.0, 1.0)";
     }
 
     public static String cubePrelude(String prefix, String mid, String delta, String normal, String tex, String sep) {
@@ -54,6 +66,12 @@ public final class InstancedGlslHelpers {
                 decls.add(decl(VertexFormatElement.Usage.SECONDARY_UV.getAttributeLocation(), "vec4", prefix + "CubeDelta"));
                 addHead(decls, prefix, "vec4", "InstLightmapScale");
                 decls.add(decl(CubeInstancedAttribs.LOC_CUBE_TEX, "vec4", prefix + "CubeTex"));
+            }
+            case PARTICLE -> {
+                decls.add(decl(ParticleInstancedAttribs.LOC_CENTER_HALF, "vec4", prefix + "InstCenterHalf"));
+                decls.add(decl(ParticleInstancedAttribs.LOC_UV, "vec4", prefix + "InstUv"));
+                decls.add(decl(ParticleInstancedAttribs.LOC_COLOR, "vec4", prefix + "InstColor"));
+                decls.add(decl(ParticleInstancedAttribs.LOC_LIGHTMAP, "vec2", prefix + "InstLightmap"));
             }
             default -> throw new IllegalArgumentException("Unsupported instance layout: " + kind);
         }

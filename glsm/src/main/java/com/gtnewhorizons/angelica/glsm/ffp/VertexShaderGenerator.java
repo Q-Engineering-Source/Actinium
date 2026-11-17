@@ -46,32 +46,40 @@ public final class VertexShaderGenerator {
         final Instancing kind = key.instancing();
         sb.append("// Vertex attributes\n");
         sb.append("layout(location = ").append(VertexFormatElement.Usage.POSITION.getAttributeLocation()).append(") in vec3 a_Position;\n");
-        if (key.hasVertexColor()) {
-            sb.append("layout(location = ").append(VertexFormatElement.Usage.COLOR.getAttributeLocation()).append(") in vec4 a_Color;\n");
-        }
-        // Per-unit texture coordinates. Every UV set is a vec4 so a 2-float UV attribute still
-        // yields q == 1.0 (OpenGL fills the missing z/w with 0/1); the fragment stage divides
-        // coord.st / q, so a wrong q would be fatal. Units 2/3 (issue #175) get their own attribute
-        // slot so they are no longer a per-draw constant.
-        if (kind != Instancing.CUBE) {
-            if (key.hasVertexTexCoord()) {
-                sb.append("layout(location = ").append(VertexFormatElement.Usage.PRIMARY_UV.getAttributeLocation()).append(") in vec4 a_TexCoord0;\n");
+        if (kind == Instancing.PARTICLE) {
+            // The particle mesh carries the corner offset and the corner's share of the texture
+            // rectangle. Colour, lightmap and the quad centre come from the instance, so no
+            // per-vertex colour, lightmap or normal attribute is declared: their locations belong to
+            // the instance arrays (LOC_COLOR is the vertex colour slot, LOC_LIGHTMAP follows it).
+            sb.append("layout(location = ").append(VertexFormatElement.Usage.PRIMARY_UV.getAttributeLocation()).append(") in vec2 a_TexCoord0;\n");
+        } else {
+            if (key.hasVertexColor()) {
+                sb.append("layout(location = ").append(VertexFormatElement.Usage.COLOR.getAttributeLocation()).append(") in vec4 a_Color;\n");
             }
-            if (key.hasVertexLightmap()) {
-                sb.append("layout(location = ").append(VertexFormatElement.Usage.SECONDARY_UV.getAttributeLocation(1)).append(") in vec4 a_TexCoord1;\n");
-            }
-            for (int i = 2; i < VertexKey.MAX_UNITS; i++) {
-                if (key.hasUnitVertexTexCoord(i)) {
-                    sb.append("layout(location = ").append(VertexFormatElement.Usage.SECONDARY_UV.getAttributeLocation(i)).append(") in vec4 a_TexCoord").append(i).append(";\n");
+            // Per-unit texture coordinates. Every UV set is a vec4 so a 2-float UV attribute still
+            // yields q == 1.0 (OpenGL fills the missing z/w with 0/1); the fragment stage divides
+            // coord.st / q, so a wrong q would be fatal. Units 2/3 (issue #175) get their own attribute
+            // slot so they are no longer a per-draw constant.
+            if (kind != Instancing.CUBE) {
+                if (key.hasVertexTexCoord()) {
+                    sb.append("layout(location = ").append(VertexFormatElement.Usage.PRIMARY_UV.getAttributeLocation()).append(") in vec4 a_TexCoord0;\n");
+                }
+                if (key.hasVertexLightmap()) {
+                    sb.append("layout(location = ").append(VertexFormatElement.Usage.SECONDARY_UV.getAttributeLocation(1)).append(") in vec4 a_TexCoord1;\n");
+                }
+                for (int i = 2; i < VertexKey.MAX_UNITS; i++) {
+                    if (key.hasUnitVertexTexCoord(i)) {
+                        sb.append("layout(location = ").append(VertexFormatElement.Usage.SECONDARY_UV.getAttributeLocation(i)).append(") in vec4 a_TexCoord").append(i).append(";\n");
+                    }
                 }
             }
-        }
-        if (key.hasVertexNormal() || kind == Instancing.CUBE || key.lineQuads()) {
-            if (key.hasVertexNormal()) {
-                sb.append("layout(location = ").append(VertexFormatElement.Usage.NORMAL.getAttributeLocation()).append(") in vec3 a_Normal;\n");
-            } else {
-                // Line quads carry the segment's other endpoint in the normal slot
-                sb.append("layout(location = ").append(VertexFormatElement.Usage.NORMAL.getAttributeLocation()).append(") in vec3 a_LineOtherEnd;\n");
+            if (key.hasVertexNormal() || kind == Instancing.CUBE || key.lineQuads()) {
+                if (key.hasVertexNormal()) {
+                    sb.append("layout(location = ").append(VertexFormatElement.Usage.NORMAL.getAttributeLocation()).append(") in vec3 a_Normal;\n");
+                } else {
+                    // Line quads carry the segment's other endpoint in the normal slot
+                    sb.append("layout(location = ").append(VertexFormatElement.Usage.NORMAL.getAttributeLocation()).append(") in vec3 a_LineOtherEnd;\n");
+                }
             }
         }
         for (String decl : InstancedGlslHelpers.attributeDecls("a_", kind)) {
@@ -249,7 +257,15 @@ public final class VertexShaderGenerator {
             sb.append("  v_Overlay = a_InstOverlay;\n\n");
             return;
         }
-        sb.append("  vec4 pos4 = vec4(a_Position, 1.0);\n");
+        sb.append("  vec4 pos4 = ");
+        if (key.instancing() == Instancing.PARTICLE) {
+            // The instance carries the quad centre and its half extent; the vertex carries the
+            // corner offset in the billboard basis baked into ParticleQuadMesh.
+            sb.append(InstancedGlslHelpers.particlePos("a_InstCenterHalf", "a_Position"));
+        } else {
+            sb.append("vec4(a_Position, 1.0)");
+        }
+        sb.append(";\n");
         sb.append("  gl_Position = u_MVPMatrix * pos4;\n");
         if (key.lineQuads()) {
             emitLineQuadWidening(sb);
@@ -312,10 +328,11 @@ public final class VertexShaderGenerator {
 
     private static void emitNormalTransform(StringBuilder sb, VertexKey key) {
         sb.append("  // Normal transform\n");
+        final String srcNormal = key.hasVertexNormal() && key.instancing() != Instancing.PARTICLE ? "a_Normal" : "u_CurrentNormal";
         if (key.instancing().hasInstanceHead()) {
             sb.append("  mat3 instNormal = ").append(InstancedGlslHelpers.mat3FromRows("a_InstRow0", "a_InstRow1", "a_InstRow2")).append(";\n");
-            sb.append("  vec3 normal = instNormal * ").append(key.hasVertexNormal() ? "a_Normal" : "u_CurrentNormal").append(";\n");
-        } else if (key.hasVertexNormal()) {
+            sb.append("  vec3 normal = instNormal * ").append(srcNormal).append(";\n");
+        } else if (key.hasVertexNormal() && key.instancing() != Instancing.PARTICLE) {
             sb.append("  vec3 normal = u_NormalMatrix * a_Normal;\n");
         } else {
             sb.append("  vec3 normal = u_NormalMatrix * u_CurrentNormal;\n");
@@ -335,7 +352,14 @@ public final class VertexShaderGenerator {
         if (key.colorMaterialEnabled()) {
             // Color material: vertex color replaces specific material properties per glColorMaterial mode (Mesa ffvertex_prog.c get_material() bitmask approach)
             sb.append("  vec4 matColor = ");
-            sb.append(key.hasVertexColor() ? "a_Color" : "u_CurrentColor");
+            if (key.instancing() == Instancing.PARTICLE) {
+                sb.append("a_InstColor");
+            } else {
+                sb.append(key.hasVertexColor() ? "a_Color" : "u_CurrentColor");
+                if (key.instancing().hasInstanceHead()) {
+                    sb.append(" * a_InstColor");
+                }
+            }
             sb.append(";\n");
 
             // Emission source: vertex color for CM_EMISSION, else material uniform
@@ -431,7 +455,9 @@ public final class VertexShaderGenerator {
     private static void emitColorPassthrough(StringBuilder sb, VertexKey key) {
         sb.append("  // Color passthrough (no lighting)\n");
         final String src = key.hasVertexColor() ? "a_Color" : "u_CurrentColor";
-        if (key.instancing().hasInstanceHead()) {
+        if (key.instancing() == Instancing.PARTICLE) {
+            sb.append("  v_Color = a_InstColor;\n");
+        } else if (key.instancing().hasInstanceHead()) {
             sb.append("  v_Color = ").append(src).append(" * a_InstColor;\n");
         } else {
             sb.append("  v_Color = ").append(src).append(";\n");
@@ -463,6 +489,9 @@ public final class VertexShaderGenerator {
             final String src;
             if (unit0FromCube) {
                 src = "cubeUv";
+            } else if (key.instancing() == Instancing.PARTICLE) {
+                // The instance holds the quad's texture rectangle, the vertex its corner share.
+                src = InstancedGlslHelpers.particleUv("a_InstUv", "a_TexCoord0");
             } else {
                 src = key.hasVertexTexCoord() ? "a_TexCoord0" : "u_CurrentTexCoord";
             }
@@ -475,6 +504,9 @@ public final class VertexShaderGenerator {
         if (key.lightmapEnabled()) {
             if (cube) {
                 sb.append("  v_TexCoord1 = u_LightmapTextureMatrix * vec4(a_InstLightmapScale.xy, 0.0, 1.0);\n");
+            } else if (key.instancing() == Instancing.PARTICLE) {
+                // Particles carry the lightmap per instance; the vertex format has no lightmap element.
+                sb.append("  v_TexCoord1 = u_LightmapTextureMatrix * vec4(a_InstLightmap, 0.0, 1.0);\n");
             } else if (key.instancing().hasInstanceHead()) {
                 sb.append("  v_TexCoord1 = u_LightmapTextureMatrix * vec4(a_InstLightmap, 0.0, 1.0);\n");
             } else if (key.hasVertexLightmap()) {

@@ -1619,7 +1619,10 @@ public class GLStateManager {
         if (vaos.hasAnyClientSideEnabledAttrib()) {
             ffp.preDraw(vaos.currentClientArrayVertexFlags());
         } else {
-            ffp.preDraw();
+            // A bound vertex array carries no client-side pointers, so the flags that describe it are
+            // the ones recorded for it: the vertex format's flags, or the ones a batch set explicitly
+            // before drawing its own mesh.
+            ffp.preDraw(vaos.getVertexFlags());
         }
     }
 
