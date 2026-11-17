@@ -10,7 +10,6 @@ import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
 import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.profiling.Tracy;
-import com.gtnewhorizons.angelica.rendering.DeferredEntityOverlay;
 import com.gtnewhorizons.angelica.rendering.tesr.EntityRenderCommands.DrawInputs;
 import com.gtnewhorizons.angelica.rendering.tesr.RetainedTesrGroups.InstanceColumns;
 import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
@@ -284,11 +283,6 @@ public final class EntityShadowReplay {
     static int splitCommands() {
         return isRecording() ? commands.split() : -1;
     }
-
-    public static void recordDeferredOverlay(DeferredEntityOverlay.DeferredEntry overlay) {
-        if (isRecording()) commands.overlay(overlay);
-    }
-
 
     private static void reject(Rejection reason) {
         if (recording != null && recording.rejection == null) {

@@ -5,7 +5,6 @@ import com.gtnewhorizons.angelica.api.tesr.TesrMaterial;
 import com.gtnewhorizons.angelica.compat.mojang.RenderLayer;
 import com.gtnewhorizons.angelica.glsm.ffp.CubeParams;
 import com.gtnewhorizons.angelica.glsm.profiling.Tracy;
-import com.gtnewhorizons.angelica.rendering.DeferredEntityOverlay;
 import com.gtnewhorizons.angelica.rendering.tesr.EntityShadowReplay.Rejection;
 import com.gtnewhorizons.angelica.rendering.tesr.RetainedTesrGroups.InstanceColumns;
 import com.gtnewhorizons.angelica.rendering.tesr.RetainedTesrGroups.InstanceRange;
@@ -30,7 +29,6 @@ final class EntityRenderCommands {
     private final Pool<ModelGlint> modelGlints = new Pool<>(ModelGlint::new, ModelGlint::clear);
     private final Pool<ItemGlint> itemGlints = new Pool<>(ItemGlint::new, ItemGlint::clear);
     private final Pool<Stream> streams = new Pool<>(Stream::new, Stream::clear);
-    private final Pool<Overlay> overlays = new Pool<>(Overlay::new, Overlay::clear);
     private final Pool<InstanceRange> ranges = new Pool<>(InstanceRange::new, InstanceRange::clear);
     private final Matrix4f glintPose = new Matrix4f();
     long sharedParts, sharedRanges, streamEntries;
@@ -117,13 +115,6 @@ final class EntityRenderCommands {
         stream.capture(vertices, vertexCount);
     }
 
-    void overlay(DeferredEntityOverlay.DeferredEntry source) {
-        final Overlay overlay = overlays.acquire();
-        commands.add(overlay);
-        // The shadow overlay queue is recycled before main-view entity
-        overlay.captured.copyFrom(source);
-    }
-
     Rejection validate(int start, int end) {
         for (int i = start; i < end; i++) {
             final Rejection reason = commands.get(i).validate();
@@ -153,7 +144,6 @@ final class EntityRenderCommands {
         modelGlints.clear();
         itemGlints.clear();
         streams.clear();
-        overlays.clear();
         ranges.clear();
         mergeStart = 0;
     }
@@ -164,7 +154,6 @@ final class EntityRenderCommands {
         modelGlints.release();
         itemGlints.release();
         streams.release();
-        overlays.release();
         ranges.release();
     }
 
@@ -369,19 +358,6 @@ final class EntityRenderCommands {
         @Override
         void replay() {
             ModelPartBatcher.INSTANCE.replay(this);
-        }
-    }
-
-    private static final class Overlay extends Command {
-        final DeferredEntityOverlay.DeferredEntry captured = new DeferredEntityOverlay.DeferredEntry();
-
-        @Override
-        void replay() {
-            DeferredEntityOverlay.queueReplay(captured, ModelPartBatcher.INSTANCE.replayTransform);
-        }
-
-        void clear() {
-            captured.clear();
         }
     }
 }

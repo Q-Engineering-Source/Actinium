@@ -11,6 +11,7 @@ import net.coderbot.iris.compat.rfp2.Rfp2Compat;
 import com.gtnewhorizons.angelica.glsm.shadow.InternalShadowRenderingState;
 import com.dhj.actinium.shadows.ShadowRenderingState;
 import com.gtnewhorizons.angelica.compat.mojang.Camera;
+import com.gtnewhorizons.angelica.rendering.DeferredEntityOverlay;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.gl.framebuffer.MinecraftFramebufferHelper;
 import net.coderbot.iris.layer.GbufferPrograms;
@@ -295,11 +296,24 @@ public abstract class MixinRenderGlobal implements SimpleWorldRenderer.Provider<
         }
     }
 
+    @Inject(method = "renderEntities", at = @At("HEAD"))
+    private void actinium$clearDeferredOverlays(Entity entityIn, ICamera camera, float partialTicks, CallbackInfo ci) {
+        // renderEntities runs once per Forge render pass; every pass has to start empty so pass 1 does
+        // not replay the entries pass 0 already drew.
+        if (MinecraftForgeClient.getRenderPass() == 0) {
+            DeferredEntityOverlay.clear();
+        }
+    }
+
     @Inject(method = "renderEntities", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/RenderHelper;enableStandardItemLighting()V", shift = At.Shift.AFTER, ordinal = 1), cancellable = true)
     public void sodium$renderTileEntities(Entity entity, ICamera camera, float partialTicks, CallbackInfo ci) {
         int pass = MinecraftForgeClient.getRenderPass();
         boolean renderShadowBlockEntities = !ShadowRenderingState.areShadowsCurrentlyBeingRendered()
                 || InternalShadowRenderingState.shouldRenderShadowBlockEntities();
+
+        // The deferred overlay auras are captured during the entity loop above and replayed here, after
+        // every entity and before the block entities, so they composite over all opaque geometry.
+        DeferredEntityOverlay.renderAll();
 
         if (renderShadowBlockEntities) {
             long blockEntityStartNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
