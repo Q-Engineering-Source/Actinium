@@ -32,6 +32,8 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 public final class ParticleRunSplitter {
 
     private static boolean runTranslucent;
+    private static boolean runOpen;
+    private static boolean nestedBatcherActive;
     private static Boolean previousDeclaration;
 
     private ParticleRunSplitter() {}
@@ -49,14 +51,38 @@ public final class ParticleRunSplitter {
     }
 
     public static void endParticles() {
+        runOpen = false;
         GbufferPrograms.endTranslucencyDeclaration(previousDeclaration);
         previousDeclaration = null;
     }
 
     /** Starts a run that is not translucent, matching the pipeline's own default. */
     public static void beginRun() {
+        runOpen = true;
         runTranslucent = false;
         GbufferPrograms.setTranslucencyDeclaration(Boolean.FALSE);
+    }
+
+    /**
+     * Flushes the open run before a particle invokes an entity renderer that needs the same builder.
+     * Returns whether the caller must reopen it with {@link #afterNestedDraw(boolean)}.
+     */
+    public static boolean beforeNestedDraw() {
+        if (!runOpen) return false;
+        ParticleInstancer.endLayer();
+        nestedBatcherActive = DeferredDrawBatcher.isActive();
+        if (nestedBatcherActive) DeferredDrawBatcher.exitAndFlush();
+        Tessellator.getInstance().draw();
+        return true;
+    }
+
+    /** Reopens the run flushed by {@link #beforeNestedDraw} with its original format. */
+    public static void afterNestedDraw(boolean reopen) {
+        if (!reopen) return;
+        final BufferBuilder run = Tessellator.getInstance().getBuffer();
+        run.begin(run.getDrawMode(), run.getVertexFormat());
+        if (nestedBatcherActive) DeferredDrawBatcher.enter();
+        ParticleInstancer.beginLayer();
     }
 
     /**

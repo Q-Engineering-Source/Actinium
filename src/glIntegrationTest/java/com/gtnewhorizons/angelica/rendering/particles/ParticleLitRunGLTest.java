@@ -78,6 +78,17 @@ class ParticleLitRunGLTest extends GLStateManagerIntegrationFixture {
     }
 
     @Test
+    void nestedEntityDrawFlushesAndRestartsTheRun() {
+        ParticleLitRun.begin();
+        assertTrue(ParticleRunSplitter.beforeNestedDraw(), "the open run has to be flushed before the entity uses the builder");
+        assertEquals(0, Tessellator.getInstance().getBuffer().getVertexCount(),
+            "the nested boundary consumes the current run instead of nesting another begin");
+        ParticleRunSplitter.afterNestedDraw(true);
+
+        assertTrue(ParticleRunSplitter.beforeNestedDraw(), "the reopened run accepts the same boundary again");
+    }
+
+    @Test
     void opensTheRunAndDrawsTheDecodedQuadAsInstances() {
         ParticleLitRun.begin();
         final BufferBuilder run = Tessellator.getInstance().getBuffer();
