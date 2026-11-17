@@ -103,6 +103,46 @@ Actinium 接管：`MixinRenderGlobal` 在 `loadRenderers` 的 HEAD 注入把 `mc
 始终落到 dispatcher；非 `MODEL` 渲染类型（流体、`ENTITYBLOCK_ANIMATED` 等）同样只走 dispatcher。
 `ActiniumConfig.enableCeleritas` 是 debug bridge 的能力标记，与这个开关无关。
 
+## 实体批处理（高级页 ENTITY_BATCHING 分组）
+
+高级页的实体批处理分组（`actinium:entity_batching_group`）承载 TESR 与实体实例化路径的开关。
+开关只保存 `SodiumGameOptions` 的字段：立方体实例化、图集与阴影回放在 GUI 里以
+`enableEntityBatching` 为可用条件（图集再以 `cubeInstancingEnabled` 为条件），读取集中在
+`src/main/java/com/gtnewhorizons/angelica/config/AngelicaConfig.java`。
+`cubeInstancingEnabled()` 与 `entityShadowReplayEnabled()` 把从属开关与主开关取交集：
+`Actinium.onConstruct` 把前者注册为 `InstancingSupportProvider` 的立方体变体能力，阴影回放的
+判定全部走后者。图集没有交集谓词，`ModelPartBatcher` 直接读 `enableEntityTextureAtlas()`，
+能否分到图集槽另由材质是否走立方体实例化决定。
+
+| 选项 | 字段与默认值 | 实现位置 |
+| --- | --- | --- |
+| 实体批处理（`actinium:entity_batching`，需重启） | `performance.enableEntityBatching`，默认 `true`，JSON 键 `performance.enable_entity_batching` | `rendering/tesr/TesrBrackets.renderTileEntity` 决定方块实体渲染器是否进入批处理括号；`ModelPartBatcher.begin` 在既无实例化能力又无延迟管线时把本次批处理标为不活跃；`ModelRendererIrisMixin.actinium$drawModel` 先请求 `ModelPartBatcher.partDraw`，被拒绝才走模型渲染器路径；`DroppedItemInstancer.renderItemPart` 在批处理未激活时以 `BailReason.NOT_ALLOWED` 交回原版 |
+| 立方体实例化（`actinium:cube_instancing`，需重启，仅在实体批处理开启时可用） | `performance.enableCubeInstancing`，默认 `true` | `rendering/tesr/ModelBoxCapture` 把 `ModelBox` 捕获成 `CubeParams`，`ModelPartBatcher` 用 `Instancing.CUBE` 变体按 `a_CubeMid` 与 `a_CubeDelta` 重建 UV 与法线；关闭时部件走 `Instancing.TEMPLATE` 模板 |
+| 实体纹理图集（`actinium:entity_texture_atlas`，需重启，仅在立方体实例化可用时） | `performance.enableEntityTextureAtlas`，默认 `true` | `rendering/tesr/EntityTextureAtlas` 分配图集槽，`ModelPartBatcher.atlasSlotFor` 只给能走立方体实例化的普通材质分配；glint、overlay 与自定义着色器材质继续各自绑定纹理 |
+| 实体阴影回放（`actinium:entity_shadow_replay`，需重启，仅在实体批处理开启时可用） | `performance.enableEntityShadowReplay`，默认 `false` | `rendering/tesr/EntityShadowReplay` 记录阴影 pass 的实体调用，主视图由 `EntityShadowBatcher` 重放模型、火焰与延迟 overlay，不重跑渲染器 |
+| 阴影回放排除类（编辑按钮） | `performance.entityShadowReplayExcludedClasses`，默认 `twilightforest.entity.passive.EntityTFMobileFirefly` 与 `gregtech.common.entity.EntityDrone` | `EntityShadowReplayExcludedClassesScreen` 编辑列表，`EntityShadowReplay` 按类名判断排除；配置文件里显式写 `null` 时装载路径恢复默认列表 |
+| 物品渲染缓存上限（滑杆 256~1024，步长 64） | `performance.itemRendererCacheSize`，默认 `512` | `rendering/items/ItemPropCache` 按条目数限制掉落物网格缓存，每次插入读取当前值；`DroppedItemInstancer` 用 `AngelicaConfig::itemRendererCacheSize` 建缓存 |
+
+### 与模型渲染器批处理的分工
+
+高级页的 `MODEL_RENDERER_BATCHING`（字段 `advanced.useModelRendererBatching`，默认 `true`，启动期
+可用 `-Dactinium.modelRendererBatching` 覆盖）是旧的逐 quad 路径：
+`ModelRendererIrisMixin` 把 `ModelRenderer` 的零散四边形合并成一次 `BufferBuilder` 绘制，或经
+`modelRendererDisplayLists` 编译成显示列表。
+
+实体批处理是上层路径，顺序在 `ModelRendererIrisMixin.actinium$drawModel` 里固定：先请求
+`ModelPartBatcher.partDraw` 接管整个模型部件，命中即返回，旧路径与显示列表都不执行；被拒绝的
+部件仍由 `modelRendererBatching` 与 `modelRendererDisplayLists` 处理。两个开关互不依赖，都关闭时
+模型部件走原版逐 quad 绘制。实体批处理不活跃时，光影包启用或 `modelRendererBatching` 关闭都会让
+`ModelRenderer.render` 直接交回原版，旧路径不接管。
+
+### 世界物品光效（`quality.glintWorld`）
+
+质量页的 `actinium:glint_world` 绑定 `SodiumGameOptions.quality.glintWorld`（JSON 键
+`quality.glint_world`），默认 `true`。读取入口是 `AngelicaConfig.glintWorld()`，
+`rendering/items/ItemGlint` 的 `eligible` 与 `needsImmediateBase` 用它决定世界内物品的附魔光效是否
+进入批处理光效路径；`eligible` 为 `false` 时 `ItemGlint.begin` 直接返回。
+
 ## 地形 alpha 语义（`CeleritasTerrainPipeline`）
 
 原版在 `EntityRenderer.renderWorld` 里先用 `disableAlpha()` 画 `SOLID` 层，之后 `enableAlpha()`

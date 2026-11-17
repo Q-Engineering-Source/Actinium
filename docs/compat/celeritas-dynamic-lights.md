@@ -1,8 +1,8 @@
 # Celeritas Dynamic Lights 兼容（celeritasdynamiclights）
 
-兼容状态：**代码完成，实机验证待做**。
-最后更新：2026-11-17。分支：`feat/ffp-instancing`。适配的附属 API 版本：1.2.10 起（上游仓库当前
-1.2.11，`getLightmapWithDynamicLight(BlockPos, int)` 签名相同）。
+兼容状态：**未验证**。
+最后更新：2026-11-17。分支：`feat/ffp-instancing`。适配的附属版本：1.2.10 与 1.2.11，
+`getLightmapWithDynamicLight(BlockPos, int)` 在两个版本签名相同。
 
 ## 背景
 
@@ -14,18 +14,21 @@ Celeritas Dynamic Lights（modid `celeritasdynamiclights`，Karnatour/CeleritasD
 归零；等级为 0 时原样返回入参。
 
 附属自身接入了原版 `TileEntityRendererDispatcher`、`Particle.getBrightnessForRender` 与手持
-`ItemRenderer`。设置页分两条路径：`toni.sodiumdynamiclights.config.CeleritasOptionsListener` 在
-Celeritas 系（`org.taumc.celeritas.api.OptionGUIConstructionEvent`）下注册
-`DynamicLightsCeleritasPage`；`ActiniumOptionsListener` 在 Actinium
-（`dhj.embeddedt.embeddium.api.OptionGUIConstructionEvent`）下注册 `DynamicLightsActiniumPage`。
-在 Actinium 环境中生效的是后者。这些路径 Actinium 不改动。
+`ItemRenderer`。设置入口随版本不同。1.2.10 只有 Celeritas 系设置页：
+`toni.sodiumdynamiclights.config.CeleritasOptionsListener` 在
+`org.taumc.celeritas.api.OptionGUIConstructionEvent` 下注册 `DynamicLightsCeleritasPage`，
+Actinium 环境里没有对应页面，开关通过 Forge 配置 `config/celeritasdynamiclights.cfg` 修改
+（`dynamicLightsMode`、`entitiesLightSource` 等静态字段）。1.2.11 起两个监听器移到
+`toni.sodiumdynamiclights.integration.celeritas` 与 `integration.actinium`，后者在
+`dhj.embeddedt.embeddium.api.OptionGUIConstructionEvent` 下注册 `DynamicLightsActiniumPage`，
+Actinium 环境中生效的是这一页。这些路径 Actinium 不改动。
 
 ## 桥位置与合并点
 
 `TileEntityLight.packedLight`
 （`src/main/java/com/gtnewhorizons/angelica/rendering/tesr/TileEntityLight.java`）与
 `MixinTileEntityRendererDispatcherTesrLight` 会整段替换 dispatcher 调用返回的 combined light，
-替换值因此丢失了附属已经并入的动态光。两条返回路径都经
+替换值因此丢失了附属已经并入的动态光。三条返回路径都经
 `CeleritasDynamicLightsCompat.mergeDynamicLight` 合并：
 
 | 路径 | 返回值 |
@@ -68,14 +71,17 @@ ERROR 记录一次日志，正文包含缺失的方法签名与本次启动内�
 
 ## 重复应用
 
-附属在 `TileEntityRendererDispatcher.render` 的 `World.getCombinedLight` 调用点用
-`@ModifyArgs` 把动态等级写进第二个参数（`lightValue`）。当前 Mixin 版本的 `@ModifyArgs` 在调用点
-原地保留该 INVOKE，只替换参与调用的参数表达式，因此与 Actinium 在同一调用点上的
-`@ModifyExpressionValue` 不互相改写注入目标，两者的应用顺序不影响结果：先改参数、再改返回值。
+三条返回路径各自合并一次：未启用光影包时由 `MixinTileEntityRendererDispatcherTesrLight` 合并
+`TesrLightCache` 的缓存值，光影包启用时两处合并都在 `TileEntityLight` 内完成，没有一条路径会
+合并两次。
 
-两处的合并规则一致：block light 取动态等级与原值的较大值，sky light 不变。因此重复应用幂等：
-输入已经含动态光时再次合并得到同一结果，输入不含时补上动态光，等级为 0 时附属原样返回入参。
-`CeleritasDynamicLightsCompatTest.mergingAnAlreadyMergedLightChangesNothing` 覆盖该情形。
+幂等是这里的安全属性。合并规则是 block light 取动态等级与原值的较大值、sky light 不变、等级为 0
+时附属原样返回入参，同一个值再合并一次不会重复变亮。附属在
+`TileEntityRendererDispatcher.render` 的 `World.getCombinedLight` 调用点用 `@ModifyArgs` 把动态
+等级写进第二个参数（`lightValue`），该注解原地保留这个 INVOKE、只替换参与调用的参数表达式，
+因此它与 Actinium 在同一调用点上的 `@ModifyExpressionValue` 不互相改写注入目标，两者的应用顺序
+（先改参数、再改返回值）不影响结果。
+`CeleritasDynamicLightsCompatTest.mergingAnAlreadyMergedLightChangesNothing` 固定这条安全属性。
 
 ## 自动化验证
 
@@ -84,21 +90,24 @@ ERROR 记录一次日志，正文包含缺失的方法签名与本次启动内�
 规则。覆盖四项行为：动态等级高于 block light 时替换、低于时保持、等级为 0 时原样返回（含
 lightmap 低 4 位）、已合并的值再次合并不变。
 
-`TileEntityLightTest` 用真实 `World` 与 `Block` 夹具直接调用 `TileEntityLight.packedLight`，覆盖
-三条返回路径中的前两条合并点与重算分支：不使用 neighbor brightness 的早期返回、`getLightOpacity`
-非 0 的早期返回、neighbor brightness 的重算值（世界 block light 与方块自发光取 max 后再合并）、
-重算值高于动态等级时保持。
+`TileEntityLightTest` 用真实 `World` 与 `Block` 夹具直接调用 `TileEntityLight.packedLight`，
+覆盖第 2、3 条路径的合并点：不使用 neighbor brightness 的早期返回、`getLightOpacity` 非 0 的
+早期返回、neighbor brightness 的重算值（世界 block light 与方块自发光取 max 后再合并）、重算值
+高于动态等级时保持。
 
-未启用光影包那条路径的合并在
+第 1 条路径（未启用光影包）的合并在
 `MixinTileEntityRendererDispatcherTesrLight.actinium$tesrLight` 的私有方法里，Mixin 处理器无法
-在不启用 Mixin 的测试 VM 中执行，这部分由代码审查覆盖，测试不伪造该场景。
+在不启用 Mixin 的测试 VM 中执行，这条路径由代码审查覆盖，测试不伪造该场景。
 
 ## 实机待验证场景
 
 - 未安装附属：光影包下告示牌等使用 neighbor brightness 的方块实体亮度与改动前一致，日志无
   `ActiniumDynamicLightsCompat` 的 ERROR。
-- 安装附属（记录版本，1.2.10 或 1.2.11）：光影包下手持火把或荧光物品靠近告示牌时告示牌随动态光
-  变亮，走远后恢复；关闭附属动态光（设置页 Dynamic Lights = OFF）时画面不变。
+- 安装附属 1.2.10：光影包下手持火把或荧光物品靠近告示牌时告示牌随动态光变亮，走远后恢复；
+  在 `config/celeritasdynamiclights.cfg` 里把 `dynamicLightsMode` 置为 OFF 后画面不变（该版本
+  没有 Actinium 设置页）。
+- 安装附属 1.2.11：同上，关闭入口改为 Actinium 视频设置的 Dynamic Lights 页；确认页面出现且
+  开关立即生效。
 - 非光影路径：不启用光影包时，箱子等方块实体随动态光变化，确认缓存值与合并同时生效。
 - 注入共存：附属的 `ModifyArgs` 与 Actinium 的 `ModifyExpressionValue` 落在
   `TileEntityRendererDispatcher.render` 的同一个 `World.getCombinedLight` 调用点，确认两者同时

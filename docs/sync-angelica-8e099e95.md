@@ -316,11 +316,11 @@ SDL 主模块按当前 GLSM 和 Outlands 宿主适配，资源与管线完整导
 
 与上游的差异：`getCloudTextureWidth`、`getScaleMult` 与 `supportsLayers` 未按原样保留，前两者的取值经 `CloudAnimationCycle` 供给 `shader` 子项目的 `cloudTime` uniform（周期等于纹理宽度乘 400 再乘云缩放），后者的判断并入渲染器的 `describeLayers`；`getRequiredFarPlaneDistance` 并入渲染器内部的 `requiredFarPlane`；`ea50e0a0` 的玻璃板部分不在云层范围。
 
-### 批次三第 15 项：进行中
+### 批次三第 15 项：代码已落地，待实机验证
 
-第 15 项按四批推进，前两批已落地。15-1（`24ee0432`）是 FFP 实例化变体层：`Instancing`、`CubeInstancedAttribs`、`InstancedGlslHelpers`，`VertexKey` 的 `BIT_INSTANCING`、`GLContextState.ffpInstancing`、`GLSMPrograms.setFfpInstancing`，以及顶点与片元生成器的模板、立方体分支（实例矩阵构造 `eyePos`、法线走实例 `mat3`、颜色乘 `a_InstColor`、立方体 UV 由 `a_CubeMid` 与 `a_CubeDelta` 重建、`v_Overlay` 承担伤害叠加色）；`FragmentKey.GLOBAL_BITS` 由 13 扩到 14 容纳叠加色实例位。15-2（`a9f94563`）是立方体数据：`UnitCubeMesh`、`CubeParams`、`ModelBoxCapture`、`ModelBoxData` 与 `MixinModelBoxCubeParams`，捕获结果写到 `ModelBox` 的注入接口，`CubeInstanceDataTest` 覆盖顶点流、面法线与 UV 网。
+第 15 项按四批推进，四批均已落地。15-1（`24ee0432`）是 FFP 实例化变体层：`Instancing`、`CubeInstancedAttribs`、`InstancedGlslHelpers`，`VertexKey` 的 `BIT_INSTANCING`、`GLContextState.ffpInstancing`、`GLSMPrograms.setFfpInstancing`，以及顶点与片元生成器的模板、立方体分支（实例矩阵构造 `eyePos`、法线走实例 `mat3`、颜色乘 `a_InstColor`、立方体 UV 由 `a_CubeMid` 与 `a_CubeDelta` 重建、`v_Overlay` 承担伤害叠加色）；`FragmentKey.GLOBAL_BITS` 由 13 扩到 14 容纳叠加色实例位。15-2（`a9f94563`）是立方体数据：`UnitCubeMesh`、`CubeParams`、`ModelBoxCapture`、`ModelBoxData` 与 `MixinModelBoxCubeParams`，捕获结果写到 `ModelBox` 的注入接口，`CubeInstanceDataTest` 覆盖顶点流、面法线与 UV 网。
 
-两批都还没有实机路径：`setFfpInstancing` 尚无调用方，实例化变体不会触发；`angelica$cubeParams()` 尚无读取方。剩余两批是 TESR 模板实例化与实体图集、实体阴影重放。
+这两批落地时都还没有实机路径：`setFfpInstancing` 没有调用方，实例化变体不会触发；`angelica$cubeParams()` 没有读取方。后续批次把两者接到运行时：`InstancedTemplateRenderer` 与 `ParticleInstancer` 调用 `setFfpInstancing`，`ModelPartBatcher` 经 `ModelBoxData` 读取 `angelica$cubeParams()`。15-3 的四段补齐 TESR 模板实例化、实体图集与宿主接入，阴影回放随后落地，交付清单见文末。
 
 15-3 再拆四段。15-3a（`4b5b4408`）是 `api/tesr` 的公开接口：`TesrMeshProvider`、`TesrMeshSink`、`TesrMeshBuilder`、`ModelPartMeshBuilder`、`TesrShader`、`TesrShaderUniforms`、`TesrShaders`、`TesrMaterial` 与 `package-info`，`cpw.mods.fml.common.API` 改为 `net.minecraftforge.fml.common.API`。`ModelPartBatch` 与 `TesrMeshCache` 依赖 `ModelPartBatcher`、`AngelicaTesrMeshCache`，随 15-3c 一起落。15-3b 是网格缓存与模板（`AngelicaTesrMeshCache`、`TemplateBuffer`、`TemplateCapture`、`VertexTransform`、`MeshBuffer`），15-3c 是批处理（`ModelPartBatcher`、`TesrBatchRenderer`、`RetainedTesrGroups`、`DrawState`、`BatchEligibility`、`BatchDrawDefaults`），15-3d 是宿主接入（`MixinTileEntityRendererDispatcher`、`EntityTextureAtlas`、`InstancedTemplateRenderer`）。
 
@@ -486,3 +486,58 @@ TESR 批处理的引入顺序按依赖链固定下来，每一步只需新增文
 本轮实测卡在一处：`DeferredEntityOverlay` 的 `renderPassModel` 在 1.12.2 不存在，只能按 `LayerRenderer` 遍历护甲层重放，直接用 `getMainModel()` 会丢护甲层。`PassOverride` 不存在签名差异：上游当前 HEAD 的 `ModelPartBatcher` 只用 `PassOverride.capture()` 与 `PassOverride.NONE`，没有任何 `PassOverride.of` 调用，三参 `of` 由 `capture()` 内部使用。
 
 粒子实例化与掉落物实例化各自单开一项：`ParticleCaptureTessellator` 依赖 `Tessellator` 的 1.7.10 构造与 `draw()` 返回值契约，`DroppedItemInstancer` 与 `BlockRenderListManager` 依赖 1.12.2 已移除的 `RenderBlocks`，两者都需要按 `ParticleManager` 与 `BlockModelRenderer` 重写。
+
+### 批次三第 15 项交付摘要
+
+第 15 项在 `feat/ffp-instancing` 上全部落地，等待实机验证。以下按模块记录实际交付内容。
+
+**TESR 批处理、图集与阴影回放**：`rendering/tesr` 与 `api/tesr` 共 51 个新文件、约 8900 行。
+`ModelPartBatcher` 记录模型部件、物品与阴影的绘制并入队实例；`TesrBatchRenderer` 管理 pass、
+实例化能力与延迟管线；`RetainedTesrGroups` 持有分组、glint 层、立方体列与实例列；
+`AngelicaTesrMeshCache`、`TemplateCapture`、`TemplateBuffer`、`MeshBuffer`、`VertexTransform`、
+`BakedTransformCapture` 负责模板捕获与解码；`BatchEligibility`、`DrawState`、`BatchDrawDefaults`、
+`BatchStateFallback`、`PassRebindGate` 负责准入判定与状态还原；`EntityTextureAtlas` 提供跨纹理
+图集；`EntityShadowReplay`、`EntityShadowBatcher`、`EntityRenderCommands`、`InstanceRing` 负责
+阴影 pass 的录制与主视图重放；`TesrLightCache`、`TileEntityLight`、`TesrAttribution`、
+`TesrProviderDispatch`、`TesrAnchorMath`、`ShadowQuadMath`、`PendingTesrDraws`、
+`SectionBuiltBlockEntity`、`BeaconBeamMeshes`、`VanillaModelMeshes`、`EntityMaterials`、
+`GlintCapture` 补齐其余支持。
+
+**TEMPLATE/CUBE 与粒子变体**：`glsm` 的 `Instancing`（`TEMPLATE`、`CUBE`、`PARTICLE`）、
+`CubeInstancedAttribs`、`InstancedGlslHelpers`、`UnitCubeMesh`、`CubeParams` 与
+`GLSMPrograms.setFfpInstancing`，顶点与片元生成器的模板、立方体、粒子三个分支；`shader` 的
+`AttributeTransformer`、`CoreTransformHelper`、`InstancedVariantCache` 与
+`DeferredWorldRenderingPipeline` 的变体能力表负责程序变体的编译与缓存，`Instancing.PARTICLE`
+由 `ParticleInstancer` 在延迟管线中取用。`Instancing.WEATHER` 只有枚举项，没有共享程序变体。
+
+**宿主接入**：新增 13 个 mixin。渲染点是 `MixinTileEntityRendererDispatcherTesr`、
+`MixinTileEntityRendererDispatcherTesrLight`、`MixinModelRenderer`、`MixinRenderItemInstanced`、
+`MixinRenderItemDroppedInstancing`、`MixinShadowRendererTesr`、`MixinShadowRendererEntities`、
+`MixinTileEntityBeaconRenderer`；准入接口注入是 `MixinRenderBatchEligibility`、
+`MixinRenderManagerBatchEligibility`、`MixinTileEntitySpecialRendererBatchEligibility`；
+立方体参数落在 `MixinModelBoxCubeParams`，overlay 层遍历落在
+`RenderLivingBaseDeferredOverlayMixin`。
+
+**overlay**：`DeferredEntityOverlay` 按 1.12.2 的 `LayerRenderer` 重写，护甲层由
+`RenderLivingBaseDeferredOverlayMixin` 重放；重放的 overlay 经阴影回放入队，内联 overlay 不进入
+录制记录。
+
+**掉落物**：`DroppedItemInstancer`、`ItemPropCache`、`ItemGlint`、`ItemQuadWriter` 与
+`MixinRenderItemDroppedInstancing`。一次决策同时处理基础几何与两层 glint，回落时把实际 draw 数
+交给 `BatchEligibility.onPartFallback`。
+
+**动态光源桥**：`compat/celeritasdynamiclights` 的 `DynamicLightProvider`、
+`DynamicLightProviderImpl`、`CeleritasDynamicLightsCompat`，在 `TileEntityLight` 的两处返回与
+`MixinTileEntityRendererDispatcherTesrLight` 的缓存值上各合并一次。
+
+验证记录（2026-11-17）：
+
+- `./gradlew check --no-daemon`：通过。
+- `./gradlew build --no-daemon`：通过。
+- `./gradlew :test --no-daemon`：1569 个用例，5 个跳过，全部通过。
+- `./gradlew glIntegrationTest --no-daemon`：338 个用例，失败只有两个已确认的 viewport 基线
+  （`DrawableContextIntegrationTest.firstDrawableBindKeepsTheNativeWindowViewport` 与
+  `DrawableViewportIntegrationTest.firstDrawableViewportInitDoesNotJoinPreviousContextAttribScope`），
+  与本项无关。
+
+实机验证与性能数据尚未进行，本节不给出画面、兼容性或性能结论。
