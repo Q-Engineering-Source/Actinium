@@ -10,29 +10,12 @@ import net.minecraft.util.math.AxisAlignedBB;
  * Applies the last world viewport to particle rendering while accounting for compound particles.
  *
  * <p>The answer is a predicate rather than a draw, so the caller can decide what an invisible
- * particle costs: the batch must not take it and the vanilla write must not happen.</p>
+ * particle costs: the batch must not take it and the vanilla write must not happen. A particle the
+ * batch takes never reaches the vanilla call, so this test always has to run here.</p>
  */
 public final class ParticleViewportCulling {
 
-    private static boolean cullingDisabled;
-
     private ParticleViewportCulling() {
-    }
-
-    /**
-     * Disables the viewport test while keeping the call site that owns it.
-     *
-     * <p>ParticleCulling applies its own frustum test to the particle call sites; running both would
-     * test every particle twice. The batch stays here, only the local test steps aside.</p>
-     *
-     * @param disabled whether the viewport test must be skipped
-     */
-    public static void setCullingDisabled(boolean disabled) {
-        cullingDisabled = disabled;
-    }
-
-    public static boolean isCullingDisabled() {
-        return cullingDisabled;
     }
 
     /**
@@ -42,9 +25,6 @@ public final class ParticleViewportCulling {
      * @return whether the particle has to be submitted
      */
     public static boolean isVisible(Particle particle, Viewport viewport) {
-        if (cullingDisabled) {
-            return true;
-        }
         if (viewport == null || particle instanceof ParticleCullingBypass) {
             return true;
         }

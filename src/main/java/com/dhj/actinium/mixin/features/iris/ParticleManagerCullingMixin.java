@@ -24,13 +24,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * <p>The two call sites are wrapped rather than redirected: a plain redirect occupies the
  * invocation, and ParticleCulling puts its own redirect on the same two invocations, which the
  * injector cannot chain with a second one at the same priority. A wrapped invocation leaves one
- * {@code Operation} that still performs the original call, so another redirect can sit beside it.</p>
+ * {@code Operation} that still performs the original call, so another redirect can sit beside it.
+ * The priority is raised above the default so this class discovers its targets before that
+ * redirect rewrites them.</p>
  *
- * <p>The local frustum test runs first, because an invisible particle must neither be batched nor
- * written. When ParticleCulling is present it owns the frustum test instead, so the local one steps
- * aside ({@link ParticleViewportCulling#isCullingDisabled()}) and only the batch remains here.</p>
+ * <p>The local frustum test always runs, for the batched and the fallback path alike: an invisible
+ * particle must neither be batched nor written, and a particle the batch took never reaches the
+ * {@code Operation}, so the test cannot be left to the caller. ParticleCulling, when present, adds
+ * its own test on top; a second bounding-box test per particle is cheap.</p>
  */
-@Mixin(ParticleManager.class)
+@Mixin(value = ParticleManager.class, priority = 900)
 public class ParticleManagerCullingMixin {
     @Unique
     private Viewport actinium$cullingViewport;
