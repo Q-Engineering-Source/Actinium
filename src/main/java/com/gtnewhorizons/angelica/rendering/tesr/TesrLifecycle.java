@@ -12,6 +12,8 @@ public final class TesrLifecycle {
         EntityTextureAtlas.INSTANCE.freePages();
         // Rejection bookkeeping outlives the flag that gates the feature, so release it here too.
         EntityShadowReplay.clear();
+        TesrLightCache.clear();
+        BatchEligibility.reset();
 
         RenderLayer.clearInterningAndHooks();
         DrawState.clearInterning();

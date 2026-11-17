@@ -108,6 +108,27 @@ public final class BatchEligibility {
         return state == UNKNOWN ? SAFE : state;
     }
 
+    /**
+     * Drops every bracket the current frame left open. A renderer that throws between
+     * {@link #begin} and {@link #end} would otherwise leave {@code allowed} true and let the next
+     * frame batch draws that were never proven safe.
+     */
+    public static void reset() {
+        depth = 0;
+        allowed = false;
+        drawsAtStart = 0L;
+        expectedDraws = 0L;
+        foreignDraws = 0L;
+        bracketDrawsAtStart = 0L;
+        bracketExpectedAtStart = 0L;
+        bracketDepth = 0;
+        parts = 0;
+        uncapturedState = false;
+        allowedBail = null;
+        isolatedScopes.clear();
+        isolatedDepth = 0;
+    }
+
     public static boolean batchingAllowed() {
         return allowed;
     }
