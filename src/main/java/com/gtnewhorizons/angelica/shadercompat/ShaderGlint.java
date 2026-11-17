@@ -13,6 +13,8 @@ import net.irisshaders.iris.api.v0.IrisApi;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.ITextureObject;
 import net.minecraft.util.ResourceLocation;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 
@@ -30,6 +32,8 @@ import static org.joml.Math.clamp;
  * This might introduce some oddities that I'm not seeing, but for now this appears to fix the issue.
  */
 public final class ShaderGlint {
+
+    private static final Logger LOGGER = LogManager.getLogger("Angelica/ShaderGlint");
 
     private static final ResourceLocation GLINT_MASK = new ResourceLocation("textures/misc/enchanted_item_glint.png");
     public static final int TINT_SLOTS = 64;
@@ -200,6 +204,7 @@ public final class ShaderGlint {
             maskLoaded = true;
         } catch (final Exception e) {
             maskFailed = true;
+            LOGGER.warn("Could not read the glint mask {}; glint colours fall back to the untinted texture", GLINT_MASK, e);
         }
     }
 

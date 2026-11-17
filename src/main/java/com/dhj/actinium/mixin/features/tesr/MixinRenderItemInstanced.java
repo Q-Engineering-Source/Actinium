@@ -15,9 +15,8 @@ import org.spongepowered.asm.mixin.injection.Redirect;
  * the immediate and the batched layers of the same item at different offsets. The frame clock is
  * the same value the batch captured at the start of the frame.</p>
  *
- * <p>Only the clock half of the upstream item mixin is ported. Instancing the dropped and held item
- * shells needs a {@code RenderBlocks} replacement and the item mesh cache, which
- * {@code docs/sync-angelica-8e099e95.md} keeps as a separate item.</p>
+ * <p>This mixin only hands the frame clock to the glint texture matrix. Item instancing lives in the
+ * dropped item path and is not part of this class.</p>
  */
 @Mixin(RenderItem.class)
 public abstract class MixinRenderItemInstanced {

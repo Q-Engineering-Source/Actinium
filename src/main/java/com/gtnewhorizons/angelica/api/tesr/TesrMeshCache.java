@@ -11,7 +11,7 @@ public final class TesrMeshCache {
         AngelicaTesrMeshCache.INSTANCE.renderCached(key, builder);
     }
 
-    /** Manual invalidate ande force rebuild on next render */
+    /** Manual invalidate and force a rebuild on the next render */
     public static void invalidate(Object key) {
         AngelicaTesrMeshCache.INSTANCE.invalidate(key);
     }

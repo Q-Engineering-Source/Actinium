@@ -468,7 +468,7 @@ TESR 批处理簇的完整依赖闭包是 233 个上游文件、26369 行。剔�
 
 1. `DirectTessellator` 在 1.7.10 是 `Tessellator` 子类，1.12.2 不是。`TesrMeshSink.beginCapture` 返回 `Tessellator`、`AngelicaTesrMeshCache.beginCapture` 返回 `direct`，需要把接口返回类型改成 `DirectTessellator` 并调整所有调用方。
 2. `RenderLivingBase` 没有 1.7.10 的 `renderPassModel` 字段，`DeferredEntityOverlay` 的渲染分支要按 1.12.2 的 `LayerRenderer` 重写。
-3. `ParticleCaptureTessellator` 需要 `Tessellator` 的 1.7.10 构造器与 `draw()` 返回值契约，1.12.2 的 `BufferBuilder` 体系无对应，粒子实例化要按 `ParticleManager` 重写。
+3. `ParticleCaptureTessellator` 需要 `Tessellator` 的 1.7.10 构造器与 `draw()` 返回值的签名要求，1.12.2 的 `BufferBuilder` 体系无对应，粒子实例化要按 `ParticleManager` 重写。
 
 ### 第 15 项逐文件依赖链与 GTNHLib/glsm 缺口
 
@@ -485,7 +485,7 @@ TESR 批处理的引入顺序按依赖链固定下来，每一步只需新增文
 
 本轮实测卡在一处：`DeferredEntityOverlay` 的 `renderPassModel` 在 1.12.2 不存在，只能按 `LayerRenderer` 遍历护甲层重放，直接用 `getMainModel()` 会丢护甲层。`PassOverride` 不存在签名差异：上游当前 HEAD 的 `ModelPartBatcher` 只用 `PassOverride.capture()` 与 `PassOverride.NONE`，没有任何 `PassOverride.of` 调用，三参 `of` 由 `capture()` 内部使用。
 
-粒子实例化与掉落物实例化各自单开一项：`ParticleCaptureTessellator` 依赖 `Tessellator` 的 1.7.10 构造与 `draw()` 返回值契约，`DroppedItemInstancer` 与 `BlockRenderListManager` 依赖 1.12.2 已移除的 `RenderBlocks`，两者都需要按 `ParticleManager` 与 `BlockModelRenderer` 重写。
+粒子实例化与掉落物实例化均已交付。粒子按 `ParticleManager` 的 6 个 run 接入：`Instancing.PARTICLE` 的 FFP 与 pack 变体、`ParticleCaptureBuffer` + `ParticleQuadDecoder` 的捕获与解码，以及 `ParticleLitRun` 给第 3 层补出的独立 run；`Tessellator` 的 1.7.10 构造与 `draw()` 返回值的签名要求在 1.12.2 无对应，已按 `BufferBuilder` 重写。掉落物按 `RenderItem.renderQuads` 的顶点接入（`DroppedItemInstancer` + `ModelPartBatcher`），`RenderBlocks` 与 `ItemRenderer.renderItemIn2D` 在 1.12.2 已移除，几何改由 baked model 路径提供，`BlockRenderListManager` 与 `ItemRenderListManager` 不再移植。
 
 ### 批次三第 15 项交付摘要
 

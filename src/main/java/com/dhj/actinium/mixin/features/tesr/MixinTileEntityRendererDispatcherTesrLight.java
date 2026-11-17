@@ -16,6 +16,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.Objects;
+
 /**
  * Shortens the two light lookups every tile entity costs per frame.
  *
@@ -42,8 +44,7 @@ public abstract class MixinTileEntityRendererDispatcherTesrLight {
         at = @At(value = "INVOKE", target = "Lnet/minecraft/world/World;getCombinedLight(Lnet/minecraft/util/math/BlockPos;I)I")
     )
     private int actinium$tesrLight(int vanillaLight, @Local(argsOnly = true) TileEntity te) {
-        if (te == null) return vanillaLight;
-        final BlockPos pos = te.getPos();
+        final BlockPos pos = Objects.requireNonNull(te, "render was called without a tile entity").getPos();
         final int cached = TesrLightCache.getLightBrightnessForSkyBlocks(this.world, pos.getX(), pos.getY(), pos.getZ(), 0);
         if (!IrisApi.getInstance().isShaderPackInUse()) return CeleritasDynamicLightsCompat.mergeDynamicLight(pos, cached);
         return TileEntityLight.packedLight(this.world, pos.getX(), pos.getY(), pos.getZ(), cached);
