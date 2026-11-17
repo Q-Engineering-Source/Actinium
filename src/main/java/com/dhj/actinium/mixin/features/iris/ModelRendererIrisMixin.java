@@ -3,6 +3,7 @@ package com.dhj.actinium.mixin.features.iris;
 import com.dhj.actinium.config.ActiniumRuntimeOptions;
 import com.dhj.actinium.compat.gibbed.ActiniumModelRenderer;
 import com.dhj.actinium.mixinterface.features.iris.ModelRenderState;
+import com.gtnewhorizons.angelica.rendering.tesr.ModelPartBatcher;
 import com.gtnewhorizons.angelica.mixins.interfaces.IModelRenderer;
 import net.irisshaders.iris.api.v0.IrisApi;
 import net.minecraft.client.model.ModelBox;
@@ -58,7 +59,8 @@ public abstract class ModelRendererIrisMixin implements IModelRenderer, Actinium
 
     @Inject(method = "render(F)V", at = @At("HEAD"), cancellable = true)
     private void actinium$renderWithoutDisplayList(float scale, CallbackInfo ci) {
-        if (IrisApi.getInstance().isShaderPackInUse() || !ActiniumRuntimeOptions.useModelRendererBatching()) {
+        if (!ModelPartBatcher.isBatchingActive()
+            && (IrisApi.getInstance().isShaderPackInUse() || !ActiniumRuntimeOptions.useModelRendererBatching())) {
             return;
         }
 
@@ -91,7 +93,8 @@ public abstract class ModelRendererIrisMixin implements IModelRenderer, Actinium
 
     @Inject(method = "renderWithRotation(F)V", at = @At("HEAD"), cancellable = true)
     private void actinium$renderWithRotationWithoutDisplayList(float scale, CallbackInfo ci) {
-        if (IrisApi.getInstance().isShaderPackInUse() || !ActiniumRuntimeOptions.useModelRendererBatching()) {
+        if (!ModelPartBatcher.isBatchingActive()
+            && (IrisApi.getInstance().isShaderPackInUse() || !ActiniumRuntimeOptions.useModelRendererBatching())) {
             return;
         }
 
@@ -200,6 +203,12 @@ public abstract class ModelRendererIrisMixin implements IModelRenderer, Actinium
         // Empty parents must also qualify so geometry collectors can reach their rendered children.
         this.actinium$hasRenderedModel = true;
         if (this.cubeList.isEmpty()) {
+            return;
+        }
+
+        // The batch places the part with the current modelview, exactly where the display list would
+        // have drawn it; when it declines, the display list or the immediate path below draws it.
+        if (ModelPartBatcher.partDraw((ModelRenderer) (Object) this, scale, null)) {
             return;
         }
 

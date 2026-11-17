@@ -632,6 +632,11 @@ public final class ModelPartBatcher {
         return entityPassActive() && passProgramBound();
     }
 
+    /** Whether a batch cycle is open, so model parts can be handed to it instead of drawn immediately. */
+    public static boolean isBatchingActive() {
+        return INSTANCE.active;
+    }
+
     public boolean entitiesActive() {
         return active && mode == Mode.ENTITIES;
     }

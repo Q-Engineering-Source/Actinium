@@ -16,7 +16,7 @@ import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import lombok.Setter;
 import net.coderbot.iris.pipeline.ShadowRenderer;
-import net.minecraft.client.renderer.culling.Frustum;
+import net.minecraft.client.renderer.culling.ICamera;
 import net.minecraft.client.renderer.entity.Render;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.entity.RenderManager;
@@ -49,7 +49,7 @@ public final class EntityShadowReplay {
     private static final Matrix4f shadowInverse = new Matrix4f();
     private static final Matrix4f mainFromShadow = new Matrix4f();
     private static Record recording;
-    @Setter private static Frustum mainView;
+    @Setter private static ICamera mainView;
     private static Class<?> lastType;
     private static boolean lastExcluded;
     private static long drawsAtStart, replayed, outsideMainView;

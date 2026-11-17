@@ -12,6 +12,9 @@ import com.gtnewhorizons.angelica.glsm.shadow.InternalShadowRenderingState;
 import com.dhj.actinium.shadows.ShadowRenderingState;
 import com.gtnewhorizons.angelica.compat.mojang.Camera;
 import com.gtnewhorizons.angelica.rendering.DeferredEntityOverlay;
+import com.gtnewhorizons.angelica.rendering.tesr.EntityShadowReplay;
+import com.gtnewhorizons.angelica.rendering.tesr.ModelPartBatcher;
+import com.gtnewhorizons.angelica.rendering.tesr.TesrBatchRenderer;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.gl.framebuffer.MinecraftFramebufferHelper;
 import net.coderbot.iris.layer.GbufferPrograms;
@@ -373,6 +376,10 @@ public abstract class MixinRenderGlobal implements SimpleWorldRenderer.Provider<
         RenderDebugHooksHolder.logWorldPassState("after-hand-solid", pipeline.getPhase().name(), "translucent-prelude");
         this.mc.profiler.endStartSection("iris_pre_translucent");
         pipeline.beginTranslucents();
+        // Deferred programs bind a different program per pass, so the entity and block entity batches
+        // held back until after the deferred pass have to flush under the translucent program.
+        ModelPartBatcher.INSTANCE.flushEntitiesAfterDeferred();
+        TesrBatchRenderer.INSTANCE.flushAfterDeferred();
         RenderDebugHooksHolder.logWorldPassState("after-begin-translucents", pipeline.getPhase().name(), "translucent-prelude");
     }
 
@@ -412,6 +419,10 @@ public abstract class MixinRenderGlobal implements SimpleWorldRenderer.Provider<
         boolean irisEntities = Iris.enabled && IrisApiV0Impl.INSTANCE.isShaderPackInUse();
         GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
         GlStateManager.enableTexture2D();
+        // The batch has to know it is inside the entity loop so it flushes per entity instead of
+        // wrapping the whole loop in one entity program.
+        ModelPartBatcher.INSTANCE.begin(ModelPartBatcher.Mode.ENTITIES);
+        GbufferPrograms.beginEntityLoop();
         long entitiesStartNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
         long renderCallNanos = 0L;
         int checkedEntities = 0;
@@ -442,7 +453,9 @@ public abstract class MixinRenderGlobal implements SimpleWorldRenderer.Provider<
                 {
                     ++this.countEntitiesRendered;
                     long renderCallStartNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
-                    this.renderManager.renderEntityStatic(entity, partialTicks, false);
+                    if (!EntityShadowReplay.replay(this.renderManager, entity, partialTicks, pass)) {
+                        this.renderManager.renderEntityStatic(entity, partialTicks, false);
+                    }
                     if (renderCallStartNanos != 0L) {
                         renderCallNanos += System.nanoTime() - renderCallStartNanos;
                     }
@@ -461,6 +474,8 @@ public abstract class MixinRenderGlobal implements SimpleWorldRenderer.Provider<
                 }
             }
         } finally {
+            GbufferPrograms.endEntityLoop();
+            ModelPartBatcher.INSTANCE.flush();
             RenderDebugHooksHolder.recordRenderGlobalStageTiming("entities", pass, entitiesStartNanos);
             RenderDebugHooksHolder.recordRenderGlobalCounterTiming(
                     "entities-loop-total",

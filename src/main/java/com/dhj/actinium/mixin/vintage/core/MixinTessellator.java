@@ -14,6 +14,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import com.dhj.actinium.render.VanillaBufferBuilderRenderer;
+import com.gtnewhorizons.angelica.glsm.ITessellatorData;
+import com.gtnewhorizons.angelica.rendering.tesr.ModelPartBatcher;
 
 @Mixin(Tessellator.class)
 public class MixinTessellator implements ITessellatorInstance {
@@ -38,6 +40,14 @@ public class MixinTessellator implements ITessellatorInstance {
         this.buffer.finishDrawing();
         if (TessellatorManager.shouldInterceptBufferBuilderDraw()) {
             TessellatorManager.interceptBufferBuilderDraw(this.buffer);
+            ci.cancel();
+            return;
+        }
+
+        // An open entity or block entity batch merges the vertices into its retained groups instead of
+        // drawing them here; outside a batch the builder keeps its own streaming path.
+        if (ModelPartBatcher.isBatchingActive()) {
+            ModelPartBatcher.drawTessellator((ITessellatorData) this.buffer);
             ci.cancel();
             return;
         }

@@ -5,6 +5,8 @@ import com.dhj.actinium.render.ProjectiveTexCoordWriter;
 import com.dhj.actinium.render.vertex.DirectBufferAddress;
 import com.dhj.actinium.render.vertex.FastVertexLayout;
 import com.dhj.actinium.render.vertex.VertexWriters;
+import com.gtnewhorizons.angelica.glsm.ITessellatorData;
+import com.gtnewhorizons.angelica.rendering.tesr.SharedVertexLayout;
 import net.coderbot.iris.celeritas.buffer.ShaderMaterialOverrideState;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.vertex.VertexFormat;
@@ -27,7 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Mixin(BufferBuilder.class)
-public abstract class BufferBuilderMixin implements BufferBuilderExtension, ProjectiveTexCoordBuffer {
+public abstract class BufferBuilderMixin implements BufferBuilderExtension, ProjectiveTexCoordBuffer, ITessellatorData {
     @Shadow
     private ByteBuffer byteBuffer;
 
@@ -272,5 +274,119 @@ public abstract class BufferBuilderMixin implements BufferBuilderExtension, Proj
             q
         );
         this.actinium$nextVertexFormatIndex();
+    }
+
+    /**
+     * Packed vertices in the shared eight-int layout the batched TESR and entity draws read.
+     *
+     * <p>Vanilla stores vertices in the element order and stride of the active format, which is
+     * usually not the shared layout. The array is therefore repacked: the attributes the format
+     * carries are copied into their fixed slots and the rest stay zero until
+     * {@code TessellatorStreamingDrawer.fillMissingAttributes} fills them from GL state. Copying the
+     * bytes as if they were already eight-int vertices would shift every attribute.</p>
+     */
+    @Unique
+    private int[] actinium$packedVertices = EMPTY_VERTICES;
+
+    @Unique
+    private int actinium$packedVertexCount = -1;
+
+    @Unique
+    private static final int[] EMPTY_VERTICES = new int[0];
+
+
+    @Override
+    public boolean isDrawing() {
+        return this.isDrawing;
+    }
+
+    @Override
+    public void setDrawing(boolean drawing) {
+        this.isDrawing = drawing;
+    }
+
+    @Override
+    public int[] getRawBuffer() {
+        if (this.actinium$packedVertexCount != this.vertexCount) {
+            this.actinium$packVertices();
+        }
+        return this.actinium$packedVertices;
+    }
+
+    @Override
+    public int getRawBufferIndex() {
+        return this.vertexCount * SharedVertexLayout.VERTEX_INTS;
+    }
+
+    @Override
+    public int getRawBufferSize() {
+        return this.actinium$packedVertices.length;
+    }
+
+    @Override
+    public void setRawBufferSize(int size) {
+        // The shared view is rebuilt from the vertex buffer on every draw, so its size is derived.
+    }
+
+    @Override
+    public void setRawBuffer(int[] buffer) {
+        this.actinium$packedVertices = buffer;
+        this.actinium$packedVertexCount = this.vertexCount;
+    }
+
+    @Override
+    public int getDrawMode() {
+        return this.drawMode;
+    }
+
+    @Override
+    public boolean hasTexture() {
+        return this.actinium$hasElement(VertexFormatElement.EnumUsage.UV, 0);
+    }
+
+    @Override
+    public boolean hasColor() {
+        return this.actinium$hasElement(VertexFormatElement.EnumUsage.COLOR, 0);
+    }
+
+    @Override
+    public boolean hasNormals() {
+        return this.actinium$hasElement(VertexFormatElement.EnumUsage.NORMAL, 0);
+    }
+
+    @Override
+    public boolean hasBrightness() {
+        return this.actinium$hasElement(VertexFormatElement.EnumUsage.UV, 1);
+    }
+
+    @Override
+    public void angelica$reset() {
+        this.reset();
+        this.actinium$packedVertices = EMPTY_VERTICES;
+        this.actinium$packedVertexCount = -1;
+    }
+
+    @Unique
+    private boolean actinium$hasElement(VertexFormatElement.EnumUsage usage, int index) {
+        return SharedVertexLayout.has(this.vertexFormat, usage, index);
+    }
+
+    @Unique
+    private void actinium$packVertices() {
+        final int count = this.vertexCount;
+        if (count <= 0) {
+            this.actinium$packedVertices = EMPTY_VERTICES;
+            this.actinium$packedVertexCount = count;
+            return;
+        }
+        final VertexFormat format = this.vertexFormat;
+        if (format == null) {
+            throw new IllegalStateException("Packing " + count + " vertices without a vertex format");
+        }
+
+        final int[] packed = new int[count * SharedVertexLayout.VERTEX_INTS];
+        SharedVertexLayout.pack(this.byteBuffer, format, count, packed);
+        this.actinium$packedVertices = packed;
+        this.actinium$packedVertexCount = count;
     }
 }

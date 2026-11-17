@@ -10,6 +10,7 @@ import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 import net.minecraft.client.Minecraft;
 import net.minecraft.tileentity.TileEntityBeacon;
 import net.minecraft.util.math.MathHelper;
+import java.util.List;
 import net.minecraft.util.ResourceLocation;
 import org.lwjgl.opengl.GL11;
 
@@ -66,6 +67,10 @@ public final class BeaconBeamMeshes {
 
     private BeaconBeamMeshes() {}
 
+    private static boolean isWhite(float[] colors) {
+        return colors.length >= 3 && colors[0] == 1.0f && colors[1] == 1.0f && colors[2] == 1.0f;
+    }
+
     public static boolean render(TileEntityBeacon beacon, double x, double y, double z, float partialTicks) {
         final float f1 = beacon.shouldBeamRender();
         GLSMDepthStencilAlpha.glAlphaFunc(GL11.GL_GREATER, 0.1f);
@@ -73,6 +78,14 @@ public final class BeaconBeamMeshes {
             return true;
         }
         if (f1 < 1.0f) {
+            return false;
+        }
+        // The cached meshes are the plain white beam. 1.12.2 colours each segment by the stained glass
+        // above the beacon and lets the segments stack to the build limit, and those beams keep the
+        // vanilla renderer because their geometry is not the one cached here.
+        final List<TileEntityBeacon.BeamSegment> segments = beacon.getBeamSegments();
+        if (segments.size() != 1 || segments.get(0).getHeight() != BEAM_HEIGHT
+            || !isWhite(segments.get(0).getColors())) {
             return false;
         }
 
