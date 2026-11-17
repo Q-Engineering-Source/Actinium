@@ -534,23 +534,42 @@ public final class ModelPartBatcher {
         return true;
     }
 
-    public boolean queueSkippedItemGlint(TemplateBuffer template, TesrMaterial material) {
-        if (cannotQueueOrRecordGlint() || GLSMTextures.getActiveTextureUnit() != 0 || !activeGroups.canCopyInstances(material) || !MatrixHelper.isIdentity(GLStateManager.getTextures().getTextureUnitMatrix(0))) return false;
+    /**
+     * Queues the two glint layers of an item whose base geometry is already in the batch.
+     *
+     * @param color instance colour multiplied into the untinted geometry, which is the colour the
+     *              skipped vanilla glint pass would have multiplied into every vertex
+     * @return whether the layers were queued
+     */
+    public boolean queueSkippedItemGlint(TemplateBuffer template, TesrMaterial material, int color) {
+        if (!canQueueSkippedItemGlint(material)) return false;
         final EntityRenderCommands.DrawInputs inputs = glintInputs(ItemGlint.texture(), material, ShaderGlint.NO_TINT, false);
         if (shadow) {
-            if (material == EntityMaterials.ITEM_GLINT && !ItemGlint.canResetStencil()) return false;
             final EntityRenderCommands.ItemGlint entry = EntityShadowReplay.recordItemGlint(currentModelView(), inputs);
             if (entry == null) return false;
             GLStateManager.requireExitDrawState(false);
-            entry.instance.set(template, GLSMConfig.packedLastBrightness(), VANILLA_GLINT_COLOR, currentOverlay(), currentEntityInfo(0));
+            entry.instance.set(template, GLSMConfig.packedLastBrightness(), color, currentOverlay(), currentEntityInfo(0));
             return true;
         }
         final RenderLayer layer = layerFor(ItemGlint.texture(), inputs);
-        activeGroups.queueGlintLayers(template, layer, material, currentModelView(), GLSMConfig.packedLastBrightness(), VANILLA_GLINT_COLOR, currentOverlay(), currentEntityInfo(0),
+        activeGroups.queueGlintLayers(template, layer, material, currentModelView(), GLSMConfig.packedLastBrightness(), color, currentOverlay(), currentEntityInfo(0),
             ItemGlint.firstMatrix(), ItemGlint.secondMatrix());
         parts++;
         glintPassReuses++;
         return true;
+    }
+
+    /**
+     * Whether {@link #queueSkippedItemGlint} accepts these layers, without queueing them. A caller
+     * that has already queued the base geometry checks this first, so a refused glint does not
+     * leave the item half batched.
+     */
+    public boolean canQueueSkippedItemGlint(TesrMaterial material) {
+        if (cannotQueueOrRecordGlint()) return false;
+        if (GLSMTextures.getActiveTextureUnit() != 0) return false;
+        if (!activeGroups.canCopyInstances(material)) return false;
+        if (!MatrixHelper.isIdentity(GLStateManager.getTextures().getTextureUnitMatrix(0))) return false;
+        return !shadow || material != EntityMaterials.ITEM_GLINT || ItemGlint.canResetStencil();
     }
 
     boolean recordArmorGlint(int start, int end, ResourceLocation texture) {

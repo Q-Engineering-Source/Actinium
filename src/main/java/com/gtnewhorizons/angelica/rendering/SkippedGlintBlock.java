@@ -33,6 +33,27 @@ public final class SkippedGlintBlock {
         applyItemExitState(GL11.GL_SRC_COLOR, GL11.GL_ONE);
     }
 
+    /**
+     * The state {@code RenderItem.renderEffect} leaves behind in 1.12.2, for callers that queue both
+     * glint layers instead of running the block.
+     *
+     * <p>The method restores the depth mask, the depth function, lighting and the blend function
+     * before it returns, and rebinds the block atlas it replaced at its start. A caller that skips
+     * the whole method never rebinds a texture, so the atlas is still the bound one.</p>
+     */
+    public static void applyItemGlintExitState() {
+        final boolean recording = GLStateManager.isExitCaptureActive();
+        if (recording || !GLSMDepthStencilAlpha.isEffectiveDepthMaskEnabled()) GLSMDepthStencilAlpha.glDepthMask(true);
+        if (recording || GLSMDepthStencilAlpha.getDepthState().getFunc() != GL11.GL_LEQUAL) GLSMDepthStencilAlpha.glDepthFunc(GL11.GL_LEQUAL);
+        if (recording || !GLSMLighting.getLightingState().isEnabled()) GLSMEnable.glEnable(GL11.GL_LIGHTING);
+        GLSMBlend.getEffectiveBlendState(blend);
+        if (recording || GLSMBlend.getBlendState().isFuncUnknown() || blend.getSrcRgb() != GL11.GL_SRC_ALPHA
+            || blend.getDstRgb() != GL11.GL_ONE_MINUS_SRC_ALPHA || blend.getSrcAlpha() != GL11.GL_SRC_ALPHA
+            || blend.getDstAlpha() != GL11.GL_ONE_MINUS_SRC_ALPHA) {
+            GLSMBlend.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        }
+    }
+
     private static void applyItemExitState(int srcAlpha, int dstAlpha) {
         applyExitState(0.5F * 0.76F, 0.25F * 0.76F, 0.8F * 0.76F, 1.0F, GL11.GL_SRC_COLOR, GL11.GL_ONE, srcAlpha, dstAlpha, false, false);
     }

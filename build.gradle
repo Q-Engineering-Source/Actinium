@@ -795,6 +795,8 @@ tasks.register('glIntegrationTest', Test) {
         languageVersion = JavaLanguageVersion.of(25)
     }
     jvmArgs '--enable-native-access=ALL-UNNAMED'
+    // Forge's registry bootstrap accesses Field.modifiers, the same module access :test grants.
+    jvmArgs '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED'
     workingDir = rootProject.projectDir
 }
 

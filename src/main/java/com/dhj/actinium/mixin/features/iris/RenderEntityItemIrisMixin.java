@@ -1,38 +1,37 @@
 package com.dhj.actinium.mixin.features.iris;
 
+import com.gtnewhorizons.angelica.rendering.items.DroppedItemInstancer;
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import net.coderbot.iris.uniforms.ItemIdManager;
 import net.minecraft.client.renderer.entity.RenderEntityItem;
 import net.minecraft.entity.item.EntityItem;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(RenderEntityItem.class)
 public class RenderEntityItemIrisMixin {
-    @Inject(method = "doRender(Lnet/minecraft/entity/item/EntityItem;DDDFF)V", at = @At("HEAD"))
-    private void actinium$setDroppedItemId(
+    /**
+     * Sets the item id the shader uniforms read and opens the scope that lets the item instancer
+     * take the draws. Both are restored in a finally block: a renderer that throws part way through
+     * an item would otherwise leave the next GUI item inside a dropped item scope.
+     */
+    @WrapMethod(method = "doRender(Lnet/minecraft/entity/item/EntityItem;DDDFF)V")
+    private void actinium$scopeDroppedItem(
         EntityItem entity,
         double x,
         double y,
         double z,
         float entityYaw,
         float partialTicks,
-        CallbackInfo ci
+        Operation<Void> original
     ) {
         ItemIdManager.setItemId(entity.getItem());
-    }
-
-    @Inject(method = "doRender(Lnet/minecraft/entity/item/EntityItem;DDDFF)V", at = @At("RETURN"))
-    private void actinium$resetDroppedItemId(
-        EntityItem entity,
-        double x,
-        double y,
-        double z,
-        float entityYaw,
-        float partialTicks,
-        CallbackInfo ci
-    ) {
-        ItemIdManager.resetItemId();
+        DroppedItemInstancer.enterScope();
+        try {
+            original.call(entity, x, y, z, entityYaw, partialTicks);
+        } finally {
+            DroppedItemInstancer.exitScope();
+            ItemIdManager.resetItemId();
+        }
     }
 }

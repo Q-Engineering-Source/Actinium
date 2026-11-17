@@ -1,6 +1,7 @@
 package com.gtnewhorizons.angelica.rendering.tesr;
 
 import com.gtnewhorizons.angelica.compat.mojang.RenderLayer;
+import com.gtnewhorizons.angelica.rendering.items.DroppedItemInstancer;
 import com.gtnewhorizons.angelica.rendering.particles.ParticleInstancer;
 
 public final class TesrLifecycle {
@@ -17,6 +18,7 @@ public final class TesrLifecycle {
         BeaconBeamMeshes.clear();
         BatchEligibility.reset();
         ParticleInstancer.clear();
+        DroppedItemInstancer.forgetItemDraws();
 
         RenderLayer.clearInterningAndHooks();
         DrawState.clearInterning();

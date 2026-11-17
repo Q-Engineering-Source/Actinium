@@ -1,0 +1,410 @@
+package com.gtnewhorizons.angelica.rendering.items;
+
+import com.dhj.actinium.render.FastLitItemDisplayListCache;
+import com.dhj.actinium.render.ItemVertexAlphaOverrides;
+import com.gtnewhorizons.angelica.api.tesr.TesrMaterial;
+import com.gtnewhorizons.angelica.config.AngelicaConfig;
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.GLSMDraws;
+import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMConfig;
+import com.gtnewhorizons.angelica.rendering.SkippedGlintBlock;
+import com.gtnewhorizons.angelica.rendering.tesr.BatchEligibility;
+import com.gtnewhorizons.angelica.rendering.tesr.EntityMaterials;
+import com.gtnewhorizons.angelica.rendering.tesr.ModelPartBatcher;
+import com.gtnewhorizons.angelica.rendering.tesr.TemplateBuffer;
+import com.gtnewhorizons.angelica.rendering.tesr.TemplateCapture;
+import com.gtnewhorizon.gtnhlib.client.renderer.TessellatorManager;
+import net.minecraft.client.renderer.BufferBuilder;
+import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.renderer.block.model.IBakedModel;
+import net.minecraft.client.renderer.color.ItemColors;
+import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import net.minecraft.item.ItemStack;
+import net.minecraft.util.EnumFacing;
+import net.minecraftforge.client.model.pipeline.LightUtil;
+import net.minecraftforge.common.ForgeModContainer;
+import org.lwjgl.opengl.GL11;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Turns the render of a dropped item into an instanced draw.
+ *
+ * <p>1.12.2 has no equivalent of the 1.6/1.7 {@code RenderItem.renderDroppedItem} chain: the item
+ * entity hands a baked model to {@code RenderItem.renderItem}, which writes the model's quads into
+ * one {@code ITEM} buffer and draws it, then repeats the same geometry twice more for the
+ * enchantment glint. This class replaces the three draws with one instance per item of a shared
+ * template, plus the two glint layers the fixed function path renders from the same template.</p>
+ *
+ * <p>The template is captured by replaying the model's quads through
+ * {@link LightUtil#renderQuadColor}, which is the exact call the vanilla draw makes, and converting
+ * the resulting 28 byte {@code ITEM} vertices to the eight int layout the batch reads. The capture
+ * keeps the lightmap the frame had at capture time, so an item lit by
+ * {@code RenderHelper.enableStandardItemLighting} keeps its fixed brightness.</p>
+ *
+ * <p>Every path the batch cannot reproduce falls back to the vanilla draw: models outside the
+ * stable set, non {@code ITEM} quads, built-in renderers, Forge's lit item path, a mod scaling item
+ * vertex alpha, a display list recording and anything drawn outside a dropped item scope.</p>
+ */
+public final class DroppedItemInstancer {
+
+    /** The item was queued; the caller must not run the vanilla draw. */
+    public static final long SKIP = -2L;
+    /** The item was left to the vanilla draw, which has not run yet. */
+    public static final long RUN = -1L;
+
+    /** The colour {@code RenderItem.renderEffect} multiplies into the glint geometry. */
+    private static final int ITEM_GLINT_COLOR = 0xFF8040CC;
+    private static final int CAPTURE_BYTES = 16 * 1024;
+    private static final EnumFacing[] FACINGS = EnumFacing.values();
+
+    private static final ItemPropCache<ItemMesh> MESHES = new ItemPropCache<>(
+        AngelicaConfig::itemRendererCacheSize, ItemMesh::new, null);
+    private static final BufferBuilder CAPTURE = new BufferBuilder(CAPTURE_BYTES);
+    private static final List<BakedQuad> ALL_QUADS = new ArrayList<>();
+
+    private static int scopeDepth;
+    private static long part = RUN;
+
+    private static long instanced;
+    private static long glintInstanced;
+    private static long cached;
+    private static long captured;
+
+    /** Why a dropped item was left to the vanilla draw. */
+    public enum BailReason {
+        /** Drawn outside a {@code RenderEntityItem.doRender} call, such as a GUI or held item. */
+        SCOPE,
+        /** No item to draw. */
+        STACK,
+        /** The model renders through its tile entity item stack renderer. */
+        MODEL,
+        /** Forge's lit item path owns the draw. */
+        EMISSIVE,
+        /** A mod is scaling item vertex alpha, so the captured colours would be stale. */
+        ALPHA_OVERRIDE,
+        /** The draw happens inside a display list recording. */
+        RECORDING,
+        /** The model class carries no guarantee that its quads stay the same between frames. */
+        STABLE,
+        /** The model has no quads in the {@code ITEM} format. */
+        FORMAT,
+        /** No entity batch is open. */
+        NOT_ALLOWED,
+        /** A tessellator capture is open and owns the vertices. */
+        CAPTURE,
+        /** The blend, depth or alpha state is not one the batch can reproduce. */
+        MATERIAL,
+        /** The captured template is empty. */
+        GEOMETRY,
+        /** The batch refused the geometry. */
+        QUEUE,
+        /** The batch refused the glint layers. */
+        GLINT;
+
+        public static final BailReason[] VALUES = values();
+    }
+
+    private static final long[] bails = new long[BailReason.VALUES.length];
+
+    private DroppedItemInstancer() {
+    }
+
+    public static long statInstanced() {
+        return instanced;
+    }
+
+    public static long statGlintInstanced() {
+        return glintInstanced;
+    }
+
+    public static long statCached() {
+        return cached;
+    }
+
+    public static long statCaptured() {
+        return captured;
+    }
+
+    public static long statBail(BailReason reason) {
+        return bails[reason.ordinal()];
+    }
+
+    /**
+     * Opens the scope a dropped item render runs in. Only draws inside this scope are instanced,
+     * which keeps the GUI, the held item and item frames on the vanilla path.
+     */
+    public static void enterScope() {
+        scopeDepth++;
+    }
+
+    /** Closes the scope opened by {@link #enterScope}. */
+    public static void exitScope() {
+        if (scopeDepth > 0) {
+            scopeDepth--;
+        }
+        forgetItemDraws();
+    }
+
+    /**
+     * Reports why this render cannot be instanced.
+     *
+     * @return the reason, or {@code null} when the model itself is one the instancer accepts
+     */
+    public static BailReason check(ItemStack stack, IBakedModel model) {
+        if (scopeDepth == 0) {
+            return BailReason.SCOPE;
+        }
+        if (stack == null || stack.isEmpty() || stack.getItem() == null || model == null) {
+            return BailReason.STACK;
+        }
+        if (model.isBuiltInRenderer()) {
+            return BailReason.MODEL;
+        }
+        if (ForgeModContainer.allowEmissiveItems) {
+            return BailReason.EMISSIVE;
+        }
+        if (ItemVertexAlphaOverrides.isActive()) {
+            return BailReason.ALPHA_OVERRIDE;
+        }
+        if (!FastLitItemDisplayListCache.isStableModel(model)) {
+            return BailReason.STABLE;
+        }
+        return hasItemQuads(model) ? null : BailReason.FORMAT;
+    }
+
+    /**
+     * Queues the geometry of one dropped item: the base pass and, for an enchanted stack, both glint
+     * layers.
+     *
+     * <p>The whole method is cancelled when this returns {@link #SKIP}, which is what removes the
+     * vanilla draw. That also removes the only call site of {@code RenderItem.renderEffect}, so the
+     * glint has to be queued by the same call instead of from a hook of its own. An item whose
+     * glint cannot be queued is left entirely to vanilla, so the two passes never disagree about
+     * which of them runs.</p>
+     *
+     * @param colors the item colour table the renderer resolves tint indices through
+     * @return {@link #SKIP} when the caller must not draw, otherwise the draw count the vanilla draw
+     *         starts from, to be passed to {@link #endPart}
+     */
+    public static long renderItemPart(ItemColors colors, ItemStack stack, IBakedModel model) {
+        final BailReason reason = check(stack, model);
+        if (reason != null) {
+            return bail(reason, RUN);
+        }
+        if (!BatchEligibility.batchingAllowed() || !ModelPartBatcher.INSTANCE.isActive()) {
+            return bail(BailReason.NOT_ALLOWED, RUN);
+        }
+        if (GLStateManager.isRecordingDisplayList()) {
+            return bail(BailReason.RECORDING, RUN);
+        }
+        if (TessellatorManager.shouldInterceptBufferBuilderDraw()
+            || TessellatorManager.shouldInterceptDraw(Tessellator.getInstance())) {
+            return bail(BailReason.CAPTURE, RUN);
+        }
+        final TesrMaterial material = EntityMaterials.itemFromCurrentState(true);
+        if (material == null) {
+            return bail(BailReason.MATERIAL, RUN);
+        }
+        final ItemMesh mesh = mesh(colors, stack, model);
+        if (mesh == null) {
+            return bail(BailReason.GEOMETRY, RUN);
+        }
+        final boolean glint = stack.hasEffect();
+        if (glint && !ModelPartBatcher.INSTANCE.canQueueSkippedItemGlint(EntityMaterials.GLINT)) {
+            return bail(BailReason.GLINT, RUN);
+        }
+
+        final long drawsBefore = GLSMDraws.drawCalls;
+        // The draw this replaces runs under RenderItem's own centring of the model about the origin.
+        GLSMMatrices.glPushMatrix();
+        try {
+            GLSMMatrices.glTranslatef(-0.5F, -0.5F, -0.5F);
+            if (!ModelPartBatcher.INSTANCE.queueTemplate(mesh.base, material)) {
+                return bail(BailReason.QUEUE, drawsBefore);
+            }
+            instanced++;
+            BatchEligibility.onPartQueued();
+            if (glint) {
+                queueGlint(mesh, model);
+            }
+        } finally {
+            GLSMMatrices.glPopMatrix();
+        }
+        return part = SKIP;
+    }
+
+    /**
+     * Queues both glint layers of a dropped item.
+     *
+     * <p>The layers keep the two texture matrices {@code RenderItem.renderEffect} sets around its
+     * two {@code renderModel} calls, and draw the untinted geometry with
+     * {@value #ITEM_GLINT_COLOR} as the instance colour, which is the colour the vanilla pass
+     * multiplies into every glint vertex.</p>
+     */
+    private static void queueGlint(ItemMesh mesh, IBakedModel model) {
+        final TemplateBuffer template = mesh.glintTemplate(model);
+        if (template == null || !ModelPartBatcher.INSTANCE.queueSkippedItemGlint(template, EntityMaterials.GLINT, ITEM_GLINT_COLOR)) {
+            // The base is already queued, so the vanilla glint would draw before it and the depth
+            // equal test would drop it. Leaving it out keeps the item intact for this frame.
+            bails[BailReason.GLINT.ordinal()]++;
+            return;
+        }
+        glintInstanced += 2;
+        BatchEligibility.onPartQueued();
+        BatchEligibility.onPartQueued();
+        // The skipped method restores the depth mask, the depth function, lighting and the blend
+        // function before it returns; the block atlas is still bound because it never rebinds one.
+        SkippedGlintBlock.applyItemGlintExitState();
+    }
+
+    /**
+     * Closes one {@code RenderItem.renderItem} call. A draw that stayed vanilla is reported to the
+     * batch as an expected draw, so the renderer that produced it is not mistaken for one that
+     * mixes its own geometry with batched parts.
+     */
+    public static void endPart() {
+        final long drawnFrom = part;
+        part = RUN;
+        if (drawnFrom >= 0L) {
+            BatchEligibility.onPartFallback(drawnFrom, GLSMDraws.drawCalls);
+        }
+    }
+
+    /** Drops the per-draw state a renderer that threw in the middle of an item left behind. */
+    public static void forgetItemDraws() {
+        part = RUN;
+    }
+
+    /** Drops every cached mesh, on a texture reload or a shader pack change. */
+    public static void clear() {
+        forgetItemDraws();
+        MESHES.clear();
+    }
+
+    /**
+     * The template this stack and model draw from, captured on first use.
+     *
+     * @return the template, or {@code null} when the model has no quads in the {@code ITEM} format
+     */
+    public static TemplateBuffer template(ItemColors colors, ItemStack stack, IBakedModel model) {
+        final ItemMesh mesh = mesh(colors, stack, model);
+        return mesh == null ? null : mesh.base;
+    }
+
+    /** The cache entry of this render, capturing it when the render was not seen before. */
+    private static ItemMesh mesh(ItemColors colors, ItemStack stack, IBakedModel model) {
+        final List<BakedQuad>[] faces = gather(model);
+        ALL_QUADS.clear();
+        for (List<BakedQuad> face : faces) {
+            ALL_QUADS.addAll(face);
+        }
+        final int[] tints = FastLitItemDisplayListCache.getQuadColors(colors, ALL_QUADS, -1, stack);
+        final ItemMesh hit = MESHES.get(model, tints);
+        if (hit != null) {
+            cached++;
+            return hit;
+        }
+        final TemplateBuffer base = emit(faces, tints);
+        if (base == null) {
+            return null;
+        }
+        final ItemMesh mesh = MESHES.insert(model, tints);
+        mesh.base = base;
+        mesh.untinted = untinted(tints);
+        captured++;
+        return mesh;
+    }
+
+    private static boolean hasItemQuads(IBakedModel model) {
+        for (EnumFacing facing : FACINGS) {
+            if (!itemFormat(model.getQuads(null, facing, 0L))) {
+                return false;
+            }
+        }
+        return itemFormat(model.getQuads(null, null, 0L));
+    }
+
+    private static boolean itemFormat(List<BakedQuad> quads) {
+        for (BakedQuad quad : quads) {
+            if (!FastLitItemDisplayListCache.isItemFormat(quad)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Writes the model's quads through the vanilla vertex call into the capture buffer and converts
+     * the result to a template.
+     *
+     * @param tints per quad colour, or {@code null} for the untinted geometry the glint pass needs
+     */
+    private static TemplateBuffer emit(List<BakedQuad>[] faces, int[] tints) {
+        final int brightness = GLSMConfig.packedLastBrightness();
+        CAPTURE.begin(GL11.GL_QUADS, DefaultVertexFormats.ITEM);
+        final TemplateBuffer template;
+        try {
+            int index = 0;
+            for (List<BakedQuad> face : faces) {
+                for (BakedQuad quad : face) {
+                    LightUtil.renderQuadColor(CAPTURE, quad, tints == null ? -1 : tints[index]);
+                    index++;
+                }
+            }
+            template = TemplateCapture.fromItemBuffer(CAPTURE, brightness);
+        } finally {
+            CAPTURE.finishDrawing();
+            CAPTURE.reset();
+        }
+        return template;
+    }
+
+    private static boolean untinted(int[] tints) {
+        for (int tint : tints) {
+            if (tint != -1) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<BakedQuad>[] gather(IBakedModel model) {
+        final List<BakedQuad>[] faces = new List[FACINGS.length + 1];
+        for (int i = 0; i < FACINGS.length; i++) {
+            faces[i] = model.getQuads(null, FACINGS[i], 0L);
+        }
+        faces[FACINGS.length] = model.getQuads(null, null, 0L);
+        return faces;
+    }
+
+    private static long bail(BailReason reason, long drawsFrom) {
+        bails[reason.ordinal()]++;
+        return part = drawsFrom;
+    }
+
+    /** The meshes one model renders from: the tinted base and, once needed, the untinted glint. */
+    private static final class ItemMesh {
+        private TemplateBuffer base;
+        private TemplateBuffer glint;
+        private boolean untinted;
+
+        /**
+         * The glint geometry of this model. A render whose quads carry no tint index produces the
+         * untinted geometry already, so the base template serves both passes.
+         */
+        private TemplateBuffer glintTemplate(IBakedModel model) {
+            if (this.untinted) {
+                return this.base;
+            }
+            if (this.glint == null) {
+                this.glint = emit(gather(model), null);
+            }
+            return this.glint;
+        }
+    }
+}

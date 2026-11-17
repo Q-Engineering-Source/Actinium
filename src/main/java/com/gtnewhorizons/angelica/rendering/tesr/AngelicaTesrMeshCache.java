@@ -8,6 +8,7 @@ import com.gtnewhorizons.angelica.api.tesr.TesrMeshProvider;
 import com.gtnewhorizons.angelica.api.tesr.TesrMeshSink;
 import com.gtnewhorizons.angelica.api.tesr.TesrMaterial;
 import com.gtnewhorizons.angelica.glsm.profiling.Tracy;
+import com.gtnewhorizons.angelica.rendering.items.DroppedItemInstancer;
 import com.gtnewhorizons.angelica.rendering.tesr.TemplateBuffer;
 import com.gtnewhorizons.angelica.rendering.tesr.TesrBatchRenderer;
 import com.gtnewhorizons.angelica.shadercompat.ShaderGlint;
@@ -232,6 +233,7 @@ public final class AngelicaTesrMeshCache {
         @SubscribeEvent
         public void onTextureStitchPost(TextureStitchEvent.Post event) {
             INSTANCE.clear();
+            DroppedItemInstancer.clear();
             ShaderGlint.invalidate();
             TesrShaderPrograms.invalidateAll();
         }
