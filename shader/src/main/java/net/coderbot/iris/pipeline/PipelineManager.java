@@ -3,6 +3,7 @@ package net.coderbot.iris.pipeline;
 import net.coderbot.iris.debug.flight.GlFlightRecording;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
+import com.gtnewhorizons.angelica.glsm.hooks.PendingProgramSelection;
 import lombok.Getter;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.gl.framebuffer.MinecraftFramebufferHelper;
@@ -49,6 +50,17 @@ public class PipelineManager {
 		GLSMHooks.consumersActive = pipeline instanceof DeferredWorldRenderingPipeline;
 	}
 
+	/**
+	 * Drops a deferred program selection published by a pipeline that is no longer active, so a
+	 * dimension switch or a teardown never leaves the slot pointing at another pipeline.
+	 */
+	private void clearStalePendingSelection() {
+		final PendingProgramSelection pending = GLSMHooks.pendingProgramSelection;
+		if (pending != null && pending != pipeline) {
+			GLSMHooks.pendingProgramSelection = null;
+		}
+	}
+
 	public WorldRenderingPipeline preparePipeline(String currentDimension) {
 		// Portal-style mods (e.g. BetterPortals) legitimately render another dimension within the
 		// same frame, so a dimension flip is not necessarily a world-load event: keep every
@@ -85,6 +97,7 @@ public class PipelineManager {
 		pipelineLastUsedNs.put(currentDimension, nowNs);
 
 		updateGlsmHookConsumers();
+		clearStalePendingSelection();
 		return pipeline;
 	}
 
@@ -171,6 +184,7 @@ public class PipelineManager {
 		lastPreparedDimension = null;
 		versionCounterForSodiumShaderReload++;
 		updateGlsmHookConsumers();
+		clearStalePendingSelection();
 
 		// The lazy version-counter cleanup in the terrain shader provider only runs while
 		// shaders are enabled; delete the chunk programs here so disabling shaders does not

@@ -12,7 +12,12 @@ import org.lwjgl.opengl.GL13;
 final class BatchStateFallback {
     private static final Runnable FLUSH = BatchStateFallback::flush;
 
-    static void install() { BatchStateGuard.flush = FLUSH; }
+    static void install() {
+        BatchStateGuard.flush = FLUSH;
+        // Shader-side code asks the guard instead of the host class whether draws are batched, which
+        // is what defers a program selection out of an active batch.
+        BatchStateGuard.batchingAllowed = BatchEligibility::batchingAllowed;
+    }
 
     private static void flush() {
         final ModelPartBatcher models = ModelPartBatcher.INSTANCE;

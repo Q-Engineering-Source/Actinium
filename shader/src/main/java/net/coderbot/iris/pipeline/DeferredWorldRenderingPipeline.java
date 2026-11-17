@@ -224,9 +224,9 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	private InputAvailability inputs = new InputAvailability(false, false);
 	private SpecialCondition special = null;
 	private final DeferredProgramMatch programMatch = DeferredProgramMatch.forDisplayLists(
+		this,
 		DeferredWorldRenderingPipeline::selectionOwnedElsewhere,
 		this::matchPassNow);
-	private final PendingProgramSelection pendingSelection = this::resolvePendingProgram;
 	private boolean refreshingPass;
 	private boolean modProgramOverrode;
 	private int programBeforeModOverride = -1;
@@ -292,7 +292,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		this.updateNotifier = new FrameUpdateNotifier();
 
 		this.packDirectives = programs.getPackDirectives();
-		GLSMHooks.pendingProgramSelection = pendingSelection;
 		this.activeFeatures = programs.getPack().getActiveFeatures();
 
         final Framebuffer main = Minecraft.getMinecraft().getFramebuffer();
@@ -1047,10 +1046,10 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 	/**
 	 * A pass change has to wait while a foreign renderer owns the GL program, and while a batch is
-	 * draining: both replace the program the rest of the batch expects to stay bound.
+	 * being built: both replace the program the rest of the batch expects to stay bound.
 	 */
 	private static boolean selectionOwnedElsewhere() {
-		return GLStateManager.isForeignDraw() || BatchStateGuard.isSuspended();
+		return GLStateManager.isForeignDraw() || BatchStateGuard.isBatching();
 	}
 
 	@Override
@@ -1498,9 +1497,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 	@Override
 	public void destroy() {
-		if (GLSMHooks.pendingProgramSelection == pendingSelection) {
-			GLSMHooks.pendingProgramSelection = null;
-		}
         vertexWriteReplays.destroy();
         if (shadowVoxelizationCompute != null) {
             shadowVoxelizationCompute.destroy();

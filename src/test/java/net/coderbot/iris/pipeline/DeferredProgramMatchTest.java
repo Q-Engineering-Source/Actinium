@@ -1,6 +1,9 @@
 package net.coderbot.iris.pipeline;
 
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
+import com.gtnewhorizons.angelica.glsm.hooks.PendingProgramSelection;
 import com.gtnewhorizons.angelica.glsm.recording.CommandRecorder;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -8,17 +11,27 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DeferredProgramMatchTest {
     private final FakeDisplayLists displayLists = new FakeDisplayLists();
     private final List<String> matches = new ArrayList<>();
+    private final PendingProgramSelection owner = () -> {};
     private final DeferredProgramMatch match = new DeferredProgramMatch(
         this.displayLists,
+        this.owner,
         () -> this.deferred,
         () -> this.matches.add("match"));
 
     private boolean deferred;
+    private PendingProgramSelection previousSelection = GLSMHooks.pendingProgramSelection;
+
+    @AfterEach
+    void restoreSelectionSlot() {
+        GLSMHooks.pendingProgramSelection = this.previousSelection;
+    }
 
     @Test
     void compileDoesNotRunOrRecordAProgramMatch() {
@@ -41,6 +54,7 @@ class DeferredProgramMatchTest {
 
         assertEquals(List.of(), this.matches);
         assertTrue(this.match.isPending());
+        assertSame(this.owner, GLSMHooks.pendingProgramSelection, "the deferred request is published for the host");
 
         this.match.resolve();
         assertEquals(List.of(), this.matches, "a batch still owns the program");
@@ -50,6 +64,17 @@ class DeferredProgramMatchTest {
 
         assertEquals(List.of("match"), this.matches);
         assertFalse(this.match.isPending());
+        assertNull(GLSMHooks.pendingProgramSelection, "running the match releases the slot");
+    }
+
+    @Test
+    void clearingDoesNotDropAnotherPipelinesSelection() {
+        final PendingProgramSelection other = () -> {};
+        GLSMHooks.pendingProgramSelection = other;
+
+        this.match.clear();
+
+        assertSame(other, GLSMHooks.pendingProgramSelection, "only the publishing pipeline clears the slot");
     }
 
     @Test
@@ -72,6 +97,7 @@ class DeferredProgramMatchTest {
 
         assertEquals(List.of(), this.matches);
         assertFalse(this.match.isPending());
+        assertNull(GLSMHooks.pendingProgramSelection);
     }
 
     @Test

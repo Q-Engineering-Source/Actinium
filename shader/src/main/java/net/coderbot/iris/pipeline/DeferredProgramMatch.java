@@ -2,6 +2,8 @@ package net.coderbot.iris.pipeline;
 
 import com.gtnewhorizons.angelica.glsm.DisplayListManager;
 import com.gtnewhorizons.angelica.glsm.hooks.BatchStateGuard;
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
+import com.gtnewhorizons.angelica.glsm.hooks.PendingProgramSelection;
 import com.gtnewhorizons.angelica.glsm.recording.CommandRecorder;
 import org.jetbrains.annotations.Nullable;
 
@@ -58,19 +60,21 @@ final class DeferredProgramMatch {
 	};
 
 	private final DisplayListAccess displayLists;
+	private final PendingProgramSelection owner;
 	private final BooleanSupplier deferred;
 	private final Runnable match;
 	private boolean pending;
 
-	DeferredProgramMatch(DisplayListAccess displayLists, BooleanSupplier deferred, Runnable match) {
+	DeferredProgramMatch(DisplayListAccess displayLists, PendingProgramSelection owner, BooleanSupplier deferred, Runnable match) {
 		this.displayLists = displayLists;
+		this.owner = owner;
 		this.deferred = deferred;
 		this.match = match;
 	}
 
 	/** Creates the selection used by the world pipelines, tied to the live display-list recorder. */
-	static DeferredProgramMatch forDisplayLists(BooleanSupplier deferred, Runnable match) {
-		return new DeferredProgramMatch(DISPLAY_LISTS, deferred, match);
+	static DeferredProgramMatch forDisplayLists(PendingProgramSelection owner, BooleanSupplier deferred, Runnable match) {
+		return new DeferredProgramMatch(DISPLAY_LISTS, owner, deferred, match);
 	}
 
 	/** Runs a match immediately, unless a compiled display list must not bind a program. */
@@ -82,7 +86,11 @@ final class DeferredProgramMatch {
 		runMatch();
 	}
 
-	/** Requests a match now, or records the request while a batch owns the program. */
+	/**
+	 * Requests a match now, or publishes the request in the host slot while a foreign renderer or a
+	 * batch owns the program. The slot carries this pipeline's identity so only it resolves the
+	 * request, and {@code GLStateManager.endForeignDraw} or the batch end resolve it.
+	 */
 	void request() {
 		if (this.displayLists.isCompiling()) {
 			return;
@@ -90,13 +98,14 @@ final class DeferredProgramMatch {
 
 		if (this.deferred.getAsBoolean()) {
 			this.pending = true;
+			GLSMHooks.pendingProgramSelection = this.owner;
 			return;
 		}
 
 		runMatch();
 	}
 
-	/** Runs the pending match once the batch that deferred it has finished. */
+	/** Runs the pending match once the foreign renderer or batch that deferred it has finished. */
 	void resolve() {
 		if (!this.pending || this.deferred.getAsBoolean()) {
 			return;
@@ -105,9 +114,10 @@ final class DeferredProgramMatch {
 		runMatch();
 	}
 
-	/** Drops the pending request, e.g. when a mod takes over the GL program. */
+	/** Drops the pending request and its slot, e.g. when a mod takes over the GL program. */
 	void clear() {
 		this.pending = false;
+		clearSlot();
 	}
 
 	/** Returns whether a batch deferred a match that has not run yet. */
@@ -147,6 +157,13 @@ final class DeferredProgramMatch {
 
 	private void runMatch() {
 		this.pending = false;
+		clearSlot();
 		this.match.run();
+	}
+
+	private void clearSlot() {
+		if (GLSMHooks.pendingProgramSelection == this.owner) {
+			GLSMHooks.pendingProgramSelection = null;
+		}
 	}
 }
