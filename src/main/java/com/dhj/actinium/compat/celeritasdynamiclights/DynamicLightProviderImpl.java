@@ -1,8 +1,6 @@
 package com.dhj.actinium.compat.celeritasdynamiclights;
 
 import net.minecraft.util.math.BlockPos;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import java.lang.reflect.Method;
 
@@ -20,17 +18,18 @@ import java.lang.reflect.Method;
  * lightmap sub-level bits. This class only forwards the packed value and returns that result
  * unchanged, so applying it twice yields the same packed light as applying it once.</p>
  */
-final class ReflectiveDynamicLightProvider implements DynamicLightProvider {
+final class DynamicLightProviderImpl implements DynamicLightProvider {
 
     private static final String INSTANCE_LOOKUP = "get";
     private static final String MERGE_METHOD = "getLightmapWithDynamicLight";
 
-    private static final Logger LOGGER = LogManager.getLogger("ActiniumDynamicLightsCompat");
+    /** The addon's static accessor returning the mod instance the merge method is called on. */
+    private final Method instanceLookup;
 
-    private volatile Method instanceLookup;
-    private volatile Method merge;
+    /** The addon's position merge, the only member that knows how a level is applied. */
+    private final Method merge;
 
-    private ReflectiveDynamicLightProvider(Method instanceLookup, Method merge) {
+    private DynamicLightProviderImpl(Method instanceLookup, Method merge) {
         this.instanceLookup = instanceLookup;
         this.merge = merge;
     }
@@ -41,50 +40,32 @@ final class ReflectiveDynamicLightProvider implements DynamicLightProvider {
      * @param api the {@code SodiumDynamicLights} class, already confirmed to be present
      * @throws NoSuchMethodException when the installed addon predates the position merge method
      */
-    static DynamicLightProvider resolve(Class<?> api) throws NoSuchMethodException {
+    static DynamicLightProvider create(Class<?> api) throws NoSuchMethodException {
         final Method merge = api.getMethod(MERGE_METHOD, BlockPos.class, int.class);
-        return new ReflectiveDynamicLightProvider(api.getMethod(INSTANCE_LOOKUP), merge);
-    }
-
-    /** Returns a provider that reports every lookup as unchanged. */
-    static DynamicLightProvider disabled() {
-        return new ReflectiveDynamicLightProvider(null, null);
+        return new DynamicLightProviderImpl(api.getMethod(INSTANCE_LOOKUP), merge);
     }
 
     @Override
     public int mergeDynamicLight(BlockPos pos, int packedLight) {
-        final Method lookup = this.instanceLookup;
-        final Method combine = this.merge;
-        if (lookup == null || combine == null) {
-            return packedLight;
-        }
         try {
-            final Object lights = lookup.invoke(null);
+            final Object lights = instanceLookup.invoke(null);
             if (lights == null) {
-                disable("SodiumDynamicLights.get() returned null", null);
+                CeleritasDynamicLightsCompat.disable(this, "SodiumDynamicLights.get() returned null", null);
                 return packedLight;
             }
-            final Object merged = combine.invoke(lights, pos, packedLight);
+            final Object merged = merge.invoke(lights, pos, packedLight);
             if (!(merged instanceof Integer level)) {
-                disable(MERGE_METHOD + " returned " + merged + " instead of an int", null);
+                CeleritasDynamicLightsCompat.disable(
+                    this,
+                    MERGE_METHOD + " returned " + merged + " instead of an int",
+                    null
+                );
                 return packedLight;
             }
             return level;
-        } catch (ReflectiveOperationException | RuntimeException failure) {
-            disable(MERGE_METHOD + " failed for " + pos, failure);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
+            CeleritasDynamicLightsCompat.disable(this, MERGE_METHOD + " failed for " + pos, failure);
             return packedLight;
         }
-    }
-
-    /**
-     * Stops calling the addon after the first failure and reports it once.
-     *
-     * <p>Both method handles are cleared before the log line is written, so the per-frame lookup
-     * returns the packed light without entering the reflection path again.</p>
-     */
-    private void disable(String detail, Throwable failure) {
-        this.instanceLookup = null;
-        this.merge = null;
-        LOGGER.error("Disabling the Celeritas Dynamic Lights bridge for this launch: {}", detail, failure);
     }
 }

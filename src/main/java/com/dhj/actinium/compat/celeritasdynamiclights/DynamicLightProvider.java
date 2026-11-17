@@ -13,12 +13,18 @@ import net.minecraft.util.math.BlockPos;
 public interface DynamicLightProvider {
 
     /**
+     * Provider used whenever the addon cannot supply a level: absent at runtime, older than the
+     * merge method, or already failed at a call. It returns every packed light it is given.
+     */
+    DynamicLightProvider NONE = (pos, packedLight) -> packedLight;
+
+    /**
      * Merges the dynamic light reported at {@code pos} into a packed lightmap value.
      *
      * @param pos         the position the lightmap was sampled at
      * @param packedLight the sky and block light the renderer would use without dynamic lights
      * @return the packed light including the dynamic level at {@code pos}, or {@code packedLight}
-     *         unchanged when the addon reports no level there or the bridge is disabled
+     *         unchanged when the addon reports no level there or the provider is disabled
      */
     int mergeDynamicLight(BlockPos pos, int packedLight);
 }
