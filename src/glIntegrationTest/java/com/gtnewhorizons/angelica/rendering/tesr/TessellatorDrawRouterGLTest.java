@@ -141,6 +141,8 @@ class TessellatorDrawRouterGLTest extends GLStateManagerIntegrationFixture {
 
     @AfterEach
     void tearDown() {
+        // The Tessellator instance is shared, so leave its builder closed for the next test.
+        Tessellator.getInstance().getBuffer().reset();
         ModelPartBatcher.INSTANCE.flush();
         TesrBatchRenderer.INSTANCE.flush();
         ActiniumRuntime.options().performance.enableEntityBatching = savedBatching;

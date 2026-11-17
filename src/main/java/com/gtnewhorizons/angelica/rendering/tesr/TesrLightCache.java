@@ -25,7 +25,6 @@ public final class TesrLightCache {
 
     private static World samplerWorld;
     private static LightSampler sampler;
-    private static World cachedWorld;
     private static long cachedTick = Long.MIN_VALUE;
 
     private TesrLightCache() {
@@ -42,7 +41,6 @@ public final class TesrLightCache {
         CACHE.clear();
         samplerWorld = null;
         sampler = null;
-        cachedWorld = null;
         cachedTick = Long.MIN_VALUE;
     }
 

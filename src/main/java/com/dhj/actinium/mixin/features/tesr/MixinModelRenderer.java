@@ -28,7 +28,8 @@ public abstract class MixinModelRenderer {
         at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/GlStateManager;callList(I)V")
     )
     private void actinium$batchPart(int list, float scale) {
-        if (!ModelPartBatcher.partDraw((ModelRenderer) (Object) this, scale, null)) {
+        if (!ModelPartBatcher.isBatchingActive()
+            || !ModelPartBatcher.partDraw((ModelRenderer) (Object) this, scale, null)) {
             final long drawsBefore = GLSMDraws.drawCalls;
             GLSMDraws.glCallList(list);
             BatchEligibility.onPartFallback(drawsBefore, GLSMDraws.drawCalls);

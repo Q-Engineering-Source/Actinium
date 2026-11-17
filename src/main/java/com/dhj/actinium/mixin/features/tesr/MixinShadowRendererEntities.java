@@ -6,6 +6,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import net.coderbot.iris.gl.MatrixStack;
 import net.coderbot.iris.pipeline.ShadowRenderer;
+import net.minecraft.client.renderer.EntityRenderer;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.entity.Entity;
@@ -17,7 +18,7 @@ import org.spongepowered.asm.mixin.injection.At;
 public abstract class MixinShadowRendererEntities {
 
     @WrapMethod(method = "renderEntities")
-    private void actinium$batchShadowEntities(Object levelRenderer, Frustum frustum, Object bufferSource,
+    private void actinium$batchShadowEntities(EntityRenderer levelRenderer, Frustum frustum, Object bufferSource,
                                               MatrixStack modelView, double cameraX, double cameraY, double cameraZ,
                                               float partialTicks, Operation<Void> original) {
         TesrBrackets.shadowEntities(() -> original.call(levelRenderer, frustum, bufferSource, modelView,

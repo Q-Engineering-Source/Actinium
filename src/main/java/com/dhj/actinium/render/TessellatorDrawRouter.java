@@ -1,6 +1,5 @@
 package com.dhj.actinium.render;
 
-import com.dhj.actinium.render.terrain.TileEntityBatchDrawGuard;
 import com.gtnewhorizon.gtnhlib.client.renderer.TessellatorManager;
 import com.gtnewhorizons.angelica.client.rendering.DeferredDrawBatcher;
 import com.gtnewhorizons.angelica.glsm.ITessellatorData;
