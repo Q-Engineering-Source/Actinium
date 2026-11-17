@@ -105,9 +105,17 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         /** Replays entity draws recorded in the shader shadow pass instead of running the renderer again. */
         public boolean enableEntityShadowReplay = false;
         /** Entity classes that re-run their renderer in the main view instead of replaying shadow pass draws. */
-        public List<String> entityShadowReplayExcludedClasses = new ArrayList<>(List.of(
-                "twilightforest.entity.passive.EntityTFMobileFirefly",
-                "gregtech.common.entity.EntityDrone"));
+        public List<String> entityShadowReplayExcludedClasses = new ArrayList<>(defaultEntityShadowReplayExcludedClasses());
+
+        /**
+         * {@return the exclusion list a fresh configuration starts with}. The load path restores the same list when the
+         * file carries an explicit null, so a hand-edited null cannot drop the classes the shipped defaults exclude.
+         */
+        static List<String> defaultEntityShadowReplayExcludedClasses() {
+            return List.of(
+                    "twilightforest.entity.passive.EntityTFMobileFirefly",
+                    "gregtech.common.entity.EntityDrone");
+        }
 
         /** Upper bound for cached item meshes; larger values trade memory for fewer rebuilds. */
         public int itemRendererCacheSize = 512;
@@ -377,7 +385,8 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         }
 
         if (config.performance.entityShadowReplayExcludedClasses == null) {
-            config.performance.entityShadowReplayExcludedClasses = new ArrayList<>();
+            config.performance.entityShadowReplayExcludedClasses =
+                    new ArrayList<>(PerformanceSettings.defaultEntityShadowReplayExcludedClasses());
         }
 
         try {

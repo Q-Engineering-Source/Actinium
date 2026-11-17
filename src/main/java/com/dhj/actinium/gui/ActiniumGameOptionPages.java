@@ -105,6 +105,18 @@ public class ActiniumGameOptionPages {
                 .build();
     }
 
+    private static OptionImpl<SodiumGameOptions, Void> createShadowReplayExclusionsScreenOption() {
+        return OptionImpl.createBuilder(Void.class, sodiumOpts)
+                .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "entity_shadow_replay_excluded_classes", Void.class))
+                .setName(TextComponent.translatable("sodium.options.actinium.entity_shadow_replay_excluded_classes.name"))
+                .setTooltip(TextComponent.translatable("sodium.options.actinium.entity_shadow_replay_excluded_classes.tooltip"))
+                .setControl(option -> new ExternalButtonControl(option,
+                        EntityShadowReplayExcludedClassesScreen::open,
+                        TextComponent.translatable("sodium.options.actinium.entity_shadow_replay_excluded_classes.button")))
+                .setBinding((opts, value) -> { }, opts -> null)
+                .build();
+    }
+
     private static OptionImpl<SodiumGameOptions, Boolean> createModelRendererBatchingOption(TextComponent tooltip) {
         return OptionImpl.createBuilder(boolean.class, sodiumOpts)
                 .setId(StandardOptions.Option.MODEL_RENDERER_BATCHING.cast())
@@ -556,7 +568,7 @@ public class ActiniumGameOptionPages {
                         .setTooltip(TextComponent.translatable("sodium.options.cpu_render_ahead_limit.tooltip"))
                         .setControl(opt -> new SliderControl(opt, 0, 9, 1, ControlValueFormatter.translateVariable("sodium.options.cpu_render_ahead_limit.value")))
                         .setBinding((opts, value) -> opts.advanced.cpuRenderAheadLimit = value, opts -> opts.advanced.cpuRenderAheadLimit)
-                        .setEnabled(LWJGL.isOpenGLVersionSupported(3, 2))
+                        .setEnabledPredicate(() -> LWJGL.isOpenGLVersionSupported(3, 2))
                         .setDefaultValue(0)
                         .build()
                 )
@@ -564,12 +576,7 @@ public class ActiniumGameOptionPages {
                         .setId(StandardOptions.Option.MULTIDRAW_MODE.cast())
                         .setName(TextComponent.translatable("sodium.options.multidraw_mode.name"))
                         .setTooltip(TextComponent.translatable("sodium.options.multidraw_mode.tooltip"))
-                        .setControl(option -> {
-                            MultiDrawMode[] allowed = isIndirectMultiDrawSupported()
-                                    ? MultiDrawMode.values()
-                                    : new MultiDrawMode[] { MultiDrawMode.DIRECT, MultiDrawMode.INDIVIDUAL };
-                            return new CyclingControl<>(option, MultiDrawMode.class, allowed);
-                        })
+                        .setControl(option -> new CyclingControl<>(option, ActiniumGameOptionPages::allowedMultiDrawModes))
                         .setBinding((opts, value) -> opts.advanced.multiDrawMode = value, opts -> opts.advanced.multiDrawMode)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .setDefaultValue(MultiDrawMode.DIRECT)
@@ -739,7 +746,7 @@ public class ActiniumGameOptionPages {
                 .build());
 
         groups.add(OptionGroup.createBuilder()
-                .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "entity_batching", Void.class))
+                .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "entity_batching_group", Void.class))
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "entity_batching", boolean.class))
                         .setName(TextComponent.translatable("sodium.options.actinium.entity_batching.name"))
@@ -783,6 +790,7 @@ public class ActiniumGameOptionPages {
                         .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
                         .setDefaultValue(false)
                         .build())
+                .add(createShadowReplayExclusionsScreenOption())
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)
                         .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "item_renderer_cache_size", int.class))
                         .setName(TextComponent.translatable("sodium.options.actinium.item_renderer_cache_size.name"))
@@ -932,6 +940,12 @@ public class ActiniumGameOptionPages {
                 .build());
 
         return new OptionPage(StandardOptions.Pages.DEBUG, TextComponent.translatable("sodium.options.pages.debug"), ImmutableList.copyOf(groups));
+    }
+
+    private static MultiDrawMode[] allowedMultiDrawModes() {
+        return isIndirectMultiDrawSupported()
+                ? MultiDrawMode.values()
+                : new MultiDrawMode[] { MultiDrawMode.DIRECT, MultiDrawMode.INDIVIDUAL };
     }
 
     private static boolean isIndirectMultiDrawSupported() {
