@@ -1,6 +1,7 @@
 package com.gtnewhorizons.angelica.rendering.items;
 
 import com.dhj.actinium.render.FastLitItemDisplayListCache;
+import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.render.ItemVertexAlphaOverrides;
 import com.gtnewhorizons.angelica.glsm.GLSMDraws;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -32,7 +33,9 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Covers which dropped items the instancer refuses and why. Every refusal here has to end in the
@@ -60,6 +63,7 @@ class DroppedItemBailTest {
     };
 
     private boolean savedEmissive;
+    private boolean savedGlintWorld;
 
     @BeforeAll
     static void bootstrapRegistries() {
@@ -70,7 +74,9 @@ class DroppedItemBailTest {
     void enterDroppedItemScope() {
         ALPHA.set(1.0F);
         this.savedEmissive = ForgeModContainer.allowEmissiveItems;
+        this.savedGlintWorld = ActiniumRuntime.options().quality.glintWorld;
         ForgeModContainer.allowEmissiveItems = false;
+        ActiniumRuntime.options().quality.glintWorld = true;
         DroppedItemInstancer.enterScope();
     }
 
@@ -80,6 +86,26 @@ class DroppedItemBailTest {
         ItemVertexAlphaOverrides.clear();
         ALPHA.set(1.0F);
         ForgeModContainer.allowEmissiveItems = this.savedEmissive;
+        ActiniumRuntime.options().quality.glintWorld = this.savedGlintWorld;
+    }
+
+    @Test
+    void disablingWorldGlintSuppressesTheDroppedItemEffect() {
+        ActiniumRuntime.options().quality.glintWorld = false;
+        assertFalse(DroppedItemInstancer.shouldRenderEffect(),
+            "the vanilla renderEffect path must be skipped for a dropped item while world glint is off");
+
+        ActiniumRuntime.options().quality.glintWorld = true;
+        assertTrue(DroppedItemInstancer.shouldRenderEffect(), "enabling world glint restores the dropped item effect");
+    }
+
+    @Test
+    void disablingWorldGlintDoesNotSuppressHeldOrInventoryEffects() {
+        ActiniumRuntime.options().quality.glintWorld = false;
+        DroppedItemInstancer.exitScope();
+
+        assertTrue(DroppedItemInstancer.shouldRenderEffect(),
+            "held and inventory rendering is outside the dropped item scope and keeps its own behavior");
     }
 
     @Test

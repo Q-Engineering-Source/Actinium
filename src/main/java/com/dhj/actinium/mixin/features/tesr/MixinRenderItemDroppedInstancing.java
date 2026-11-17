@@ -46,4 +46,11 @@ public abstract class MixinRenderItemDroppedInstancing {
     private void actinium$reportDroppedItemDraw(ItemStack stack, IBakedModel model, CallbackInfo ci) {
         DroppedItemInstancer.endPart();
     }
+
+    @Inject(method = "renderEffect(Lnet/minecraft/client/renderer/block/model/IBakedModel;)V", at = @At("HEAD"), cancellable = true)
+    private void actinium$skipDisabledDroppedItemGlint(IBakedModel model, CallbackInfo ci) {
+        if (!DroppedItemInstancer.shouldRenderEffect()) {
+            ci.cancel();
+        }
+    }
 }

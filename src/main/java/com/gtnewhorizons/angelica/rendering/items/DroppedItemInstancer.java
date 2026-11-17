@@ -143,6 +143,11 @@ public final class DroppedItemInstancer {
         return ITEM_GLINT_COLOR;
     }
 
+    /** Whether the vanilla glint pass may run for the current render scope. */
+    public static boolean shouldRenderEffect() {
+        return scopeDepth == 0 || AngelicaConfig.glintWorld();
+    }
+
     /**
      * Opens the scope a dropped item render runs in. Only draws inside this scope are instanced,
      * which keeps the GUI, the held item and item frames on the vanilla path.
