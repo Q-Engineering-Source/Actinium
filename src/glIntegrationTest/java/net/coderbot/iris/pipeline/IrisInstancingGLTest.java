@@ -275,6 +275,53 @@ class IrisInstancingGLTest extends GLStateManagerIntegrationFixture {
         compile(GL20.GL_FRAGMENT_SHADER, fragment);
     }
 
+    private static final String PARTICLE_VERTEX = """
+        #version 120
+        varying vec2 texcoord;
+        varying vec2 lmcoord;
+        varying vec4 color;
+        varying vec3 nrm;
+        uniform int entityId;
+        void main() {
+            texcoord = (gl_TextureMatrix[0] * gl_MultiTexCoord0).xy;
+            lmcoord = (gl_TextureMatrix[1] * gl_MultiTexCoord1).xy;
+            color = gl_Color;
+            nrm = normalize(gl_NormalMatrix * gl_Normal);
+            gl_Position = ftransform();
+        }
+        """;
+
+    private static final String PARTICLE_FRAGMENT = """
+        #version 120
+        varying vec2 texcoord;
+        varying vec2 lmcoord;
+        varying vec4 color;
+        varying vec3 nrm;
+        uniform sampler2D tex;
+        void main() {
+            gl_FragData[0] = texture2D(tex, texcoord) * color + vec4(lmcoord, nrm.x, 1.0);
+        }
+        """;
+
+    @Test
+    void particleVariantCompilesAndLinks() {
+        final Map<PatchShaderType, String> result = TransformPatcher.patchAttributesInstanced(
+            PARTICLE_VERTEX, null, null, null, PARTICLE_FRAGMENT, TEX_LM, Instancing.PARTICLE);
+        assertNotNull(result);
+        final String vertex = result.get(PatchShaderType.VERTEX);
+        assertNotNull(vertex);
+        assertTrue(vertex.startsWith("#version 330"), () -> "expected a 3.3 core vertex shader: " + vertex);
+        // The quad carries only the corner offset and its share of the texture rectangle; everything
+        // else is rebuilt from the instance.
+        assertTrue(vertex.contains("iris_ParticleOffset"), vertex);
+        assertTrue(vertex.contains("iris_ParticleCorner"), vertex);
+        assertTrue(vertex.contains("iris_InstCenterHalf"), vertex);
+        assertTrue(vertex.contains("iris_InstUv"), vertex);
+        assertTrue(vertex.contains("iris_InstColor"), vertex);
+        assertTrue(vertex.contains("iris_InstLightmap"), vertex);
+        linkAndDiscard("particleVariant", result);
+    }
+
     @Test
     void templateVariantCompilesAndLinksWithGeometryStage() {
         final Map<PatchShaderType, String> result = TransformPatcher.patchAttributesInstanced(

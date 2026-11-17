@@ -32,28 +32,37 @@ class AttributeTransformer {
 		// remaining kinds, so every instanced vertex stage here reads the head.
 		final boolean instancedVertex = parameters.type == ShaderType.VERTEX && parameters.instancing != Instancing.NONE;
 		final boolean cubeVertex = instancedVertex && parameters.instancing == Instancing.CUBE;
+		final boolean particleVertex = instancedVertex && parameters.instancing == Instancing.PARTICLE;
 		CoreTransformHelper.injectMatrixUniforms(transformer, instancedVertex ? parameters.instancing : Instancing.NONE);
 
 		if (parameters.type == ShaderType.VERTEX) {
-			transformer.injectVariable("layout(location = 0) in vec4 iris_Vertex;");
-			// The cube layout carries its own texture net; the per-instance head replaces the lightmap.
-			transformer.injectVariable(cubeVertex
-				? "vec4 iris_MultiTexCoord0;"
-				: "layout(location = 2) in vec4 iris_MultiTexCoord0;");
-			transformer.injectVariable(instancedVertex
-				? "vec4 iris_MultiTexCoord1;"
-				: "layout(location = 3) in vec4 iris_MultiTexCoord1;");
-			transformer.injectVariable("layout(location = 4) in vec3 iris_Normal;");
-			if (instancedVertex) {
-				transformer.injectVariable("layout(location = 1) in vec4 iris_Color;");
+			if (particleVertex) {
+				// The per-vertex values are assembled from the instance and the corner offset, so
+				// their attributes are declared by the shared helper instead.
+				transformer.injectVariable("layout(location = 4) in vec3 iris_Normal;");
 				transformer.injectVariable("uniform vec4 iris_ColorModulator;");
-				transformer.replaceExpression("gl_Color", "(iris_Color * iris_ColorModulator * iris_InstColor)");
-			} else if (parameters.inputs.color) {
-				transformer.injectVariable("layout(location = 1) in vec4 iris_Color;");
-				transformer.rename("gl_Color", "iris_Color");
+				transformer.replaceExpression("gl_Color", "(iris_Color * iris_ColorModulator)");
 			} else {
-				transformer.injectVariable("uniform vec4 iris_ColorModulator;");
-				transformer.rename("gl_Color", "iris_ColorModulator");
+				transformer.injectVariable("layout(location = 0) in vec4 iris_Vertex;");
+				// The cube layout carries its own texture net; the per-instance head replaces the lightmap.
+				transformer.injectVariable(cubeVertex
+					? "vec4 iris_MultiTexCoord0;"
+					: "layout(location = 2) in vec4 iris_MultiTexCoord0;");
+				transformer.injectVariable(instancedVertex
+					? "vec4 iris_MultiTexCoord1;"
+					: "layout(location = 3) in vec4 iris_MultiTexCoord1;");
+				transformer.injectVariable("layout(location = 4) in vec3 iris_Normal;");
+				if (instancedVertex) {
+					transformer.injectVariable("layout(location = 1) in vec4 iris_Color;");
+					transformer.injectVariable("uniform vec4 iris_ColorModulator;");
+					transformer.replaceExpression("gl_Color", "(iris_Color * iris_ColorModulator * iris_InstColor)");
+				} else if (parameters.inputs.color) {
+					transformer.injectVariable("layout(location = 1) in vec4 iris_Color;");
+					transformer.rename("gl_Color", "iris_Color");
+				} else {
+					transformer.injectVariable("uniform vec4 iris_ColorModulator;");
+					transformer.rename("gl_Color", "iris_ColorModulator");
+				}
 			}
 
 			transformer.rename("gl_Vertex", "iris_Vertex");
@@ -91,15 +100,26 @@ class AttributeTransformer {
 				foldConstantAttribute(transformer, "mc_Entity", "-1.0", "vec2(-1.0, -1.0)", "vec3(-1.0, -1.0, 0.0)", "vec4(-1.0, -1.0, 0.0, 1.0)");
 
 				final StringBuilder init = new StringBuilder(256).append("{ ");
-				init.append("iris_ModelViewMatrix = ").append(InstancedGlslHelpers.mat4FromRows("iris_InstRow0", "iris_InstRow1", "iris_InstRow2")).append(';');
-				init.append(" iris_NormalMatrix = ").append(InstancedGlslHelpers.mat3FromRows("iris_InstRow0", "iris_InstRow1", "iris_InstRow2")).append(';');
-				// The inverse is only rebuilt when the pack reads it, matching the uniform path's upload.
-				if (transformer.containsCall("iris_ModelViewMatrixInverse")) {
-					init.append(" iris_ModelViewMatrixInverse = inverse(iris_ModelViewMatrix);");
-				}
-				init.append(" iris_MultiTexCoord1 = vec4(").append(cubeVertex ? "iris_InstLightmapScale.xy" : "iris_InstLightmap").append(", 0.0, 1.0);");
-				if (cubeVertex) {
-					appendCubeTexCoords(transformer, init);
+				if (particleVertex) {
+					// The quad is rebuilt from the instance centre and extent; the corner offset stays
+					// in the billboard basis the mesh baked in. Colour, texture rectangle and lightmap
+					// all come from the instance as well.
+					init.append("iris_Vertex = ").append(InstancedGlslHelpers.particlePos("iris_InstCenterHalf", "iris_ParticleOffset")).append(';');
+					init.append(" iris_Color = iris_InstColor;");
+					init.append(" iris_MultiTexCoord0 = ").append(InstancedGlslHelpers.particleUv("iris_InstUv", "iris_ParticleCorner")).append(';');
+					init.append(" iris_MultiTexCoord1 = vec4(iris_InstLightmap, 0.0, 1.0);");
+					assignMidTexCoord(transformer, init, "vec4((iris_InstUv.x + iris_InstUv.z) * 0.5, (iris_InstUv.y + iris_InstUv.w) * 0.5, 0.0, 1.0)");
+				} else {
+					init.append("iris_ModelViewMatrix = ").append(InstancedGlslHelpers.mat4FromRows("iris_InstRow0", "iris_InstRow1", "iris_InstRow2")).append(';');
+					init.append(" iris_NormalMatrix = ").append(InstancedGlslHelpers.mat3FromRows("iris_InstRow0", "iris_InstRow1", "iris_InstRow2")).append(';');
+					// The inverse is only rebuilt when the pack reads it, matching the uniform path's upload.
+					if (transformer.containsCall("iris_ModelViewMatrixInverse")) {
+						init.append(" iris_ModelViewMatrixInverse = inverse(iris_ModelViewMatrix);");
+					}
+					init.append(" iris_MultiTexCoord1 = vec4(").append(cubeVertex ? "iris_InstLightmapScale.xy" : "iris_InstLightmap").append(", 0.0, 1.0);");
+					if (cubeVertex) {
+						appendCubeTexCoords(transformer, init);
+					}
 				}
 				init.append(" }");
 				transformer.prependMain(init.toString());

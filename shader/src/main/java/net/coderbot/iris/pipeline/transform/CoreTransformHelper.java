@@ -1,5 +1,6 @@
 package net.coderbot.iris.pipeline.transform;
 
+import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormatElement;
 import com.gtnewhorizons.angelica.glsm.ffp.InstancedGlslHelpers;
 import com.gtnewhorizons.angelica.glsm.ffp.Instancing;
 import org.taumc.glsl.Transformer;
@@ -32,6 +33,9 @@ class CoreTransformHelper {
         if (instanced) {
             injectAttributeDecls(transformer, instancing);
         }
+        if (instancing == Instancing.PARTICLE) {
+            injectParticleInputs(transformer);
+        }
         final boolean perInstanceMatrices = instancing.hasInstanceHead();
 
         transformer.injectVariable(perInstanceMatrices ? "mat4 iris_ModelViewMatrix;" : "uniform mat4 iris_ModelViewMatrix;");
@@ -62,6 +66,22 @@ class CoreTransformHelper {
 
         // Catch any remaining gl_TextureMatrix references (e.g. [2]-[7])
         transformer.replaceExpression("gl_TextureMatrix", "mat4[8](iris_TextureMatrix, iris_LightmapTextureMatrix, mat4(1.0), mat4(1.0), mat4(1.0), mat4(1.0), mat4(1.0), mat4(1.0))");
+    }
+
+    /**
+     * Declares the two per-vertex inputs of the particle quad and the assembled vertex values the
+     * rest of the patch reads. The quad carries only a corner offset and the corner's share of the
+     * texture rectangle; position, colour, texture coordinate and lightmap are built in
+     * {@code main} from the instance, so the stage must not declare the per-vertex attributes the
+     * other layouts use.
+     */
+    private static void injectParticleInputs(Transformer transformer) {
+        transformer.injectVariable("layout(location = " + VertexFormatElement.Usage.POSITION.getAttributeLocation() + ") in vec3 iris_ParticleOffset;");
+        transformer.injectVariable("layout(location = " + VertexFormatElement.Usage.PRIMARY_UV.getAttributeLocation() + ") in vec2 iris_ParticleCorner;");
+        transformer.injectVariable("vec4 iris_Vertex;");
+        transformer.injectVariable("vec4 iris_Color;");
+        transformer.injectVariable("vec4 iris_MultiTexCoord0;");
+        transformer.injectVariable("vec4 iris_MultiTexCoord1;");
     }
 
     private static void injectAttributeDecls(Transformer transformer, Instancing instancing) {

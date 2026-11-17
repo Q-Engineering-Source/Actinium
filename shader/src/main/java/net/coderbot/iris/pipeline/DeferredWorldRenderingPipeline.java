@@ -803,8 +803,12 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		}
 
 		switch (phase) {
-			case NONE, OUTLINE, DEBUG, PARTICLES:
+			case NONE, OUTLINE, DEBUG:
 				return RenderCondition.DEFAULT;
+			case PARTICLES:
+				// The run declares its translucency, so gbuffers_particles_translucent is selected by
+				// the sprite the run is drawing rather than by the live blend state.
+				return isTranslucentDraw() ? RenderCondition.PARTICLES_TRANSLUCENT : RenderCondition.PARTICLES;
 			case SKY, SUNSET, CUSTOM_SKY, SUN, MOON, STARS, VOID:
 				return RenderCondition.SKY;
 			case TERRAIN_SOLID, TERRAIN_CUTOUT, TERRAIN_CUTOUT_MIPPED:
@@ -1200,6 +1204,8 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		ProgramId.BeaconBeam, ProgramId.BeaconBeam, ProgramId.BeaconBeam,
 		ProgramId.Entities, ProgramId.Entities, ProgramId.Entities,
 		ProgramId.EntitiesTrans, ProgramId.EntitiesTrans, ProgramId.EntitiesTrans,
+		ProgramId.Particles, ProgramId.Particles, ProgramId.Particles,
+		ProgramId.ParticlesTrans, ProgramId.ParticlesTrans, ProgramId.ParticlesTrans,
 		null, ProgramId.ArmorGlint, ProgramId.ArmorGlint,
 		null, ProgramId.SpiderEyes, ProgramId.SpiderEyes,
 		ProgramId.Hand, ProgramId.Hand, ProgramId.Hand,
@@ -1707,6 +1713,9 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		final boolean[] out = new boolean[Instancing.VALUES.length];
 		out[Instancing.TEMPLATE.ordinal()] = true;
 		out[Instancing.CUBE.ordinal()] = InstancingSupportProvider.cubeInstancingEnabled();
+		// Particle quad instancing only needs the fixed particle layout, so it is always attempted;
+		// a pack whose particle program cannot be transformed or linked clears this again.
+		out[Instancing.PARTICLE.ordinal()] = true;
 		return out;
 	}
 
@@ -2570,21 +2579,26 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		return futures;
 	}
 
+	private static final ProgramId[] PARTICLE_PROGRAM_IDS = {
+		ProgramId.Particles, ProgramId.ParticlesTrans
+	};
+
 	private static final ProgramId[] INSTANCED_PROGRAM_IDS = {
 		ProgramId.Block, ProgramId.BlockTrans, ProgramId.Entities, ProgramId.EntitiesTrans,
 		ProgramId.Shadow, ProgramId.ShadowWater, ProgramId.ArmorGlint, ProgramId.SpiderEyes
 	};
 
 	/**
-	 * The programs a layout can produce a variant for. The batch paths only draw entities, block
-	 * entities, glint and shadows, and the particle and weather layouts have no transform of their
-	 * own yet, so both return no ids and report themselves unsupported.
+	 * The programs a layout can produce a variant for. The entity batch draws entities, block
+	 * entities, glint and shadows, the particle batch draws the two particle programs, and the weather
+	 * layout has no transform of its own yet, so it returns no ids and reports itself unsupported.
 	 */
 	static ProgramId[] attributeProgramIds(Instancing kind) {
 		return switch (kind) {
 			case NONE -> ProgramId.values();
 			case TEMPLATE, CUBE -> INSTANCED_PROGRAM_IDS;
-			case PARTICLE, WEATHER -> new ProgramId[0];
+			case PARTICLE -> PARTICLE_PROGRAM_IDS;
+			case WEATHER -> new ProgramId[0];
 		};
 	}
 

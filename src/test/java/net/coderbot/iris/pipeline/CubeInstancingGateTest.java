@@ -27,13 +27,14 @@ class CubeInstancingGateTest {
     }
 
     @Test
-    void templateSupportIgnoresTheCubeOption() {
+    void templateAndParticleSupportIgnoreTheCubeOption() {
         for (boolean cube : new boolean[] { false, true }) {
             InstancingSupportProvider.setProvider(() -> cube);
             final boolean[] support = DeferredWorldRenderingPipeline.initialInstancingSupport();
             assertTrue(support[Instancing.TEMPLATE.ordinal()], "the template layout is always available");
             assertFalse(support[Instancing.NONE.ordinal()], "there is no variant for the per-vertex layout");
-            assertFalse(support[Instancing.PARTICLE.ordinal()], "particle instancing has no shared-program variant yet");
+            assertTrue(support[Instancing.PARTICLE.ordinal()],
+                "the particle layout only needs the fixed quad mesh, so it is attempted and cleared on failure");
             assertFalse(support[Instancing.WEATHER.ordinal()], "weather instancing has no shared-program variant yet");
         }
     }
