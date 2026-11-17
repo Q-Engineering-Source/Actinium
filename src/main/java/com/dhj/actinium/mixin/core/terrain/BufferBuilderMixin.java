@@ -307,6 +307,11 @@ public abstract class BufferBuilderMixin implements BufferBuilderExtension, Proj
     }
 
     @Override
+    public int getVertexCount() {
+        return this.vertexCount;
+    }
+
+    @Override
     public int[] getRawBuffer() {
         if (this.actinium$packedVertexCount != this.vertexCount) {
             this.actinium$packVertices();
