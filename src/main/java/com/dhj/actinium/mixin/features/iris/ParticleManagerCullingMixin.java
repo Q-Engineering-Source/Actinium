@@ -25,8 +25,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * invocation, and ParticleCulling puts its own redirect on the same two invocations, which the
  * injector cannot chain with a second one at the same priority. A wrapped invocation leaves one
  * {@code Operation} that still performs the original call, so another redirect can sit beside it.
- * The priority is raised above the default so this class discovers its targets before that
- * redirect rewrites them.</p>
+ * Mixin applies the lowest priority value first, so this class sits at 900, below the default 1000,
+ * and discovers its targets before the default priority redirect rewrites them.</p>
  *
  * <p>The local frustum test always runs, for the batched and the fallback path alike: an invisible
  * particle must neither be batched nor written, and a particle the batch took never reaches the

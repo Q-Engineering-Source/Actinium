@@ -20,7 +20,17 @@ import java.lang.reflect.Method;
  */
 final class DynamicLightProviderImpl implements DynamicLightProvider {
 
+    /**
+     * The addon's static accessor returning the mod instance the merge method is called on. Present
+     * with the same name and signature in addon 1.2.10 and 1.2.11.
+     */
     private static final String INSTANCE_LOOKUP = "get";
+
+    /**
+     * The addon's position merge, the only member that knows how a level is applied. Present with
+     * the same signature in addon 1.2.10 and 1.2.11; older versions lack it, and the lookup then
+     * reports the missing method instead of merging.
+     */
     private static final String MERGE_METHOD = "getLightmapWithDynamicLight";
 
     /** The addon's static accessor returning the mod instance the merge method is called on. */
