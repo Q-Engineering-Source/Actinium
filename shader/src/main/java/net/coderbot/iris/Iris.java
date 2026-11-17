@@ -1169,6 +1169,8 @@ public class Iris {
             shaderPackLoadId++;
             final DeferredWorldRenderingPipeline pipeline = new DeferredWorldRenderingPipeline(programSet);
             try {
+                // These are otherwise built lazily on the first draw or batch, after this pipeline is gone
+                pipeline.compileInstancedVariants();
                 final ShaderProvider provider = ShaderProviderHolder.getProvider();
                 if (provider instanceof IrisCeleritasShaderProvider terrain) {
                     terrain.compileTerrainPrograms(pipeline.getCeleritasTerrainPipeline());

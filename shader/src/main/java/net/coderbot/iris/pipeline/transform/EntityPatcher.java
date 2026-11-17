@@ -26,7 +26,7 @@ class EntityPatcher {
     private static final String[] ID_COMPONENTS = { ".x", ".y", ".z" };
 
     public static void patchEntityId(Transformer transformer, AttributeParameters parameters) {
-        final String geometryIn = "iris_entityInfo";
+        final String geometryIn = parameters.hasTesselation ? "iris_entityInfoTES" : "iris_entityInfo";
         final String info = switch (parameters.type) {
             case GEOMETRY -> geometryIn + "[0]";
             case TESSELATION_CONTROL -> "iris_entityInfo[gl_InvocationID]";
@@ -87,6 +87,8 @@ class EntityPatcher {
                     transformer.injectVariable("flat in ivec3 iris_entityInfo;");
                     if (parameters.hasGeometry) {
                         transformer.rename("iris_entityInfo", "iris_entityInfoGS");
+                    } else if (parameters.hasTesselation) {
+                        transformer.rename("iris_entityInfo", "iris_entityInfoTES");
                     }
                 }
             }
@@ -125,16 +127,19 @@ class EntityPatcher {
                 transformer.prependMain("entityColorTES = entityColorTCS;");
             }
             case GEOMETRY -> {
-                transformer.replaceExpression("entityColor", "entityColor[0]", GLSLParser::postfix_expression);
+                final String geometryIn = parameters.hasTesselation ? "entityColorTES" : "entityColor";
+                transformer.replaceExpression("entityColor", geometryIn + "[0]", GLSLParser::postfix_expression);
                 transformer.injectVariable("out vec4 entityColorGS;");
-                transformer.injectVariable("in vec4 entityColor[];");
-                transformer.prependMain("entityColorGS = entityColor[0];");
+                transformer.injectVariable("in vec4 " + geometryIn + "[];");
+                transformer.prependMain("entityColorGS = " + geometryIn + "[0];");
             }
             case FRAGMENT -> {
                 if (transformer.containsCall("entityColor")) {
                     transformer.injectVariable("in vec4 entityColor;");
                     if (parameters.hasGeometry) {
                         transformer.rename("entityColor", "entityColorGS");
+                    } else if (parameters.hasTesselation) {
+                        transformer.rename("entityColor", "entityColorTES");
                     }
                 }
             }

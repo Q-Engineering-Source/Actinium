@@ -98,9 +98,15 @@ TESR 实例化批次不新增 pass：`DeferredWorldRenderingPipeline` 为 `Insta
 `ShadowWater`、`ArmorGlint`、`SpiderEyes` 的程序源码另做一份属性变换，首次查询时链接为
 变体程序，并按 `(sourceName, availability, shadow, kind)` 共享，引用模型视图内置量的
 非顶点阶段会让该来源退回逐实例绘制。变体沿用所属 pass 的 framebuffer、viewport、
-alpha test 与混合覆盖，只替换 program，因此状态归属仍在 `Pass`。批次在
-`TesrBatchRenderer.beginPass` 中先完成变体查询再开始记录，避免批处理中途链接改变
-program。CUBE 变体由 `InstancingSupportProvider` 的宿主开关决定可用性。
+alpha test 与混合覆盖，只替换 program，因此状态归属仍在 `Pass`。CUBE 变体由
+`InstancingSupportProvider` 的宿主开关决定可用性。
+
+变体程序与基程序走同一条 `ProgramBuilder`/`ProgramCreator` 路径，因此
+`ProgramBinaryCache` 会缓存它们。`Iris.compilePackFolder` 为每个 folder 构建一次性
+pipeline 时先调用 `compileInstancedVariants()` 再编译地形程序，使这些二进制在预编译阶段
+写入缓存；`compileInstancedVariants()` 只执行一次，之后由各 pass 惰性查询。
+`TesrBatchRenderer.beginPass` 也调用它以便批次记录前完成链接，该入口等批次宿主接线后
+才会在生产路径执行。
 
 ## 根项目包详解（`com.dhj.actinium`）
 

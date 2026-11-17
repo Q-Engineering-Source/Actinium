@@ -124,6 +124,7 @@ import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiConsumer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
@@ -441,28 +442,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		this.finalPassRenderer = new FinalPassRenderer(programs, compositeBuildContext, flipper.snapshot(), this.compositeRenderer.getFlippedAtLeastOnceFinal(), finalTransformFuture, "final");
 
 		// [(textured=false,lightmap=false), (textured=true,lightmap=false), (textured=true,lightmap=true)]
-		final ProgramId[] ids = new ProgramId[] {
-				ProgramId.Basic, ProgramId.Textured, ProgramId.TexturedLit,
-				ProgramId.SkyBasic, ProgramId.SkyTextured, ProgramId.SkyTextured,
-				null, null, ProgramId.Terrain,
-				null, null, ProgramId.Water,
-				null, ProgramId.Clouds, ProgramId.Clouds,
-				null, ProgramId.DamagedBlock, ProgramId.DamagedBlock,
-				ProgramId.Block, ProgramId.Block, ProgramId.Block,
-				ProgramId.BlockTrans, ProgramId.BlockTrans, ProgramId.BlockTrans,
-				ProgramId.BeaconBeam, ProgramId.BeaconBeam, ProgramId.BeaconBeam,
-				ProgramId.Entities, ProgramId.Entities, ProgramId.Entities,
-				ProgramId.EntitiesTrans, ProgramId.EntitiesTrans, ProgramId.EntitiesTrans,
-				null, ProgramId.ArmorGlint, ProgramId.ArmorGlint,
-				null, ProgramId.SpiderEyes, ProgramId.SpiderEyes,
-				ProgramId.Hand, ProgramId.Hand, ProgramId.Hand,
-				ProgramId.HandWater, ProgramId.HandWater, ProgramId.HandWater,
-				null, null, ProgramId.Weather,
-				// world border uses textured_lit even though it has no lightmap :/
-				null, ProgramId.TexturedLit, ProgramId.TexturedLit,
-				ProgramId.ShadowWater, ProgramId.ShadowWater, ProgramId.ShadowWater,
-				ProgramId.Shadow, ProgramId.Shadow, ProgramId.Shadow
-		};
+		final ProgramId[] ids = PROGRAM_IDS;
 
 		if (ids.length != RenderCondition.values().length * 3) {
 			throw new IllegalStateException("Program ID table length mismatch");
@@ -1005,7 +985,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	private void beginPassNow(Pass pass) {
         WorldRenderingPhase activePhase = getPhase();
         int previousProgram = getActivePassProgramId();
-		int nextProgram = pass != null && pass.getProgram() != null ? pass.getProgram().getProgramId() : 0;
+		int nextProgram = expectedProgramId(pass);
 
 		if (current == pass) {
 			int currentProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
@@ -1149,13 +1129,49 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 	@Override
 	public void bindInstancedVariant(Instancing kind) {
-		activeInstancing = kind;
 		final Program variant = current != null ? current.instancedVariant(kind) : null;
 		if (variant == null) {
 			throw new IllegalStateException("No " + kind + " variant is available for the active pass");
 		}
+		activeInstancing = kind;
 		variant.use();
 		this.customUniforms.push(variant);
+	}
+
+	/**
+	 * @return the program {@code pass} would bind right now, which is its instanced variant while a
+	 * batch draws from one and its own program otherwise
+	 */
+	private int expectedProgramId(@Nullable Pass pass) {
+		if (pass == null) {
+			return 0;
+		}
+		if (activeInstancing != Instancing.NONE) {
+			final Program variant = pass.instancedVariant(activeInstancing);
+			if (variant != null) {
+				return variant.getProgramId();
+			}
+		}
+		return pass.getProgram() != null ? pass.getProgram().getProgramId() : 0;
+	}
+
+	/**
+	 * Binds the active layout's variant of {@code pass} when that pass has one.
+	 *
+	 * @return whether the variant replaced the pass's own program; a pass without one keeps its
+	 * program so a variant that failed to build cannot break drawing for the rest of the batch
+	 */
+	private boolean applyInstancing(Pass pass) {
+		if (activeInstancing == Instancing.NONE || pass.program == null) {
+			return false;
+		}
+		final Program variant = pass.instancedVariant(activeInstancing);
+		if (variant == null) {
+			return false;
+		}
+		variant.use();
+		this.customUniforms.push(variant);
+		return true;
 	}
 
 	private Pass createDefaultPass() {
@@ -1167,7 +1183,35 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			null, Collections.emptyList(), false);
 	}
 
-	private static ProgramId gbufferProgramId(ProgramId[] ids, RenderCondition condition, InputAvailability availability) {
+	/**
+	 * The program each render condition selects, three columns per condition:
+	 * {@code (texture=false, lightmap=false)}, {@code (texture=true, lightmap=false)} and
+	 * {@code (texture=true, lightmap=true)}. A null entry falls back to the first column.
+	 */
+	static final ProgramId[] PROGRAM_IDS = {
+		ProgramId.Basic, ProgramId.Textured, ProgramId.TexturedLit,
+		ProgramId.SkyBasic, ProgramId.SkyTextured, ProgramId.SkyTextured,
+		null, null, ProgramId.Terrain,
+		null, null, ProgramId.Water,
+		null, ProgramId.Clouds, ProgramId.Clouds,
+		null, ProgramId.DamagedBlock, ProgramId.DamagedBlock,
+		ProgramId.Block, ProgramId.Block, ProgramId.Block,
+		ProgramId.BlockTrans, ProgramId.BlockTrans, ProgramId.BlockTrans,
+		ProgramId.BeaconBeam, ProgramId.BeaconBeam, ProgramId.BeaconBeam,
+		ProgramId.Entities, ProgramId.Entities, ProgramId.Entities,
+		ProgramId.EntitiesTrans, ProgramId.EntitiesTrans, ProgramId.EntitiesTrans,
+		null, ProgramId.ArmorGlint, ProgramId.ArmorGlint,
+		null, ProgramId.SpiderEyes, ProgramId.SpiderEyes,
+		ProgramId.Hand, ProgramId.Hand, ProgramId.Hand,
+		ProgramId.HandWater, ProgramId.HandWater, ProgramId.HandWater,
+		null, null, ProgramId.Weather,
+		// world border uses textured_lit even though it has no lightmap :/
+		null, ProgramId.TexturedLit, ProgramId.TexturedLit,
+		ProgramId.ShadowWater, ProgramId.ShadowWater, ProgramId.ShadowWater,
+		ProgramId.Shadow, ProgramId.Shadow, ProgramId.Shadow
+	};
+
+	static ProgramId gbufferProgramId(ProgramId[] ids, RenderCondition condition, InputAvailability availability) {
 		final int idx;
 
 		if (availability.texture && availability.lightmap) {
@@ -1516,9 +1560,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 				bufferBlendOverrides.forEach(BufferBlendOverride::apply);
 			}
 
-			if (activeInstancing != Instancing.NONE && program != null) {
-				DeferredWorldRenderingPipeline.this.bindInstancedVariant(activeInstancing);
-			} else {
+			if (!DeferredWorldRenderingPipeline.this.applyInstancing(this)) {
 				if (program != null) {
 					program.use();
 				} else {
@@ -1578,17 +1620,15 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 	/**
 	 * Variants keyed by source and layout. Passes that share a program also share the variant built
-	 * from it, so one link serves every condition that resolved to the same source.
+	 * from it, so one link serves every condition that resolved to the same source. A key that
+	 * produced no variant is kept as a null entry so a failing source is not re-linked on every query.
 	 */
-	private final Map<InstancedVariantKey, Program> instancedVariantPrograms = new HashMap<>();
+	private final InstancedVariantCache<Program> instancedVariantPrograms =
+		new InstancedVariantCache<>(Program::destroy);
 
 	@Nullable
 	private Program sharedInstancedVariant(String sourceName, InputAvailability availability, boolean shadow, Instancing kind) {
-		final InstancedVariantKey key = new InstancedVariantKey(sourceName, availability, shadow, kind);
-		if (instancedVariantPrograms.containsKey(key)) return instancedVariantPrograms.get(key);
-		final Program variant = buildInstancedVariant(sourceName, availability, shadow, kind);
-		instancedVariantPrograms.put(key, variant);
-		return variant;
+		return instancedVariantPrograms.get(new InstancedVariantKey(sourceName, availability, shadow, kind), this::buildInstancedVariant);
 	}
 
 	/**
@@ -1596,14 +1636,17 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	 * kind, so the batcher falls back to per-instance draws for it and keeps the other kinds working.
 	 */
 	@Nullable
-	private Program buildInstancedVariant(String sourceName, InputAvailability availability, boolean shadow, Instancing kind) {
-		final Map<Pair<String, InputAvailability>, Map<PatchShaderType, String>> transforms = instancedAttributeTransforms.get(kind);
-		final Map<PatchShaderType, String> transformed = transforms != null ? transforms.get(Pair.of(sourceName, availability)) : null;
+	private Program buildInstancedVariant(InstancedVariantKey key) {
+		final Map<Pair<String, InputAvailability>, Map<PatchShaderType, String>> transforms = instancedAttributeTransforms.get(key.kind());
+		final Map<PatchShaderType, String> transformed = transforms != null ? transforms.get(Pair.of(key.sourceName(), key.availability())) : null;
 		if (transformed == null) {
 			return null;
 		}
 
-		final String name = sourceName + kind.variantSuffix;
+		final Instancing kind = key.kind();
+		final InputAvailability availability = key.availability();
+		final boolean shadow = key.shadow();
+		final String name = key.sourceName() + kind.variantSuffix;
 		try {
 			final String vertex = transformed.get(PatchShaderType.VERTEX);
 			final String geometry = transformed.get(PatchShaderType.GEOMETRY);
@@ -1622,11 +1665,43 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			this.customUniforms.mapholderToPass(builder, variant);
 			return variant;
 		} catch (Exception e) {
-			Iris.logger.warn("{} instanced variant link failed for {}; disabling it", kind, sourceName, e);
+			Iris.logger.warn("{} instanced variant link failed for {}; disabling it", kind, key.sourceName(), e);
 			supportsInstancing[kind.ordinal()] = false;
 			return null;
 		}
 	}
+
+	/**
+	 * Resolves every variant the pack can produce, once. The full-compile path calls this so the
+	 * binaries are written to the pack cache; the batch host calls it before it opens a batch, when
+	 * creating a variant would otherwise happen while queued vertices wait for a bound program.
+	 */
+	public void compileInstancedVariants() {
+		if (instancedVariantsCompiled) {
+			return;
+		}
+		instancedVariantsCompiled = true;
+		forEachInstancingTarget(table, (pass, kind) -> pass.instancedVariant(kind));
+	}
+
+	/**
+	 * Visits every pass in {@code table} once per layout that can produce a variant. The table holds
+	 * one entry per render condition and availability, so this covers every condition the batches can
+	 * ask for rather than a hand-picked list, and passes that several rows share are visited once.
+	 */
+	static <P> void forEachInstancingTarget(ProgramTable<P> table, BiConsumer<P, Instancing> visitor) {
+		final Set<P> visited = new HashSet<>();
+		table.forEach(pass -> {
+			if (pass == null || !visited.add(pass)) return;
+			for (Instancing kind : Instancing.VALUES) {
+				if (kind != Instancing.NONE) {
+					visitor.accept(pass, kind);
+				}
+			}
+		});
+	}
+
+	private boolean instancedVariantsCompiled;
 
 	static boolean[] initialInstancingSupport() {
 		final boolean[] out = new boolean[Instancing.VALUES.length];
@@ -1742,12 +1817,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	 * owned by a pass, so several passes can reference the same program.
 	 */
 	private void destroyInstancedVariants() {
-		for (Program variant : instancedVariantPrograms.values()) {
-			if (variant != null) {
-				variant.destroy();
-			}
-		}
-		instancedVariantPrograms.clear();
+		instancedVariantPrograms.destroyAll();
 	}
 
 	private void prepareRenderTargets() {
@@ -2424,8 +2494,14 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	private static final InputAvailability INPUT_NONE = new InputAvailability(false, false);
 	private static final InputAvailability INPUT_TEXTURE = new InputAvailability(true, false);
 	private static final InputAvailability INPUT_TEXTURE_LIGHTMAP = new InputAvailability(true, true);
+	private static final InputAvailability INPUT_LIGHTMAP = new InputAvailability(false, true);
 	private static final InputAvailability INPUT_TEXTURE_NO_COLOR = new InputAvailability(true, false, false);
-	private static final InputAvailability[] INPUT_AVAILABILITIES = { INPUT_NONE, INPUT_TEXTURE, INPUT_TEXTURE_LIGHTMAP, INPUT_TEXTURE_NO_COLOR };
+	/**
+	 * Availability keys the attribute transforms are pre-computed for. A build asked for a key that is
+	 * missing here resolves no transform and silently keeps the CPU path, so this must cover every
+	 * combination the batch paths can query.
+	 */
+	static final InputAvailability[] INPUT_AVAILABILITIES = { INPUT_NONE, INPUT_TEXTURE, INPUT_TEXTURE_LIGHTMAP, INPUT_LIGHTMAP, INPUT_TEXTURE_NO_COLOR };
 
 	private static CompletableFuture<Map<PatchShaderType, String>> submitCompositeTransform(ProgramSource source, TextureStage stage,
 		Object2ObjectMap<Tri<String, TextureType, TextureStage>, String> textureMap) {

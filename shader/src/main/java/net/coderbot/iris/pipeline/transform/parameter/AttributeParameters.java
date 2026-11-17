@@ -7,6 +7,12 @@ import net.coderbot.iris.shaderpack.texture.TextureStage;
 
 public class AttributeParameters extends Parameters {
 	public final boolean hasGeometry;
+	/**
+	 * Whether the program has a tessellation stage. The entity id and overlay varyings are passed on
+	 * with a different name from the evaluation shader than from the vertex shader, so the patcher
+	 * has to know which chain to continue.
+	 */
+	public final boolean hasTesselation;
 	public final InputAvailability inputs;
 	/**
 	 * Per-instance attribute layout the vertex stage reads instead of the per-vertex ones. It is part
@@ -17,12 +23,17 @@ public class AttributeParameters extends Parameters {
 	// WARNING: adding new fields requires updating hashCode and equals methods!
 
 	public AttributeParameters(Patch patch, boolean hasGeometry, InputAvailability inputs) {
-		this(patch, hasGeometry, inputs, Instancing.NONE);
+		this(patch, hasGeometry, false, inputs, Instancing.NONE);
 	}
 
 	public AttributeParameters(Patch patch, boolean hasGeometry, InputAvailability inputs, Instancing instancing) {
+		this(patch, hasGeometry, false, inputs, instancing);
+	}
+
+	public AttributeParameters(Patch patch, boolean hasGeometry, boolean hasTesselation, InputAvailability inputs, Instancing instancing) {
 		super(patch, null);
 		this.hasGeometry = hasGeometry;
+		this.hasTesselation = hasTesselation;
 		this.inputs = inputs;
 		this.instancing = instancing;
 	}
@@ -37,6 +48,7 @@ public class AttributeParameters extends Parameters {
 		final int prime = 31;
 		int result = super.hashCode();
 		result = prime * result + (hasGeometry ? 1231 : 1237);
+		result = prime * result + (hasTesselation ? 1231 : 1237);
 		result = prime * result + instancing.ordinal();
 		result = prime * result + ((inputs == null) ? 0 : inputs.hashCode());
 		return result;
@@ -52,6 +64,8 @@ public class AttributeParameters extends Parameters {
 			return false;
 		AttributeParameters other = (AttributeParameters) obj;
 		if (hasGeometry != other.hasGeometry)
+			return false;
+		if (hasTesselation != other.hasTesselation)
 			return false;
 		if (instancing != other.instancing)
 			return false;

@@ -238,7 +238,7 @@ public class TransformPatcher {
     }
 
     public static Map<PatchShaderType, String> patchAttributes(String vertex, String geometry, String tessControl, String tessEval, String fragment, InputAvailability inputs) {
-        return transform(vertex, geometry, tessControl, tessEval, fragment, new AttributeParameters(Patch.ATTRIBUTES, geometry != null, inputs));
+        return transform(vertex, geometry, tessControl, tessEval, fragment, new AttributeParameters(Patch.ATTRIBUTES, geometry != null, hasTesselation(tessControl, tessEval), inputs, Instancing.NONE));
     }
 
     /**
@@ -247,7 +247,11 @@ public class TransformPatcher {
      * own transformed source.
      */
     public static Map<PatchShaderType, String> patchAttributesInstanced(String vertex, String geometry, String tessControl, String tessEval, String fragment, InputAvailability inputs, Instancing instancing) {
-        return transform(vertex, geometry, tessControl, tessEval, fragment, new AttributeParameters(Patch.ATTRIBUTES, geometry != null, inputs, instancing));
+        return transform(vertex, geometry, tessControl, tessEval, fragment, new AttributeParameters(Patch.ATTRIBUTES, geometry != null, hasTesselation(tessControl, tessEval), inputs, instancing));
+    }
+
+    private static boolean hasTesselation(String tessControl, String tessEval) {
+        return tessControl != null || tessEval != null;
     }
 
     public static Map<PatchShaderType, String> patchAttributes(String vertex, String geometry, String fragment, InputAvailability inputs) {
