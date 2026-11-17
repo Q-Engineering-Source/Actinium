@@ -4,6 +4,7 @@ import com.dhj.actinium.render.FastLitItemDisplayListCache;
 import com.dhj.actinium.render.ItemVertexAlphaOverrides;
 import com.gtnewhorizons.angelica.api.tesr.TesrMaterial;
 import com.gtnewhorizons.angelica.config.AngelicaConfig;
+import com.gtnewhorizons.angelica.config.AngelicaConfig;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.GLSMDraws;
 import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
@@ -233,7 +234,7 @@ public final class DroppedItemInstancer {
         if (mesh == null) {
             return bail(BailReason.GEOMETRY, drawsBefore);
         }
-        final boolean glint = stack.hasEffect();
+        final boolean glint = AngelicaConfig.glintWorld() && stack.hasEffect();
         if (glint && !ModelPartBatcher.INSTANCE.canQueueSkippedItemGlint(EntityMaterials.GLINT)) {
             return bail(BailReason.GLINT, drawsBefore);
         }

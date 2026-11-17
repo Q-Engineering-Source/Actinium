@@ -94,6 +94,7 @@ class DroppedItemInstancingGLTest extends GLStateManagerIntegrationFixture {
     private static final ItemQuadWriter OTHER_QUADS = writer(OTHER_COLORS);
 
     private boolean savedBatching;
+    private boolean savedGlintWorld;
 
     @BeforeAll
     static void bootstrapRegistries() {
@@ -109,7 +110,9 @@ class DroppedItemInstancingGLTest extends GLStateManagerIntegrationFixture {
         GLSMMatrices.glMatrixMode(GL11.GL_MODELVIEW);
         GLSMMatrices.glLoadIdentity();
         this.savedBatching = ActiniumRuntime.options().performance.enableEntityBatching;
+        this.savedGlintWorld = ActiniumRuntime.options().quality.glintWorld;
         ActiniumRuntime.options().performance.enableEntityBatching = true;
+        ActiniumRuntime.options().quality.glintWorld = true;
         ShaderManager.enable();
         TesrBatchRenderer.INSTANCE.beginPass(TesrBatchRenderer.PASS_MAIN_0, new Matrix4f(), 0.0, 0.0, 0.0);
         ModelPartBatcher.INSTANCE.begin(ModelPartBatcher.Mode.ENTITIES);
@@ -138,6 +141,7 @@ class DroppedItemInstancingGLTest extends GLStateManagerIntegrationFixture {
         ModelPartBatcher.INSTANCE.clear();
         TesrBatchRenderer.INSTANCE.clearRetained();
         ActiniumRuntime.options().performance.enableEntityBatching = this.savedBatching;
+        ActiniumRuntime.options().quality.glintWorld = this.savedGlintWorld;
         ShaderManager.disable();
         DroppedItemInstancer.clear();
         assertEquals(GL11.GL_NO_ERROR, GL11.glGetError(), "the dropped item path must leave no GL error");
@@ -215,6 +219,20 @@ class DroppedItemInstancingGLTest extends GLStateManagerIntegrationFixture {
         assertTrue(GLSMLighting.getLightingState().isEnabled(), "the skipped block re-enables lighting");
         assertEquals(GL11.GL_SRC_ALPHA, GLSMBlend.getBlendState().getSrcRgb());
         assertEquals(GL11.GL_ONE_MINUS_SRC_ALPHA, GLSMBlend.getBlendState().getDstRgb());
+    }
+
+    @Test
+    void disablingWorldGlintKeepsTheBaseItemButQueuesNoGlintLayers() {
+        BatchEligibility.begin(BatchEligibility.SAFE, GLSMDraws.drawCalls);
+        ActiniumRuntime.options().quality.glintWorld = false;
+        final IBakedModel model = model(quad(EnumFacing.NORTH, -1, 0xFFFFFFFF), genericQuad(-1, 0xFFFFFFFF));
+        final long baseBefore = DroppedItemInstancer.statInstanced();
+        final long glintBefore = DroppedItemInstancer.statGlintInstanced();
+
+        assertEquals(DroppedItemInstancer.SKIP, DroppedItemInstancer.renderItemPart(QUADS, COLORS, stack(true), model),
+            "disabling glint must not remove the base item");
+        assertEquals(baseBefore + 1, DroppedItemInstancer.statInstanced(), "the base geometry is still instanced");
+        assertEquals(glintBefore, DroppedItemInstancer.statGlintInstanced(), "no glint layer may be queued while world glint is off");
     }
 
     @Test
