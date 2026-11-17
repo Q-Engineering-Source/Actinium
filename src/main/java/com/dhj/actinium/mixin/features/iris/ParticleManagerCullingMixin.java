@@ -77,7 +77,9 @@ public class ParticleManagerCullingMixin {
 
     /**
      * The third layer gets its own run from {@code ParticleManagerIrisMixin}, so its particles are
-     * batched and culled the same way the main loop's are.
+     * split, batched and culled exactly like the main loop's: the run is drawn and reopened when a
+     * particle needs the other particle program, and the new run keeps the batch and the declaration
+     * in step.
      */
     @WrapOperation(
         method = "renderLitParticles",
@@ -98,6 +100,7 @@ public class ParticleManagerCullingMixin {
         if (!ParticleViewportCulling.isVisible(particle, this.actinium$cullingViewport)) {
             return;
         }
+        ParticleRunSplitter.splitIfNeeded(particle, buffer);
         if (ParticleInstancer.renderParticle(particle, buffer, entityIn, partialTicks,
             rotationX, rotationZ, rotationYZ, rotationXY, rotationXZ)) {
             return;
