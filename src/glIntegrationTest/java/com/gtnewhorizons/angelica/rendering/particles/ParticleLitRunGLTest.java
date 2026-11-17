@@ -2,6 +2,7 @@ package com.gtnewhorizons.angelica.rendering.particles;
 
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.GLStateManagerIntegrationFixture;
+import com.gtnewhorizons.angelica.glsm.ITessellatorData;
 import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
 import com.gtnewhorizons.angelica.glsm.ffp.ParticleQuadMesh;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
@@ -61,6 +62,22 @@ class ParticleLitRunGLTest extends GLStateManagerIntegrationFixture {
     }
 
     @Test
+    void rejectsABuilderLeftOpenByAnotherRenderer() {
+        final BufferBuilder run = Tessellator.getInstance().getBuffer();
+        new OpenBufferView(run);
+        boolean rejected = false;
+        try {
+            ParticleLitRun.begin();
+        } catch (IllegalStateException expected) {
+            rejected = true;
+        }
+        if (rejected) {
+            run.finishDrawing();
+        }
+        assertTrue(rejected, "an unfinished foreign draw must not be committed under the particle pass state");
+    }
+
+    @Test
     void opensTheRunAndDrawsTheDecodedQuadAsInstances() {
         ParticleLitRun.begin();
         final BufferBuilder run = Tessellator.getInstance().getBuffer();
@@ -110,6 +127,78 @@ class ParticleLitRunGLTest extends GLStateManagerIntegrationFixture {
         run.begin(GL11.GL_QUADS, DefaultVertexFormats.PARTICLE_POSITION_TEX_COLOR_LMAP);
         run.finishDrawing();
         assertEquals(0, run.getVertexCount(), "the reopened builder is empty");
+    }
+
+    private static final class OpenBufferView implements ITessellatorData {
+        OpenBufferView(BufferBuilder buffer) {
+            buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.PARTICLE_POSITION_TEX_COLOR_LMAP);
+        }
+
+        @Override
+        public boolean isDrawing() {
+            return true;
+        }
+
+        @Override
+        public void setDrawing(boolean drawing) {
+        }
+
+        @Override
+        public int getVertexCount() {
+            return 0;
+        }
+
+        @Override
+        public int[] getRawBuffer() {
+            return new int[0];
+        }
+
+        @Override
+        public int getRawBufferIndex() {
+            return 0;
+        }
+
+        @Override
+        public int getRawBufferSize() {
+            return 0;
+        }
+
+        @Override
+        public void setRawBufferSize(int size) {
+        }
+
+        @Override
+        public void setRawBuffer(int[] buffer) {
+        }
+
+        @Override
+        public int getDrawMode() {
+            return GL11.GL_QUADS;
+        }
+
+        @Override
+        public boolean hasTexture() {
+            return true;
+        }
+
+        @Override
+        public boolean hasColor() {
+            return true;
+        }
+
+        @Override
+        public boolean hasNormals() {
+            return true;
+        }
+
+        @Override
+        public boolean hasBrightness() {
+            return true;
+        }
+
+        @Override
+        public void angelica$reset() {
+        }
     }
 
     /** A particle the registry has no descriptor for, writing one decodable quad. */

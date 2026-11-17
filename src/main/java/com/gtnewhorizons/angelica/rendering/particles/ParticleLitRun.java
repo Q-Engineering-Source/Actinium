@@ -24,14 +24,11 @@ public final class ParticleLitRun {
 
     private ParticleLitRun() {}
 
-    /**
-     * Opens the lit run. A builder another renderer left open is finished first: the tessellator is a
-     * process-wide singleton and the lit pass is the first thing each frame that opens it.
-     */
+    /** Opens the lit run. */
     public static void begin() {
         final BufferBuilder buffer = Tessellator.getInstance().getBuffer();
         if (buffer instanceof ITessellatorData data && data.isDrawing()) {
-            buffer.finishDrawing();
+            throw new IllegalStateException("The shared particle builder is still drawing");
         }
         ParticleRunSplitter.beginParticles();
         ParticleRunSplitter.beginRun();
