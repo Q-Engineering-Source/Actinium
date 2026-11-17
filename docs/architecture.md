@@ -105,8 +105,8 @@ alpha test 与混合覆盖，只替换 program，因此状态归属仍在 `Pass`
 `ProgramBinaryCache` 会缓存它们。`Iris.compilePackFolder` 为每个 folder 构建一次性
 pipeline 时先调用 `compileInstancedVariants()` 再编译地形程序，使这些二进制在预编译阶段
 写入缓存；`compileInstancedVariants()` 只执行一次，之后由各 pass 惰性查询。
-`TesrBatchRenderer.beginPass` 也调用它以便批次记录前完成链接，该入口等批次宿主接线后
-才会在生产路径执行。
+`TesrBatchRenderer.beginPass` 也调用它以便批次记录前完成链接；主视图批次与阴影批次都从该入口
+进入，两条生产路径均已接线。
 
 粒子实例化同样不新增 pass：`Instancing.PARTICLE` 只变换 `gbuffers_particles` 与
 `gbuffers_particles_translucent` 的顶点阶段，可用性恒为尝试状态，链接失败时自动退回。
@@ -121,10 +121,11 @@ pipeline 时先调用 `compileInstancedVariants()` 再编译地形程序，使�
 中心、半宽、颜色与 lightmap 来自实例属性，FFP 顶点着色器为 `PARTICLE` 单独声明
 `vec2 a_TexCoord0`，不声明顶点色、lightmap 与法线属性以免与实例属性共用槽位；网格没有法线，
 pack 变体与 FFP 都用常量法线 `(0, 0, 1)`，与 billboard 朝向一致，不再读取未提供的 location 4。
-第 3 层（lit）粒子在 1.12.2 只写共享 `BufferBuilder`、既不 `begin` 也不 `draw`，`ParticleLitRun`
+第 3 层（lit）粒子在 1.12.2 只写共享 `BufferBuilder`、本层没有自己的 `begin`/`draw`，`ParticleLitRun`
 在 `renderLitParticles` 的 HEAD 打开该 run 并开启实例层、在 RETURN 收尾并 `Tessellator.draw()`，
-因此这一层也进入批次；批次装不下的顶点仍按原版顶点回放由该 run 自己的 draw 画出，视锥判断与
-其它层共用同一入口。
+因此这一层也进入批次；批次装不下的顶点仍按原版顶点回放由该 run 自己的 draw 画出。这一层的
+`@WrapOperation` 与主循环共用同一条路径：先做视锥判断，再按 sprite 与粒子类判定是否切分 run，
+最后交给实例化或原版写入，切分后的 run 由 `ParticleLitRun` 的 begin/end 收尾。
 
 ## 根项目包详解（`com.dhj.actinium`）
 

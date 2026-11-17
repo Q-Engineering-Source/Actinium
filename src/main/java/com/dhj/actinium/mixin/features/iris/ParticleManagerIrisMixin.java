@@ -36,9 +36,10 @@ public class ParticleManagerIrisMixin {
     }
 
     /**
-     * The third layer has no run of its own in 1.12.2: its vertices go into the shared builder and are
-     * never drawn. Opening the run here gives it the same lifecycle as the others, so its particles
-     * are batched like every other particle and whatever the batch cannot take is drawn with the run.
+     * The third layer has no run of its own in 1.12.2: its vertices go into the shared builder without
+     * a begin or a draw of its own. Opening the run here gives it the same lifecycle as the others, so
+     * its particles are batched like every other particle and whatever the batch cannot take is drawn
+     * with the run.
      */
     @Inject(method = "renderLitParticles", at = @At("HEAD"))
     private void actinium$beginLitParticles(Entity entityIn, float partialTicks, CallbackInfo ci) {

@@ -11,14 +11,14 @@ import org.lwjgl.opengl.GL11;
  * Opens and closes the buffer the third particle layer is written into.
  *
  * <p>1.12.2 sends {@code renderLitParticles} through the shared {@link BufferBuilder} without opening
- * a run or drawing one, so what those particles write is discarded by the next {@code begin}. This
- * pass gives them the same lifecycle the other layers have: the buffer is opened before the loop,
- * the particles are submitted to the batch like any other, and the run is drawn when the loop ends,
- * which also carries the vertices the decoder could not turn into an instance.</p>
+ * a run or drawing one, so the layer itself neither brackets nor flushes what its particles write:
+ * the vertices stay in the shared builder for whatever draws it next. This pass gives the layer the
+ * same lifecycle the others have: the buffer is opened before the loop, the particles are submitted
+ * to the batch like any other, and the run is drawn when the loop ends, which also carries the
+ * vertices the decoder could not turn into an instance.</p>
  *
- * <p><b>Visibility:</b> lit particles did not reach the screen through this path before, because the
- * run was never drawn. They do now, which is the point of the run; their geometry and their frustum
- * test are unchanged.</p>
+ * <p><b>Visibility:</b> the layer draws its own run now, so its particles reach the screen through
+ * this path; their geometry and their frustum test are unchanged.</p>
  */
 public final class ParticleLitRun {
 
