@@ -99,6 +99,11 @@ public final class TesrBatchRenderer {
         if (--scopeDepth == 0) currentScope = 0;
     }
 
+    /** @return the id of the innermost open scope, or {@code 0} when none is open */
+    long currentScope() {
+        return currentScope;
+    }
+
     public void beginPass(int passKey, Matrix4f baseMV, double camX, double camY, double camZ) {
         BatchStateFallback.install();
         if (deferredFlushPending) {

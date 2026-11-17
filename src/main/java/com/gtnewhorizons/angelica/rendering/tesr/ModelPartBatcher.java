@@ -1009,7 +1009,7 @@ public final class ModelPartBatcher {
         return layerFor(texture, material, pass, offsetEnabled ? offsetFactor : 0, offsetEnabled ? offsetUnits : 0, glintSlot, cullCode, lit, lightmap, afterGlint);
     }
 
-    private RenderLayer layerFor(ResourceLocation texture, TesrMaterial material, PassOverride pass, float offsetFactor, float offsetUnits, int glintSlot, int cullCode, boolean lit, boolean lightmap, boolean afterGlint) {
+    RenderLayer layerFor(ResourceLocation texture, TesrMaterial material, PassOverride pass, float offsetFactor, float offsetUnits, int glintSlot, int cullCode, boolean lit, boolean lightmap, boolean afterGlint) {
         for (int i = 0; i < RECENT_LAYERS; i++) {
             final RenderLayer recent = recentLayers[i];
             if (recent != null && recentKeys[i].matches(texture, material, pass, offsetFactor, offsetUnits, glintSlot, cullCode, lit, lightmap, afterGlint)) {

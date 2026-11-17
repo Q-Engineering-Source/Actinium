@@ -623,6 +623,12 @@ final class RetainedTesrGroups implements AngelicaBufferSource.LayerDrawHook {
 
     private final Reference2ObjectOpenHashMap<RenderLayer, Reference2ObjectOpenHashMap<TesrMaterial, Object2ObjectOpenHashMap<DrawStateKey, Group>>> groups = new Reference2ObjectOpenHashMap<>();
     private final Reference2ObjectOpenHashMap<RenderLayer, ObjectArrayList<Group>> byLayer = new Reference2ObjectOpenHashMap<>();
+
+    /** @return the groups queued for each layer in this pass, for the batch tests */
+    Reference2ObjectOpenHashMap<RenderLayer, ObjectArrayList<Group>> groupsByLayer() {
+        return byLayer;
+    }
+
     private long openScope;
     private DepthEqualSet openDepthEqualSet;
     private final ObjectArrayList<Group> openWriters = new ObjectArrayList<>();
