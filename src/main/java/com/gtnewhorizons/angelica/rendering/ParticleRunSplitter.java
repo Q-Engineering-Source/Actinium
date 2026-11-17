@@ -3,7 +3,9 @@ package com.gtnewhorizons.angelica.rendering;
 import com.gtnewhorizons.angelica.client.rendering.DeferredDrawBatcher;
 import com.gtnewhorizons.angelica.rendering.particles.ParticleInstancer;
 import dhj.embeddedt.embeddium.impl.render.chunk.sprite.SpriteTransparencyLevel;
+import net.coderbot.iris.Iris;
 import net.coderbot.iris.layer.GbufferPrograms;
+import net.coderbot.iris.pipeline.DeferredWorldRenderingPipeline;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleCloud;
 import net.minecraft.client.particle.ParticleFirework;
@@ -22,9 +24,10 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
  * particles. The instance layer and the deferred batch follow the same boundary, because both own
  * vertices the draw has to flush first.</p>
  *
- * <p>The split is only taken while a deferred pipeline owns the run, which the particle instancer
- * checks before calling it; without one the declaration has no consumer and the vanilla grouping
- * stays untouched.</p>
+ * <p>The split is only taken while a deferred pipeline owns the run; without one the declaration has
+ * no consumer and the vanilla grouping stays untouched. It is independent of the batch: a run that
+ * the batch declined, or one drawn with the batch switched off, still has to reach the translucent
+ * particle program.</p>
  */
 public final class ParticleRunSplitter {
 
@@ -64,6 +67,8 @@ public final class ParticleRunSplitter {
      * @param run the buffer of the current run, restarted for the new run
      */
     public static void splitIfNeeded(Particle particle, BufferBuilder run) {
+        if (!deferredPipelineActive()) return;
+
         final boolean translucent = isTranslucent(particle);
         if (translucent == runTranslucent) return;
 
@@ -78,6 +83,10 @@ public final class ParticleRunSplitter {
         run.begin(run.getDrawMode(), run.getVertexFormat());
         if (batcherWasActive) DeferredDrawBatcher.enter();
         ParticleInstancer.beginLayer();
+    }
+
+    private static boolean deferredPipelineActive() {
+        return Iris.enabled && Iris.getPipelineManager().getPipelineNullable() instanceof DeferredWorldRenderingPipeline;
     }
 
     public static boolean currentRunTranslucent() {

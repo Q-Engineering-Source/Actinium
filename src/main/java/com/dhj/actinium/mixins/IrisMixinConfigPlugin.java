@@ -12,18 +12,17 @@ import java.util.function.Predicate;
 /**
  * Runtime gate for {@code mixins.actinium.iris.json}.
  *
- * <p>ParticleCulling declares plain {@code @Redirect}s on the same two
- * {@code Particle.renderParticle} call sites Actinium redirects in
- * {@code ParticleManagerCullingMixin} (one inside {@code ParticleManager#renderParticles},
- * one inside {@code ParticleManager#renderLitParticles}); plain redirects cannot be chained.
- * That mixin also submits every particle to the batcher, so skipping the class would drop the
- * particle batch as well: when the mod is present only the frustum test inside the redirect
- * handler is switched off, through {@code ParticleViewportCulling.setCullingDisabled}.
- * Presence is probed by asking the class loader for the ParticleCulling mixin resource instead
- * of {@code Loader.isModLoaded}, because {@code shouldApplyMixin} can be evaluated before mod
- * discovery has finished populating the loader's mod list; the probe is keyed on the marker
- * class name, so a ParticleCulling version that renames it would no longer be detected (the mod
- * is not updated for 1.12.2).
+ * <p>ParticleCulling puts its own plain {@code @Redirect}s on the two
+ * {@code Particle.renderParticle} call sites. Actinium wraps those invocations with
+ * {@code @WrapOperation} and keeps one {@code Operation} that performs the original call, so the two
+ * injectors coexist; what cannot coexist is two frustum tests running per particle. Presence of the
+ * mod therefore only switches Actinium's own test off, through
+ * {@code ParticleViewportCulling.setCullingDisabled}, and the mixin stays applied so the batch keeps
+ * working. Presence is probed by asking the class loader for the ParticleCulling mixin resource
+ * instead of {@code Loader.isModLoaded}, because {@code shouldApplyMixin} can be evaluated before mod
+ * discovery has finished populating the loader's mod list; the probe is keyed on the marker class
+ * name, so a ParticleCulling version that renames it would no longer be detected (the mod is not
+ * updated for 1.12.2).
  */
 public final class IrisMixinConfigPlugin implements IMixinConfigPlugin {
 

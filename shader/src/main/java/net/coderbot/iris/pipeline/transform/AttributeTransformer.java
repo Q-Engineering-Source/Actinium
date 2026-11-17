@@ -38,8 +38,10 @@ class AttributeTransformer {
 		if (parameters.type == ShaderType.VERTEX) {
 			if (particleVertex) {
 				// The per-vertex values are assembled from the instance and the corner offset, so
-				// their attributes are declared by the shared helper instead.
-				transformer.injectVariable("layout(location = 4) in vec3 iris_Normal;");
+				// their attributes are declared by the shared helper instead. The quad mesh has no
+				// normal attribute, and location 4 would read the unset generic value, so the normal
+				// is the camera-facing axis the billboard is built in.
+				transformer.injectVariable("const vec3 iris_Normal = vec3(0.0, 0.0, 1.0);");
 				transformer.injectVariable("uniform vec4 iris_ColorModulator;");
 				transformer.replaceExpression("gl_Color", "(iris_Color * iris_ColorModulator)");
 			} else {

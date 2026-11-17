@@ -33,6 +33,8 @@ class VertexShaderGeneratorTest {
     private static final int BIT_HAS_VERTEX_COLOR = 16;
     private static final int BIT_HAS_VERTEX_LIGHTMAP = 19;
     private static final int BIT_UNIT_TEX_BASE = 12;
+    private static final int BIT_LIGHTING = 0;
+    private static final int BIT_HAS_VERTEX_NORMAL = 17;
 
     @Test
     void particleLayoutRebuildsPositionColorAndLightmapFromTheInstance() {
@@ -61,6 +63,17 @@ class VertexShaderGeneratorTest {
         assertTrue(shader.contains("v_Color = a_InstColor;"), shader);
         assertTrue(shader.contains("mix(a_InstUv.x, a_InstUv.z, a_TexCoord0.x)"), shader);
         assertTrue(shader.contains("v_TexCoord1 = u_LightmapTextureMatrix * vec4(a_InstLightmap, 0.0, 1.0);"), shader);
+    }
+
+    @Test
+    void particleLayoutUsesTheBillboardNormalInsteadOfAVertexNormal() {
+        final long packed = (1L << BIT_LIGHTING) | (1L << BIT_TEXTURE) | (1L << BIT_HAS_VERTEX_TEX)
+            | (1L << BIT_HAS_VERTEX_COLOR) | (1L << BIT_HAS_VERTEX_LIGHTMAP) | (1L << BIT_HAS_VERTEX_NORMAL);
+        final String shader = VertexShaderGenerator.generate(VertexKey.fromPacked(VertexKey.withInstancing(packed, Instancing.PARTICLE)));
+
+        assertTrue(shader.contains("vec3 normal = u_NormalMatrix * vec3(0.0, 0.0, 1.0);"), shader);
+        assertFalse(shader.contains("a_Normal"), "the quad mesh has no normal attribute");
+        assertFalse(shader.contains("u_CurrentNormal"), "the billboard normal is a constant, not the per-draw one");
     }
 
     @Test

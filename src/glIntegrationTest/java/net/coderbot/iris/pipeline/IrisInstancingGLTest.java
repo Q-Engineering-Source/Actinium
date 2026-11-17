@@ -46,6 +46,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -319,6 +320,10 @@ class IrisInstancingGLTest extends GLStateManagerIntegrationFixture {
         assertTrue(vertex.contains("iris_InstUv"), vertex);
         assertTrue(vertex.contains("iris_InstColor"), vertex);
         assertTrue(vertex.contains("iris_InstLightmap"), vertex);
+        // The printer spaces the expression out, so only the declaration shape is pinned here.
+        assertTrue(vertex.contains("const vec3 iris_Normal"), vertex);
+        assertTrue(vertex.contains("iris_Normal = vec3 ( 0.0 , 0.0 , 1.0 )"), vertex);
+        assertFalse(vertex.contains("in vec3 iris_Normal"), "location 4 is not part of the particle quad");
         linkAndDiscard("particleVariant", result);
     }
 

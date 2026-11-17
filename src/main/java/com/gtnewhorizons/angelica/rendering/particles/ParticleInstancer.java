@@ -71,7 +71,6 @@ public final class ParticleInstancer {
     }
 
     private static boolean layerActive;
-    private static boolean layerStarted;
     private static DeferredWorldRenderingPipeline unavailableFor;
     private static DeferredWorldRenderingPipeline deferred;
     private static BufferBuilder run;
@@ -117,7 +116,6 @@ public final class ParticleInstancer {
      */
     public static void beginLayer() {
         layerActive = false;
-        layerStarted = true;
         groupCount = 0;
         rotX = 0.0f;
         rotXZ = 0.0f;
@@ -154,12 +152,6 @@ public final class ParticleInstancer {
         float rotationX, float rotationXZ, float rotationZ, float rotationYZ, float rotationXY) {
         if (!layerActive) return false;
 
-        // The run's declared translucency decides which particle program the pipeline picks, so the
-        // buffer is split before this particle writes into it. The split ends the current layer and
-        // opens the next one, which is why the run buffer is recorded afterwards.
-        if (deferred != null) {
-            ParticleRunSplitter.splitIfNeeded(particle, runBuffer);
-        }
         run = runBuffer;
         rotX = rotationX;
         rotXZ = rotationXZ;
@@ -167,7 +159,8 @@ public final class ParticleInstancer {
         rotYZ = rotationYZ;
         rotXY = rotationXY;
 
-        final ParticleDescriptor descriptor = ParticleDescriptorRegistry.forClass(particle.getClass());        if (descriptor != ParticleDescriptorRegistry.CAPTURE) {
+        final ParticleDescriptor descriptor = ParticleDescriptorRegistry.forClass(particle.getClass());
+        if (descriptor != ParticleDescriptorRegistry.CAPTURE) {
             STATE.sample();
             SCRATCH.brightness = particle.getBrightnessForRender(partialTicks);
             if (!descriptor.describe(particle, partialTicks, SCRATCH, STATE)) return true;
@@ -177,9 +170,11 @@ public final class ParticleInstancer {
             return true;
         }
 
-        STATE.sample();
         CAPTURE.begin();
         particle.renderParticle(CAPTURE.buffer(), entity, partialTicks, rotationX, rotationXZ, rotationZ, rotationYZ, rotationXY);
+        // Sampled after the particle ran: a particle may change blend or depth state inside its own
+        // renderParticle, and the group has to draw under what it actually produced.
+        STATE.sample();
 
         if (CAPTURE.spilled()) {
             CAPTURE.replayInto(runBuffer);
@@ -206,7 +201,6 @@ public final class ParticleInstancer {
      */
     public static void endLayer() {
         if (!layerActive) {
-            layerStarted = false;
             return;
         }
         layerActive = false;
@@ -249,7 +243,6 @@ public final class ParticleInstancer {
             groupCount = 0;
             deferred = null;
             run = null;
-            layerStarted = false;
         }
         RenderFailures.rethrowWrapped(failure);
     }
@@ -257,7 +250,6 @@ public final class ParticleInstancer {
     /** Drops every cached group and the quad mesh, on world unload or a shader pack change. */
     public static void clear() {
         layerActive = false;
-        layerStarted = false;
         deferred = null;
         run = null;
         unavailableFor = null;
@@ -277,7 +269,10 @@ public final class ParticleInstancer {
     private static void emit(Group group) {
         final ByteBuffer list = MeshBuffer.ensureCapacity(group.list, STRIDE, true);
         group.list = list;
-        ParticleInstancedAttribs.writeInstance(memAddress0(list) + list.position(), SCRATCH.centerX, SCRATCH.centerY, SCRATCH.centerZ, SCRATCH.half, SCRATCH.u0, SCRATCH.v0, SCRATCH.u1, SCRATCH.v1, SCRATCH.colorABGR, SCRATCH.brightness);
+        ParticleInstancedAttribs.writeInstance(memAddress0(list) + list.position(),
+            SCRATCH.centerX, SCRATCH.centerY, SCRATCH.centerZ, SCRATCH.half,
+            SCRATCH.u0, SCRATCH.v0, SCRATCH.u1, SCRATCH.v1,
+            SCRATCH.colorABGR, SCRATCH.brightness);
         list.position(list.position() + STRIDE);
     }
 
@@ -367,7 +362,8 @@ public final class ParticleInstancer {
      * no particle variant. The corners and texture coordinates are the ones the instance payload
      * keeps, so the result is the quad vanilla would have drawn.
      */
-    static void replayGroupAsVertices(ParticleRenderState state, ByteBuffer list, int count, BufferBuilder run, float rotX, float rotXZ, float rotZ, float rotYZ, float rotXY) {
+    static void replayGroupAsVertices(ParticleRenderState state, ByteBuffer list, int count, BufferBuilder run,
+                                      float rotX, float rotXZ, float rotZ, float rotYZ, float rotXY) {
         state.apply();
         for (int i = 0; i < count; i++) {
             final int base = i * STRIDE;
@@ -380,14 +376,17 @@ public final class ParticleInstancer {
             final float u1 = list.getFloat(base + ParticleInstancedAttribs.OFFSET_UV + 8);
             final float v1 = list.getFloat(base + ParticleInstancedAttribs.OFFSET_UV + 12);
             final int color = list.getInt(base + ParticleInstancedAttribs.OFFSET_COLOR);
-            final int light = (int) list.getFloat(base + ParticleInstancedAttribs.OFFSET_LIGHTMAP) | ((int) list.getFloat(base + ParticleInstancedAttribs.OFFSET_LIGHTMAP + 4) << 16);
+            final int light = (int) list.getFloat(base + ParticleInstancedAttribs.OFFSET_LIGHTMAP)
+                | ((int) list.getFloat(base + ParticleInstancedAttribs.OFFSET_LIGHTMAP + 4) << 16);
 
             for (int corner = 0; corner < ParticleQuadMesh.VERTEX_COUNT; corner++) {
                 final float a = ParticleQuadMesh.cornerA(corner);
                 final float b = ParticleQuadMesh.cornerB(corner);
                 final float ah = a * half;
                 final float bh = b * half;
-                run.pos(cx + ParticleQuadMesh.offsetX(ah, bh, rotX, rotYZ), cy + ParticleQuadMesh.offsetY(bh, rotXZ), cz + ParticleQuadMesh.offsetZ(ah, bh, rotZ, rotXY))
+                run.pos(cx + ParticleQuadMesh.offsetX(ah, bh, rotX, rotYZ),
+                        cy + ParticleQuadMesh.offsetY(bh, rotXZ),
+                        cz + ParticleQuadMesh.offsetZ(ah, bh, rotZ, rotXY))
                     .tex(a < 0.0f ? u0 : u1, b < 0.0f ? v0 : v1)
                     .color(color & 255, (color >> 8) & 255, (color >> 16) & 255, (color >>> 24) & 255)
                     .lightmap((light >> 16) & 0xFFFF, light & 0xFFFF)

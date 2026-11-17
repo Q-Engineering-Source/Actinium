@@ -81,14 +81,16 @@ class ParticleInstancingGLTest extends GLStateManagerIntegrationFixture {
         previousObserver = GLSMHooks.drawCallObserver;
         GLSMHooks.drawCallObserver = observedFlags::add;
 
+        final long capturedBefore = ParticleInstancer.getCaptured();
+        final long drawsBefore = ParticleInstancer.getDraws();
         final BufferBuilder run = beginRun();
         ParticleInstancer.beginLayer();
         assertTrue(ParticleInstancer.renderParticle(new CaptureParticle(), run, null, 0.5F, ROT_X, ROT_XZ, ROT_Z, ROT_YZ, ROT_XY),
             "a particle with no descriptor has to be captured");
         ParticleInstancer.endLayer();
 
-        assertEquals(1, ParticleInstancer.getCaptured());
-        assertEquals(1, ParticleInstancer.getDraws(), "one run with one quad is one instanced draw");
+        assertEquals(capturedBefore + 1, ParticleInstancer.getCaptured());
+        assertEquals(drawsBefore + 1, ParticleInstancer.getDraws(), "one run with one quad is one instanced draw");
         assertEquals(0, run.getVertexCount(), "a decoded quad must not also be written to the run");
 
         final ByteBuffer instance = readBackInstances();
@@ -109,6 +111,20 @@ class ParticleInstancingGLTest extends GLStateManagerIntegrationFixture {
         assertTrue((flags & VertexFlags.TEXTURE_BIT) != 0, "the particle program samples the bound texture");
         assertTrue((flags & VertexFlags.COLOR_BIT) != 0, "the particle program takes its colour from the instance");
         assertTrue((flags & VertexFlags.BRIGHTNESS_BIT) != 0, "the particle program takes its lightmap from the instance");
+    }
+
+    @Test
+    void groupsParticlesByTheStateTheyLeaveBehind() {
+        GLSMEnable.glEnable(GL11.GL_BLEND);
+        final long drawsBefore = ParticleInstancer.getDraws();
+        final BufferBuilder run = beginRun();
+        ParticleInstancer.beginLayer();
+        assertTrue(ParticleInstancer.renderParticle(new CaptureParticle(), run, null, 0.5F, ROT_X, ROT_XZ, ROT_Z, ROT_YZ, ROT_XY));
+        assertTrue(ParticleInstancer.renderParticle(new BlendDisablingParticle(), run, null, 0.5F, ROT_X, ROT_XZ, ROT_Z, ROT_YZ, ROT_XY));
+        ParticleInstancer.endLayer();
+
+        assertEquals(drawsBefore + 2, ParticleInstancer.getDraws(),
+            "the state is sampled after the particle ran, so a particle that changed blend starts its own group");
     }
 
     @Test
@@ -187,7 +203,7 @@ class ParticleInstancingGLTest extends GLStateManagerIntegrationFixture {
      * A particle the registry has no descriptor for, so the instancer runs its own
      * {@code renderParticle} into the capture buffer and decodes the result.
      */
-    private static final class CaptureParticle extends Particle {
+    private static class CaptureParticle extends Particle {
 
         CaptureParticle() {
             super(null, 4.0D, 5.0D, 6.0D);
@@ -214,6 +230,16 @@ class ParticleInstancingGLTest extends GLStateManagerIntegrationFixture {
                     .lightmap((LIGHT >> 16) & 0xFFFF, LIGHT & 0xFFFF)
                     .endVertex();
             }
+        }
+    }
+
+    /** Captured like any other particle, but leaves blend disabled behind it. */
+    private static final class BlendDisablingParticle extends CaptureParticle {
+        @Override
+        public void renderParticle(BufferBuilder buffer, Entity entityIn, float partialTicks, float rotationX,
+                                   float rotationZ, float rotationYZ, float rotationXY, float rotationXZ) {
+            super.renderParticle(buffer, entityIn, partialTicks, rotationX, rotationZ, rotationYZ, rotationXY, rotationXZ);
+            GLSMEnable.glDisable(GL11.GL_BLEND);
         }
     }
 }

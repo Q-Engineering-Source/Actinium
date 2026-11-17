@@ -132,7 +132,7 @@ public final class VertexShaderGenerator {
         if (key.texGenModeQ() == VertexKey.TG_OBJ_LINEAR) sb.append("uniform vec4 u_TexGenObjPlaneQ;\n");
         if (key.texGenModeQ() == VertexKey.TG_EYE_LINEAR) sb.append("uniform vec4 u_TexGenEyePlaneQ;\n");
 
-        if (!key.hasVertexNormal() && key.lightingEnabled()) {
+        if (!key.hasVertexNormal() && key.lightingEnabled() && key.instancing() != Instancing.PARTICLE) {
             sb.append("uniform vec3 u_CurrentNormal;\n");
         }
 
@@ -328,11 +328,17 @@ public final class VertexShaderGenerator {
 
     private static void emitNormalTransform(StringBuilder sb, VertexKey key) {
         sb.append("  // Normal transform\n");
-        final String srcNormal = key.hasVertexNormal() && key.instancing() != Instancing.PARTICLE ? "a_Normal" : "u_CurrentNormal";
+        if (key.instancing() == Instancing.PARTICLE) {
+            // The quad mesh carries no normal attribute and location 4 is not part of it, so the
+            // normal is the axis the billboard faces, matching what the shader pack variant uses.
+            sb.append("  vec3 normal = u_NormalMatrix * vec3(0.0, 0.0, 1.0);\n\n");
+            return;
+        }
+        final String srcNormal = key.hasVertexNormal() ? "a_Normal" : "u_CurrentNormal";
         if (key.instancing().hasInstanceHead()) {
             sb.append("  mat3 instNormal = ").append(InstancedGlslHelpers.mat3FromRows("a_InstRow0", "a_InstRow1", "a_InstRow2")).append(";\n");
             sb.append("  vec3 normal = instNormal * ").append(srcNormal).append(";\n");
-        } else if (key.hasVertexNormal() && key.instancing() != Instancing.PARTICLE) {
+        } else if (key.hasVertexNormal()) {
             sb.append("  vec3 normal = u_NormalMatrix * a_Normal;\n");
         } else {
             sb.append("  vec3 normal = u_NormalMatrix * u_CurrentNormal;\n");

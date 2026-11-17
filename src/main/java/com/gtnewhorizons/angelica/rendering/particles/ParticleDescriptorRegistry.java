@@ -23,6 +23,13 @@ public final class ParticleDescriptorRegistry {
 
     private static final Logger LOGGER = LogManager.getLogger("Angelica/Particles");
 
+    /**
+     * Names the particle draw method can carry at runtime. The mod jar is reobfuscated, so the source
+     * name is only present in dev; {@code func_180434_a} is the 1.12.2 SRG name and
+     * {@code func_70539_a} the one 1.7.10 ports were written against.
+     */
+    private static final String[] RENDER_PARTICLE_NAMES = { "renderParticle", "func_180434_a", "func_70539_a" };
+
     private static final Class<?>[] RENDER_PARTICLE_PARAMETERS = {
         BufferBuilder.class, Entity.class, float.class, float.class, float.class, float.class, float.class, float.class
     };
@@ -83,11 +90,17 @@ public final class ParticleDescriptorRegistry {
         return render.getDeclaringClass() == Particle.class ? VANILLA : CAPTURE;
     }
 
-    private static Method renderParticleMethod(Class<?> cls) {
-        try {
-            return cls.getMethod("renderParticle", RENDER_PARTICLE_PARAMETERS);
-        } catch (NoSuchMethodException e) {
-            return null;
+    /**
+     * @return the particle draw method found under any of its runtime names, or {@code null}
+     */
+    static Method renderParticleMethod(Class<?> cls) {
+        for (String name : RENDER_PARTICLE_NAMES) {
+            try {
+                return cls.getMethod(name, RENDER_PARTICLE_PARAMETERS);
+            } catch (NoSuchMethodException ignored) {
+                // Try the next runtime name.
+            }
         }
+        return null;
     }
 }
