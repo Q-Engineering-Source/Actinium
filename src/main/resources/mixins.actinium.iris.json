@@ -59,6 +59,7 @@
     "features.iris.startup.TextureMapIrisMixin",
     "features.tesr.MixinModelRenderer",
     "features.tesr.MixinRenderBatchEligibility",
+    "features.tesr.MixinRenderItemInstanced",
     "features.tesr.MixinRenderManagerBatchEligibility",
     "features.tesr.MixinShadowRendererEntities",
     "features.tesr.MixinShadowRendererTesr",
