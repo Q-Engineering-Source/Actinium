@@ -95,6 +95,22 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         public boolean useFastBlockRenderer = true;
         /** Blocks whose geometry must be captured on the render thread, as {@code namespace:block} ids. */
         public List<String> deferredBlockIds = new ArrayList<>();
+
+        /** Batches entity model parts, items and shadows on the fixed-function passes. */
+        public boolean enableEntityBatching = true;
+        /** Draws cuboid model parts from a shared unit cube instead of per-part geometry. */
+        public boolean enableCubeInstancing = true;
+        /** Stitches one texture atlas across entity and block entity models so different textures batch together. */
+        public boolean enableEntityTextureAtlas = true;
+        /** Replays entity draws recorded in the shader shadow pass instead of running the renderer again. */
+        public boolean enableEntityShadowReplay = false;
+        /** Entity classes that re-run their renderer in the main view instead of replaying shadow pass draws. */
+        public List<String> entityShadowReplayExcludedClasses = new ArrayList<>(List.of(
+                "twilightforest.entity.passive.EntityTFMobileFirefly",
+                "gregtech.common.entity.EntityDrone"));
+
+        /** Upper bound for cached item meshes; larger values trade memory for fewer rebuilds. */
+        public int itemRendererCacheSize = 512;
         public AsyncOcclusionMode asyncOcclusionMode = AsyncOcclusionMode.ONLY_SHADOW;
         public boolean useRasterOcclusionCulling = true;
         public GpuCullingMode gpuCullingMode = GpuCullingMode.CPU_ONLY;
@@ -162,6 +178,9 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
 
         // Multiplies the cloud cell footprint. One matches the vanilla 12x12 fancy cell.
         public int cloudScale = 1;
+
+        /** Renders the enchantment glint on items held in the world; disabling it hides world glint entirely. */
+        public boolean glintWorld = true;
     }
 
 
@@ -355,6 +374,10 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
 
         if (config.performance.deferredBlockIds == null) {
             config.performance.deferredBlockIds = new ArrayList<>();
+        }
+
+        if (config.performance.entityShadowReplayExcludedClasses == null) {
+            config.performance.entityShadowReplayExcludedClasses = new ArrayList<>();
         }
 
         try {
