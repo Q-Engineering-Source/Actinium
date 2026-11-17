@@ -1,8 +1,12 @@
 package net.coderbot.iris.pipeline.transform;
 
+import com.gtnewhorizons.angelica.glsm.ffp.InstancedGlslHelpers;
+import com.gtnewhorizons.angelica.glsm.ffp.Instancing;
+import net.coderbot.iris.gl.shader.ProgramCreator;
 import net.coderbot.iris.gl.shader.ShaderType;
 import net.coderbot.iris.pipeline.transform.parameter.AttributeParameters;
 import org.taumc.glsl.Transformer;
+import org.taumc.glsl.grammar.GLSLLexer;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -24,14 +28,27 @@ class AttributeTransformer {
 	}
 
 	private static void transformCore(Transformer transformer, AttributeParameters parameters) {
-		CoreTransformHelper.injectMatrixUniforms(transformer);
+		// Only the template and cube layouts have an instance head; the declaration helper rejects the
+		// remaining kinds, so every instanced vertex stage here reads the head.
+		final boolean instancedVertex = parameters.type == ShaderType.VERTEX && parameters.instancing != Instancing.NONE;
+		final boolean cubeVertex = instancedVertex && parameters.instancing == Instancing.CUBE;
+		CoreTransformHelper.injectMatrixUniforms(transformer, instancedVertex ? parameters.instancing : Instancing.NONE);
 
 		if (parameters.type == ShaderType.VERTEX) {
 			transformer.injectVariable("layout(location = 0) in vec4 iris_Vertex;");
-			transformer.injectVariable("layout(location = 2) in vec4 iris_MultiTexCoord0;");
-			transformer.injectVariable("layout(location = 3) in vec4 iris_MultiTexCoord1;");
+			// The cube layout carries its own texture net; the per-instance head replaces the lightmap.
+			transformer.injectVariable(cubeVertex
+				? "vec4 iris_MultiTexCoord0;"
+				: "layout(location = 2) in vec4 iris_MultiTexCoord0;");
+			transformer.injectVariable(instancedVertex
+				? "vec4 iris_MultiTexCoord1;"
+				: "layout(location = 3) in vec4 iris_MultiTexCoord1;");
 			transformer.injectVariable("layout(location = 4) in vec3 iris_Normal;");
-			if (parameters.inputs.color) {
+			if (instancedVertex) {
+				transformer.injectVariable("layout(location = 1) in vec4 iris_Color;");
+				transformer.injectVariable("uniform vec4 iris_ColorModulator;");
+				transformer.replaceExpression("gl_Color", "(iris_Color * iris_ColorModulator * iris_InstColor)");
+			} else if (parameters.inputs.color) {
 				transformer.injectVariable("layout(location = 1) in vec4 iris_Color;");
 				transformer.rename("gl_Color", "iris_Color");
 			} else {
@@ -69,7 +86,90 @@ class AttributeTransformer {
 				transformer.rename("gl_MultiTexCoord3", "mc_midTexCoord");
 				transformer.injectVariable("in vec4 mc_midTexCoord;");
 			}
+
+			if (instancedVertex) {
+				foldConstantAttribute(transformer, "mc_Entity", "-1.0", "vec2(-1.0, -1.0)", "vec3(-1.0, -1.0, 0.0)", "vec4(-1.0, -1.0, 0.0, 1.0)");
+
+				final StringBuilder init = new StringBuilder(256).append("{ ");
+				init.append("iris_ModelViewMatrix = ").append(InstancedGlslHelpers.mat4FromRows("iris_InstRow0", "iris_InstRow1", "iris_InstRow2")).append(';');
+				init.append(" iris_NormalMatrix = ").append(InstancedGlslHelpers.mat3FromRows("iris_InstRow0", "iris_InstRow1", "iris_InstRow2")).append(';');
+				// The inverse is only rebuilt when the pack reads it, matching the uniform path's upload.
+				if (transformer.containsCall("iris_ModelViewMatrixInverse")) {
+					init.append(" iris_ModelViewMatrixInverse = inverse(iris_ModelViewMatrix);");
+				}
+				init.append(" iris_MultiTexCoord1 = vec4(").append(cubeVertex ? "iris_InstLightmapScale.xy" : "iris_InstLightmap").append(", 0.0, 1.0);");
+				if (cubeVertex) {
+					appendCubeTexCoords(transformer, init);
+				}
+				init.append(" }");
+				transformer.prependMain(init.toString());
+			}
 		}
 	}
 
+	private static void appendCubeTexCoords(Transformer transformer, StringBuilder init) {
+		init.append(' ').append(InstancedGlslHelpers.cubePrelude("iris_", "iris_CubeMid", "iris_CubeDelta", "iris_Normal", "iris_CubeTex", " "));
+		init.append(" iris_MultiTexCoord0 = ").append(InstancedGlslHelpers.cubeUv("iris_CubeTex", "iris_InstLightmapScale", "iris_cubeU.x", "iris_cubeU.y", "iris_cubeV.x", "iris_cubeV.y")).append(';');
+
+		final int tangentType = transformer.findType("at_tangent");
+		if (tangentType != 0) {
+			final String name = vecName(tangentType);
+			if (name == null || tangentType == GLSLLexer.VEC2) {
+				throw new IllegalStateException("Unsupported at_tangent type token " + tangentType + " for the cube instanced variant");
+			}
+			transformer.removeVariable("at_tangent");
+			transformer.injectVariable("layout(location = " + ProgramCreator.AT_TANGENT + ") in vec4 iris_CubeTangent;");
+			transformer.injectVariable(name + " at_tangent;");
+			init.append(" at_tangent = (iris_CubeTangent * (1.0 - 2.0 * iris_cubeMirror))").append(swizzle(tangentType)).append(';');
+		}
+
+		assignMidTexCoord(transformer, init, InstancedGlslHelpers.cubeUv("iris_CubeTex", "iris_InstLightmapScale", "iris_cubeMidU.x", "iris_cubeMidU.y", "iris_CubeMid.z", "iris_CubeMid.w"));
+	}
+
+	private static void assignMidTexCoord(Transformer transformer, StringBuilder init, String midExpression) {
+		final int midType = transformer.findType("mc_midTexCoord");
+		if (midType == 0) {
+			return;
+		}
+		final String name = vecName(midType);
+		if (name == null) {
+			throw new IllegalStateException("Unsupported mc_midTexCoord type token " + midType + " for the instanced variant");
+		}
+		transformer.removeVariable("mc_midTexCoord");
+		transformer.injectVariable(name + " mc_midTexCoord;");
+		init.append(" mc_midTexCoord = (").append(midExpression).append(')').append(swizzle(midType)).append(';');
+	}
+
+	private static String vecName(int type) {
+		return switch (type) {
+			case GLSLLexer.VEC2 -> "vec2";
+			case GLSLLexer.VEC3 -> "vec3";
+			case GLSLLexer.VEC4 -> "vec4";
+			default -> null;
+		};
+	}
+
+	private static String swizzle(int type) {
+		return switch (type) {
+			case GLSLLexer.VEC2 -> ".xy";
+			case GLSLLexer.VEC3 -> ".xyz";
+			default -> "";
+		};
+	}
+
+	private static void foldConstantAttribute(Transformer transformer, String name, String floatVal, String vec2Val, String vec3Val, String vec4Val) {
+		final int type = transformer.findType(name);
+		if (type == 0) {
+			return;
+		}
+		final String replacement = switch (type) {
+			case GLSLLexer.FLOAT -> floatVal;
+			case GLSLLexer.VEC2 -> vec2Val;
+			case GLSLLexer.VEC3 -> vec3Val;
+			case GLSLLexer.VEC4 -> vec4Val;
+			default -> throw new IllegalStateException("Unsupported " + name + " type token " + type + " for instanced variant");
+		};
+		transformer.removeVariable(name);
+		transformer.replaceExpression(name, replacement);
+	}
 }

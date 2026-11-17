@@ -1,5 +1,6 @@
 package net.coderbot.iris.pipeline.transform.parameter;
 
+import com.gtnewhorizons.angelica.glsm.ffp.Instancing;
 import net.coderbot.iris.gbuffer_overrides.matching.InputAvailability;
 import net.coderbot.iris.pipeline.transform.Patch;
 import net.coderbot.iris.shaderpack.texture.TextureStage;
@@ -7,12 +8,23 @@ import net.coderbot.iris.shaderpack.texture.TextureStage;
 public class AttributeParameters extends Parameters {
 	public final boolean hasGeometry;
 	public final InputAvailability inputs;
+	/**
+	 * Per-instance attribute layout the vertex stage reads instead of the per-vertex ones. It is part
+	 * of {@link #hashCode()} and {@link #equals(Object)} so the transform cache keeps one result per
+	 * layout instead of returning the same shader for {@code NONE}, {@code TEMPLATE} and {@code CUBE}.
+	 */
+	public final Instancing instancing;
 	// WARNING: adding new fields requires updating hashCode and equals methods!
 
 	public AttributeParameters(Patch patch, boolean hasGeometry, InputAvailability inputs) {
+		this(patch, hasGeometry, inputs, Instancing.NONE);
+	}
+
+	public AttributeParameters(Patch patch, boolean hasGeometry, InputAvailability inputs, Instancing instancing) {
 		super(patch, null);
 		this.hasGeometry = hasGeometry;
 		this.inputs = inputs;
+		this.instancing = instancing;
 	}
 
 	@Override
@@ -25,6 +37,7 @@ public class AttributeParameters extends Parameters {
 		final int prime = 31;
 		int result = super.hashCode();
 		result = prime * result + (hasGeometry ? 1231 : 1237);
+		result = prime * result + instancing.ordinal();
 		result = prime * result + ((inputs == null) ? 0 : inputs.hashCode());
 		return result;
 	}
@@ -39,6 +52,8 @@ public class AttributeParameters extends Parameters {
 			return false;
 		AttributeParameters other = (AttributeParameters) obj;
 		if (hasGeometry != other.hasGeometry)
+			return false;
+		if (instancing != other.instancing)
 			return false;
 		if (inputs == null) {
 			if (other.inputs != null)

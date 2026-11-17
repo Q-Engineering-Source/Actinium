@@ -1,5 +1,6 @@
 package net.coderbot.iris.pipeline.transform;
 
+import com.gtnewhorizons.angelica.glsm.ffp.InstancedAttribs;
 import com.gtnewhorizons.angelica.glsm.hooks.ImmediateExtendedAttribHandler;
 import com.gtnewhorizons.angelica.glsm.shader.ShaderIndex;
 import net.coderbot.iris.gl.shader.ShaderType;
@@ -54,11 +55,14 @@ class EntityPatcher {
 
         switch (parameters.type) {
             case VERTEX -> {
+                final boolean instanced = hasInstanceAttributes(parameters);
+                final String input = instanced ? "iris_InstEntity" : "iris_Entity";
+                final int location = instanced ? InstancedAttribs.LOC_ENTITY : ImmediateExtendedAttribHandler.LOC_ENTITY_IDS;
                 removeIfDeclared(transformer, "iris_Entity");
-                transformer.injectVariable("layout(location = " + ImmediateExtendedAttribHandler.LOC_ENTITY_IDS
-                    + ") in vec4 iris_Entity;");
+                removeIfDeclared(transformer, "iris_InstEntity");
+                transformer.injectVariable("layout(location = " + location + ") in vec4 " + input + ";");
                 transformer.injectVariable("flat out ivec3 iris_entityInfo;");
-                transformer.prependMain("{ ivec3 iris_ids = ivec3(round(iris_Entity.xyz * 65535.0)); "
+                transformer.prependMain("{ ivec3 iris_ids = ivec3(round(" + input + ".xyz * 65535.0)); "
                     + "iris_entityInfo = ivec3(iris_ids.x == 65535 ? -1 : iris_ids.x, "
                     + "iris_ids.y == 65535 ? -1 : iris_ids.y, iris_ids.z == 65535 ? -1 : iris_ids.z); "
                     + assignments + "}");
@@ -90,8 +94,52 @@ class EntityPatcher {
         }
     }
 
+    /**
+     * Reads the hurt overlay from the instance head instead of a per-draw uniform when the stage is
+     * one of the instanced variants, carrying it to later stages as a varying. The uniform path is
+     * left alone for every other layout.
+     */
     public static void patchOverlayColor(Transformer transformer, AttributeParameters parameters) {
-        injectUniformIfUndeclared(transformer, "entityColor", "uniform vec4 entityColor;");
+        if (!hasInstanceAttributes(parameters)) {
+            injectUniformIfUndeclared(transformer, "entityColor", "uniform vec4 entityColor;");
+            return;
+        }
+
+        removeIfDeclared(transformer, "entityColor");
+
+        switch (parameters.type) {
+            case VERTEX -> {
+                transformer.injectVariable("out vec4 entityColor;");
+                transformer.prependMain("{ entityColor = iris_InstOverlay; entityColor.rgb *= float(entityColor.a != 0.0); }");
+            }
+            case TESSELATION_CONTROL -> {
+                transformer.replaceExpression("entityColor", "entityColor[gl_InvocationID]", GLSLParser::postfix_expression);
+                transformer.injectVariable("patch out vec4 entityColorTCS;");
+                transformer.injectVariable("in vec4 entityColor[];");
+                transformer.prependMain("entityColorTCS = entityColor[gl_InvocationID];");
+            }
+            case TESSELATION_EVAL -> {
+                transformer.replaceExpression("entityColor", "entityColorTCS", GLSLParser::postfix_expression);
+                transformer.injectVariable("out vec4 entityColorTES;");
+                transformer.injectVariable("patch in vec4 entityColorTCS;");
+                transformer.prependMain("entityColorTES = entityColorTCS;");
+            }
+            case GEOMETRY -> {
+                transformer.replaceExpression("entityColor", "entityColor[0]", GLSLParser::postfix_expression);
+                transformer.injectVariable("out vec4 entityColorGS;");
+                transformer.injectVariable("in vec4 entityColor[];");
+                transformer.prependMain("entityColorGS = entityColor[0];");
+            }
+            case FRAGMENT -> {
+                if (transformer.containsCall("entityColor")) {
+                    transformer.injectVariable("in vec4 entityColor;");
+                    if (parameters.hasGeometry) {
+                        transformer.rename("entityColor", "entityColorGS");
+                    }
+                }
+            }
+            default -> {}
+        }
     }
 
     private static GLSLParser.Typeless_declarationContext topLevelDeclarator(Transformer transformer, String name) {
@@ -114,6 +162,10 @@ class EntityPatcher {
         final GLSLParser.Init_declarator_listContext list = (GLSLParser.Init_declarator_listContext)
             (parent instanceof GLSLParser.Single_declarationContext ? parent.getParent() : parent);
         return ShaderIndex.hasStorageQualifier(list.single_declaration().fully_specified_type().type_qualifier(), "uniform");
+    }
+
+    private static boolean hasInstanceAttributes(AttributeParameters parameters) {
+        return parameters.instancing.hasInstanceHead();
     }
 
     private static void injectUniformIfUndeclared(Transformer transformer, String name, String declaration) {
