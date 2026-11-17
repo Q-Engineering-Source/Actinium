@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -54,7 +55,7 @@ class InstancedVariantCacheTest {
     @Test
     void availabilityIsPartOfTheKey() {
         final AtomicInteger builds = new AtomicInteger();
-        final java.util.function.Function<String, String> factory = key -> {
+        final Function<String, String> factory = key -> {
             builds.incrementAndGet();
             return "program:" + key;
         };
