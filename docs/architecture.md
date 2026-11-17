@@ -1,6 +1,6 @@
 # Actinium 架构说明
 
-最后更新：2026-11-13。
+最后更新：2026-11-17。
 
 ## 概述
 
@@ -92,6 +92,15 @@ Outlands 管理窗口和输入，并提供与 lwjgl3ify 对应的创建、销毁
 5. `AdaptiveShadowBoundsTransformer` 在可识别的 PCF helper 入口加入 shadow-map bounds
    early return；仅当 GLSM 性能调试开启且 SSBO/GLSL 4.30 可用时，
    `DeferredWorldRenderingPipeline` 才分配独立 SSBO 并注入运行期 `atomicAdd` 统计。
+
+TESR 实例化批次不新增 pass：`DeferredWorldRenderingPipeline` 为 `Instancing.TEMPLATE` 与
+`Instancing.CUBE` 从 `Block`、`BlockTrans`、`Entities`、`EntitiesTrans`、`Shadow`、
+`ShadowWater`、`ArmorGlint`、`SpiderEyes` 的程序源码另做一份属性变换，首次查询时链接为
+变体程序，并按 `(sourceName, availability, shadow, kind)` 共享，引用模型视图内置量的
+非顶点阶段会让该来源退回逐实例绘制。变体沿用所属 pass 的 framebuffer、viewport、
+alpha test 与混合覆盖，只替换 program，因此状态归属仍在 `Pass`。批次在
+`TesrBatchRenderer.beginPass` 中先完成变体查询再开始记录，避免批处理中途链接改变
+program。CUBE 变体由 `InstancingSupportProvider` 的宿主开关决定可用性。
 
 ## 根项目包详解（`com.dhj.actinium`）
 

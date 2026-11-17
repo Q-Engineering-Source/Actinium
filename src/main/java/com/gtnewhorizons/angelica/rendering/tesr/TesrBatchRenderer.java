@@ -6,6 +6,7 @@ import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormat;
 import com.gtnewhorizons.angelica.api.tesr.TesrMaterial;
 import com.gtnewhorizons.angelica.api.tesr.TesrShader;
 import com.gtnewhorizons.angelica.compat.mojang.RenderLayer;
+import com.gtnewhorizons.angelica.config.AngelicaConfig;
 import com.gtnewhorizons.angelica.glsm.GLSMAttribStack;
 import com.gtnewhorizons.angelica.glsm.GLSMBlend;
 import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
@@ -31,6 +32,8 @@ import net.coderbot.batchedentityrendering.impl.AngelicaBufferSource;
 import net.coderbot.batchedentityrendering.impl.SegmentedBufferBuilder;
 import net.coderbot.batchedentityrendering.impl.TransparencyType;
 import net.coderbot.iris.Iris;
+import net.coderbot.iris.gbuffer_overrides.matching.InputAvailability;
+import net.coderbot.iris.gbuffer_overrides.matching.RenderCondition;
 import net.coderbot.iris.layer.GbufferPrograms;
 import net.coderbot.iris.layer.PassOverride;
 import net.coderbot.iris.pipeline.DeferredWorldRenderingPipeline;
@@ -113,6 +116,9 @@ public final class TesrBatchRenderer {
         bufferSource.capturePassLighting();
         BatchDrawDefaults.capturePassFramebuffer();
         final DeferredWorldRenderingPipeline deferred = deferredPipeline();
+        if (deferred != null && AngelicaConfig.enableEntityBatching()) {
+            prewarmInstancedVariants(deferred);
+        }
         retained[passKey].beginPass(baseMV, camX, camY, camZ, instancedCapable() ? instancedRenderer : null, deferred);
         if (passKey == PASS_MAIN_0) {
             instancedRenderer.releaseRetired();
@@ -143,6 +149,32 @@ public final class TesrBatchRenderer {
         if (!Iris.enabled) return null;
         return Iris.getPipelineManager().getPipelineNullable() instanceof DeferredWorldRenderingPipeline deferred
             ? deferred : null;
+    }
+
+    private static final RenderCondition[] INSTANCED_CONDITIONS = {
+        RenderCondition.ENTITIES, RenderCondition.ENTITIES_TRANSLUCENT, RenderCondition.GLINT,
+        RenderCondition.SHADOW, RenderCondition.SHADOW_TRANSLUCENT
+    };
+
+    private static final InputAvailability[] INSTANCED_AVAILABILITIES = {
+        InputAvailability.of(false, false), InputAvailability.of(true, false),
+        InputAvailability.of(false, true), InputAvailability.of(true, true)
+    };
+
+    /**
+     * Resolves every variant the queued draws can ask for before any batch opens. Building one links
+     * a program and may create the render targets it samples; doing that while vertices are queued
+     * would leave the batch bound to a program other than the one it recorded.
+     */
+    private static void prewarmInstancedVariants(DeferredWorldRenderingPipeline deferred) {
+        for (Instancing kind : new Instancing[] { Instancing.TEMPLATE, Instancing.CUBE }) {
+            if (!deferred.supportsInstancing(kind)) continue;
+            for (RenderCondition condition : INSTANCED_CONDITIONS) {
+                for (InputAvailability availability : INSTANCED_AVAILABILITIES) {
+                    deferred.hasInstancedVariant(condition, availability, kind);
+                }
+            }
+        }
     }
 
     private void discardDeferred() {

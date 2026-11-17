@@ -19,11 +19,13 @@ import com.dhj.actinium.render.terrain.GpuCullingSettings;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.startup.SdlGpuBootstrap;
 import com.gtnewhorizons.angelica.proxy.ClientProxy;
+import com.gtnewhorizons.angelica.config.AngelicaConfig;
 import com.gtnewhorizons.angelica.rendering.tesr.AngelicaTesrMeshCache;
 import com.gtnewhorizons.angelica.rendering.tesr.TesrLifecycle;
 import com.gtnewhorizon.gtnhlib.compat.Mods;
 import net.coderbot.iris.celeritas.WorldRendererCompatBridge;
 import net.coderbot.iris.debug.IrisDebugOptions;
+import net.coderbot.iris.pipeline.InstancingSupportProvider;
 import net.coderbot.iris.uniforms.CloudAnimationCycle;
 import com.gtnewhorizon.gtnhlib.client.renderer.RuntimeOptionsBridge;
 import com.gtnewhorizon.gtnhlib.client.renderer.postprocessing.PostProcessingBridge;
@@ -95,6 +97,7 @@ public class Actinium {
             (entity, partialTicks) -> ((AccessorEntityRenderer) Minecraft.getMinecraft().entityRenderer)
                 .invokeGetNightVisionBrightness(entity, partialTicks));
         WorldRendererCompatBridge.setProvider(ActiniumWorldRenderer::instanceNullable);
+        InstancingSupportProvider.setProvider(AngelicaConfig::cubeInstancingEnabled);
         CloudAnimationCycle.setTicks(CloudRenderer::cloudCycleTicks);
         IrisDebugOptions.setBridge(new IrisDebugOptions.Bridge() {
             @Override

@@ -1,6 +1,6 @@
 # 桥（Bridge）与宿主能力注入清单
 
-最后更新：2026-08-12
+最后更新：2026-11-17
 
 ## 目的
 
@@ -19,6 +19,7 @@
 | `RuntimeOptionsBridge` | GTNHLib `renderer` | 直接内存访问开关 | `Actinium.onConstruct` | GTNHLib 内部 |
 | `IrisDebugOptions.Bridge` | shader `net.coderbot.iris.debug` | debug 开关（8 项）、功能开关（enableIris/enableCeleritas 等 6 项）、`cycleAnimationsMode` | `Actinium.onConstruct` | shader |
 | `WorldRendererCompatBridge` | shader `net.coderbot.iris.celeritas` | 阴影 pass 的地形渲染面（绘制/视口/图脏/统计） | `Actinium.onConstruct` | shader |
+| `InstancingSupportProvider` | shader `net.coderbot.iris.pipeline` | cube instancing 开关（决定 CUBE 变体是否可用） | `Actinium.onConstruct` | shader |
 | `EmbeddiumRuntimeOptions` | celeritas-common | chunk multi-draw 模式 | `Actinium.onConstruct` | celeritas |
 | `GLSMPerfDebugHooks` | glsm `hooks` | perf 统计、开关与监听 | `Actinium.onConstruct` | glsm |
 
