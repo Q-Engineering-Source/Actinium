@@ -219,6 +219,9 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	private boolean isRenderingShadow = false;
 	private InputAvailability inputs = new InputAvailability(false, false);
 	private SpecialCondition special = null;
+	private final DeferredProgramMatch programMatch = DeferredProgramMatch.forDisplayLists(
+		GLStateManager::isForeignDraw,
+		this::matchPassNow);
 	private boolean refreshingPass;
 	private boolean modProgramOverrode;
 	private int programBeforeModOverride = -1;
@@ -843,6 +846,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			getActivePassProgramId()
 		);
 		current = null;
+		programMatch.clear();
 	}
 
 	/** Restores the current Iris pass after a foreign renderer has returned control. */
@@ -868,7 +872,9 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 		refreshingPass = true;
 		try {
-			if (current != null) {
+			if (programMatch.isPending()) {
+				programMatch.resolve();
+			} else if (current != null) {
 				drivingProgram = true;
 				try {
 					current.use();
@@ -885,7 +891,10 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		}
 	}
 
-	/** Re-evaluates entity translucency after vanilla changes blend state. */
+	/**
+	 * Re-evaluates entity translucency after vanilla changes blend state. A declared translucency
+	 * wins over the live blend state, so the selection cannot change while one is active.
+	 */
 	public void onVanillaBlendChanged() {
 		if (matchingBlend || drivingProgram || refreshingPass) {
 			return;
@@ -902,13 +911,17 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 		matchingBlend = true;
 		try {
-			matchPass();
+			programMatch.request();
 		} finally {
 			matchingBlend = false;
 		}
 	}
 
 	private void matchPass() {
+		programMatch.matchNow();
+	}
+
+	private void matchPassNow() {
 		if (!isRenderingWorld || isRenderingFullScreenPass || isPostChain || (!isMainBound && !isRenderingShadow)) {
             IrisGlDebug.logPipelineSkip(
                 "match-pass-skip",
@@ -947,6 +960,10 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	private static final InputAvailability SHADOW_INPUTS = new InputAvailability(true, true);
 
 	public void beginPass(Pass pass) {
+		programMatch.runUnrecorded(() -> beginPassNow(pass));
+	}
+
+	private void beginPassNow(Pass pass) {
         WorldRenderingPhase activePhase = getPhase();
         int previousProgram = getActivePassProgramId();
 		int nextProgram = pass != null && pass.getProgram() != null ? pass.getProgram().getProgramId() : 0;
@@ -1001,7 +1018,9 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	public void restoreActivePass() {
 		drivingProgram = true;
 		try {
-			if (current != null) {
+			if (programMatch.isPending()) {
+				programMatch.resolve();
+			} else if (current != null) {
 				current.use();
 			} else {
 				matchPass();
@@ -1901,6 +1920,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
         IrisGlDebug.markStage("level:begin");
 		isRenderingFullScreenPass = false;
 		hasRenderedPreparePass = false;
+		programMatch.clear();
 		isRenderingWorld = true;
 		isBeforeTranslucent = true;
 		isMainBound = true;
@@ -1973,6 +1993,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		isRenderingWorld = false;
 		phase = WorldRenderingPhase.NONE;
 		overridePhase = null;
+		programMatch.clear();
 
 		isRenderingFullScreenPass = true;
 
@@ -2070,7 +2091,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	@Override
 	public void setOverridePhase(WorldRenderingPhase phase) {
 		this.overridePhase = phase;
-		matchPass();
+		programMatch.request();
 		GbufferPrograms.runPhaseChangeNotifier();
 	}
 
@@ -2089,7 +2110,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			isPostChain,
 			inputs.toString()
 		);
-		matchPass();
+		programMatch.request();
 		GbufferPrograms.runPhaseChangeNotifier();
 	}
 
@@ -2105,19 +2126,19 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			isRenderingFullScreenPass,
 			isPostChain
 		);
-		matchPass();
+		programMatch.request();
 	}
 
 	@Override
 	public void setSpecialCondition(SpecialCondition special) {
 		this.special = special;
-		matchPass();
+		programMatch.request();
 	}
 
 	@Override
 	public void setDeclaredTranslucency(@Nullable Boolean translucent) {
 		this.declaredTranslucent = translucent;
-		matchPass();
+		programMatch.request();
 	}
 
 	@Nullable

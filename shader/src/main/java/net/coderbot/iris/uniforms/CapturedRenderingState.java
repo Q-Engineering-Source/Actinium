@@ -23,36 +23,136 @@ import org.joml.Vector4f;
  * Tracks the entity, block entity, item and color IDs the shader uniforms expose while geometry
  * is rendered. Every setter updates the live value and forwards the same transition to the
  * installed {@link StateRecorder} so a compiled display list can replay it.
+ *
+ * <p>Material IDs keep the 1.12.2 representation of the local lookups: an unmapped item ID is
+ * {@code -1} (see {@link ItemMaterialHelper}), while an unmapped block or block item is
+ * {@code 0}.</p>
  */
 public class CapturedRenderingState {
 	public static final CapturedRenderingState INSTANCE = new CapturedRenderingState();
 
 	/**
-	 * Receives the render-state transitions a display list has to replay next to its geometry.
-	 * The owner installs an implementation while a display list is compiled; without one the
-	 * captured state still tracks the live values and records nothing.
+	 * Receives every render-state transition a display list has to replay next to its geometry.
+	 *
+	 * <p>The host project implements this once and installs it at startup with
+	 * {@link CapturedRenderingState#setStateRecorder}; the implementation stays installed and decides per event whether
+	 * it has to record, by checking {@code DisplayListManager.isRecording()}. Do not install and
+	 * remove a recorder around each draw: the setters already run on every rendered entity, item
+	 * and block entity.</p>
+	 *
+	 * <p>{@link #recordItemId}, {@link #recordEntityAndItem}, {@link #recordBlockEntity(int)} and
+	 * {@link #recordEntityColor} are emitted on every setter call and have to be recorded only
+	 * when they differ from the tail of the recorded stream. All other events are scoped and have
+	 * to be recorded in emission order.</p>
 	 */
 	public interface StateRecorder {
+		/**
+		 * Records entering or leaving a special render condition. {@code begin == false} pops the
+		 * condition stack, so it has to pair with the begin that pushed it.
+		 */
 		void recordSpecialCondition(SpecialCondition condition, boolean begin);
+
+		/**
+		 * Records an override phase assignment that is not a scope, replacing the current
+		 * override phase until the next assignment.
+		 */
 		void recordOverridePhase(WorldRenderingPhase phase);
+
+		/**
+		 * Records a scoped override phase. {@code begin == false} pops the phase stack and
+		 * restores the phase the matching begin saw.
+		 */
 		void recordPhaseScope(WorldRenderingPhase phase, boolean begin);
+
+		/**
+		 * Records entering or leaving a nested entity phase. The replay has to keep the boolean
+		 * returned by {@code GbufferPrograms.beginNestedEntityPhase} and hand it to
+		 * {@code endNestedEntityPhase}: the scope only pushes an override phase when the active
+		 * phase was {@code BLOCK_ENTITIES}.
+		 */
 		void recordNestedEntityScope(boolean begin);
+
+		/**
+		 * Records a translucency declaration that is not a scope. {@code null} hands the decision
+		 * back to the live blend state.
+		 */
 		void recordTranslucency(Boolean translucent);
+
+		/**
+		 * Records a scoped translucency declaration. The begin call returns the previous
+		 * declaration, which the replay has to store and pass to the matching end call.
+		 */
 		void recordTranslucencyScope(Boolean translucent, boolean begin);
+
+		/**
+		 * Records an entity ID and the item ID it implies. Record only when the pair differs from
+		 * the tail of the recorded stream.
+		 */
 		void recordEntityAndItem(int entity, int item);
+
+		/** Records an entity selected by material name; the replay resolves the ID again. */
 		void recordNamedEntity(NamespacedId entity);
+
+		/**
+		 * Records the entity being rendered. The recorded command has to store
+		 * {@code EntityIdHelper.snapshot(entity)} and resolve the ID from that snapshot on replay;
+		 * the entity instance outlives neither the frame nor its world.
+		 */
 		void recordEntity(Entity entity);
+
+		/** Records pushing ({@code true}) or popping ({@code false}) the entity and item scope. */
 		void recordEntityScope(boolean push);
+
+		/**
+		 * Records the entity color. Record only when the color differs from the tail of the
+		 * recorded stream.
+		 */
 		void recordEntityColor(float r, float g, float b, float a);
+
+		/** Records pushing ({@code true}) or popping ({@code false}) the entity color scope. */
 		void recordEntityColorScope(boolean push);
+
+		/**
+		 * Records an already resolved item material ID, {@code -1} when the item is unmapped.
+		 * Record only when the ID differs from the tail of the recorded stream.
+		 */
 		void recordItemId(int itemId);
+
+		/**
+		 * Records the item stack being rendered. The recorded command has to store a copy of the
+		 * stack ({@code item.copy()}, or null for an empty hand); the instance is mutated after the
+		 * draw.
+		 */
 		void recordItem(ItemStack item);
+
+		/**
+		 * Records an item type and metadata, e.g. an armor piece rebuilt by the model batches; the
+		 * replay resolves the material ID again.
+		 */
 		void recordItem(Item item, int metadata);
+
+		/** Records an item selected by material name; the replay resolves the ID again. */
 		void recordNamedItem(NamespacedId item);
+
+		/**
+		 * Records a block rendered outside the terrain pass; the replay resolves the block material
+		 * ID again. An unmapped block resolves to {@code 0}.
+		 */
 		void recordBlockItem(Block block, int metadata);
+
+		/** Records pushing ({@code true}) or popping ({@code false}) the item ID scope. */
 		void recordItemScope(boolean push);
+
+		/**
+		 * Records an already resolved block entity material ID. Record only when the ID differs from
+		 * the tail of the recorded stream.
+		 */
 		void recordBlockEntity(int id);
+
+		/** Records a block entity type and metadata; the replay resolves the material ID again. */
 		void recordBlockEntity(Block block, int metadata);
+
+		/** Records pushing ({@code true}) or popping ({@code false}) the block entity ID scope. */
 		void recordBlockEntityScope(boolean push);
 	}
 
@@ -87,7 +187,11 @@ public class CapturedRenderingState {
 	private CapturedRenderingState() {
 	}
 
-	/** Installs the recorder for display-list compilation, or removes it when null. */
+	/**
+	 * Installs the recorder that receives every state transition, or detaches it when null. The
+	 * host installs it once at startup and keeps it installed; the recorder itself checks whether
+	 * a display list is being recorded.
+	 */
 	public void setStateRecorder(@Nullable StateRecorder recorder) {
 		this.stateRecorder = recorder;
 	}
@@ -293,6 +397,7 @@ public class CapturedRenderingState {
 		itemStack.push(currentRenderedItem);
 	}
 
+	/** Sets the material ID of the given stack, {@code -1} when the item is unmapped. */
 	public void setCurrentRenderedItem(ItemStack item) {
 		final StateRecorder recorder = this.stateRecorder;
 		if (recorder != null) {
@@ -318,7 +423,7 @@ public class CapturedRenderingState {
 		applyCurrentRenderedItem(ids == null ? 0 : ids.applyAsInt(item));
 	}
 
-	/** Sets the material ID of a block rendered outside the terrain pass. */
+	/** Sets the material ID of a block rendered outside the terrain pass, {@code 0} when unmapped. */
 	public void setCurrentRenderedBlockItem(Block block, int metadata) {
 		final StateRecorder recorder = this.stateRecorder;
 		if (recorder != null) {
