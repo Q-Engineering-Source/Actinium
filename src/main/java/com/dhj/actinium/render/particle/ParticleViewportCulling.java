@@ -12,7 +12,27 @@ import net.minecraft.util.math.AxisAlignedBB;
  * Applies the last world viewport to particle rendering while accounting for compound particles.
  */
 public final class ParticleViewportCulling {
+
+    private static boolean cullingDisabled;
+
     private ParticleViewportCulling() {
+    }
+
+    /**
+     * Disables the viewport test while keeping the call site that owns it.
+     *
+     * <p>ParticleCulling redirects the same {@code Particle.renderParticle} call sites, and plain
+     * redirects cannot be chained. The mixin entry point also drives the particle batch, so it stays
+     * applied and only the frustum test is switched off.</p>
+     *
+     * @param disabled whether the viewport test must be skipped
+     */
+    public static void setCullingDisabled(boolean disabled) {
+        cullingDisabled = disabled;
+    }
+
+    public static boolean isCullingDisabled() {
+        return cullingDisabled;
     }
 
     /**
@@ -42,7 +62,8 @@ public final class ParticleViewportCulling {
         float rotationXZ
     ) {
         AxisAlignedBB box = particle.getBoundingBox();
-        if (viewport == null
+        if (cullingDisabled
+                || viewport == null
                 || particle instanceof ParticleCullingBypass
                 || box == null
                 || box == TileEntity.INFINITE_EXTENT_AABB

@@ -2,6 +2,7 @@ package com.dhj.actinium.mixin.features.iris;
 
 import com.dhj.actinium.render.terrain.ActiniumWorldRenderer;
 import com.dhj.actinium.render.particle.ParticleViewportCulling;
+import com.gtnewhorizons.angelica.rendering.particles.ParticleInstancer;
 import dhj.embeddedt.embeddium.impl.render.viewport.Viewport;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleManager;
@@ -15,12 +16,18 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Skips particles whose bounding box falls outside the last rendered viewport.
+ * Submits a particle to the instancer, and skips particles whose bounding box falls outside the last
+ * rendered viewport.
  *
- * <p>ParticleCulling declares its own plain {@code @Redirect} on exactly the same two
- * {@code Particle.renderParticle} call sites; plain redirects cannot be chained, so the
- * second injector finds no INVOKE left and aborts with {@code InjectionError}.
- * {@code IrisMixinConfigPlugin} therefore skips this class when that mod is detected.
+ * <p>An invocation can only carry one plain redirect, so the batch and the frustum test share the
+ * handler: the batch decides first (it owns the particle completely when it answers), and the
+ * frustum test decides whether the vanilla write still happens.</p>
+ *
+ * <p>ParticleCulling declares its own plain {@code @Redirect} on the same two
+ * {@code Particle.renderParticle} call sites. Plain redirects cannot be chained, so the presence of
+ * that mod only disables the frustum test inside this handler (see
+ * {@link ParticleViewportCulling#setCullingDisabled}); dropping the whole class would drop the batch
+ * with it.</p>
  */
 @Mixin(ParticleManager.class)
 public class ParticleManagerCullingMixin {
@@ -41,7 +48,7 @@ public class ParticleManagerCullingMixin {
         method = "renderParticles",
         at = @At(value = "INVOKE", target = "Lnet/minecraft/client/particle/Particle;renderParticle(Lnet/minecraft/client/renderer/BufferBuilder;Lnet/minecraft/entity/Entity;FFFFFF)V")
     )
-    private void actinium$cullParticle(
+    private void actinium$submitOrCullParticle(
         Particle particle,
         BufferBuilder buffer,
         Entity entityIn,
@@ -52,12 +59,20 @@ public class ParticleManagerCullingMixin {
         float rotationXY,
         float rotationXZ
     ) {
+        if (ParticleInstancer.renderParticle(particle, buffer, entityIn, partialTicks,
+            rotationX, rotationZ, rotationYZ, rotationXY, rotationXZ)) {
+            return;
+        }
         ParticleViewportCulling.renderIfVisible(
             particle, this.actinium$cullingViewport, buffer, entityIn, partialTicks,
             rotationX, rotationZ, rotationYZ, rotationXY, rotationXZ
         );
     }
 
+    /**
+     * Lit particles have no {@code begin}/{@code draw} pair in 1.12.2, so they never join the batch and
+     * keep their vanilla visibility, with the frustum test applied exactly as before.
+     */
     @Redirect(
         method = "renderLitParticles",
         at = @At(value = "INVOKE", target = "Lnet/minecraft/client/particle/Particle;renderParticle(Lnet/minecraft/client/renderer/BufferBuilder;Lnet/minecraft/entity/Entity;FFFFFF)V")

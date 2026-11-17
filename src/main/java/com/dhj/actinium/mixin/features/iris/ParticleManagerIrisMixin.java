@@ -1,6 +1,8 @@
 package com.dhj.actinium.mixin.features.iris;
 
 import com.gtnewhorizons.angelica.client.rendering.DeferredDrawBatcher;
+import com.gtnewhorizons.angelica.rendering.ParticleRunSplitter;
+import com.gtnewhorizons.angelica.rendering.particles.ParticleInstancer;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.apiimpl.IrisApiV0Impl;
 import net.coderbot.iris.pipeline.WorldRenderingPhase;
@@ -22,11 +24,13 @@ public class ParticleManagerIrisMixin {
     @Inject(method = "renderParticles", at = @At("HEAD"))
     private void actinium$beginParticles(Entity entityIn, float partialTicks, CallbackInfo ci) {
         this.actinium$beginParticlePhase();
+        ParticleRunSplitter.beginParticles();
     }
 
     @Inject(method = "renderParticles", at = @At("RETURN"))
     private void actinium$endParticles(Entity entityIn, float partialTicks, CallbackInfo ci) {
         DeferredDrawBatcher.exitAndFlush();
+        ParticleRunSplitter.endParticles();
         this.actinium$endParticlePhase();
     }
 
@@ -48,7 +52,9 @@ public class ParticleManagerIrisMixin {
             shift = At.Shift.AFTER
         )
     )
-    private void actinium$enterDeferredParticleBatch(Entity entityIn, float partialTicks, CallbackInfo ci) {
+    private void actinium$beginParticleRun(Entity entityIn, float partialTicks, CallbackInfo ci) {
+        ParticleRunSplitter.beginRun();
+        ParticleInstancer.beginLayer();
         DeferredDrawBatcher.enter();
     }
 
@@ -59,7 +65,10 @@ public class ParticleManagerIrisMixin {
             target = "Lnet/minecraft/client/renderer/Tessellator;draw()V"
         )
     )
-    private void actinium$exitDeferredParticleBatch(Entity entityIn, float partialTicks, CallbackInfo ci) {
+    private void actinium$endParticleRun(Entity entityIn, float partialTicks, CallbackInfo ci) {
+        // Instance draws belong before the run's own draw: the run carries only the vertices the
+        // batch could not express, and both have to be emitted before the pipeline moves on.
+        ParticleInstancer.endLayer();
         DeferredDrawBatcher.exitAndFlush();
     }
 

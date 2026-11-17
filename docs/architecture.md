@@ -108,6 +108,16 @@ pipeline 时先调用 `compileInstancedVariants()` 再编译地形程序，使�
 `TesrBatchRenderer.beginPass` 也调用它以便批次记录前完成链接，该入口等批次宿主接线后
 才会在生产路径执行。
 
+粒子实例化同样不新增 pass：`Instancing.PARTICLE` 只变换 `gbuffers_particles` 与
+`gbuffers_particles_translucent` 的顶点阶段，可用性恒为尝试状态，链接失败时自动退回。
+`ParticleManagerIrisMixin` 在 `renderParticles` 的每个 `BufferBuilder.begin` 之后开启
+批次、在对应 `Tessellator.draw` 之前收尾，所以批次边界就是原版 6 个 run；同一入口作用域内
+`ParticleRunSplitter` 按 sprite 透明度切换 `gbuffers_particles(_translucent)` 的声明并在
+`renderParticles` 返回时恢复。粒子 quad 网格只有位置与角点 UV，中心、半宽、颜色与 lightmap
+来自实例属性，FFP 顶点着色器为 `PARTICLE` 单独声明 `vec2 a_TexCoord0`，不声明顶点色、
+lightmap 与法线属性以免与实例属性共用槽位。`renderLitParticles` 在 1.12.2 没有
+`begin`/`draw` 对，不进入批次。
+
 ## 根项目包详解（`com.dhj.actinium`）
 
 ### 顶层与生命周期

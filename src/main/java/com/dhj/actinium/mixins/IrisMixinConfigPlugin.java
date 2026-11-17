@@ -1,5 +1,6 @@
 package com.dhj.actinium.mixins;
 
+import com.dhj.actinium.render.particle.ParticleViewportCulling;
 import org.objectweb.asm.tree.ClassNode;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
@@ -14,15 +15,15 @@ import java.util.function.Predicate;
  * <p>ParticleCulling declares plain {@code @Redirect}s on the same two
  * {@code Particle.renderParticle} call sites Actinium redirects in
  * {@code ParticleManagerCullingMixin} (one inside {@code ParticleManager#renderParticles},
- * one inside {@code ParticleManager#renderLitParticles}); plain redirects cannot be chained,
- * so the second injector finds no target and aborts startup with an
- * {@code InjectionError}. When that mod is present this plugin skips Actinium's culling
- * mixin and only the phase tracking / deferred batching of {@code ParticleManagerIrisMixin}
- * stays applied. Presence is probed by asking the class loader for the ParticleCulling mixin
- * resource instead of {@code Loader.isModLoaded}, because {@code shouldApplyMixin} can be
- * evaluated before mod discovery has finished populating the loader's mod list; the probe is
- * keyed on the marker class name, so a ParticleCulling version that renames it would no
- * longer be detected (the mod is not updated for 1.12.2).
+ * one inside {@code ParticleManager#renderLitParticles}); plain redirects cannot be chained.
+ * That mixin also submits every particle to the batcher, so skipping the class would drop the
+ * particle batch as well: when the mod is present only the frustum test inside the redirect
+ * handler is switched off, through {@code ParticleViewportCulling.setCullingDisabled}.
+ * Presence is probed by asking the class loader for the ParticleCulling mixin resource instead
+ * of {@code Loader.isModLoaded}, because {@code shouldApplyMixin} can be evaluated before mod
+ * discovery has finished populating the loader's mod list; the probe is keyed on the marker
+ * class name, so a ParticleCulling version that renames it would no longer be detected (the mod
+ * is not updated for 1.12.2).
  */
 public final class IrisMixinConfigPlugin implements IMixinConfigPlugin {
 
@@ -53,7 +54,8 @@ public final class IrisMixinConfigPlugin implements IMixinConfigPlugin {
             return classPresent.test(MEKANISM_RENDERER_MARKER);
         }
         if (CULLING_MIXIN.equals(mixinClassName)) {
-            return !classPresent.test(PARTICLE_CULLING_MARKER);
+            ParticleViewportCulling.setCullingDisabled(classPresent.test(PARTICLE_CULLING_MARKER));
+            return true;
         }
         return true;
     }

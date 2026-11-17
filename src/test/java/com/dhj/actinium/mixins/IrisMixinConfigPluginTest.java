@@ -1,5 +1,7 @@
 package com.dhj.actinium.mixins;
 
+import com.dhj.actinium.render.particle.ParticleViewportCulling;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -14,14 +16,22 @@ class IrisMixinConfigPluginTest {
         "com.dhj.actinium.mixin.features.iris.MekanismGlowBlendMixin";
     private static final String MEKANISM_RENDERER_MARKER = "mekanism.client.render.MekanismRenderer";
 
-    @Test
-    void dropsCullingMixinWhenParticleCullingIsPresent() {
-        assertFalse(IrisMixinConfigPlugin.shouldApply(CULLING_MIXIN, PARTICLE_CULLING_MARKER::equals));
+    @AfterEach
+    void resetCullingGate() {
+        ParticleViewportCulling.setCullingDisabled(false);
     }
 
     @Test
-    void keepsCullingMixinWhenParticleCullingIsAbsent() {
+    void keepsCullingMixinWhenParticleCullingIsPresentAndDisablesOnlyTheFrustumTest() {
+        assertTrue(IrisMixinConfigPlugin.shouldApply(CULLING_MIXIN, PARTICLE_CULLING_MARKER::equals),
+            "the mixin also submits particles to the batch, so it cannot be dropped");
+        assertTrue(ParticleViewportCulling.isCullingDisabled());
+    }
+
+    @Test
+    void keepsCullingMixinAndFrustumTestWhenParticleCullingIsAbsent() {
         assertTrue(IrisMixinConfigPlugin.shouldApply(CULLING_MIXIN, className -> false));
+        assertFalse(ParticleViewportCulling.isCullingDisabled());
     }
 
     @Test
