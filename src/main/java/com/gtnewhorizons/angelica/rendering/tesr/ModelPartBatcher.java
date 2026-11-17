@@ -57,6 +57,7 @@ import com.gtnewhorizon.gtnhlib.client.renderer.DirectTessellator;
 import com.gtnewhorizons.angelica.glsm.ITessellatorData;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.World;
@@ -970,7 +971,7 @@ public final class ModelPartBatcher {
             captureBackend.beginCapture(DefaultVertexFormat.POSITION_TEXTURE_NORMAL);
             try {
                 final BufferBuilder buffer = Tessellator.getInstance().getBuffer();
-                buffer.begin(GL11.GL_QUADS, net.minecraft.client.renderer.vertex.DefaultVertexFormats.POSITION_TEX_NORMAL);
+                buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_TEX_NORMAL);
                 for (int i = 0, n = boxes.size(); i < n; i++) {
                     boxes.get(i).render(buffer, scale);
                 }

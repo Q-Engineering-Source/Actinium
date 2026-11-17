@@ -198,6 +198,10 @@ public class TessellatorStreamingDrawer {
     public static void fillMissingAttributes(ITessellatorData tess) {
         final int vertexCount = tess.getVertexCount();
         final int[] rawBuffer = tess.getRawBuffer();
+        if (rawBuffer == null || rawBuffer.length < vertexCount * ModelQuadUtil.VERTEX_SIZE) {
+            throw new IllegalStateException("Packed vertex buffer does not hold " + vertexCount
+                + " vertices in the shared " + ModelQuadUtil.VERTEX_SIZE + "-int layout");
+        }
 
         final int defaultColor;
         if (!tess.hasColor()) {

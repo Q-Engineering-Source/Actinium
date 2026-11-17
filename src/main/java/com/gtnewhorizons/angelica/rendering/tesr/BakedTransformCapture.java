@@ -83,6 +83,14 @@ public final class BakedTransformCapture extends DirectTessellator {
         super.setNormal(scratch.x, scratch.y, scratch.z);
     }
 
+    /**
+     * Rotates a packed normal without leaving packed space.
+     *
+     * <p>Going through {@link #setNormal} would run the normal bookkeeping of the base tessellator,
+     * which can switch the vertex format in the middle of a capture, and decoding to
+     * {@code byte / 127} and back loses the exact packed value. The three signed bytes are
+     * therefore decoded, rotated and re-encoded with rounding.</p>
+     */
     @Override
     public void setPackedNormalRaw(int packed) {
         final Matrix4fc direct = delta.deltaOrNull(deltaMatrix);
@@ -90,6 +98,17 @@ public final class BakedTransformCapture extends DirectTessellator {
             super.setPackedNormalRaw(packed);
             return;
         }
-        setNormal((byte) (packed & 0xFF) / 127.0F, (byte) (packed >> 8 & 0xFF) / 127.0F, (byte) (packed >> 16 & 0xFF) / 127.0F);
+        scratch.set((byte) (packed & 0xFF), (byte) (packed >> 8 & 0xFF), (byte) (packed >> 16 & 0xFF)).mulDirection(direct);
+        if (scratch.lengthSquared() < 1.0e-6f) {
+            super.setPackedNormalRaw(packed);
+            return;
+        }
+        scratch.normalize();
+        super.setPackedNormalRaw(packNormal(scratch.x) | packNormal(scratch.y) << 8 | packNormal(scratch.z) << 16);
+    }
+
+    private static int packNormal(float component) {
+        final int value = Math.round(Math.max(-1.0f, Math.min(1.0f, component)) * 127.0F);
+        return value & 0xFF;
     }
 }
