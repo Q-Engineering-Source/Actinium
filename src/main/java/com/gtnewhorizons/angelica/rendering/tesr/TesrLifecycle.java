@@ -9,7 +9,9 @@ public final class TesrLifecycle {
     public static void reset() {
         TesrBatchRenderer.INSTANCE.clearRetained();
         ModelPartBatcher.INSTANCE.clear();
-        EntityTextureAtlas.INSTANCE.clear();
+        EntityTextureAtlas.INSTANCE.freePages();
+        // Rejection bookkeeping outlives the flag that gates the feature, so release it here too.
+        EntityShadowReplay.clear();
 
         RenderLayer.clearInterningAndHooks();
         DrawState.clearInterning();

@@ -5,6 +5,7 @@ import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 import com.gtnewhorizons.angelica.glsm.ffp.FfpExtendedAttribs;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.glsm.hooks.ImmediateExtendedAttribHandler;
+import com.gtnewhorizons.angelica.rendering.tesr.TesrLifecycle;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import net.coderbot.iris.Iris;
 import net.minecraft.client.Minecraft;
@@ -78,6 +79,8 @@ public final class ImmediateExtendedAttribs implements ImmediateExtendedAttribHa
         currentProgramWants = 0;
         programWantsExtCache.clear();
         FfpExtendedAttribs.reset();
+        // Programs and the passes they were baked for are gone, so are the batched TESR draws.
+        TesrLifecycle.reset();
     }
 
     private final Vector3f normal = new Vector3f();

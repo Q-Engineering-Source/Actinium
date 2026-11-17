@@ -19,6 +19,8 @@ import com.dhj.actinium.render.terrain.GpuCullingSettings;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.startup.SdlGpuBootstrap;
 import com.gtnewhorizons.angelica.proxy.ClientProxy;
+import com.gtnewhorizons.angelica.rendering.tesr.AngelicaTesrMeshCache;
+import com.gtnewhorizons.angelica.rendering.tesr.TesrLifecycle;
 import com.gtnewhorizon.gtnhlib.compat.Mods;
 import net.coderbot.iris.celeritas.WorldRendererCompatBridge;
 import net.coderbot.iris.debug.IrisDebugOptions;
@@ -46,6 +48,8 @@ import net.minecraftforge.client.event.GuiOpenEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.Loader;
+import net.minecraftforge.event.world.WorldEvent;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.Mod.EventHandler;
 import net.minecraftforge.fml.common.event.FMLConstructionEvent;
@@ -194,6 +198,11 @@ public class Actinium {
 
         ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
                 .registerReloadListener(resourceManager -> MissingModelCompat.onResourceManagerReload());
+        // A resource reload invalidates every stitched texture, so cached TESR meshes and the entity
+        // atlas pages built from them have to be dropped before the new textures are stitched.
+        ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
+                .registerReloadListener(resourceManager -> TesrLifecycle.reset());
+        MinecraftForge.EVENT_BUS.register(new AngelicaTesrMeshCache.ReloadListener());
 
         if ((Boolean) Launch.blackboard.get("fml.deobfuscatedEnvironment")) {
             ClientCommandHandler.instance.registerCommand(new TogglePassCommand());
@@ -206,6 +215,16 @@ public class Actinium {
         }
 
         ActiniumDiagnostics.logInitialization(ActiniumRuntime.version());
+    }
+
+    /**
+     * Drops every cache keyed by world or pass state when a world is left: batched TESR meshes,
+     * the entity atlas pages and the interned layers all belong to the world that produced them.
+     */
+    @SubscribeEvent
+    public void onWorldUnload(WorldEvent.Unload event) {
+        if (!event.getWorld().isRemote) return;
+        TesrLifecycle.reset();
     }
 
     /**

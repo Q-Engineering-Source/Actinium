@@ -180,10 +180,10 @@ public final class EntityShadowReplay {
         Boolean result = excluded.get(type);
         if (result == null) {
             result = EntityPlayer.class.isAssignableFrom(type);
+            final List<String> names = AngelicaConfig.entityShadowReplayExcludedClasses();
             for (Class<?> parent = type; !result && parent != null; parent = parent.getSuperclass()) {
-                final List<String> names = AngelicaConfig.entityShadowReplayExcludedClasses();
-                if (names != null) for (String name : names) {
-                    if (parent.getName().equals(name)) {
+                for (int i = 0, n = names.size(); i < n; i++) {
+                    if (parent.getName().equals(names.get(i))) {
                         result = true;
                         break;
                     }

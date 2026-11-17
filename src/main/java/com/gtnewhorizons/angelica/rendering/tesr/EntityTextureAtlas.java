@@ -116,6 +116,15 @@ public final class EntityTextureAtlas {
 
         @Override
         public void loadTexture(IResourceManager resourceManager) {}
+
+        /**
+         * The atlas owns the page lifetime: deleting a page hands the texture back to GL through
+         * {@link #freePages()}, so a texture-manager deletion must not release a name another
+         * texture may already own.
+         */
+        @Override
+        public void deleteGlTexture() {
+        }
     }
 
     private static final class Entry {
@@ -320,7 +329,8 @@ public final class EntityTextureAtlas {
         lastSlot = null;
     }
 
-    void freePages() {
+    /** Releases every page texture and the copy framebuffers; safe to call from any close or unload path. */
+    public void freePages() {
         if (pages.isEmpty() && readFbo == 0) return;
         clear();
         for (Page page : pages) GLSMTextures.glDeleteTextures(page.texture);
