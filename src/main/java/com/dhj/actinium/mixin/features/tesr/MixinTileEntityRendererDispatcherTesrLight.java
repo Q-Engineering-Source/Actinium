@@ -34,8 +34,9 @@ public abstract class MixinTileEntityRendererDispatcherTesrLight {
         method = "render(Lnet/minecraft/tileentity/TileEntity;FI)V",
         at = @At(value = "INVOKE", target = "Lnet/minecraft/world/World;getCombinedLight(Lnet/minecraft/util/math/BlockPos;I)I")
     )
-    private int actinium$tesrLight(int vanillaLight, @Local(argsOnly = true) TileEntity te, @Local BlockPos pos) {
+    private int actinium$tesrLight(int vanillaLight, @Local(argsOnly = true) TileEntity te) {
         if (te == null) return vanillaLight;
+        final BlockPos pos = te.getPos();
         final int cached = TesrLightCache.getLightBrightnessForSkyBlocks(this.world, pos.getX(), pos.getY(), pos.getZ(), 0);
         if (!IrisApi.getInstance().isShaderPackInUse()) return cached;
         return TileEntityLight.packedLight(this.world, pos.getX(), pos.getY(), pos.getZ(), cached);
