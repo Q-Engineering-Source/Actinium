@@ -30,6 +30,7 @@ public class PBRTextureManager {
 	}
 
 	private final Int2ObjectMap<PBRTextureHolder> holders = new Int2ObjectOpenHashMap<>();
+	private int holderChanges;
 	private final PBRTextureConsumerImpl consumer = new PBRTextureConsumerImpl();
 
 	private NativeImageBackedSingleColorTexture defaultNormalTexture;
@@ -63,13 +64,24 @@ public class PBRTextureManager {
 		return holder;
 	}
 
+	/** Whether the texture has PBR maps loaded for it, rather than the default holder. */
+	public boolean hasLoadedPbrTextures(int id) {
+		return getHolder(id) != defaultHolder;
+	}
+
 	public PBRTextureHolder getOrLoadHolder(int id) {
 		PBRTextureHolder holder = holders.get(id);
 		if (holder == null) {
 			holder = loadHolder(id);
 			holders.put(id, holder);
+			holderChanges++;
 		}
 		return holder;
+	}
+
+	/** Counts every holder load and removal, so caches derived from PBR maps can drop stale copies. */
+	public int holderChanges() {
+		return holderChanges;
 	}
 
 	@SuppressWarnings({ "rawtypes", "unchecked" })
@@ -97,11 +109,13 @@ public class PBRTextureManager {
 	public void onDeleteTexture(int id) {
 		PBRTextureHolder holder = holders.remove(id);
 		if (holder != null) {
+			holderChanges++;
 			closeHolder(holder);
 		}
 	}
 
 	public void clear() {
+		if (!holders.isEmpty()) holderChanges++;
 		for (PBRTextureHolder holder : holders.values()) {
 			if (holder != defaultHolder) {
 				closeHolder(holder);

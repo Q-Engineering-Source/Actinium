@@ -59,6 +59,11 @@ public final class TessellatorEntityIds {
         runCount = 0;
     }
 
+    /** @return whether the given tessellator's queued vertices span more than one set of ids */
+    public static boolean hasIdChanges(ITessellatorData tessellator) {
+        return tessellator == owner && runCount > 1;
+    }
+
     /** @return how many id runs cover the first {@code vertexCount} vertices of the given tessellator or buffer */
     public static int runsFor(Object tessellator, int vertexCount) {
         if (tessellator != owner) return 0;

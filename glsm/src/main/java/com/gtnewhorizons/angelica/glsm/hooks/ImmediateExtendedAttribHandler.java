@@ -27,6 +27,9 @@ public interface ImmediateExtendedAttribHandler {
     /** Attribute location of the per-vertex entity, block entity and item ids. */
     int LOC_ENTITY_IDS = 15;
 
+    /** Index of the packed normal inside the raw vertex layout the capture path reads. */
+    int RAW_NORMAL_INDEX = 6;
+
     /** Rebuilt layout of the per-vertex id attribute: three packed ids plus one pad element. */
     int ENTITY_IDS_STRIDE = 8;
 
@@ -42,6 +45,9 @@ public interface ImmediateExtendedAttribHandler {
     /** Whether quads without a normal need one computed from their four corners. */
     boolean wantsFaceNormals();
 
+    /** Whether the caller has to build the extended attribute buffer for captured geometry. */
+    boolean wantsExtendedCapture();
+
     /**
      * Writes the face normal of every quad into the packed vertex buffer.
      *
@@ -49,6 +55,18 @@ public interface ImmediateExtendedAttribHandler {
      * @param vertexCount number of vertices, a multiple of four
      */
     void writeFaceNormals(int[] rawBuffer, int vertexCount);
+
+    /**
+     * Fills the rebuilt attribute range for one draw from a packed vertex buffer.
+     *
+     * @param rawBuffer packed vertices in the shared model-quad layout
+     * @param vertexCount number of vertices, a multiple of {@code vertsPerPrim}
+     * @param vertsPerPrim vertices per primitive
+     * @param normalIntIndex index of the packed normal inside a vertex, or {@code -1} when absent
+     * @param dstAddr address of the destination range
+     * @param dstStride destination stride in bytes, at least {@link #EXT_STRIDE}
+     */
+    void build(int[] rawBuffer, int vertexCount, int vertsPerPrim, int normalIntIndex, long dstAddr, int dstStride);
 
     /**
      * Fills the rebuilt attribute range for one draw.

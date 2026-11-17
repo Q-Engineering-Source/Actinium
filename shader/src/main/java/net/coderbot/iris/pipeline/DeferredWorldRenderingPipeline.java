@@ -125,14 +125,18 @@ import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
 import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
 import com.gtnewhorizons.angelica.glsm.GLSMEnable;
 import com.gtnewhorizons.angelica.glsm.GLSMFramebuffer;
+import com.gtnewhorizons.angelica.glsm.hooks.BatchStateGuard;
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
+import com.gtnewhorizons.angelica.glsm.hooks.PendingProgramSelection;
 import com.gtnewhorizons.angelica.glsm.GLSMQueries;
 import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
 import com.gtnewhorizons.angelica.glsm.GLSMTextures;
+import com.gtnewhorizons.angelica.glsm.ffp.Instancing;
 
 /**
  * Encapsulates the compiled shader program objects for the currently loaded shaderpack.
  */
-public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, RenderTargetStateListener  {
+public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, RenderTargetStateListener, TesrInstancingPipeline, PendingProgramSelection  {
 	private final RenderTargets renderTargets;
 
 	@Nullable
@@ -220,8 +224,9 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	private InputAvailability inputs = new InputAvailability(false, false);
 	private SpecialCondition special = null;
 	private final DeferredProgramMatch programMatch = DeferredProgramMatch.forDisplayLists(
-		GLStateManager::isForeignDraw,
+		DeferredWorldRenderingPipeline::selectionOwnedElsewhere,
 		this::matchPassNow);
+	private final PendingProgramSelection pendingSelection = this::resolvePendingProgram;
 	private boolean refreshingPass;
 	private boolean modProgramOverrode;
 	private int programBeforeModOverride = -1;
@@ -287,6 +292,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		this.updateNotifier = new FrameUpdateNotifier();
 
 		this.packDirectives = programs.getPackDirectives();
+		GLSMHooks.pendingProgramSelection = pendingSelection;
 		this.activeFeatures = programs.getPack().getActiveFeatures();
 
         final Framebuffer main = Minecraft.getMinecraft().getFramebuffer();
@@ -1020,7 +1026,8 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		try {
 			if (programMatch.isPending()) {
 				programMatch.resolve();
-			} else if (current != null) {
+			}
+			if (current != null) {
 				current.use();
 			} else {
 				matchPass();
@@ -1028,6 +1035,87 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		} finally {
 			drivingProgram = false;
 		}
+	}
+
+	private Instancing activeInstancing = Instancing.NONE;
+
+	/**
+	 * Instanced variants come from a transformed copy of the pack's program. Until that transform
+	 * exists every kind reports no support, and the batcher falls back to per-instance draws.
+	 */
+	private final boolean[] supportsInstancing = new boolean[Instancing.VALUES.length];
+
+	/**
+	 * A pass change has to wait while a foreign renderer owns the GL program, and while a batch is
+	 * draining: both replace the program the rest of the batch expects to stay bound.
+	 */
+	private static boolean selectionOwnedElsewhere() {
+		return GLStateManager.isForeignDraw() || BatchStateGuard.isSuspended();
+	}
+
+	@Override
+	public void resolvePendingProgram() {
+		programMatch.resolve();
+	}
+
+	@Override
+	public void rebindCurrentPass() {
+		activeInstancing = Instancing.NONE;
+		GLSMHooks.resolvePendingProgram();
+		final Pass pass = this.current;
+		if (pass == null) {
+			if (GLSMPrograms.getActiveProgram() == 0) {
+				matchPass();
+			}
+			return;
+		}
+		final Program program = pass.getProgram();
+		final GlFramebuffer expected = isBeforeTranslucent ? pass.framebufferBeforeTranslucents : pass.framebufferAfterTranslucents;
+		if (program != null && GLSMPrograms.getActiveProgram() == program.getProgramId() && GLSMFramebuffer.getDrawFramebuffer() == expected.getId()) {
+			return;
+		}
+		pass.use();
+	}
+
+	@Override
+	public void onEntityRenderBoundary() {
+		GLSMHooks.resolvePendingProgram();
+
+		if (!shouldOverrideShaders()) {
+			return;
+		}
+
+		// The pass is re-matched rather than compared against a cached condition so a pack whose
+		// inputs change per entity gets the program its availability now selects.
+		matchPass();
+	}
+
+	/** Whether the pack requires one pass match per entity instead of a single match for the whole loop. */
+	public boolean shouldSeparateEntityDraws() {
+		return packDirectives.shouldUseSeparateEntityDraws();
+	}
+
+	/** {@return whether the pipeline is drawing world geometry rather than a full-screen or post pass} */
+	public boolean isRenderingLevelGeometry() {
+		return isRenderingWorld && !isRenderingFullScreenPass && !isPostChain;
+	}
+
+	public boolean supportsInstancing(Instancing kind) {
+		return supportsInstancing[kind.ordinal()];
+	}
+
+	@Override
+	public boolean hasInstancedVariant(Instancing kind) {
+		return supportsInstancing[kind.ordinal()] && current != null;
+	}
+
+	public boolean hasInstancedVariant(RenderCondition condition, InputAvailability availability, Instancing kind) {
+		return supportsInstancing[kind.ordinal()] && table.match(condition, availability).getProgram() != null;
+	}
+
+	@Override
+	public void bindInstancedVariant(Instancing kind) {
+		throw new IllegalStateException("No instanced variant of " + kind + " was built for the active pack");
 	}
 
 	private Pass createDefaultPass() {
@@ -1410,6 +1498,9 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 	@Override
 	public void destroy() {
+		if (GLSMHooks.pendingProgramSelection == pendingSelection) {
+			GLSMHooks.pendingProgramSelection = null;
+		}
         vertexWriteReplays.destroy();
         if (shadowVoxelizationCompute != null) {
             shadowVoxelizationCompute.destroy();

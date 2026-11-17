@@ -1,5 +1,6 @@
 package net.coderbot.iris.uniforms;
 
+import net.minecraft.block.Block;
 import net.minecraft.item.ItemStack;
 
 /**
@@ -18,6 +19,13 @@ public class ItemIdManager {
         }
 
         CapturedRenderingState.INSTANCE.setCurrentRenderedItem(itemStack);
+    }
+
+    /**
+     * Set the item ID for a block rendered outside of terrain.
+     */
+    public static void setBlockId(Block block, int metadata) {
+        CapturedRenderingState.INSTANCE.setCurrentRenderedBlockItem(block, metadata);
     }
 
     /**

@@ -1510,6 +1510,12 @@ public class Iris {
     }
 
     @NotNull
+    /** @return the pipeline manager, or null when Iris has not created one yet */
+    @Nullable
+    public static PipelineManager getPipelineManagerNullable() {
+        return pipelineManager;
+    }
+
     public static PipelineManager getPipelineManager() {
         if (pipelineManager == null) {
             pipelineManager = new PipelineManager(Iris::createPipeline);

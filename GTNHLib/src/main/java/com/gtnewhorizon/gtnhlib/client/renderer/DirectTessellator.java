@@ -160,6 +160,18 @@ public class DirectTessellator {
         this.vertexCount++;
     }
 
+    /** Records an offset added to every following vertex, mirroring {@code Tessellator.setTranslation}. */
+    public void setTranslation(double x, double y, double z) {
+        this.xOffset = x;
+        this.yOffset = y;
+        this.zOffset = z;
+    }
+
+    public final void addVertexWithUV(double x, double y, double z, double u, double v) {
+        this.setTextureUV(u, v);
+        this.addVertex(x, y, z);
+    }
+
     public final void setTextureUV(double p_78385_1_, double p_78385_3_) {
         if (!hasTexture) {
             if (preDefinedFormat != null) return;
@@ -175,7 +187,7 @@ public class DirectTessellator {
         this.textureV = p_78385_3_;
     }
 
-    public final void setNormal(float nx, float ny, float nz) {
+    public void setNormal(float nx, float ny, float nz) {
         if (!hasNormals) {
             if (preDefinedFormat != null) return;
 
@@ -419,7 +431,7 @@ public class DirectTessellator {
         return this.normal;
     }
 
-    public final void setPackedNormalRaw(int normal) {
+    public void setPackedNormalRaw(int normal) {
         this.normal = normal;
     }
 
@@ -441,6 +453,21 @@ public class DirectTessellator {
 
     public final int getDrawMode() {
         return this.drawMode;
+    }
+
+    /** X translation applied to every vertex, in world units. */
+    public final double getXOffset() {
+        return this.xOffset;
+    }
+
+    /** Y translation applied to every vertex, in world units. */
+    public final double getYOffset() {
+        return this.yOffset;
+    }
+
+    /** Z translation applied to every vertex, in world units. */
+    public final double getZOffset() {
+        return this.zOffset;
     }
 
     protected void onRemovedFromStack() {

@@ -49,6 +49,14 @@ public interface WorldRenderingPipeline {
 	/** Reapplies the complete pass state after a temporary owned-program override. */
 	void restoreActivePass();
 
+	/** Rebinds the active pass program and framebuffer after a batch restored foreign draw state. */
+	default void rebindCurrentPass() {
+	}
+
+	/** Called at each entity render boundary so the pass can be re-matched between entities. */
+	default void onEntityRenderBoundary() {
+	}
+
 	void beginHand();
 
 	void beginTranslucents();

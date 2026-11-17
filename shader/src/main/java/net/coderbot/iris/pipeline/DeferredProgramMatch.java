@@ -1,6 +1,7 @@
 package net.coderbot.iris.pipeline;
 
 import com.gtnewhorizons.angelica.glsm.DisplayListManager;
+import com.gtnewhorizons.angelica.glsm.hooks.BatchStateGuard;
 import com.gtnewhorizons.angelica.glsm.recording.CommandRecorder;
 import org.jetbrains.annotations.Nullable;
 
@@ -114,22 +115,33 @@ final class DeferredProgramMatch {
 		return this.pending;
 	}
 
-	/** Runs a program transition without appending it to the list being recorded. */
+	/**
+	 * Runs a program transition without appending it to the list being recorded.
+	 *
+	 * <p>The transition binds a program, which the batch state guard would otherwise answer by
+	 * draining the batch that is being built. Suspending the guard keeps the batch intact for the
+	 * rest of the pass.</p>
+	 */
 	void runUnrecorded(Runnable transition) {
 		if (this.displayLists.isCompiling()) {
 			return;
 		}
 
-		if (!this.displayLists.isRecording()) {
-			transition.run();
-			return;
-		}
-
-		final CommandRecorder recorder = this.displayLists.pause();
+		BatchStateGuard.suspend();
 		try {
-			transition.run();
+			if (!this.displayLists.isRecording()) {
+				transition.run();
+				return;
+			}
+
+			final CommandRecorder recorder = this.displayLists.pause();
+			try {
+				transition.run();
+			} finally {
+				this.displayLists.resume(recorder);
+			}
 		} finally {
-			this.displayLists.resume(recorder);
+			BatchStateGuard.resume();
 		}
 	}
 

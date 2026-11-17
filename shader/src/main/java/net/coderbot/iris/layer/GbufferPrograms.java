@@ -12,6 +12,7 @@ import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
 
 public class GbufferPrograms {
 	private static boolean entities;
+	private static boolean entityLoop;
 	private static boolean blockEntities;
 	private static boolean outline;
 	private static Runnable phaseChangeListener;
@@ -92,6 +93,29 @@ public class GbufferPrograms {
 		setPhase(WorldRenderingPhase.ENTITIES);
 		setBlockEntityDefaults();
 		entities = true;
+	}
+
+	/** Marks the start of the loop that renders every entity, which re-matches the pass per entity. */
+	public static void beginEntityLoop() {
+		entityLoop = true;
+	}
+
+	public static void endEntityLoop() {
+		entityLoop = false;
+		setPhase(WorldRenderingPhase.NONE);
+	}
+
+	public static boolean isEntityLoopActive() {
+		return entityLoop;
+	}
+
+	/** Gives the pipeline a chance to re-match the pass between two entities. */
+	public static void onEntityRenderBoundary() {
+		final WorldRenderingPipeline pipeline = Iris.getPipelineManager().getPipelineNullable();
+
+		if (pipeline != null) {
+			pipeline.onEntityRenderBoundary();
+		}
 	}
 
 	public static void endEntities() {
