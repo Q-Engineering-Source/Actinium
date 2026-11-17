@@ -464,11 +464,11 @@ TESR 批处理簇的完整依赖闭包是 233 个上游文件、26369 行。剔�
 
 已确认可行的 1.7.10 → 1.12.2 映射：`Vec3` → `Vec3d`（字段 `x/y/z`）、`MathHelper` → `net.minecraft.util.math.MathHelper`、`floor_double` → `floor`、`IRenderHandler` 由接口变抽象类、`EntityFX` → `Particle`、`RendererLivingEntity` → `RenderLivingBase`、`Frustrum` → `Frustum`、`Block.isOpaqueCube()` → `isOpaqueCube(state)`、`Block.getRenderBlockPass()` → `getRenderLayer()`、`ItemStack.hasEffect(int)` → `hasEffect()`、`Entity.getBrightnessForRender(f)` → `getBrightnessForRender()`、`Tessellator.setTranslation(float,float,float)` → `(double,double,double)`、`ModelBox.render(Tessellator,float)` → `(BufferBuilder,float)`。
 
-仍阻塞的三处结构性差异：
+三处结构性差异已按以下方式适配：
 
-1. `DirectTessellator` 在 1.7.10 是 `Tessellator` 子类，1.12.2 不是。`TesrMeshSink.beginCapture` 返回 `Tessellator`、`AngelicaTesrMeshCache.beginCapture` 返回 `direct`，需要把接口返回类型改成 `DirectTessellator` 并调整所有调用方。
-2. `RenderLivingBase` 没有 1.7.10 的 `renderPassModel` 字段，`DeferredEntityOverlay` 的渲染分支要按 1.12.2 的 `LayerRenderer` 重写。
-3. `ParticleCaptureTessellator` 需要 `Tessellator` 的 1.7.10 构造器与 `draw()` 返回值的签名要求，1.12.2 的 `BufferBuilder` 体系无对应，粒子实例化要按 `ParticleManager` 重写。
+1. `DirectTessellator` 在 1.7.10 是 `Tessellator` 子类，1.12.2 不是。`TesrMeshSink`、`ModelPartMeshBuilder` 与 `AngelicaTesrMeshCache.MeshBackend` 已统一使用 `DirectTessellator`，调用方同步调整。
+2. `RenderLivingBase` 没有 1.7.10 的 `renderPassModel` 字段，`DeferredEntityOverlay` 已按 1.12.2 的真实 `LayerRenderer` 实例捕获并重放。
+3. `ParticleCaptureTessellator` 已由 `ParticleCaptureBuffer` 与 `ParticleQuadDecoder` 替代，顶点捕获、解码和溢出的原版顺序回放均按 `BufferBuilder` 实现。
 
 ### 第 15 项逐文件依赖链与 GTNHLib/glsm 缺口
 
@@ -483,7 +483,7 @@ TESR 批处理的引入顺序按依赖链固定下来，每一步只需新增文
 7. 主项目的 `rendering/tesr` 全目录、`rendering/{RenderFailures,GlintClock,SkippedGlintBlock,BlockMaterialAttribute,DeferredEntityOverlay}`、`shadercompat/ShaderGlint`、`iris/IrisDisplayListState`、`config/AngelicaConfig`（门面，读 `SodiumGameOptions` 的六个新开关与 `glintWorld`）。
 8. 宿主接入留到最后：`MixinTileEntityRendererDispatcher`、`MixinModelRenderer`、`MixinRenderItem_Instanced`。
 
-本轮实测卡在一处：`DeferredEntityOverlay` 的 `renderPassModel` 在 1.12.2 不存在，只能按 `LayerRenderer` 遍历护甲层重放，直接用 `getMainModel()` 会丢护甲层。`PassOverride` 不存在签名差异：上游当前 HEAD 的 `ModelPartBatcher` 只用 `PassOverride.capture()` 与 `PassOverride.NONE`，没有任何 `PassOverride.of` 调用，三参 `of` 由 `capture()` 内部使用。
+`DeferredEntityOverlay` 不保存 `renderPassModel`，而是保存 `RenderLivingBase` 与实际 `LayerRenderer`，重放保留模组层和模型状态。`PassOverride` 不存在签名差异：上游当前 HEAD 的 `ModelPartBatcher` 只用 `PassOverride.capture()` 与 `PassOverride.NONE`，没有任何 `PassOverride.of` 调用，三参 `of` 由 `capture()` 内部使用。
 
 粒子实例化与掉落物实例化均已交付。粒子按 `ParticleManager` 的 6 个 run 接入：`Instancing.PARTICLE` 的 FFP 与 pack 变体、`ParticleCaptureBuffer` + `ParticleQuadDecoder` 的捕获与解码，以及 `ParticleLitRun` 给第 3 层补出的独立 run；`Tessellator` 的 1.7.10 构造与 `draw()` 返回值的签名要求在 1.12.2 无对应，已按 `BufferBuilder` 重写。掉落物按 `RenderItem.renderQuads` 的顶点接入（`DroppedItemInstancer` + `ModelPartBatcher`），`RenderBlocks` 与 `ItemRenderer.renderItemIn2D` 在 1.12.2 已移除，几何改由 baked model 路径提供，`BlockRenderListManager` 与 `ItemRenderListManager` 不再移植。
 
@@ -518,9 +518,7 @@ TESR 批处理的引入顺序按依赖链固定下来，每一步只需新增文
 立方体参数落在 `MixinModelBoxCubeParams`，overlay 层遍历落在
 `RenderLivingBaseDeferredOverlayMixin`。
 
-**overlay**：`DeferredEntityOverlay` 按 1.12.2 的 `LayerRenderer` 重写，护甲层由
-`RenderLivingBaseDeferredOverlayMixin` 重放；重放的 overlay 经阴影回放入队，内联 overlay 不进入
-录制记录。
+**overlay**：`DeferredEntityOverlay` 按 1.12.2 的真实 `LayerRenderer` 捕获并重放，覆盖闪电苦力怕与凋灵光环及其子类，其它护甲和模组层保持原生路径。阴影 replay 的 overlay 走专用命令，内联模型命令不进入录制记录。
 
 **掉落物**：`DroppedItemInstancer`、`ItemPropCache`、`ItemGlint`、`ItemQuadWriter` 与
 `MixinRenderItemDroppedInstancing`。一次决策同时处理基础几何与两层 glint，回落时把实际 draw 数
@@ -534,8 +532,8 @@ TESR 批处理的引入顺序按依赖链固定下来，每一步只需新增文
 
 - `./gradlew check --no-daemon`：通过。
 - `./gradlew build --no-daemon`：通过。
-- `./gradlew :test --no-daemon`：1569 个用例，5 个跳过，全部通过。
-- `./gradlew glIntegrationTest --no-daemon`：338 个用例，失败只有两个已确认的 viewport 基线
+- `./gradlew :test --no-daemon`：1575 个用例，5 个跳过，全部通过。
+- `./gradlew glIntegrationTest --no-daemon`：340 个用例，失败只有两个已确认的 viewport 基线
   （`DrawableContextIntegrationTest.firstDrawableBindKeepsTheNativeWindowViewport` 与
   `DrawableViewportIntegrationTest.firstDrawableViewportInitDoesNotJoinPreviousContextAttribScope`），
   与本项无关。
