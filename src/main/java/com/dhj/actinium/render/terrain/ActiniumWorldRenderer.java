@@ -314,7 +314,8 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
         TileEntityGlStateGuard.push();
         // The batch brackets own the retained geometry of this pass; the model part batcher records
         // the parts the block entity renderers draw into it.
-        TesrBatchRenderer.INSTANCE.beginPass(pass == 0 ? TesrBatchRenderer.PASS_MAIN_0 : TesrBatchRenderer.PASS_MAIN_1,
+        // -1 means no Forge pass is active; it belongs to the first pass rather than the second.
+        TesrBatchRenderer.INSTANCE.beginPass(pass <= 0 ? TesrBatchRenderer.PASS_MAIN_0 : TesrBatchRenderer.PASS_MAIN_1,
             GLSMMatrices.getModelViewMatrix(), TileEntityRendererDispatcher.staticPlayerX,
             TileEntityRendererDispatcher.staticPlayerY, TileEntityRendererDispatcher.staticPlayerZ);
         ModelPartBatcher.INSTANCE.begin(ModelPartBatcher.Mode.BLOCK_ENTITIES);

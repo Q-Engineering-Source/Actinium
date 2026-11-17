@@ -330,8 +330,10 @@ public abstract class BufferBuilderMixin implements BufferBuilderExtension, Proj
 
     @Override
     public void setRawBuffer(int[] buffer) {
+        // The supplied array comes from the caller's own sizing, so it is not a packed view of the
+        // current vertices; the next read repacks into it.
         this.actinium$packedVertices = buffer;
-        this.actinium$packedVertexCount = this.vertexCount;
+        this.actinium$packedVertexCount = -1;
     }
 
     @Override

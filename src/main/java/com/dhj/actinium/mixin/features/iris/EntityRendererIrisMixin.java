@@ -180,14 +180,14 @@ public abstract class EntityRendererIrisMixin implements IResourceManagerReloadL
     }
 
     @Inject(
-        method = "renderWorld",
+        method = "renderWorldPass(IFJ)V",
         at = @At(
             value = "INVOKE",
             target = "Lnet/minecraft/client/renderer/RenderGlobal;renderEntities(Lnet/minecraft/entity/Entity;Lnet/minecraft/client/renderer/culling/ICamera;F)V",
             shift = At.Shift.BEFORE
         )
     )
-    private void actinium$publishMainViewFrustum(float partialTicks, long finishTimeNano, CallbackInfo ci,
+    private void actinium$publishMainViewFrustum(int pass, float partialTicks, long finishTimeNano, CallbackInfo ci,
                                                   @Local ICamera camera) {
         // The shadow replay only returns draws for entities the main view still covers, so the main
         // frustum has to reach the replay bookkeeping before the entity loop starts.

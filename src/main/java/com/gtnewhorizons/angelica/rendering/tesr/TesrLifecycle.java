@@ -13,6 +13,7 @@ public final class TesrLifecycle {
         // Rejection bookkeeping outlives the flag that gates the feature, so release it here too.
         EntityShadowReplay.clear();
         TesrLightCache.clear();
+        BeaconBeamMeshes.clear();
         BatchEligibility.reset();
 
         RenderLayer.clearInterningAndHooks();

@@ -281,7 +281,7 @@ public final class DeferredEntityOverlay {
             // The depth lock has to be off before the write state is restored, otherwise the restore
             // would be forced back to false as well.
             GLSMConfig.forceDepthMaskOff = false;
-            failure = run(failure, DeferredEntityOverlay::restoreDrawState);
+            if (statePushed) failure = run(failure, DeferredEntityOverlay::restoreDrawState);
             failure = run(failure, () -> restoreColor(colorRed, colorGreen, colorBlue, colorAlpha));
             failure = run(failure, () -> restoreModel(mainModel, savedSwingProgress, savedIsRiding, savedIsChild));
             if (statePushed) {

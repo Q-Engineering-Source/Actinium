@@ -208,7 +208,8 @@ public abstract class ModelRendererIrisMixin implements IModelRenderer, Actinium
 
         // The batch places the part with the current modelview, exactly where the display list would
         // have drawn it; when it declines, the display list or the immediate path below draws it.
-        if (ModelPartBatcher.partDraw((ModelRenderer) (Object) this, scale, null)) {
+        if (ModelPartBatcher.isBatchingActive()
+            && ModelPartBatcher.partDraw((ModelRenderer) (Object) this, scale, null)) {
             return;
         }
 

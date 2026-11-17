@@ -199,6 +199,12 @@ public final class EntityShadowReplay {
     }
 
     public static boolean replay(RenderManager manager, Entity entity, float partialTicks, int renderPass) {
+        if (!AngelicaConfig.entityShadowReplayEnabled()) {
+            // Turning the option off stops beginFrame, so the records of the last enabled frame would
+            // otherwise stay and replay after the switch.
+            if (recording != null || !records.isEmpty()) clear();
+            return false;
+        }
         if (!shadowAvailable || ShadowRenderer.ACTIVE) return false;
         final Record record = records.get(entity);
         if (record == null && !Tracy.ENABLED && !logRejections) return false;
