@@ -76,8 +76,8 @@ public class ParticleManagerCullingMixin {
     }
 
     /**
-     * Lit particles have no {@code begin}/{@code draw} pair in 1.12.2, so they never join the batch and
-     * keep their vanilla visibility with the frustum test applied exactly as before.
+     * The third layer gets its own run from {@code ParticleManagerIrisMixin}, so its particles are
+     * batched and culled the same way the main loop's are.
      */
     @WrapOperation(
         method = "renderLitParticles",
@@ -96,6 +96,10 @@ public class ParticleManagerCullingMixin {
         Operation<Void> original
     ) {
         if (!ParticleViewportCulling.isVisible(particle, this.actinium$cullingViewport)) {
+            return;
+        }
+        if (ParticleInstancer.renderParticle(particle, buffer, entityIn, partialTicks,
+            rotationX, rotationZ, rotationYZ, rotationXY, rotationXZ)) {
             return;
         }
         original.call(particle, buffer, entityIn, partialTicks, rotationX, rotationZ, rotationYZ, rotationXY, rotationXZ);

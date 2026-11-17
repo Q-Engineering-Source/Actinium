@@ -3,6 +3,7 @@ package com.dhj.actinium.mixin.features.iris;
 import com.gtnewhorizons.angelica.client.rendering.DeferredDrawBatcher;
 import com.gtnewhorizons.angelica.rendering.ParticleRunSplitter;
 import com.gtnewhorizons.angelica.rendering.particles.ParticleInstancer;
+import com.gtnewhorizons.angelica.rendering.particles.ParticleLitRun;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.apiimpl.IrisApiV0Impl;
 import net.coderbot.iris.pipeline.WorldRenderingPhase;
@@ -34,13 +35,20 @@ public class ParticleManagerIrisMixin {
         this.actinium$endParticlePhase();
     }
 
+    /**
+     * The third layer has no run of its own in 1.12.2: its vertices go into the shared builder and are
+     * never drawn. Opening the run here gives it the same lifecycle as the others, so its particles
+     * are batched like every other particle and whatever the batch cannot take is drawn with the run.
+     */
     @Inject(method = "renderLitParticles", at = @At("HEAD"))
     private void actinium$beginLitParticles(Entity entityIn, float partialTicks, CallbackInfo ci) {
         this.actinium$beginParticlePhase();
+        ParticleLitRun.begin();
     }
 
     @Inject(method = "renderLitParticles", at = @At("RETURN"))
     private void actinium$endLitParticles(Entity entityIn, float partialTicks, CallbackInfo ci) {
+        ParticleLitRun.end();
         this.actinium$endParticlePhase();
     }
 

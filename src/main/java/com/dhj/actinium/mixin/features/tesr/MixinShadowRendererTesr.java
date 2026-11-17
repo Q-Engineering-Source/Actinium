@@ -14,8 +14,9 @@ public abstract class MixinShadowRendererTesr {
     @WrapMethod(method = "renderTileEntities")
     private void actinium$batchShadowTesr(Object bufferSource, MatrixStack modelView, double cameraX, double cameraY,
                                           double cameraZ, float partialTicks, boolean hasEntityFrustum,
-                                          Operation<Void> original) {
+                                          boolean lightsOnly, Operation<Void> original) {
         TesrBrackets.shadowBlockEntities(modelView.peek().getModel(), cameraX, cameraY, cameraZ,
-            () -> original.call(bufferSource, modelView, cameraX, cameraY, cameraZ, partialTicks, hasEntityFrustum));
+            () -> original.call(bufferSource, modelView, cameraX, cameraY, cameraZ, partialTicks, hasEntityFrustum,
+                lightsOnly));
     }
 }

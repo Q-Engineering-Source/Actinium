@@ -120,8 +120,11 @@ pipeline 时先调用 `compileInstancedVariants()` 再编译地形程序，使�
 关闭批次时 translucent 粒子仍会切到 translucent 程序。粒子 quad 网格只有位置与角点 UV，
 中心、半宽、颜色与 lightmap 来自实例属性，FFP 顶点着色器为 `PARTICLE` 单独声明
 `vec2 a_TexCoord0`，不声明顶点色、lightmap 与法线属性以免与实例属性共用槽位；网格没有法线，
-pack 变体与 FFP 都用常量法线 `(0, 0, 1)`，与 billboard 朝向一致，不再读取未提供的
-location 4。`renderLitParticles` 在 1.12.2 没有 `begin`/`draw` 对，不进入批次。
+pack 变体与 FFP 都用常量法线 `(0, 0, 1)`，与 billboard 朝向一致，不再读取未提供的 location 4。
+第 3 层（lit）粒子在 1.12.2 只写共享 `BufferBuilder`、既不 `begin` 也不 `draw`，`ParticleLitRun`
+在 `renderLitParticles` 的 HEAD 打开该 run 并开启实例层、在 RETURN 收尾并 `Tessellator.draw()`，
+因此这一层也进入批次；批次装不下的顶点仍按原版顶点回放由该 run 自己的 draw 画出，视锥判断与
+其它层共用同一入口。
 
 ## 根项目包详解（`com.dhj.actinium`）
 
