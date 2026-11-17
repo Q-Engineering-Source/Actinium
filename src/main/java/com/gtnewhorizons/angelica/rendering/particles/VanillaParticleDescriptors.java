@@ -1,17 +1,5 @@
 package com.gtnewhorizons.angelica.rendering.particles;
 
-import com.dhj.actinium.mixin.vintage.features.particles.AccessorParticle;
-import com.dhj.actinium.mixin.vintage.features.particles.AccessorParticleCloud;
-import com.dhj.actinium.mixin.vintage.features.particles.AccessorParticleCrit;
-import com.dhj.actinium.mixin.vintage.features.particles.AccessorParticleFireworkSpark;
-import com.dhj.actinium.mixin.vintage.features.particles.AccessorParticleFlame;
-import com.dhj.actinium.mixin.vintage.features.particles.AccessorParticleHeart;
-import com.dhj.actinium.mixin.vintage.features.particles.AccessorParticleLava;
-import com.dhj.actinium.mixin.vintage.features.particles.AccessorParticleNote;
-import com.dhj.actinium.mixin.vintage.features.particles.AccessorParticlePortal;
-import com.dhj.actinium.mixin.vintage.features.particles.AccessorParticleRedstone;
-import com.dhj.actinium.mixin.vintage.features.particles.AccessorParticleSmokeNormal;
-import com.dhj.actinium.mixin.vintage.features.particles.AccessorParticleSnowShovel;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleBlockDust;
 import net.minecraft.client.particle.ParticleBreaking;
@@ -39,8 +27,8 @@ import net.minecraft.util.math.MathHelper;
  * <p>Each descriptor repeats the arithmetic that method applies to {@code particleScale} and the
  * texture coordinates before delegating to the base billboard, including the side effects vanilla
  * performs on the particle (the animated scale and the firework overlay alpha). The per-class base
- * size lives in a private or package-private field, so it is read through the generated accessors
- * instead of being approximated from the current scale.</p>
+ * size lives in a private or package-private field, which the access transformer opens instead of
+ * being approximated from the current scale.</p>
  */
 public final class VanillaParticleDescriptors {
 
@@ -78,9 +66,8 @@ public final class VanillaParticleDescriptors {
 
         @Override
         public boolean describe(Particle particle, float partialTicks, ParticleParams out, ParticleRenderState state) {
-            final AccessorParticle access = (AccessorParticle) particle;
-            final float scale = base.of(particle) * factor.factor(access.actinium$getParticleAge(), access.actinium$getParticleMaxAge(), partialTicks);
-            access.actinium$setParticleScale(scale);
+            final float scale = base.of(particle) * factor.factor(particle.particleAge, particle.particleMaxAge, partialTicks);
+            particle.particleScale = scale;
             ParticleQuads.vanillaQuad(particle, partialTicks, scale, out);
             return true;
         }
@@ -89,31 +76,29 @@ public final class VanillaParticleDescriptors {
     private static final ParticleDescriptor EMPTY = (particle, partialTicks, out, state) -> false;
 
     private static final ParticleDescriptor DIGGING = (particle, partialTicks, out, state) -> {
-        final AccessorParticle access = (AccessorParticle) particle;
-        out.half = 0.1F * access.actinium$getParticleScale();
+        out.half = 0.1F * particle.particleScale;
         ParticleQuads.center(particle, partialTicks, out);
         out.colorABGR = ParticleQuads.packColor(particle.getRedColorF(), particle.getGreenColorF(), particle.getBlueColorF(), 1.0F);
-        final float jitterU = access.actinium$getParticleTextureJitterX();
-        final float jitterV = access.actinium$getParticleTextureJitterY();
-        final TextureAtlasSprite texture = access.actinium$getParticleTexture();
+        final float jitterU = particle.particleTextureJitterX;
+        final float jitterV = particle.particleTextureJitterY;
+        final TextureAtlasSprite texture = particle.particleTexture;
         if (texture != null) {
             out.u0 = texture.getInterpolatedU(jitterU / 4.0F * 16.0F);
             out.u1 = texture.getInterpolatedU((jitterU + 1.0F) / 4.0F * 16.0F);
             out.v1 = texture.getInterpolatedV(jitterV / 4.0F * 16.0F);
             out.v0 = texture.getInterpolatedV((jitterV + 1.0F) / 4.0F * 16.0F);
         } else {
-            out.u0 = (access.actinium$getParticleTextureIndexX() + jitterU / 4.0F) / 16.0F;
+            out.u0 = (particle.particleTextureIndexX + jitterU / 4.0F) / 16.0F;
             out.u1 = out.u0 + 0.015609375F;
-            out.v1 = (access.actinium$getParticleTextureIndexY() + jitterV / 4.0F) / 16.0F;
+            out.v1 = (particle.particleTextureIndexY + jitterV / 4.0F) / 16.0F;
             out.v0 = out.v1 + 0.015609375F;
         }
         return true;
     };
 
     private static final ParticleDescriptor FIREWORK_OVERLAY = (particle, partialTicks, out, state) -> {
-        final AccessorParticle access = (AccessorParticle) particle;
-        final float t = access.actinium$getParticleAge() + partialTicks - 1.0F;
-        access.actinium$setParticleAlpha(0.6F - t * 0.25F * 0.5F);
+        final float t = particle.particleAge + partialTicks - 1.0F;
+        particle.particleAlpha = 0.6F - t * 0.25F * 0.5F;
         ParticleQuads.center(particle, partialTicks, out);
         out.half = 7.1F * MathHelper.sin(t * 0.25F * (float) Math.PI);
         out.u0 = 0.5F;
@@ -125,27 +110,26 @@ public final class VanillaParticleDescriptors {
     };
 
     private static final ParticleDescriptor FIREWORK_SPARK = (particle, partialTicks, out, state) -> {
-        final AccessorParticle access = (AccessorParticle) particle;
-        final int age = access.actinium$getParticleAge();
-        final int maxAge = access.actinium$getParticleMaxAge();
-        if (((AccessorParticleFireworkSpark) particle).actinium$twinkle() && age >= maxAge / 3 && (age + maxAge) / 3 % 2 != 0) return false;
-        ParticleQuads.vanillaQuad(particle, partialTicks, access.actinium$getParticleScale(), out);
+        final int age = particle.particleAge;
+        final int maxAge = particle.particleMaxAge;
+        if (((ParticleFirework.Spark) particle).twinkle && age >= maxAge / 3 && (age + maxAge) / 3 % 2 != 0) return false;
+        ParticleQuads.vanillaQuad(particle, partialTicks, particle.particleScale, out);
         return true;
     };
 
     private VanillaParticleDescriptors() {}
 
     public static void registerAll() {
-        registerScaled(ParticleFlame.class, particle -> ((AccessorParticleFlame) particle).actinium$flameScale(), FLAME);
-        registerScaled(ParticleLava.class, particle -> ((AccessorParticleLava) particle).actinium$lavaParticleScale(), LAVA);
-        registerScaled(ParticlePortal.class, particle -> ((AccessorParticlePortal) particle).actinium$portalParticleScale(), PORTAL);
-        registerScaled(ParticleSmokeNormal.class, particle -> ((AccessorParticleSmokeNormal) particle).actinium$smokeParticleScale(), RAMP);
-        registerScaled(ParticleCloud.class, particle -> ((AccessorParticleCloud) particle).actinium$oSize(), RAMP);
-        registerScaled(ParticleCrit.class, particle -> ((AccessorParticleCrit) particle).actinium$oSize(), RAMP);
-        registerScaled(ParticleHeart.class, particle -> ((AccessorParticleHeart) particle).actinium$particleScaleOverTime(), RAMP);
-        registerScaled(ParticleNote.class, particle -> ((AccessorParticleNote) particle).actinium$noteParticleScale(), RAMP);
-        registerScaled(ParticleRedstone.class, particle -> ((AccessorParticleRedstone) particle).actinium$reddustParticleScale(), RAMP);
-        registerScaled(ParticleSnowShovel.class, particle -> ((AccessorParticleSnowShovel) particle).actinium$snowDigParticleScale(), RAMP);
+        registerScaled(ParticleFlame.class, particle -> ((ParticleFlame) particle).flameScale, FLAME);
+        registerScaled(ParticleLava.class, particle -> ((ParticleLava) particle).lavaParticleScale, LAVA);
+        registerScaled(ParticlePortal.class, particle -> ((ParticlePortal) particle).portalParticleScale, PORTAL);
+        registerScaled(ParticleSmokeNormal.class, particle -> ((ParticleSmokeNormal) particle).smokeParticleScale, RAMP);
+        registerScaled(ParticleCloud.class, particle -> ((ParticleCloud) particle).oSize, RAMP);
+        registerScaled(ParticleCrit.class, particle -> ((ParticleCrit) particle).oSize, RAMP);
+        registerScaled(ParticleHeart.class, particle -> ((ParticleHeart) particle).particleScaleOverTime, RAMP);
+        registerScaled(ParticleNote.class, particle -> ((ParticleNote) particle).noteParticleScale, RAMP);
+        registerScaled(ParticleRedstone.class, particle -> ((ParticleRedstone) particle).reddustParticleScale, RAMP);
+        registerScaled(ParticleSnowShovel.class, particle -> ((ParticleSnowShovel) particle).snowDigParticleScale, RAMP);
 
         ParticleDescriptorRegistry.register(ParticleSpell.class.getName(), ParticleDescriptorRegistry.VANILLA);
         ParticleDescriptorRegistry.register(ParticleDigging.class.getName(), DIGGING);

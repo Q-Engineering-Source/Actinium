@@ -1,6 +1,5 @@
 package com.gtnewhorizons.angelica.rendering;
 
-import com.dhj.actinium.mixin.vintage.features.particles.AccessorParticle;
 import com.gtnewhorizons.angelica.client.rendering.DeferredDrawBatcher;
 import com.gtnewhorizons.angelica.rendering.particles.ParticleInstancer;
 import dhj.embeddedt.embeddium.impl.render.chunk.sprite.SpriteTransparencyLevel;
@@ -90,7 +89,7 @@ public final class ParticleRunSplitter {
      * @return whether the particle belongs to the translucent particle program
      */
     public static boolean isTranslucent(Particle particle) {
-        final TextureAtlasSprite texture = ((AccessorParticle) particle).actinium$getParticleTexture();
+        final TextureAtlasSprite texture = particle.particleTexture;
         if (texture != null) {
             return SpriteTransparencyLevel.Holder.getTransparencyLevel(texture) == SpriteTransparencyLevel.TRANSLUCENT;
         }

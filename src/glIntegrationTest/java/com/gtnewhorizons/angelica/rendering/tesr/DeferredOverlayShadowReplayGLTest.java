@@ -1,6 +1,6 @@
 package com.gtnewhorizons.angelica.rendering.tesr;
 
-import com.dhj.actinium.mixinterface.features.iris.RenderLivingBaseOverlayAccess;
+import com.gtnewhorizons.angelica.rendering.OverlayTestRenderer;
 import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
 import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
 import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
@@ -72,28 +72,11 @@ class DeferredOverlayShadowReplayGLTest extends GLStateManagerIntegrationFixture
         }
     }
 
-    private static final class TestAccess implements RenderLivingBaseOverlayAccess {
-        final ModelBase model = new TestModel();
-
-        @Override
-        public ModelBase actinium$mainModel() {
-            return model;
-        }
-
-        @Override
-        public boolean actinium$setBrightness(EntityLivingBase entity, float partialTicks, boolean combineTextures) {
-            return false;
-        }
-
-        @Override
-        public void actinium$unsetBrightness() {
-        }
-    }
 
     private static final class TestModel extends ModelBase {
     }
 
-    private TestAccess renderer;
+    private OverlayTestRenderer renderer;
     private RecordingLayer layer;
     private EntityRenderCommands commands;
 
@@ -112,7 +95,7 @@ class DeferredOverlayShadowReplayGLTest extends GLStateManagerIntegrationFixture
         GLSMMatrices.glLoadIdentity();
         GLSMCurrentAttribs.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
         GLSMDepthStencilAlpha.glDepthMask(true);
-        renderer = new TestAccess();
+        renderer = new OverlayTestRenderer(new TestModel());
         layer = new RecordingLayer();
         commands = new EntityRenderCommands();
     }
@@ -132,8 +115,12 @@ class DeferredOverlayShadowReplayGLTest extends GLStateManagerIntegrationFixture
      * Mirrors what the mixin does with one layer call during the shadow pass.
      */
     private DeferredEntityOverlay.LayerAction runShadowLayer(LayerRenderer<?> target) {
-        final DeferredEntityOverlay.LayerAction action = DeferredEntityOverlay.beginLayer(renderer, target, null,
-            LIMB_SWING, LIMB_SWING_AMOUNT, PARTIAL_TICKS, AGE_IN_TICKS, NET_HEAD_YAW, HEAD_PITCH, SCALE, false);
+        final DeferredEntityOverlay.LayerAction action = DeferredEntityOverlay.beginLayer(
+            renderer.model(), false,
+            () -> renderer.setBrightness(null, PARTIAL_TICKS, target.shouldCombineTextures()),
+            renderer::unsetBrightness,
+            target, null,
+            LIMB_SWING, LIMB_SWING_AMOUNT, PARTIAL_TICKS, AGE_IN_TICKS, NET_HEAD_YAW, HEAD_PITCH, SCALE);
         if (action == DeferredEntityOverlay.LayerAction.SKIP) {
             return action;
         }
@@ -158,8 +145,9 @@ class DeferredOverlayShadowReplayGLTest extends GLStateManagerIntegrationFixture
             .rotateY((float) Math.PI / 2.0F);
 
         final DeferredEntityOverlay.DeferredEntry recorded = DeferredEntityOverlay.captureShadowOverlay(
-            renderer, layer, null, LIMB_SWING, LIMB_SWING_AMOUNT, PARTIAL_TICKS, AGE_IN_TICKS, NET_HEAD_YAW,
-            HEAD_PITCH, SCALE);
+            renderer.model(), () -> renderer.setBrightness(null, PARTIAL_TICKS, layer.shouldCombineTextures()),
+            renderer::unsetBrightness, layer, null, LIMB_SWING, LIMB_SWING_AMOUNT, PARTIAL_TICKS, AGE_IN_TICKS,
+            NET_HEAD_YAW, HEAD_PITCH, SCALE);
         assertNotNull(recorded);
 
         // Recording is not deferring: the shadow pass drew the layer inline and the flush has nothing yet.
@@ -203,8 +191,9 @@ class DeferredOverlayShadowReplayGLTest extends GLStateManagerIntegrationFixture
         };
 
         final DeferredEntityOverlay.DeferredEntry recorded = DeferredEntityOverlay.captureShadowOverlay(
-            renderer, probe, null, LIMB_SWING, LIMB_SWING_AMOUNT, PARTIAL_TICKS, AGE_IN_TICKS, NET_HEAD_YAW,
-            HEAD_PITCH, SCALE);
+            renderer.model(), () -> renderer.setBrightness(null, PARTIAL_TICKS, probe.shouldCombineTextures()),
+            renderer::unsetBrightness, probe, null, LIMB_SWING, LIMB_SWING_AMOUNT, PARTIAL_TICKS, AGE_IN_TICKS,
+            NET_HEAD_YAW, HEAD_PITCH, SCALE);
         commands.overlay(recorded);
 
         InternalShadowRenderingState.begin(new Matrix4f(), new Matrix4f());

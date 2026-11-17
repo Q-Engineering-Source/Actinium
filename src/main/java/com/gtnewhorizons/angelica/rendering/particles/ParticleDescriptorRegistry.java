@@ -2,7 +2,6 @@ package com.gtnewhorizons.angelica.rendering.particles;
 
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
-import com.dhj.actinium.mixin.vintage.features.particles.AccessorParticle;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.entity.Entity;
@@ -33,7 +32,7 @@ public final class ParticleDescriptorRegistry {
 
     /** Descriptor of a particle that draws the plain billboarded quad at its current scale. */
     public static final ParticleDescriptor VANILLA = (particle, partialTicks, out, state) -> {
-        ParticleQuads.vanillaQuad(particle, partialTicks, ((AccessorParticle) particle).actinium$getParticleScale(), out);
+        ParticleQuads.vanillaQuad(particle, partialTicks, particle.particleScale, out);
         return true;
     };
 

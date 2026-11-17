@@ -12,8 +12,6 @@
     "core.terrain.BufferBuilderMixin",
     "core.vertex.MixinVertexFormat",
     "features.clouds.MixinWorldProviderClouds",
-    "features.iris.AccessorRenderLivingBaseBrightness",
-    "features.iris.AccessorRenderOutlines",
     "features.iris.ActiveRenderInfoIrisMixin",
     "features.iris.EntityRendererIrisMixin",
     "features.iris.ForgeHooksClientIrisMixin",

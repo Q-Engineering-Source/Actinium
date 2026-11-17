@@ -1,6 +1,5 @@
 package com.gtnewhorizons.angelica.rendering;
 
-import com.dhj.actinium.mixinterface.features.iris.RenderLivingBaseOverlayAccess;
 import com.gtnewhorizons.angelica.glsm.GLSMBlend;
 import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
 import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
@@ -96,30 +95,6 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
         }
     }
 
-    /** Stands in for the mixin the game adds to every RenderLivingBase. */
-    private static final class TestAccess implements RenderLivingBaseOverlayAccess {
-        final ModelBase model = new TestModel();
-        boolean brightnessSet;
-        boolean brightnessUnset;
-        boolean lastCombineTextures;
-
-        @Override
-        public ModelBase actinium$mainModel() {
-            return model;
-        }
-
-        @Override
-        public boolean actinium$setBrightness(EntityLivingBase entity, float partialTicks, boolean combineTextures) {
-            brightnessSet = true;
-            lastCombineTextures = combineTextures;
-            return true;
-        }
-
-        @Override
-        public void actinium$unsetBrightness() {
-            brightnessUnset = true;
-        }
-    }
 
     private static final class TestModel extends ModelBase {
     }
@@ -161,7 +136,7 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
         }
     }
 
-    private TestAccess renderer;
+    private OverlayTestRenderer renderer;
     private RecordingLayer layer;
 
     /**
@@ -169,8 +144,11 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
      * inline when it says so, and close the suppression window the shadow-pass case opened.
      */
     private boolean runLayer(LayerRenderer<?> target, boolean outlineActive) {
-        final DeferredEntityOverlay.LayerAction action = DeferredEntityOverlay.beginLayer(renderer, target, null,
-            LIMB_SWING, LIMB_SWING_AMOUNT, PARTIAL_TICKS, AGE_IN_TICKS, NET_HEAD_YAW, HEAD_PITCH, SCALE, outlineActive);
+        final DeferredEntityOverlay.LayerAction action = DeferredEntityOverlay.beginLayer(
+            renderer.model(), outlineActive,
+            () -> renderer.setBrightness(null, PARTIAL_TICKS, target.shouldCombineTextures()),
+            renderer::unsetBrightness,
+            target, null, LIMB_SWING, LIMB_SWING_AMOUNT, PARTIAL_TICKS, AGE_IN_TICKS, NET_HEAD_YAW, HEAD_PITCH, SCALE);
         if (action == DeferredEntityOverlay.LayerAction.SKIP) {
             return false;
         }
@@ -203,7 +181,7 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
         GLSMCurrentAttribs.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
         GLSMDepthStencilAlpha.glDepthMask(true);
         GLSMEnable.glEnable(GL11.GL_CULL_FACE);
-        renderer = new TestAccess();
+        renderer = new OverlayTestRenderer(new TestModel());
         layer = new RecordingLayer();
     }
 
@@ -273,8 +251,11 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
         GLSMCurrentAttribs.setLightmapTextureCoords(GL13.GL_TEXTURE1, 240.0F, 192.0F);
         layer.combining = true;
 
-        assertEquals(DeferredEntityOverlay.LayerAction.SKIP, DeferredEntityOverlay.beginLayer(renderer, layer, null,
-            11.0F, 12.0F, 13.0F, 14.0F, 15.0F, 16.0F, 0.0625F, false));
+        assertEquals(DeferredEntityOverlay.LayerAction.SKIP, DeferredEntityOverlay.beginLayer(
+            renderer.model(), false,
+            () -> renderer.setBrightness(null, 13.0F, layer.shouldCombineTextures()),
+            renderer::unsetBrightness,
+            layer, null, 11.0F, 12.0F, 13.0F, 14.0F, 15.0F, 16.0F, 0.0625F));
         assertEquals(0, layer.calls.size());
 
         GLSMMatrices.glLoadIdentity();
@@ -303,7 +284,7 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
 
     @Test
     void putsTheCapturedModelStateBackForTheCallAndReturnsItAfterwards() {
-        final ModelBase model = renderer.model;
+        final ModelBase model = renderer.model();
         model.swingProgress = 0.75F;
         model.isRiding = true;
         model.isChild = true;
@@ -406,8 +387,11 @@ class DeferredEntityOverlayGLTest extends GLStateManagerIntegrationFixture {
                                       float scale) {
                 super.doRenderLayer(entity, limbSwing, limbSwingAmount, partialTicks, ageInTicks, netHeadYaw,
                     headPitch, scale);
-                nested[0] = DeferredEntityOverlay.beginLayer(renderer, this, null, limbSwing, limbSwingAmount,
-                    partialTicks, ageInTicks, netHeadYaw, headPitch, scale, false);
+                nested[0] = DeferredEntityOverlay.beginLayer(
+                    renderer.model(), false,
+                    () -> renderer.setBrightness(null, partialTicks, shouldCombineTextures()),
+                    renderer::unsetBrightness,
+                    this, null, limbSwing, limbSwingAmount, partialTicks, ageInTicks, netHeadYaw, headPitch, scale);
                 if (nested[0] == DeferredEntityOverlay.LayerAction.RUN_SUPPRESSED) {
                     DeferredEntityOverlay.endLayer();
                 }

@@ -1,6 +1,5 @@
 package com.gtnewhorizons.angelica.rendering.particles;
 
-import com.dhj.actinium.mixin.vintage.features.particles.AccessorParticle;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.util.math.MathHelper;
@@ -26,19 +25,17 @@ public final class ParticleQuads {
     }
 
     static void center(Particle particle, float partialTicks, ParticleParams out) {
-        final AccessorParticle access = (AccessorParticle) particle;
-        out.centerX = (float) (access.actinium$getPrevPosX() + (access.actinium$getPosX() - access.actinium$getPrevPosX()) * partialTicks - Particle.interpPosX);
-        out.centerY = (float) (access.actinium$getPrevPosY() + (access.actinium$getPosY() - access.actinium$getPrevPosY()) * partialTicks - Particle.interpPosY);
-        out.centerZ = (float) (access.actinium$getPrevPosZ() + (access.actinium$getPosZ() - access.actinium$getPrevPosZ()) * partialTicks - Particle.interpPosZ);
+        out.centerX = (float) (particle.prevPosX + (particle.posX - particle.prevPosX) * partialTicks - Particle.interpPosX);
+        out.centerY = (float) (particle.prevPosY + (particle.posY - particle.prevPosY) * partialTicks - Particle.interpPosY);
+        out.centerZ = (float) (particle.prevPosZ + (particle.posZ - particle.prevPosZ) * partialTicks - Particle.interpPosZ);
     }
 
     static void iconUv(Particle particle, ParticleParams out) {
-        final AccessorParticle access = (AccessorParticle) particle;
-        float minU = access.actinium$getParticleTextureIndexX() / 16.0F;
+        float minU = particle.particleTextureIndexX / 16.0F;
         float maxU = minU + 0.0624375F;
-        float minV = access.actinium$getParticleTextureIndexY() / 16.0F;
+        float minV = particle.particleTextureIndexY / 16.0F;
         float maxV = minV + 0.0624375F;
-        final TextureAtlasSprite texture = access.actinium$getParticleTexture();
+        final TextureAtlasSprite texture = particle.particleTexture;
         if (texture != null) {
             minU = texture.getMinU();
             maxU = texture.getMaxU();
@@ -56,8 +53,7 @@ public final class ParticleQuads {
     }
 
     static int packColor(Particle particle) {
-        final AccessorParticle access = (AccessorParticle) particle;
-        return packColor(particle.getRedColorF(), particle.getGreenColorF(), particle.getBlueColorF(), access.actinium$getParticleAlpha());
+        return packColor(particle.getRedColorF(), particle.getGreenColorF(), particle.getBlueColorF(), particle.particleAlpha);
     }
 
     public static int packColor(float r, float g, float b, float a) {

@@ -1,6 +1,5 @@
 package com.gtnewhorizons.angelica.rendering;
 
-import com.dhj.actinium.mixinterface.features.iris.RenderLivingBaseOverlayAccess;
 import com.dhj.actinium.shadows.ShadowRenderingState;
 import com.gtnewhorizons.angelica.glsm.GLSMAttribStack;
 import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
@@ -31,6 +30,7 @@ import org.lwjgl.opengl.GL11;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 /**
  * Defers entity overlay layers (the charged creeper aura and the wither armor aura) to after every
@@ -40,7 +40,7 @@ import java.util.List;
  * <p>1.12.2 replaced the 1.7.10 {@code renderPassModel} / {@code shouldRenderPass} pair with
  * {@link LayerRenderer} instances that {@code RenderLivingBase.renderLayers} visits one by one.
  * Deferral therefore skips a single iteration of that loop and records the real
- * {@link RenderLivingBaseOverlayAccess} renderer and the real {@link LayerRenderer} instance, then
+ * renderer and the real {@link LayerRenderer} instance, then
  * re-invokes {@code layer.doRenderLayer} on the same instances during the flush. Mod subclasses, mod
  * layers and the armor layer's four-slot walk keep running their own code; no model is
  * substituted.</p>
@@ -125,16 +125,18 @@ public final class DeferredEntityOverlay {
      * flush instead. The model parts that inline call submits are dropped from the record, otherwise
      * the replay would draw them and the flushed overlay on top of them.</p>
      */
-    public static LayerAction beginLayer(RenderLivingBaseOverlayAccess renderer, LayerRenderer<?> layer,
+    public static LayerAction beginLayer(ModelBase mainModel, boolean outlineActive,
+                                         BooleanSupplier applyBrightness, Runnable restoreBrightness,
+                                         LayerRenderer<?> layer,
                                          EntityLivingBase entity, float limbSwing, float limbSwingAmount,
                                          float partialTicks, float ageInTicks, float netHeadYaw, float headPitch,
-                                         float scale, boolean outlineActive) {
+                                         float scale) {
         if (replaying || outlineActive || !matches(layer, entity)) return LayerAction.RUN;
 
         if (ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
             if (EntityShadowReplay.isRecording()) {
-                final DeferredEntry recorded = captureShadowOverlay(renderer, layer, entity, limbSwing, limbSwingAmount,
-                    partialTicks, ageInTicks, netHeadYaw, headPitch, scale);
+                final DeferredEntry recorded = captureShadowOverlay(mainModel, applyBrightness, restoreBrightness, layer,
+                    entity, limbSwing, limbSwingAmount, partialTicks, ageInTicks, netHeadYaw, headPitch, scale);
                 EntityShadowReplay.recordDeferredOverlay(recorded);
                 recycle(recorded);
             }
@@ -142,8 +144,8 @@ public final class DeferredEntityOverlay {
             return LayerAction.RUN_SUPPRESSED;
         }
 
-        final DeferredEntry entry = capture(renderer, layer, entity, limbSwing, limbSwingAmount, partialTicks,
-            ageInTicks, netHeadYaw, headPitch, scale);
+        final DeferredEntry entry = capture(mainModel, applyBrightness, restoreBrightness, layer, entity, limbSwing,
+            limbSwingAmount, partialTicks, ageInTicks, netHeadYaw, headPitch, scale);
         entry.pass = PassOverride.capture();
         deferred.add(entry);
         return LayerAction.SKIP;
@@ -161,12 +163,13 @@ public final class DeferredEntityOverlay {
      * drawing it inline; the record outlives this entry, which the caller recycles right after
      * {@code EntityShadowReplay} copied it.</p>
      */
-    public static DeferredEntry captureShadowOverlay(RenderLivingBaseOverlayAccess renderer, LayerRenderer<?> layer,
+    public static DeferredEntry captureShadowOverlay(ModelBase mainModel, BooleanSupplier applyBrightness,
+                                                     Runnable restoreBrightness, LayerRenderer<?> layer,
                                                      EntityLivingBase entity, float limbSwing, float limbSwingAmount,
                                                      float partialTicks, float ageInTicks, float netHeadYaw,
                                                      float headPitch, float scale) {
-        return capture(renderer, layer, entity, limbSwing, limbSwingAmount, partialTicks, ageInTicks, netHeadYaw,
-            headPitch, scale);
+        return capture(mainModel, applyBrightness, restoreBrightness, layer, entity, limbSwing, limbSwingAmount,
+            partialTicks, ageInTicks, netHeadYaw, headPitch, scale);
     }
 
     /**
@@ -216,8 +219,7 @@ public final class DeferredEntityOverlay {
 
     static void replay(DeferredEntry entry) {
         final EntityLivingBase entity = entry.entity;
-        final RenderLivingBaseOverlayAccess access = entry.renderer;
-        final ModelBase mainModel = access.actinium$mainModel();
+        final ModelBase mainModel = entry.mainModel;
 
         // StateSet.BATCH does not carry the current colour, and the layers recolour themselves
         // without restoring it, so the colour is saved and put back explicitly.
@@ -264,12 +266,12 @@ public final class DeferredEntityOverlay {
                 mainModel.isRiding = entry.isRiding;
                 mainModel.isChild = entry.isChild;
 
-                brightnessSet = access.actinium$setBrightness(entity, entry.partialTicks, entry.combineTextures);
+                brightnessSet = entry.applyBrightness.getAsBoolean();
                 GLSMEnable.glDisable(GL11.GL_CULL_FACE);
                 GLSMDepthStencilAlpha.glDepthMask(false);
                 invokeLayer(entry.layer, entity, entry);
             } finally {
-                if (brightnessSet) failure = run(failure, () -> access.actinium$unsetBrightness());
+                if (brightnessSet) failure = run(failure, entry.restoreBrightness);
                 failure = run(failure, phase::close);
                 if (entityPushed) failure = run(failure, () -> CapturedRenderingState.INSTANCE.popCurrentEntityAndItem());
             }
@@ -343,13 +345,15 @@ public final class DeferredEntityOverlay {
         return null;
     }
 
-    private static DeferredEntry capture(RenderLivingBaseOverlayAccess renderer, LayerRenderer<?> layer,
+    private static DeferredEntry capture(ModelBase mainModel, BooleanSupplier applyBrightness,
+                                         Runnable restoreBrightness, LayerRenderer<?> layer,
                                          EntityLivingBase entity, float limbSwing, float limbSwingAmount,
                                          float partialTicks, float ageInTicks, float netHeadYaw, float headPitch,
                                          float scale) {
-        final ModelBase mainModel = renderer.actinium$mainModel();
         final DeferredEntry entry = acquire();
-        entry.renderer = renderer;
+        entry.mainModel = mainModel;
+        entry.applyBrightness = applyBrightness;
+        entry.restoreBrightness = restoreBrightness;
         entry.layer = layer;
         entry.entity = entity;
         entry.limbSwing = limbSwing;
@@ -359,7 +363,6 @@ public final class DeferredEntityOverlay {
         entry.netHeadYaw = netHeadYaw;
         entry.headPitch = headPitch;
         entry.scale = scale;
-        entry.combineTextures = layer.shouldCombineTextures();
         entry.swingProgress = mainModel.swingProgress;
         entry.isRiding = mainModel.isRiding;
         entry.isChild = mainModel.isChild;
@@ -399,10 +402,16 @@ public final class DeferredEntityOverlay {
         }
     }
 
-    /** One captured layer call: the real renderer, the real layer, the entity and its anim state. */
+    /**
+     * One captured layer call: the layer, the entity, its anim state, and what the replay needs from
+     * the renderer that made the call - the model whose state it saves and the brightness helpers it
+     * applies around the layer.
+     */
     public static final class DeferredEntry {
         final float[] matrix = new float[16];
-        RenderLivingBaseOverlayAccess renderer;
+        ModelBase mainModel;
+        BooleanSupplier applyBrightness;
+        Runnable restoreBrightness;
         LayerRenderer<?> layer;
         EntityLivingBase entity;
         PassOverride pass;
@@ -413,7 +422,6 @@ public final class DeferredEntityOverlay {
         float netHeadYaw;
         float headPitch;
         float scale;
-        boolean combineTextures;
         float swingProgress;
         boolean isRiding;
         boolean isChild;
@@ -422,7 +430,9 @@ public final class DeferredEntityOverlay {
 
         /** Copies every field, including the matrix, so a record can outlive the capture it came from. */
         public void copyFrom(DeferredEntry source) {
-            renderer = source.renderer;
+            mainModel = source.mainModel;
+            applyBrightness = source.applyBrightness;
+            restoreBrightness = source.restoreBrightness;
             layer = source.layer;
             entity = source.entity;
             pass = source.pass;
@@ -433,7 +443,6 @@ public final class DeferredEntityOverlay {
             netHeadYaw = source.netHeadYaw;
             headPitch = source.headPitch;
             scale = source.scale;
-            combineTextures = source.combineTextures;
             swingProgress = source.swingProgress;
             isRiding = source.isRiding;
             isChild = source.isChild;
@@ -444,11 +453,12 @@ public final class DeferredEntityOverlay {
 
         /** Drops the fields so a pooled entry cannot keep a renderer, layer or entity alive. */
         public void clear() {
-            renderer = null;
+            mainModel = null;
+            applyBrightness = null;
+            restoreBrightness = null;
             layer = null;
             entity = null;
             pass = null;
-            combineTextures = false;
             swingProgress = 0.0F;
             isRiding = false;
             isChild = false;
