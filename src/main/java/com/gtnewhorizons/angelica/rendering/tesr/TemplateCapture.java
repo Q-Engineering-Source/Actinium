@@ -30,9 +30,11 @@ public final class TemplateCapture {
      * Converts the vertices a vanilla {@link BufferBuilder} holds into a template.
      *
      * <p>{@code DefaultVertexFormats.ITEM} carries no lightmap element, so the shared layout's
-     * lightmap slot would stay zero and the item would draw unlit. The brightness the frame had
-     * while the vertices were written is stored instead, which is the value the fixed function path
-     * would have sampled for them.</p>
+     * lightmap slot would stay zero. The brightness the frame had while the vertices were written is
+     * stored instead, which is the value the fixed function path would have sampled for them. An
+     * instanced draw does not read that slot: it carries the lightmap as a per-instance attribute and
+     * the vertex shader takes {@code v_TexCoord1} from there. The slot is what a template drawn as
+     * plain vertices reads instead.</p>
      *
      * @param buffer builder holding an open or finished draw
      * @param packedLight packed block and sky light of the frame the vertices were written in

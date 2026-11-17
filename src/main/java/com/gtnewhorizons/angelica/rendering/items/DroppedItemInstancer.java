@@ -23,7 +23,6 @@ import net.minecraft.client.renderer.color.ItemColors;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumFacing;
-import net.minecraftforge.client.model.pipeline.LightUtil;
 import net.minecraftforge.common.ForgeModContainer;
 import org.lwjgl.opengl.GL11;
 
@@ -39,11 +38,12 @@ import java.util.List;
  * enchantment glint. This class replaces the three draws with one instance per item of a shared
  * template, plus the two glint layers the fixed function path renders from the same template.</p>
  *
- * <p>The template is captured by replaying the model's quads through
- * {@link LightUtil#renderQuadColor}, which is the exact call the vanilla draw makes, and converting
- * the resulting 28 byte {@code ITEM} vertices to the eight int layout the batch reads. The capture
- * keeps the lightmap the frame had at capture time, so an item lit by
- * {@code RenderHelper.enableStandardItemLighting} keeps its fixed brightness.</p>
+ * <p>The template is captured by replaying the model's quads through the renderer's own
+ * {@code renderQuads}, the same call the vanilla draw makes, and converting the resulting 28 byte
+ * {@code ITEM} vertices to the eight int layout the batch reads. The capture stores the lightmap the
+ * frame had, which is the value a template drawn as plain vertices reads; an instanced draw takes
+ * its lightmap from the per-instance attribute instead. The stored value is what an item lit by
+ * {@code RenderHelper.enableStandardItemLighting} keeps as its fixed brightness.</p>
  *
  * <p>Every path the batch cannot reproduce falls back to the vanilla draw: models outside the
  * stable set, non {@code ITEM} quads, built-in renderers, Forge's lit item path, a mod scaling item
@@ -56,15 +56,19 @@ public final class DroppedItemInstancer {
     /** The item was left to the vanilla draw, which has not run yet. */
     public static final long RUN = -1L;
 
-    /** The colour {@code RenderItem.renderEffect} multiplies into the glint geometry. */
-    private static final int ITEM_GLINT_COLOR = 0xFF8040CC;
+    /**
+     * The colour {@code RenderItem.renderEffect} multiplies into the glint geometry, packed the way
+     * the instance layout stores colours. The method passes {@code -8372020}, which
+     * {@code ForgeHooksClient.putQuadColor} reads as {@code 0xAARRGGBB}, so the same channels packed
+     * as {@code 0xAABBGGRR} are {@code 0xFFCC4080}: red 0x80, green 0x40, blue 0xCC.
+     */
+    private static final int ITEM_GLINT_COLOR = 0xFFCC4080;
     private static final int CAPTURE_BYTES = 16 * 1024;
     private static final EnumFacing[] FACINGS = EnumFacing.values();
 
     private static final ItemPropCache<ItemMesh> MESHES = new ItemPropCache<>(
         AngelicaConfig::itemRendererCacheSize, ItemMesh::new, null);
     private static final BufferBuilder CAPTURE = new BufferBuilder(CAPTURE_BYTES);
-    private static final List<BakedQuad> ALL_QUADS = new ArrayList<>();
 
     private static int scopeDepth;
     private static long part = RUN;
@@ -133,6 +137,11 @@ public final class DroppedItemInstancer {
         return bails[reason.ordinal()];
     }
 
+    /** The instance colour of the glint layers, in the byte order the instance layout stores. */
+    public static int glintColor() {
+        return ITEM_GLINT_COLOR;
+    }
+
     /**
      * Opens the scope a dropped item render runs in. Only draws inside this scope are instanced,
      * which keeps the GUI, the held item and item frames on the vanilla path.
@@ -186,39 +195,49 @@ public final class DroppedItemInstancer {
      * glint cannot be queued is left entirely to vanilla, so the two passes never disagree about
      * which of them runs.</p>
      *
+     * <p>A draw left to vanilla reports the draw count it starts from, which {@link #endPart} hands
+     * to the batch as an expected draw once the vanilla call is done. Without it the batch sees a
+     * renderer that queued a part and drew something else, which is the shape it answers with
+     * {@code DENIED}.</p>
+     *
+     * @param writer the quad writer of the renderer, normally {@code RenderItem::renderQuads}
      * @param colors the item colour table the renderer resolves tint indices through
-     * @return {@link #SKIP} when the caller must not draw, otherwise the draw count the vanilla draw
-     *         starts from, to be passed to {@link #endPart}
+     * @return {@link #SKIP} when the caller must not draw, {@link #RUN} when nothing was drawn at
+     *         all, otherwise the draw count the vanilla draw starts from, to be passed to
+     *         {@link #endPart}
      */
-    public static long renderItemPart(ItemColors colors, ItemStack stack, IBakedModel model) {
+    public static long renderItemPart(ItemQuadWriter writer, ItemColors colors, ItemStack stack, IBakedModel model) {
+        final long drawsBefore = GLSMDraws.drawCalls;
         final BailReason reason = check(stack, model);
-        if (reason != null) {
+        if (reason == BailReason.SCOPE || reason == BailReason.STACK) {
             return bail(reason, RUN);
         }
+        if (reason != null) {
+            return bail(reason, drawsBefore);
+        }
         if (!BatchEligibility.batchingAllowed() || !ModelPartBatcher.INSTANCE.isActive()) {
-            return bail(BailReason.NOT_ALLOWED, RUN);
+            return bail(BailReason.NOT_ALLOWED, drawsBefore);
         }
         if (GLStateManager.isRecordingDisplayList()) {
-            return bail(BailReason.RECORDING, RUN);
+            return bail(BailReason.RECORDING, drawsBefore);
         }
         if (TessellatorManager.shouldInterceptBufferBuilderDraw()
             || TessellatorManager.shouldInterceptDraw(Tessellator.getInstance())) {
-            return bail(BailReason.CAPTURE, RUN);
+            return bail(BailReason.CAPTURE, drawsBefore);
         }
         final TesrMaterial material = EntityMaterials.itemFromCurrentState(true);
         if (material == null) {
-            return bail(BailReason.MATERIAL, RUN);
+            return bail(BailReason.MATERIAL, drawsBefore);
         }
-        final ItemMesh mesh = mesh(colors, stack, model);
+        final ItemMesh mesh = mesh(writer, colors, stack, model);
         if (mesh == null) {
-            return bail(BailReason.GEOMETRY, RUN);
+            return bail(BailReason.GEOMETRY, drawsBefore);
         }
         final boolean glint = stack.hasEffect();
         if (glint && !ModelPartBatcher.INSTANCE.canQueueSkippedItemGlint(EntityMaterials.GLINT)) {
-            return bail(BailReason.GLINT, RUN);
+            return bail(BailReason.GLINT, drawsBefore);
         }
 
-        final long drawsBefore = GLSMDraws.drawCalls;
         // The draw this replaces runs under RenderItem's own centring of the model about the origin.
         GLSMMatrices.glPushMatrix();
         try {
@@ -229,7 +248,7 @@ public final class DroppedItemInstancer {
             instanced++;
             BatchEligibility.onPartQueued();
             if (glint) {
-                queueGlint(mesh, model);
+                queueGlint(mesh, writer, model);
             }
         } finally {
             GLSMMatrices.glPopMatrix();
@@ -245,8 +264,8 @@ public final class DroppedItemInstancer {
      * {@value #ITEM_GLINT_COLOR} as the instance colour, which is the colour the vanilla pass
      * multiplies into every glint vertex.</p>
      */
-    private static void queueGlint(ItemMesh mesh, IBakedModel model) {
-        final TemplateBuffer template = mesh.glintTemplate(model);
+    private static void queueGlint(ItemMesh mesh, ItemQuadWriter writer, IBakedModel model) {
+        final TemplateBuffer template = mesh.glintTemplate(writer, model);
         if (template == null || !ModelPartBatcher.INSTANCE.queueSkippedItemGlint(template, EntityMaterials.GLINT, ITEM_GLINT_COLOR)) {
             // The base is already queued, so the vanilla glint would draw before it and the depth
             // equal test would drop it. Leaving it out keeps the item intact for this frame.
@@ -290,25 +309,21 @@ public final class DroppedItemInstancer {
      *
      * @return the template, or {@code null} when the model has no quads in the {@code ITEM} format
      */
-    public static TemplateBuffer template(ItemColors colors, ItemStack stack, IBakedModel model) {
-        final ItemMesh mesh = mesh(colors, stack, model);
+    public static TemplateBuffer template(ItemQuadWriter writer, ItemColors colors, ItemStack stack, IBakedModel model) {
+        final ItemMesh mesh = mesh(writer, colors, stack, model);
         return mesh == null ? null : mesh.base;
     }
 
     /** The cache entry of this render, capturing it when the render was not seen before. */
-    private static ItemMesh mesh(ItemColors colors, ItemStack stack, IBakedModel model) {
+    private static ItemMesh mesh(ItemQuadWriter writer, ItemColors colors, ItemStack stack, IBakedModel model) {
         final List<BakedQuad>[] faces = gather(model);
-        ALL_QUADS.clear();
-        for (List<BakedQuad> face : faces) {
-            ALL_QUADS.addAll(face);
-        }
-        final int[] tints = FastLitItemDisplayListCache.getQuadColors(colors, ALL_QUADS, -1, stack);
+        final int[] tints = FastLitItemDisplayListCache.getQuadColors(colors, flatten(faces), -1, stack);
         final ItemMesh hit = MESHES.get(model, tints);
         if (hit != null) {
             cached++;
             return hit;
         }
-        final TemplateBuffer base = emit(faces, tints);
+        final TemplateBuffer base = emit(writer, faces, -1, stack);
         if (base == null) {
             return null;
         }
@@ -338,22 +353,21 @@ public final class DroppedItemInstancer {
     }
 
     /**
-     * Writes the model's quads through the vanilla vertex call into the capture buffer and converts
-     * the result to a template.
+     * Writes the model's quads through the renderer's own quad writer into the capture buffer and
+     * converts the result to a template.
      *
-     * @param tints per quad colour, or {@code null} for the untinted geometry the glint pass needs
+     * @param color colour the writer multiplies into every vertex, or {@code -1} to resolve each
+     *              quad's tint index through the stack
+     * @param stack stack the tint indices resolve against, or {@code ItemStack.EMPTY} for the
+     *              untinted geometry the glint pass needs
      */
-    private static TemplateBuffer emit(List<BakedQuad>[] faces, int[] tints) {
+    private static TemplateBuffer emit(ItemQuadWriter writer, List<BakedQuad>[] faces, int color, ItemStack stack) {
         final int brightness = GLSMConfig.packedLastBrightness();
         CAPTURE.begin(GL11.GL_QUADS, DefaultVertexFormats.ITEM);
         final TemplateBuffer template;
         try {
-            int index = 0;
             for (List<BakedQuad> face : faces) {
-                for (BakedQuad quad : face) {
-                    LightUtil.renderQuadColor(CAPTURE, quad, tints == null ? -1 : tints[index]);
-                    index++;
-                }
+                writer.renderQuads(CAPTURE, face, color, stack);
             }
             template = TemplateCapture.fromItemBuffer(CAPTURE, brightness);
         } finally {
@@ -370,6 +384,18 @@ public final class DroppedItemInstancer {
             }
         }
         return true;
+    }
+
+    private static List<BakedQuad> flatten(List<BakedQuad>[] faces) {
+        int size = 0;
+        for (List<BakedQuad> face : faces) {
+            size += face.size();
+        }
+        final List<BakedQuad> all = new ArrayList<>(size);
+        for (List<BakedQuad> face : faces) {
+            all.addAll(face);
+        }
+        return all;
     }
 
     @SuppressWarnings("unchecked")
@@ -397,12 +423,12 @@ public final class DroppedItemInstancer {
          * The glint geometry of this model. A render whose quads carry no tint index produces the
          * untinted geometry already, so the base template serves both passes.
          */
-        private TemplateBuffer glintTemplate(IBakedModel model) {
+        private TemplateBuffer glintTemplate(ItemQuadWriter writer, IBakedModel model) {
             if (this.untinted) {
                 return this.base;
             }
             if (this.glint == null) {
-                this.glint = emit(gather(model), null);
+                this.glint = emit(writer, gather(model), -1, ItemStack.EMPTY);
             }
             return this.glint;
         }

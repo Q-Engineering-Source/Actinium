@@ -66,6 +66,17 @@ class VertexShaderGeneratorTest {
     }
 
     @Test
+    void templateInstancingTakesTheLightmapFromTheInstance() {
+        final long packed = (1L << (BIT_UNIT_TEX_BASE + 1)) | (1L << BIT_HAS_VERTEX_LIGHTMAP);
+        final String shader = VertexShaderGenerator.generate(VertexKey.fromPacked(VertexKey.withInstancing(packed, Instancing.TEMPLATE)));
+
+        assertTrue(shader.contains("in vec2 a_InstLightmap;"), shader);
+        assertTrue(shader.contains("v_TexCoord1 = u_LightmapTextureMatrix * vec4(a_InstLightmap, 0.0, 1.0);"), shader);
+        assertFalse(shader.contains("v_TexCoord1 = u_LightmapTextureMatrix * a_TexCoord1;"),
+            "a template drawn instanced reads the per-instance lightmap, not the lightmap element of its vertices");
+    }
+
+    @Test
     void particleLayoutUsesTheBillboardNormalInsteadOfAVertexNormal() {
         final long packed = (1L << BIT_LIGHTING) | (1L << BIT_TEXTURE) | (1L << BIT_HAS_VERTEX_TEX)
             | (1L << BIT_HAS_VERTEX_COLOR) | (1L << BIT_HAS_VERTEX_LIGHTMAP) | (1L << BIT_HAS_VERTEX_NORMAL);

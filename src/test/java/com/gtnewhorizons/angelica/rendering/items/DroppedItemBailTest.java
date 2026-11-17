@@ -1,6 +1,8 @@
 package com.gtnewhorizons.angelica.rendering.items;
 
+import com.dhj.actinium.render.FastLitItemDisplayListCache;
 import com.dhj.actinium.render.ItemVertexAlphaOverrides;
+import com.gtnewhorizons.angelica.glsm.GLSMDraws;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.renderer.block.model.BakedQuad;
@@ -16,6 +18,7 @@ import net.minecraft.init.Bootstrap;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumFacing;
+import net.minecraftforge.client.model.pipeline.LightUtil;
 import net.minecraftforge.common.ForgeModContainer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -36,8 +39,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  * vanilla draw, so the reported reason is the only thing that distinguishes "handled by the batch"
  * from "left to the renderer".
  *
- * <p>The alpha override source is registered once for the whole JVM and reports the neutral
- * multiplier between tests, which is the value every other reader already sees.</p>
+ * <p>The alpha override source is registered for one case and removed again, so no other test in
+ * the JVM sees a registration this class added.</p>
  */
 class DroppedItemBailTest {
 
@@ -48,10 +51,13 @@ class DroppedItemBailTest {
             return 0xFF00FF00;
         }
     };
-
-    static {
-        ItemVertexAlphaOverrides.register(ALPHA::get);
-    }
+    /** The vanilla quad loop, so a capture through this stub writes the same vertices. */
+    private static final ItemQuadWriter QUADS = (buffer, quads, color, stack) -> {
+        final int[] colors = FastLitItemDisplayListCache.getQuadColors(COLORS, quads, color, stack);
+        for (int i = 0; i < quads.size(); i++) {
+            LightUtil.renderQuadColor(buffer, quads.get(i), colors[i]);
+        }
+    };
 
     private boolean savedEmissive;
 
@@ -71,6 +77,7 @@ class DroppedItemBailTest {
     @AfterEach
     void leaveDroppedItemScope() {
         DroppedItemInstancer.exitScope();
+        ItemVertexAlphaOverrides.clear();
         ALPHA.set(1.0F);
         ForgeModContainer.allowEmissiveItems = this.savedEmissive;
     }
@@ -109,6 +116,7 @@ class DroppedItemBailTest {
 
     @Test
     void aScaledVertexAlphaStaysVanilla() {
+        ItemVertexAlphaOverrides.register(ALPHA::get);
         ALPHA.set(0.5F);
 
         assertEquals(DroppedItemInstancer.BailReason.ALPHA_OVERRIDE, DroppedItemInstancer.check(stack(), model()));
@@ -128,13 +136,26 @@ class DroppedItemBailTest {
     }
 
     @Test
-    void anAcceptedModelReachesTheBatchScope() {
+    void anAcceptedModelReportsTheDrawItLeavesToVanilla() {
         assertNull(DroppedItemInstancer.check(stack(), model()), "the model itself has to be accepted");
         final long refused = DroppedItemInstancer.statBail(DroppedItemInstancer.BailReason.NOT_ALLOWED);
+        final long drawsBefore = GLSMDraws.drawCalls;
 
-        assertEquals(DroppedItemInstancer.RUN, DroppedItemInstancer.renderItemPart(COLORS, stack(), model()));
+        assertEquals(drawsBefore, DroppedItemInstancer.renderItemPart(QUADS, COLORS, stack(), model()),
+            "a draw left to vanilla reports the count it starts from, so the batch can expect it");
         assertEquals(refused + 1, DroppedItemInstancer.statBail(DroppedItemInstancer.BailReason.NOT_ALLOWED),
             "a closed batch is the only thing left to refuse the item");
+    }
+
+    @Test
+    void aDrawThatNeverHappensReportsNoDrawCount() {
+        DroppedItemInstancer.exitScope();
+
+        assertEquals(DroppedItemInstancer.RUN, DroppedItemInstancer.renderItemPart(QUADS, COLORS, stack(), model()),
+            "an item outside the dropped item scope is not this class's draw to account for");
+        DroppedItemInstancer.enterScope();
+        assertEquals(DroppedItemInstancer.RUN, DroppedItemInstancer.renderItemPart(QUADS, COLORS, ItemStack.EMPTY, model()),
+            "an empty stack draws nothing");
     }
 
     private static ItemStack stack() {

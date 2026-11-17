@@ -8,6 +8,7 @@ import com.gtnewhorizons.angelica.glsm.GLSMDraws;
 import com.gtnewhorizons.angelica.glsm.GLSMLighting;
 import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
 import com.gtnewhorizons.angelica.glsm.GLSMTextures;
+import com.dhj.actinium.render.FastLitItemDisplayListCache;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.GLStateManagerIntegrationFixture;
 import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
@@ -24,7 +25,10 @@ import net.minecraft.client.renderer.block.model.ItemCameraTransforms;
 import net.minecraft.client.renderer.block.model.ItemOverrideList;
 import net.minecraft.client.renderer.block.model.SimpleBakedModel;
 import net.minecraft.client.renderer.color.ItemColors;
+import net.minecraft.block.state.IBlockState;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import net.minecraft.client.renderer.vertex.VertexFormat;
 import net.minecraft.init.Bootstrap;
 import net.minecraft.init.Enchantments;
 import net.minecraft.item.Item;
@@ -55,6 +59,7 @@ import static com.gtnewhorizon.gtnhlib.client.renderer.cel.util.ModelQuadUtil.X_
 import static com.gtnewhorizon.gtnhlib.client.renderer.cel.util.ModelQuadUtil.Y_INDEX;
 import static com.gtnewhorizon.gtnhlib.client.renderer.cel.util.ModelQuadUtil.Z_INDEX;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -85,8 +90,10 @@ class DroppedItemInstancingGLTest extends GLStateManagerIntegrationFixture {
         }
     };
 
+    private static final ItemQuadWriter QUADS = writer(COLORS);
+    private static final ItemQuadWriter OTHER_QUADS = writer(OTHER_COLORS);
+
     private boolean savedBatching;
-    private boolean bracketOpen;
 
     @BeforeAll
     static void bootstrapRegistries() {
@@ -125,10 +132,7 @@ class DroppedItemInstancingGLTest extends GLStateManagerIntegrationFixture {
     void tearDown() {
         DroppedItemInstancer.endPart();
         DroppedItemInstancer.exitScope();
-        if (this.bracketOpen) {
-            BatchEligibility.end(BatchEligibility.SAFE, GLSMDraws.drawCalls);
-            this.bracketOpen = false;
-        }
+        BatchEligibility.reset();
         // The harness has no Minecraft instance, so a textured layer cannot be drawn; discarding the
         // batch keeps the queued layers from reaching a later test's flush.
         ModelPartBatcher.INSTANCE.clear();
@@ -152,7 +156,7 @@ class DroppedItemInstancingGLTest extends GLStateManagerIntegrationFixture {
         for (BakedQuad quad : model.getQuads(null, null, 0L)) {
             LightUtil.renderQuadColor(vanilla, quad, -1);
         }
-        final TemplateBuffer template = DroppedItemInstancer.template(COLORS, stack(false), model);
+        final TemplateBuffer template = DroppedItemInstancer.template(QUADS, COLORS, stack(false), model);
 
         assertEquals(vanilla.getVertexCount(), template.vertexCount, "one template vertex per vanilla vertex");
         assertEquals(GL11.GL_QUADS, template.drawMode);
@@ -169,7 +173,8 @@ class DroppedItemInstancingGLTest extends GLStateManagerIntegrationFixture {
             assertEquals((vanilla.getByteBuffer().get(at + 24) & 0xFF)
                 | (vanilla.getByteBuffer().get(at + 25) & 0xFF) << 8
                 | (vanilla.getByteBuffer().get(at + 26) & 0xFF) << 16, template.data[base + NORMAL_INDEX]);
-            assertEquals(LIGHTMAP, template.data[base + LIGHT_INDEX], "the capture keeps the frame lightmap");
+            assertEquals(LIGHTMAP, template.data[base + LIGHT_INDEX],
+                "the capture stores the frame lightmap in the slot a plain vertex draw reads");
         }
     }
 
@@ -178,8 +183,8 @@ class DroppedItemInstancingGLTest extends GLStateManagerIntegrationFixture {
         final IBakedModel model = model(quad(EnumFacing.NORTH, 0, 0xFFFFFFFF), genericQuad(-1, 0xFFFFFFFF));
 
         final long capturedBefore = DroppedItemInstancer.statCaptured();
-        final TemplateBuffer tinted = DroppedItemInstancer.template(COLORS, stack(false), model);
-        final TemplateBuffer other = DroppedItemInstancer.template(OTHER_COLORS, stack(false), model);
+        final TemplateBuffer tinted = DroppedItemInstancer.template(QUADS, COLORS, stack(false), model);
+        final TemplateBuffer other = DroppedItemInstancer.template(OTHER_QUADS, OTHER_COLORS, stack(false), model);
 
         assertNotEquals(tinted, other, "one model with two tints needs two templates");
         assertNotEquals(tinted.data[COLOR_INDEX], other.data[COLOR_INDEX],
@@ -187,7 +192,7 @@ class DroppedItemInstancingGLTest extends GLStateManagerIntegrationFixture {
         assertEquals(capturedBefore + 2, DroppedItemInstancer.statCaptured(), "one capture per tint");
 
         final long cachedBefore = DroppedItemInstancer.statCached();
-        assertEquals(tinted, DroppedItemInstancer.template(COLORS, stack(false), model),
+        assertEquals(tinted, DroppedItemInstancer.template(QUADS, COLORS, stack(false), model),
             "the second render of the same tint reuses its template");
         assertEquals(cachedBefore + 1, DroppedItemInstancer.statCached());
         assertEquals(capturedBefore + 2, DroppedItemInstancer.statCaptured(), "a hit must not capture again");
@@ -195,11 +200,11 @@ class DroppedItemInstancingGLTest extends GLStateManagerIntegrationFixture {
 
     @Test
     void theGlintQueuesBothLayersAndLeavesTheStateTheSkippedBlockWould() {
-        openBracket();
+        BatchEligibility.begin(BatchEligibility.SAFE, GLSMDraws.drawCalls);
         final long glintPasses = ModelPartBatcher.INSTANCE.statGlintPassReuses();
         final IBakedModel model = model(quad(EnumFacing.NORTH, -1, 0xFFFFFFFF), genericQuad(-1, 0xFFFFFFFF));
 
-        assertEquals(DroppedItemInstancer.SKIP, DroppedItemInstancer.renderItemPart(COLORS, stack(true), model),
+        assertEquals(DroppedItemInstancer.SKIP, DroppedItemInstancer.renderItemPart(QUADS, COLORS, stack(true), model),
             "an enchanted item is queued together with its glint");
         assertEquals(glintPasses + 1, ModelPartBatcher.INSTANCE.statGlintPassReuses());
         assertEquals(1L, DroppedItemInstancer.statInstanced(), "one instance for the base geometry");
@@ -213,33 +218,127 @@ class DroppedItemInstancingGLTest extends GLStateManagerIntegrationFixture {
     }
 
     @Test
-    void aRefusedDrawReportsItsFallbackDraws() {
+    void aFallbackFramePromotesTheRendererToSafeAndTheNextFrameIsInstanced() {
         final IBakedModel model = model(quad(EnumFacing.NORTH, -1, 0xFFFFFFFF), genericQuad(-1, 0xFFFFFFFF));
-        final long refused = DroppedItemInstancer.statBail(DroppedItemInstancer.BailReason.NOT_ALLOWED);
 
-        assertEquals(DroppedItemInstancer.RUN, DroppedItemInstancer.renderItemPart(COLORS, stack(false), model),
-            "a closed batch leaves the item to the vanilla draw");
-        assertEquals(refused + 1, DroppedItemInstancer.statBail(DroppedItemInstancer.BailReason.NOT_ALLOWED));
+        // Observation frame: nothing is trusted yet, so the item stays vanilla and has to be reported
+        // as an expected draw for the renderer to get a second frame at all.
+        final long observationDraws = GLSMDraws.drawCalls;
+        assertFalse(BatchEligibility.begin(BatchEligibility.UNKNOWN, observationDraws),
+            "an unknown renderer starts unbatched");
+        final long part = DroppedItemInstancer.renderItemPart(QUADS, COLORS, stack(false), model);
+        assertEquals(observationDraws, part, "a draw left to vanilla reports the count it starts from");
+        vanillaDraw();
         DroppedItemInstancer.endPart();
-        assertEquals(DroppedItemInstancer.RUN, DroppedItemInstancer.renderItemPart(COLORS, stack(false), model),
-            "the fallback bookkeeping must not leak into the next item");
+        assertEquals(BatchEligibility.SAFE, BatchEligibility.end(BatchEligibility.UNKNOWN, GLSMDraws.drawCalls),
+            "the fallback draw is what promotes the renderer");
+
+        // Second frame: the renderer is trusted, so the same item goes to the batch.
+        assertTrue(BatchEligibility.begin(BatchEligibility.SAFE, GLSMDraws.drawCalls));
+        assertEquals(DroppedItemInstancer.SKIP, DroppedItemInstancer.renderItemPart(QUADS, COLORS, stack(false), model),
+            "a trusted renderer has its item instanced");
+        assertEquals(BatchEligibility.SAFE, BatchEligibility.end(BatchEligibility.SAFE, GLSMDraws.drawCalls));
+    }
+
+    @Test
+    void aStableAndAnUnstableModelAreBothAccountedInTheObservationFrame() {
+        final IBakedModel stable = model(quad(EnumFacing.NORTH, -1, 0xFFFFFFFF), genericQuad(-1, 0xFFFFFFFF));
+        final IBakedModel unstable = new UnstableModel();
+
+        BatchEligibility.begin(BatchEligibility.UNKNOWN, GLSMDraws.drawCalls);
+        assertEquals(GLSMDraws.drawCalls, DroppedItemInstancer.renderItemPart(QUADS, COLORS, stack(false), stable));
+        vanillaDraw();
+        DroppedItemInstancer.endPart();
+        assertEquals(GLSMDraws.drawCalls, DroppedItemInstancer.renderItemPart(QUADS, COLORS, stack(false), unstable),
+            "the model outside the stable set stays vanilla in the observation frame too");
+        vanillaDraw();
+        DroppedItemInstancer.endPart();
+
+        assertEquals(BatchEligibility.SAFE, BatchEligibility.end(BatchEligibility.UNKNOWN, GLSMDraws.drawCalls),
+            "both draws of the frame have to be expected, or the second one reads as a foreign draw");
     }
 
     @Test
     void aStateTheBatchCannotReproduceStaysVanilla() {
-        openBracket();
+        BatchEligibility.begin(BatchEligibility.SAFE, GLSMDraws.drawCalls);
         final IBakedModel model = model(quad(EnumFacing.NORTH, -1, 0xFFFFFFFF), genericQuad(-1, 0xFFFFFFFF));
         final long refused = DroppedItemInstancer.statBail(DroppedItemInstancer.BailReason.MATERIAL);
         GLSMBlend.tryBlendFuncSeparate(GL11.GL_ONE, GL11.GL_ONE, GL11.GL_ONE, GL11.GL_ONE);
 
-        assertEquals(DroppedItemInstancer.RUN, DroppedItemInstancer.renderItemPart(COLORS, stack(false), model),
+        assertEquals(GLSMDraws.drawCalls, DroppedItemInstancer.renderItemPart(QUADS, COLORS, stack(false), model),
             "a blend the batch has no material for leaves the item to the vanilla draw");
         assertEquals(refused + 1, DroppedItemInstancer.statBail(DroppedItemInstancer.BailReason.MATERIAL));
     }
 
-    private void openBracket() {
+    @Test
+    void theQueuedInstanceIsUnderTheCentringTheVanillaDrawUses() {
         BatchEligibility.begin(BatchEligibility.SAFE, GLSMDraws.drawCalls);
-        this.bracketOpen = true;
+        final IBakedModel model = model(quad(EnumFacing.NORTH, -1, 0xFFFFFFFF), genericQuad(-1, 0xFFFFFFFF));
+        final Matrix4f before = new Matrix4f(GLSMMatrices.getModelViewMatrix());
+
+        assertEquals(DroppedItemInstancer.SKIP, DroppedItemInstancer.renderItemPart(QUADS, COLORS, stack(false), model));
+
+        assertEquals(GL11.GL_MODELVIEW, GLSMMatrices.getMatrixMode().getMode(), "the matrix mode is restored");
+        assertTrue(before.equals(GLSMMatrices.getModelViewMatrix(), 0.0F),
+            "the push, the centring translation and the pop leave the modelview stack balanced");
+    }
+
+    @Test
+    void theGlintInstanceColorKeepsTheChannelsOfTheVanillaGlintColor() {
+        final int vanilla = -8372020;
+        final int instance = DroppedItemInstancer.glintColor();
+
+        assertEquals((vanilla >>> 16) & 0xFF, instance & 0xFF, "red");
+        assertEquals((vanilla >>> 8) & 0xFF, (instance >>> 8) & 0xFF, "green");
+        assertEquals(vanilla & 0xFF, (instance >>> 16) & 0xFF, "blue");
+        assertEquals((vanilla >>> 24) & 0xFF, (instance >>> 24) & 0xFF, "alpha");
+    }
+
+    private static ItemQuadWriter writer(ItemColors colors) {
+        return (buffer, quads, color, stack) -> {
+            final int[] resolved = FastLitItemDisplayListCache.getQuadColors(colors, quads, color, stack);
+            for (int i = 0; i < quads.size(); i++) {
+                LightUtil.renderQuadColor(buffer, quads.get(i), resolved[i]);
+            }
+        };
+    }
+
+    /** The draw the vanilla renderer would have made for one item. */
+    private static void vanillaDraw() {
+        GLSMDraws.glDrawArrays(GL11.GL_QUADS, 0, 0);
+    }
+
+    /** A model whose class carries no stability guarantee. */
+    private static final class UnstableModel implements IBakedModel {
+        @Override
+        public List<BakedQuad> getQuads(IBlockState state, EnumFacing side, long rand) {
+            return Collections.emptyList();
+        }
+
+        @Override
+        public boolean isAmbientOcclusion() {
+            return false;
+        }
+
+        @Override
+        public boolean isGui3d() {
+            return true;
+        }
+
+        @Override
+        public boolean isBuiltInRenderer() {
+            return false;
+        }
+
+        @Override
+        public TextureAtlasSprite getParticleTexture() {
+            return null;
+        }
+
+        @Override
+        public ItemOverrideList getOverrides() {
+            return ItemOverrideList.NONE;
+        }
     }
 
     private static IBakedModel model(BakedQuad faceQuad, BakedQuad generalQuad) {
