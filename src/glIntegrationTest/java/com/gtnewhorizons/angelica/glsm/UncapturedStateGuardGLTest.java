@@ -32,6 +32,8 @@ class UncapturedStateGuardGLTest extends GLStateManagerIntegrationFixture {
 
     @BeforeAll
     static void enableStateCaching() {
+        WindowBackends.useSdl();
+        GLStateManager.bindDisplayContext(new Object(), context);
         installDefaultGlsmConfig();
         GLStateManager.markSplashComplete("UncapturedStateGuardGLTest");
     }
@@ -90,9 +92,15 @@ class UncapturedStateGuardGLTest extends GLStateManagerIntegrationFixture {
     @Test
     void blendFunctionIsCapturedPerDrawAndDoesNotFlush() {
         GLSMBlend.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GLSMBlend.glBlendEquation(GL14.GL_FUNC_ADD);
 
-        assertEquals(0, flushes.get(), "the batch records the blend state per draw");
+        assertEquals(0, flushes.get(), "the batch records the blend factors per draw");
+    }
+
+    @Test
+    void blendEquationFlushesTheOpenBatch() {
+        GLSMBlend.glBlendEquation(GL14.GL_FUNC_SUBTRACT);
+
+        assertEquals(1, flushes.get(), "the blend equation is not part of the captured draw state");
     }
 
     @Test
@@ -117,6 +125,33 @@ class UncapturedStateGuardGLTest extends GLStateManagerIntegrationFixture {
             assertTrue(BatchStateGuard.isBatching());
         } finally {
             BatchStateGuard.batchingAllowed = previous;
+        }
+    }
+
+    @Test
+    void textureSupersamplingFlushesOnlyWhenTheValueChanges() {
+        final int previous = GLStateManager.setTextureSupersamplingSamples(2);
+        try {
+            assertEquals(1, flushes.get(), "the FFP supersampling factor is not part of the draw state");
+            GLStateManager.setTextureSupersamplingSamples(2);
+            assertEquals(1, flushes.get(), "writing the same factor again changes nothing");
+        } finally {
+            GLStateManager.setTextureSupersamplingSamples(previous);
+        }
+    }
+
+    @Test
+    void atlasGutterMarkerFlushesOnlyWhenTheGutterChanges() {
+        final int texture = GLSMTextures.glGenTextures();
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, texture);
+        try {
+            GLStateManager.markTextureAsAtlas(texture, 1);
+            assertEquals(1, flushes.get(), "the atlas gutter feeds the fragment shader, so a batch drains first");
+            GLStateManager.markTextureAsAtlas(texture, 1);
+            assertEquals(1, flushes.get(), "the same gutter is not a change");
+        } finally {
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+            GLSMTextures.glDeleteTextures(texture);
         }
     }
 

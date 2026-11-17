@@ -270,6 +270,9 @@ public final class GLSMBlend {
             final boolean caching = isCachingEnabled();
             final boolean bypass = BYPASS_CACHE || !caching;
             if (bypass || ctx().blendState.getEquationRgb() != mode || ctx().blendState.getEquationAlpha() != mode) {
+                // The batch records the blend factors per draw but not the equation, so changing it
+                // has to drain what is already queued.
+                beforeUncapturedStateChange();
                 if (caching) {
                     mod(ctx().blendState);
                     ctx().blendState.setEquationRgb(mode);

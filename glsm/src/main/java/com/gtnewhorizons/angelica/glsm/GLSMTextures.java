@@ -953,7 +953,7 @@ public final class GLSMTextures {
     public static void glBindSampler(int unit, int sampler) {
         // Sampling state is not part of the captured draw state, so an open batch has to drain first.
         beforeUncapturedStateChange();
-        RENDER_BACKEND.bindSampler(unit, sampler);
+        RenderSystem.bindSamplerNow(unit, sampler);
     }
 
     public static void glBindSamplers(int first, IntBuffer samplers) {

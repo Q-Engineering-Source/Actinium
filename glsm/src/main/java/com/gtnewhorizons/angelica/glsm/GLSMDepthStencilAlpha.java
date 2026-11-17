@@ -361,7 +361,9 @@ public final class GLSMDepthStencilAlpha {
 
     public static void glDepthRange(double near, double far) {
         rejectExitCapture();
-        if (!isCachingEnabled() || ctx().viewportState.depthRangeNear != near || ctx().viewportState.depthRangeFar != far) beforeUncapturedStateChange();
+        if (!isCachingEnabled() || ctx().viewportState.depthRangeNear != near || ctx().viewportState.depthRangeFar != far) {
+            beforeUncapturedStateChange();
+        }
             if (isCachingEnabled()) mod(ctx().viewportState).setDepthRange(near, far);
             RENDER_BACKEND.depthRange(near, far);
         }

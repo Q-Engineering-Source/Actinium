@@ -318,14 +318,21 @@ public class GLStateManager {
         }
         final GLContextState glCtx = ctx();
         final int previous = glCtx.textureSupersamplingSamples;
-        glCtx.textureSupersamplingSamples = samples;
+        if (previous != samples) {
+            beforeUncapturedStateChange();
+            glCtx.textureSupersamplingSamples = samples;
+        }
         return previous;
     }
 
     /** Records the texel gutter of an atlas so the fragment shader can keep sampling inside a sprite. */
     public static void markTextureAsAtlas(int texture, int gutter) {
         if (texture <= 0) return;
-        TextureInfoCache.INSTANCE.getInfo(texture).setAtlasGutter(gutter);
+        final TextureInfo info = TextureInfoCache.INSTANCE.getInfo(texture);
+        if (info.getAtlasGutter() != gutter) {
+            beforeUncapturedStateChange();
+            info.setAtlasGutter(gutter);
+        }
     }
 
     public static GLContextState ctx() {
@@ -2280,7 +2287,7 @@ public class GLStateManager {
         if (glCtx.attribDepth <= 0) {
             throw new IllegalStateException("Attrib stack underflow");
         }
-        if (glCtx.attribDepth > 0 && glCtx.savedBatchStateGen[glCtx.attribDepth - 1] != glCtx.batchStateGeneration) {
+        if (glCtx.savedBatchStateGen[glCtx.attribDepth - 1] != glCtx.batchStateGeneration) {
             beforeUncapturedStateChange();
         }
         final int poppedDepth = glCtx.attribDepth;
