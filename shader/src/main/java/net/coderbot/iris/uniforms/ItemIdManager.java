@@ -13,12 +13,11 @@ public class ItemIdManager {
      */
     public static void setItemId(ItemStack itemStack) {
         if (itemStack == null || itemStack.isEmpty() || itemStack.getItem() == null) {
-            CapturedRenderingState.INSTANCE.setCurrentRenderedItem(0);
+            resetItemId();
             return;
         }
 
-        int id = ItemMaterialHelper.getMaterialId(itemStack);
-        CapturedRenderingState.INSTANCE.setCurrentRenderedItem(id);
+        CapturedRenderingState.INSTANCE.setCurrentRenderedItem(itemStack);
     }
 
     /**

@@ -1,12 +1,13 @@
 package net.coderbot.iris.layer;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.gbuffer_overrides.matching.SpecialCondition;
-import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import net.coderbot.iris.gl.shader.ProgramCreator;
 import net.coderbot.iris.gl.state.StateUpdateNotifiers;
 import net.coderbot.iris.pipeline.WorldRenderingPhase;
 import net.coderbot.iris.pipeline.WorldRenderingPipeline;
+import net.coderbot.iris.uniforms.CapturedRenderingState;
 import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
 
 public class GbufferPrograms {
@@ -14,6 +15,11 @@ public class GbufferPrograms {
 	private static boolean blockEntities;
 	private static boolean outline;
 	private static Runnable phaseChangeListener;
+	private static WorldRenderingPhase overridePhase;
+	private static Boolean declaredTranslucent;
+	private static SpecialCondition currentSpecial;
+	private static final ObjectArrayList<WorldRenderingPhase> overridePhaseStack = new ObjectArrayList<>();
+	private static final ObjectArrayList<SpecialCondition> specialConditionStack = new ObjectArrayList<>();
 	private static final PhaseOperations PHASE_OPERATIONS = new PhaseOperations() {
 		@Override
 		public OwnedPhase getOwnedPhase() {
@@ -43,6 +49,30 @@ public class GbufferPrograms {
 		@Override
 		public void endBlockEntities() {
 			GbufferPrograms.endBlockEntities();
+		}
+
+		@Override
+		public void setOverridePhase(WorldRenderingPhase phase) {
+			final WorldRenderingPipeline pipeline = Iris.getPipelineManager().getPipelineNullable();
+			if (pipeline != null) {
+				pipeline.setOverridePhase(phase);
+			}
+		}
+
+		@Override
+		public void setDeclaredTranslucency(Boolean translucent) {
+			final WorldRenderingPipeline pipeline = Iris.getPipelineManager().getPipelineNullable();
+			if (pipeline != null) {
+				pipeline.setDeclaredTranslucency(translucent);
+			}
+		}
+
+		@Override
+		public void setSpecialCondition(SpecialCondition condition) {
+			final WorldRenderingPipeline pipeline = Iris.getPipelineManager().getPipelineNullable();
+			if (pipeline != null) {
+				pipeline.setSpecialCondition(condition);
+			}
 		}
 	};
 	
@@ -191,21 +221,206 @@ public class GbufferPrograms {
 	}
 
 	public static void setOverridePhase(WorldRenderingPhase phase) {
-		final WorldRenderingPipeline pipeline = Iris.getPipelineManager().getPipelineNullable();
-
-		if (pipeline != null) {
-			pipeline.setOverridePhase(phase);
-		}
+		setOverridePhase(PHASE_OPERATIONS, phase);
 	}
 
+	static void setOverridePhase(PhaseOperations operations, WorldRenderingPhase phase) {
+		recordOverridePhase(phase);
+		applyOverridePhase(operations, phase);
+	}
+
+	/**
+	 * Returns the override phase last applied through this class, or null when none is active.
+	 */
+	public static WorldRenderingPhase getOverridePhase() {
+		return overridePhase;
+	}
+
+	public static void pushOverridePhase(WorldRenderingPhase phase) {
+		pushOverridePhase(PHASE_OPERATIONS, phase);
+	}
+
+	static void pushOverridePhase(PhaseOperations operations, WorldRenderingPhase phase) {
+		recordPhaseScope(phase, true);
+		applyPushOverridePhase(operations, phase);
+	}
+
+	private static void applyPushOverridePhase(PhaseOperations operations, WorldRenderingPhase phase) {
+		overridePhaseStack.add(overridePhase);
+		applyOverridePhase(operations, phase);
+	}
+
+	public static void popOverridePhase() {
+		popOverridePhase(PHASE_OPERATIONS);
+	}
+
+	static void popOverridePhase(PhaseOperations operations) {
+		recordPhaseScope(null, false);
+		applyPopOverridePhase(operations);
+	}
+
+	private static void applyPopOverridePhase(PhaseOperations operations) {
+		if (overridePhaseStack.isEmpty()) {
+			throw new IllegalStateException("GbufferPrograms override phase stack is empty");
+		}
+		applyOverridePhase(operations, overridePhaseStack.pop());
+	}
+
+	private static void applyOverridePhase(PhaseOperations operations, WorldRenderingPhase phase) {
+		overridePhase = phase;
+		operations.setOverridePhase(phase);
+	}
+
+	/**
+	 * Declares the translucency of the following draws, returning the previous declaration.
+	 */
+	public static Boolean beginTranslucencyDeclaration(Boolean translucent) {
+		return beginTranslucencyDeclaration(PHASE_OPERATIONS, translucent);
+	}
+
+	static Boolean beginTranslucencyDeclaration(PhaseOperations operations, Boolean translucent) {
+		recordTranslucencyScope(translucent, true);
+		final Boolean previous = declaredTranslucent;
+		applyDeclaredTranslucency(operations, translucent);
+		return previous;
+	}
+
+	public static void endTranslucencyDeclaration(Boolean previous) {
+		endTranslucencyDeclaration(PHASE_OPERATIONS, previous);
+	}
+
+	static void endTranslucencyDeclaration(PhaseOperations operations, Boolean previous) {
+		recordTranslucencyScope(null, false);
+		applyDeclaredTranslucency(operations, previous);
+	}
+
+	public static void setTranslucencyDeclaration(Boolean translucent) {
+		setTranslucencyDeclaration(PHASE_OPERATIONS, translucent);
+	}
+
+	static void setTranslucencyDeclaration(PhaseOperations operations, Boolean translucent) {
+		recordTranslucency(translucent);
+		applyDeclaredTranslucency(operations, translucent);
+	}
+
+	/**
+	 * Returns the active translucency declaration, or null when the live blend state decides.
+	 */
+	public static Boolean getDeclaredTranslucency() {
+		return declaredTranslucent;
+	}
+
+	private static void applyDeclaredTranslucency(PhaseOperations operations, Boolean translucent) {
+		declaredTranslucent = translucent;
+		operations.setDeclaredTranslucency(translucent);
+	}
+
+	/**
+	 * Returns the active special render condition, or null when no override is active.
+	 */
+	public static SpecialCondition getSpecialCondition() {
+		return currentSpecial;
+	}
+
+	/**
+	 * Pushes a special render condition, restoring the previous one on teardown.
+	 */
 	public static void setupSpecialRenderCondition(SpecialCondition override) {
-		Iris.getPipelineManager().getPipeline().ifPresent(p -> p.setSpecialCondition(override));
+		setupSpecialRenderCondition(PHASE_OPERATIONS, override);
+	}
+
+	static void setupSpecialRenderCondition(PhaseOperations operations, SpecialCondition override) {
+		recordSpecialCondition(override, true);
+		specialConditionStack.add(currentSpecial);
+		applySpecialCondition(operations, override);
 	}
 
 	public static void teardownSpecialRenderCondition() {
-		Iris.getPipelineManager().getPipeline().ifPresent(p -> p.setSpecialCondition(null));
+		teardownSpecialRenderCondition(PHASE_OPERATIONS);
 	}
-	
+
+	static void teardownSpecialRenderCondition(PhaseOperations operations) {
+		recordSpecialCondition(null, false);
+		if (specialConditionStack.isEmpty()) {
+			throw new IllegalStateException("GbufferPrograms special condition stack is empty");
+		}
+		applySpecialCondition(operations, specialConditionStack.pop());
+	}
+
+	private static void applySpecialCondition(PhaseOperations operations, SpecialCondition condition) {
+		currentSpecial = condition;
+		operations.setSpecialCondition(condition);
+	}
+
+	/**
+	 * Moves an active block-entity draw onto the entity pass and returns whether it did.
+	 */
+	public static boolean beginNestedEntityPhase() {
+		return beginNestedEntityPhase(PHASE_OPERATIONS);
+	}
+
+	static boolean beginNestedEntityPhase(PhaseOperations operations) {
+		recordNestedEntityScope(true);
+		if (operations.getPipelinePhase() != WorldRenderingPhase.BLOCK_ENTITIES) {
+			return false;
+		}
+		applyPushOverridePhase(operations, WorldRenderingPhase.ENTITIES);
+		return true;
+	}
+
+	public static void endNestedEntityPhase(boolean pushed) {
+		endNestedEntityPhase(PHASE_OPERATIONS, pushed);
+	}
+
+	static void endNestedEntityPhase(PhaseOperations operations, boolean pushed) {
+		recordNestedEntityScope(false);
+		if (pushed) {
+			applyPopOverridePhase(operations);
+		}
+	}
+
+	private static void recordOverridePhase(WorldRenderingPhase phase) {
+		final CapturedRenderingState.StateRecorder recorder = CapturedRenderingState.INSTANCE.getStateRecorder();
+		if (recorder != null) {
+			recorder.recordOverridePhase(phase);
+		}
+	}
+
+	private static void recordPhaseScope(WorldRenderingPhase phase, boolean begin) {
+		final CapturedRenderingState.StateRecorder recorder = CapturedRenderingState.INSTANCE.getStateRecorder();
+		if (recorder != null) {
+			recorder.recordPhaseScope(phase, begin);
+		}
+	}
+
+	private static void recordNestedEntityScope(boolean begin) {
+		final CapturedRenderingState.StateRecorder recorder = CapturedRenderingState.INSTANCE.getStateRecorder();
+		if (recorder != null) {
+			recorder.recordNestedEntityScope(begin);
+		}
+	}
+
+	private static void recordTranslucency(Boolean translucent) {
+		final CapturedRenderingState.StateRecorder recorder = CapturedRenderingState.INSTANCE.getStateRecorder();
+		if (recorder != null) {
+			recorder.recordTranslucency(translucent);
+		}
+	}
+
+	private static void recordTranslucencyScope(Boolean translucent, boolean begin) {
+		final CapturedRenderingState.StateRecorder recorder = CapturedRenderingState.INSTANCE.getStateRecorder();
+		if (recorder != null) {
+			recorder.recordTranslucencyScope(translucent, begin);
+		}
+	}
+
+	private static void recordSpecialCondition(SpecialCondition condition, boolean begin) {
+		final CapturedRenderingState.StateRecorder recorder = CapturedRenderingState.INSTANCE.getStateRecorder();
+		if (recorder != null) {
+			recorder.recordSpecialCondition(condition, begin);
+		}
+	}
+
 	public static void runPhaseChangeNotifier() {
 		if (phaseChangeListener != null) {
 			phaseChangeListener.run();
@@ -306,5 +521,14 @@ public class GbufferPrograms {
 
 		/** Ends the block-entity phase. */
 		void endBlockEntities();
+
+		/** Applies an override phase to the pipeline, or clears it when null. */
+		void setOverridePhase(WorldRenderingPhase phase);
+
+		/** Declares the translucency of the following draws, or hands the decision back when null. */
+		void setDeclaredTranslucency(Boolean translucent);
+
+		/** Applies a special render condition to the pipeline, or clears it when null. */
+		void setSpecialCondition(SpecialCondition condition);
 	}
 }

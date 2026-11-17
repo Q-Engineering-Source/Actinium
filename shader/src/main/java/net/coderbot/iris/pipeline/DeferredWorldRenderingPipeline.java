@@ -788,10 +788,10 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			case TERRAIN_SOLID, TERRAIN_CUTOUT, TERRAIN_CUTOUT_MIPPED:
 				return RenderCondition.TERRAIN_OPAQUE;
 			case ENTITIES:
-				return TranslucentBlendMatcher.matchesCurrentState()
+				return isTranslucentDraw()
 					? RenderCondition.ENTITIES_TRANSLUCENT : RenderCondition.ENTITIES;
 			case BLOCK_ENTITIES:
-				return TranslucentBlendMatcher.matchesCurrentState()
+				return isTranslucentDraw()
 					? RenderCondition.BLOCK_ENTITIES_TRANSLUCENT : RenderCondition.BLOCK_ENTITIES;
 			case DESTROY:
 				return RenderCondition.DESTROY;
@@ -888,6 +888,10 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	/** Re-evaluates entity translucency after vanilla changes blend state. */
 	public void onVanillaBlendChanged() {
 		if (matchingBlend || drivingProgram || refreshingPass) {
+			return;
+		}
+
+		if (declaredTranslucent != null) {
 			return;
 		}
 
@@ -2108,6 +2112,19 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	public void setSpecialCondition(SpecialCondition special) {
 		this.special = special;
 		matchPass();
+	}
+
+	@Override
+	public void setDeclaredTranslucency(@Nullable Boolean translucent) {
+		this.declaredTranslucent = translucent;
+		matchPass();
+	}
+
+	@Nullable
+	private Boolean declaredTranslucent;
+
+	private boolean isTranslucentDraw() {
+		return TranslucentBlendMatcher.resolveTranslucency(declaredTranslucent);
 	}
 
 	@Override
