@@ -4,10 +4,12 @@ import com.gtnewhorizons.angelica.rendering.RenderFailures;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormat;
 import com.gtnewhorizons.angelica.api.tesr.TesrMaterial;
 import com.gtnewhorizons.angelica.api.tesr.TesrShader;
+import com.gtnewhorizons.angelica.glsm.GLSMBlend;
 import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 import com.gtnewhorizons.angelica.glsm.hooks.TextureUtilHooks;
 import com.gtnewhorizons.angelica.rendering.tesr.DrawState;
 import com.gtnewhorizons.angelica.rendering.tesr.TesrShaderPrograms;
+import com.gtnewhorizons.angelica.rendering.tesr.VanillaEntityEffects;
 import com.gtnewhorizons.angelica.shadercompat.ShaderGlint;
 import it.unimi.dsi.fastutil.Hash;
 import it.unimi.dsi.fastutil.objects.ObjectOpenCustomHashSet;
@@ -225,6 +227,9 @@ public final class RenderLayer implements BlendingStateHolder {
         boolean hookActive = false;
         try {
             state.apply();
+            if (VanillaEntityEffects.SHADOW_TEXTURE.equals(textureId) && state.getBlend() == DrawState.TRANSLUCENT) {
+                GLSMBlend.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+            }
             if (textureId != null) {
                 GLSMTextures.enableTexture();
                 Minecraft.getMinecraft().getTextureManager().bindTexture(textureId);

@@ -4,6 +4,7 @@ import com.gtnewhorizons.angelica.config.AngelicaConfig;
 import com.gtnewhorizons.angelica.glsm.GLSMAttribStack;
 import com.gtnewhorizons.angelica.glsm.GLSMDraws;
 import com.gtnewhorizons.angelica.glsm.StateSet;
+import com.gtnewhorizons.angelica.glsm.hooks.BatchStateGuard;
 import com.gtnewhorizons.angelica.mixins.interfaces.IBatchEligibility;
 import net.minecraft.client.renderer.entity.Render;
 import net.minecraft.client.renderer.tileentity.TileEntitySpecialRenderer;
@@ -95,6 +96,29 @@ public final class TesrBrackets {
                 BatchEligibility.onStateChange(renderer, next);
             }
         }
+    }
+
+    /** Accounts for immediate draws made by a known entity model or layer. */
+    public static void expectedDraws(Runnable render) {
+        BatchEligibility.beginExpectedDraws(GLSMDraws.drawCalls);
+        try {
+            render.run();
+        } finally {
+            BatchEligibility.endExpectedDraws(GLSMDraws.drawCalls);
+        }
+    }
+
+    /** Keeps nameplate draws eligible for model batching and rejects their shadow replay. */
+    public static void renderNameplate(Runnable render) {
+        EntityShadowReplay.rejectForeignDraw();
+        expectedDraws(render);
+    }
+
+    /** Flushes entity geometry before the vanilla enderman-held block draws immediately. */
+    public static void renderImmediateEntityLayer(Runnable render) {
+        BatchStateGuard.beforeChange();
+        EntityShadowReplay.rejectForeignDraw();
+        expectedDraws(render);
     }
 
     /** Runs the shadow pass block entities through the shadow batch bracket. */

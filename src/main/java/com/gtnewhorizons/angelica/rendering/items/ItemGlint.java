@@ -76,8 +76,9 @@ public final class ItemGlint {
         final long time = GlintClock.millis();
         if (matrixTime == time) return;
         matrixTime = time;
-        first.scaling(0.125f).translate((float) (time % 3000L) / 3000.0f * 8.0f, 0, 0).rotate((float) Math.toRadians(-50), 0, 0, 1);
-        second.scaling(0.125f).translate(-(float) (time % 4873L) / 4873.0f * 8.0f, 0, 0).rotate((float) Math.toRadians(10), 0, 0, 1);
+        // RenderItem.renderEffect scales the texture matrix before translating and rotating it.
+        first.scaling(8.0f).translate((float) (time % 3000L) / 3000.0f / 8.0f, 0, 0).rotate((float) Math.toRadians(-50), 0, 0, 1);
+        second.scaling(8.0f).translate(-(float) (time % 4873L) / 4873.0f / 8.0f, 0, 0).rotate((float) Math.toRadians(10), 0, 0, 1);
     }
 
     private static boolean opaqueTexture(Minecraft mc) {

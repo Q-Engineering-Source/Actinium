@@ -7,10 +7,13 @@ import com.gtnewhorizons.angelica.config.AngelicaConfig;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.GLSMDraws;
 import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
+import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMConfig;
 import com.gtnewhorizons.angelica.rendering.SkippedGlintBlock;
 import com.gtnewhorizons.angelica.rendering.tesr.BatchEligibility;
 import com.gtnewhorizons.angelica.rendering.tesr.EntityMaterials;
+import com.gtnewhorizons.angelica.rendering.tesr.EntityShadowReplay;
 import com.gtnewhorizons.angelica.rendering.tesr.ModelPartBatcher;
 import com.gtnewhorizons.angelica.rendering.tesr.TemplateBuffer;
 import com.gtnewhorizons.angelica.rendering.tesr.TemplateCapture;
@@ -21,6 +24,7 @@ import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.block.model.IBakedModel;
+import net.minecraft.client.renderer.block.model.ItemCameraTransforms.TransformType;
 import net.minecraft.client.renderer.color.ItemColors;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.item.ItemStack;
@@ -31,26 +35,7 @@ import org.lwjgl.opengl.GL11;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Turns the render of a dropped item into an instanced draw.
- *
- * <p>1.12.2 has no equivalent of the 1.6/1.7 {@code RenderItem.renderDroppedItem} chain: the item
- * entity hands a baked model to {@code RenderItem.renderItem}, which writes the model's quads into
- * one {@code ITEM} buffer and draws it, then repeats the same geometry twice more for the
- * enchantment glint. This class replaces the three draws with one instance per item of a shared
- * template, plus the two glint layers the fixed function path renders from the same template.</p>
- *
- * <p>The template is captured by replaying the model's quads through the renderer's own
- * {@code renderQuads}, the same call the vanilla draw makes, and converting the resulting 28 byte
- * {@code ITEM} vertices to the eight int layout the batch reads. The capture stores the lightmap the
- * frame had, which is the value a template drawn as plain vertices reads; an instanced draw takes
- * its lightmap from the per-instance attribute instead. The stored value is what an item lit by
- * {@code RenderHelper.enableStandardItemLighting} keeps as its fixed brightness.</p>
- *
- * <p>Every path the batch cannot reproduce falls back to the vanilla draw: models outside the
- * stable set, non {@code ITEM} quads, built-in renderers, Forge's lit item path, a mod scaling item
- * vertex alpha, a display list recording and anything drawn outside a dropped item scope.</p>
- */
+/** Shares baked item capture between dropped items and items held by world entities. */
 public final class DroppedItemInstancer {
 
     /** The item was queued; the caller must not run the vanilla draw. */
@@ -188,6 +173,10 @@ public final class DroppedItemInstancer {
         if (scopeDepth == 0) {
             return BailReason.SCOPE;
         }
+        return checkModel(stack, model);
+    }
+
+    private static BailReason checkModel(ItemStack stack, IBakedModel model) {
         if (stack == null || stack.isEmpty() || stack.getItem() == null || model == null) {
             return BailReason.STACK;
         }
@@ -206,37 +195,41 @@ public final class DroppedItemInstancer {
         return hasItemQuads(model) ? null : BailReason.FORMAT;
     }
 
-    /**
-     * Queues the geometry of one dropped item: the base pass and, for an enchanted stack, both glint
-     * layers.
-     *
-     * <p>The whole method is cancelled when this returns {@link #SKIP}, which is what removes the
-     * vanilla draw. That also removes the only call site of {@code RenderItem.renderEffect}, so the
-     * glint has to be queued by the same call instead of from a hook of its own. An item whose
-     * glint cannot be queued is left entirely to vanilla, so the two passes never disagree about
-     * which of them runs.</p>
-     *
-     * <p>A draw left to vanilla reports the draw count it starts from, which {@link #endPart} hands
-     * to the batch as an expected draw once the vanilla call is done. Without it the batch sees a
-     * renderer that queued a part and drew something else, which is the shape it answers with
-     * {@code DENIED}.</p>
-     *
-     * @param writer the quad writer of the renderer, normally {@code RenderItem::renderQuads}
-     * @param colors the item colour table the renderer resolves tint indices through
-     * @return {@link #SKIP} when the caller must not draw, {@link #RUN} when nothing was drawn at
-     *         all, otherwise the draw count the vanilla draw starts from, to be passed to
-     *         {@link #endPart}
-     */
+    /** Returns {@link #SKIP} after queueing a dropped item or the draw count for its vanilla path. */
     public static long renderItemPart(ItemQuadWriter writer, ItemColors colors, ItemStack stack, IBakedModel model) {
+        if (scopeDepth == 0) {
+            return part = bail(BailReason.SCOPE, RUN);
+        }
+        return part = queueItem(writer, colors, stack, model, EntityMaterials.GLINT);
+    }
+
+    /** Runs after Forge applies the camera transform, with vanilla still owning the outer render state. */
+    public static void renderHeldItem(ItemQuadWriter writer, ItemColors colors, ItemStack stack, IBakedModel model,
+                                      TransformType transform, Runnable drawVanilla) {
+        if ((transform != TransformType.THIRD_PERSON_LEFT_HAND && transform != TransformType.THIRD_PERSON_RIGHT_HAND)
+            || scopeDepth != 0 || !ModelPartBatcher.INSTANCE.entitiesActive()) {
+            drawVanilla.run();
+            return;
+        }
+        final long drawnFrom = queueItem(writer, colors, stack, model, EntityMaterials.ITEM_GLINT);
+        if (drawnFrom != SKIP) {
+            try {
+                drawVanilla.run();
+            } finally {
+                reportFallback(drawnFrom);
+            }
+        }
+    }
+
+    private static long queueItem(ItemQuadWriter writer, ItemColors colors, ItemStack stack, IBakedModel model,
+                                  TesrMaterial glintMaterial) {
         final long drawsBefore = GLSMDraws.drawCalls;
-        final BailReason reason = check(stack, model);
-        if (reason == BailReason.SCOPE || reason == BailReason.STACK) {
-            return bail(reason, RUN);
-        }
+        final BailReason reason = checkModel(stack, model);
         if (reason != null) {
-            return bail(reason, drawsBefore);
+            return bail(reason, reason == BailReason.STACK ? RUN : drawsBefore);
         }
-        if (!BatchEligibility.batchingAllowed() || !ModelPartBatcher.INSTANCE.isActive()) {
+        final ModelPartBatcher batcher = ModelPartBatcher.INSTANCE;
+        if (!BatchEligibility.batchingAllowed() || !batcher.isActive()) {
             return bail(BailReason.NOT_ALLOWED, drawsBefore);
         }
         if (GLStateManager.isRecordingDisplayList()) {
@@ -247,58 +240,51 @@ public final class DroppedItemInstancer {
             return bail(BailReason.CAPTURE, drawsBefore);
         }
         final TesrMaterial material = EntityMaterials.itemFromCurrentState(true);
-        if (material == null) {
+        if (material == null || GLSMMatrices.getMatrixMode().getMode() != GL11.GL_MODELVIEW
+            || GLSMTextures.getActiveTextureUnit() != 0) {
             return bail(BailReason.MATERIAL, drawsBefore);
+        }
+        final boolean held = glintMaterial == EntityMaterials.ITEM_GLINT;
+        final boolean glint = (held || AngelicaConfig.glintWorld()) && stack.hasEffect();
+        if (glint && (!batcher.canQueueSkippedItemGlint(glintMaterial)
+            || (batcher.isShadowPass() && GLSMRasterizer.getPolygonState().getOffsetClamp() != 0)
+            || (held && (!ItemGlint.canResetStencil() || !ItemGlint.layersCoverSamePixels())))) {
+            return bail(BailReason.GLINT, drawsBefore);
         }
         final ItemMesh mesh = mesh(writer, colors, stack, model);
         if (mesh == null) {
             return bail(BailReason.GEOMETRY, drawsBefore);
         }
-        final boolean glint = AngelicaConfig.glintWorld() && stack.hasEffect();
-        if (glint && !ModelPartBatcher.INSTANCE.canQueueSkippedItemGlint(EntityMaterials.GLINT)) {
+        final TemplateBuffer glintTemplate = glint ? mesh.glintTemplate(writer, model) : null;
+        if (glint && glintTemplate == null) {
             return bail(BailReason.GLINT, drawsBefore);
         }
 
-        // The draw this replaces runs under RenderItem's own centring of the model about the origin.
         GLSMMatrices.glPushMatrix();
         try {
             GLSMMatrices.glTranslatef(-0.5F, -0.5F, -0.5F);
-            if (!ModelPartBatcher.INSTANCE.queueTemplate(mesh.base, material)) {
+            if (!batcher.queueTemplate(mesh.base, material)) {
                 return bail(BailReason.QUEUE, drawsBefore);
             }
             instanced++;
             BatchEligibility.onPartQueued();
             if (glint) {
-                queueGlint(mesh, writer, model);
+                if (batcher.queueSkippedItemGlint(glintTemplate, glintMaterial, ITEM_GLINT_COLOR)) {
+                    glintInstanced += 2;
+                    BatchEligibility.onPartQueued();
+                    BatchEligibility.onPartQueued();
+                } else if (batcher.isShadowPass()) {
+                    // Replay must redraw the entity in the main pass if it cannot attach the glint to the base.
+                    EntityShadowReplay.rejectRenderFailed();
+                } else {
+                    throw new IllegalStateException("Item glint submission failed after preflight");
+                }
+                SkippedGlintBlock.applyItemGlintExitState();
             }
         } finally {
             GLSMMatrices.glPopMatrix();
         }
-        return part = SKIP;
-    }
-
-    /**
-     * Queues both glint layers of a dropped item.
-     *
-     * <p>The layers keep the two texture matrices {@code RenderItem.renderEffect} sets around its
-     * two {@code renderModel} calls, and draw the untinted geometry with
-     * {@value #ITEM_GLINT_COLOR} as the instance colour, which is the colour the vanilla pass
-     * multiplies into every glint vertex.</p>
-     */
-    private static void queueGlint(ItemMesh mesh, ItemQuadWriter writer, IBakedModel model) {
-        final TemplateBuffer template = mesh.glintTemplate(writer, model);
-        if (template == null || !ModelPartBatcher.INSTANCE.queueSkippedItemGlint(template, EntityMaterials.GLINT, ITEM_GLINT_COLOR)) {
-            // The base is already queued, so the vanilla glint would draw before it and the depth
-            // equal test would drop it. Leaving it out keeps the item intact for this frame.
-            bails[BailReason.GLINT.ordinal()]++;
-            return;
-        }
-        glintInstanced += 2;
-        BatchEligibility.onPartQueued();
-        BatchEligibility.onPartQueued();
-        // The skipped method restores the depth mask, the depth function, lighting and the blend
-        // function before it returns; the block atlas is still bound because it never rebinds one.
-        SkippedGlintBlock.applyItemGlintExitState();
+        return SKIP;
     }
 
     /**
@@ -309,6 +295,10 @@ public final class DroppedItemInstancer {
     public static void endPart() {
         final long drawnFrom = part;
         part = RUN;
+        reportFallback(drawnFrom);
+    }
+
+    private static void reportFallback(long drawnFrom) {
         if (drawnFrom >= 0L) {
             BatchEligibility.onPartFallback(drawnFrom, GLSMDraws.drawCalls);
         }
@@ -431,7 +421,7 @@ public final class DroppedItemInstancer {
 
     private static long bail(BailReason reason, long drawsFrom) {
         bails[reason.ordinal()]++;
-        return part = drawsFrom;
+        return drawsFrom;
     }
 
     /** The meshes one model renders from: the tinted base and, once needed, the untinted glint. */

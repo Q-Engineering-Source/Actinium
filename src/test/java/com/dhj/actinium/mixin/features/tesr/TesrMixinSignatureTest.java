@@ -2,9 +2,11 @@ package com.dhj.actinium.mixin.features.tesr;
 
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 
 import java.io.IOException;
@@ -30,6 +32,8 @@ class TesrMixinSignatureTest {
     private static final String MIXIN = "Lorg/spongepowered/asm/mixin/Mixin;";
     private static final String WRAP_METHOD = "Lcom/llamalad7/mixinextras/injector/wrapmethod/WrapMethod;";
     private static final String WRAP_OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;";
+    private static final String INJECT = "Lorg/spongepowered/asm/mixin/injection/Inject;";
+    private static final String CALLBACK_INFO = "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;";
     private static final String OPERATION = "com/llamalad7/mixinextras/injector/wrapoperation/Operation";
 
     private static final String[] MIXINS = {
@@ -37,6 +41,17 @@ class TesrMixinSignatureTest {
         "com/dhj/actinium/mixin/features/tesr/MixinShadowRendererEntities",
         "com/dhj/actinium/mixin/features/tesr/MixinRenderManagerBatchEligibility",
         "com/dhj/actinium/mixin/features/tesr/MixinTileEntityRendererDispatcherTesr",
+        "com/dhj/actinium/mixin/features/iris/RenderIrisMixin",
+        "com/dhj/actinium/mixin/features/iris/RenderLivingBaseIrisMixin",
+        "com/dhj/actinium/mixin/features/tesr/MixinLayerArmorBaseGlint",
+        "com/dhj/actinium/mixin/features/tesr/MixinLayerHeldBlockBatchEligibility",
+        "com/dhj/actinium/mixin/features/tesr/MixinRenderEntityFireBatch",
+        "com/dhj/actinium/mixin/features/tesr/MixinRenderEntityShadowBatch",
+        "com/dhj/actinium/mixin/features/tesr/MixinRenderItemHeldInstancing",
+        "com/dhj/actinium/mixin/features/tesr/MixinTileEntityChestRenderer",
+        "com/dhj/actinium/mixin/features/tesr/MixinTileEntityEnderChestRenderer",
+        "com/dhj/actinium/mixin/features/tesr/MixinTileEntitySignRenderer",
+        "com/dhj/actinium/mixin/features/tesr/MixinTileEntitySkullRenderer",
     };
 
     @Test
@@ -60,28 +75,57 @@ class TesrMixinSignatureTest {
     void wrapOperationHandlersTakeTheCalledMethodParameters() throws Exception {
         for (String mixinName : MIXINS) {
             final ClassNode mixin = readClass(mixinName);
+            final ClassNode owner = readClass(targetOf(mixin));
             for (MethodNode handler : annotatedMethods(mixin, WRAP_OPERATION)) {
                 final AnnotationNode annotation = annotation(handler, WRAP_OPERATION);
                 final AnnotationNode at = (AnnotationNode) value(annotation, "at");
-                assertNotNull(at, mixinName + "." + handler.name + " has no injection point");
-                final List<String> expected = invokedParameters((String) value(at, "target"));
+                final String label = mixinName + "." + handler.name;
+                assertNotNull(at, label + " has no injection point");
+                final String target = (String) value(at, "target");
+                final String method = first(value(annotation, "method"));
+                final MethodNode body = resolveTarget(owner, method);
+                assertNotNull(body, label + " targets a missing method " + method);
+                final List<MethodInsnNode> calls = new ArrayList<>();
+                for (var instruction : body.instructions) {
+                    if (instruction instanceof MethodInsnNode call && target.equals("L" + call.owner + ";" + call.name + call.desc)) {
+                        calls.add(call);
+                    }
+                }
+                final Object ordinal = value(at, "ordinal");
+                final int index = ordinal instanceof Integer number && number >= 0 ? number : 0;
+                assertTrue(index < calls.size(), label + " cannot find " + target + " in " + method);
+                final MethodInsnNode call = calls.get(index);
+                final List<String> expected = parameterTypes(call.desc);
+                if (call.getOpcode() != Opcodes.INVOKESTATIC) {
+                    expected.addFirst("L" + call.owner + ";");
+                }
                 assertEquals(expected, handlerParameterTypes(handler.desc),
-                    mixinName + "." + handler.name + " must take the called method's receiver and parameters");
+                    label + " must take the called method's receiver and parameters before the Operation");
             }
         }
     }
 
-    private static List<String> invokedParameters(String target) {
-        final int semicolon = target.indexOf(';');
-        final int paren = target.indexOf('(');
-        final int close = target.indexOf(')');
-        assertTrue(semicolon > 0 && paren > semicolon && close > paren, "unparsable injection point " + target);
-        final List<String> parameters = new ArrayList<>();
-        parameters.add(target.substring(0, semicolon + 1));
-        for (Type argument : Type.getArgumentTypes(target.substring(paren, close + 1))) {
-            parameters.add(argument.getDescriptor());
+    @Test
+    void injectHandlersMatchTargetParametersAndStaticness() throws Exception {
+        for (String mixinName : MIXINS) {
+            final ClassNode mixin = readClass(mixinName);
+            final ClassNode target = readClass(targetOf(mixin));
+            for (MethodNode handler : annotatedMethods(mixin, INJECT)) {
+                final AnnotationNode annotation = annotation(handler, INJECT);
+                final MethodNode targetMethod = resolveTarget(target, first(value(annotation, "method")));
+                final String label = mixinName + "." + handler.name;
+                assertNotNull(targetMethod, label + " targets a missing method");
+                final List<String> parameters = parameterTypes(targetMethod.desc);
+                final int callback = parameters.size();
+                assertTrue(callback < Type.getArgumentTypes(handler.desc).length, label + " has no callback parameter");
+                assertEquals(CALLBACK_INFO, Type.getArgumentTypes(handler.desc)[callback].getDescriptor(),
+                    label + " must take CallbackInfo immediately after the target parameters");
+                assertEquals(parameters, handlerParameterTypes(handler.desc, callback),
+                    label + " must take the target method's parameters before CallbackInfo");
+                assertEquals((targetMethod.access & Opcodes.ACC_STATIC) != 0, (handler.access & Opcodes.ACC_STATIC) != 0,
+                    label + " must match the target method's staticness");
+            }
         }
-        return parameters;
     }
 
     private static MethodNode resolveTarget(ClassNode target, String method) {
@@ -99,15 +143,20 @@ class TesrMixinSignatureTest {
         return null;
     }
 
-    /** The handler parameters without the trailing {@code Operation}. */
+    /** The handler parameters before {@code Operation} and any captured locals. */
     private static List<String> handlerParameterTypes(String descriptor) {
         final List<String> parameters = new ArrayList<>();
         for (Type argument : Type.getArgumentTypes(descriptor)) {
             parameters.add(argument.getDescriptor());
         }
-        assertTrue(!parameters.isEmpty() && parameters.get(parameters.size() - 1).equals("L" + OPERATION + ";"),
-            "the handler has to end with the Operation parameter");
-        return parameters.subList(0, parameters.size() - 1);
+        final int operationIndex = parameters.indexOf("L" + OPERATION + ";");
+        assertTrue(operationIndex >= 0, "the handler must take an Operation parameter");
+        return parameters.subList(0, operationIndex);
+    }
+
+    private static List<String> handlerParameterTypes(String descriptor, int count) {
+        final List<String> parameters = parameterTypes(descriptor);
+        return parameters.subList(0, count);
     }
 
     private static List<String> parameterTypes(String descriptor) {

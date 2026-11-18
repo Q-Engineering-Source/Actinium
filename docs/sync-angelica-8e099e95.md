@@ -559,3 +559,27 @@ TESR 批处理的引入顺序按依赖链固定下来，每一步只需新增文
 - 用户在 otl 同一存档中对狼、猪、牛、羊及掉落物完成实机验证，确认崩溃消失且画面正常。
 - 本次 otl 日志中的 `parts`、`draws`、`instances`、`cubes` 仍为 `0`，实体实例化没有实际执行。当前性能对比不能归因于实体实例化收益，后续需继续分析 `MIXED_RENDERER` 与 `TEXTURE` 拒绝原因。
 - 全量 GL 任务仍只有两个既有 viewport 基线失败，均为 `expected 64 but was 854`，与本次改动无关。
+
+### 第 15 项运行时入口补齐与 probe06 实测（2026-11-19）
+
+重新对照 Angelica `8e099e95` 后，修复了实例化实现已存在但宿主入口没有接线的部分：
+
+- `TextureManager.bindTexture` 接入纹理身份跟踪；`GLSMHooks.TEXTURE_DELETE` 通知 `EntityTextureAtlas` 释放已删除源纹理对应的 atlas 槽位。
+- `Render.renderShadow` 与 `renderEntityOnFire` 的原版顶点流接入实体批次；保持原版立即绘制条件，并在阴影/火焰材质切换时提交前一层，保留绘制顺序。Iris 阴影 pass 不生成原版投影阴影时，回放记录会拒绝该实体，主视图改走原版绘制。
+- 主模型与名称标签的即时 draw 接入 `BatchEligibility` 计数；名称标签仍会拒绝阴影 replay，避免回放出主视图文字。
+- 1.12.2 的 `LayerHeldBlock` 直接调用 `BlockRendererDispatcher`，绕过 `RenderItem` baked-model 入口。该层执行前先提交已排队实体几何，将即时方块 draw 计入预期绘制，并拒绝不完整的阴影 replay。
+- 原版箱子、末影箱、告示牌与头颅改走 `VanillaModelMeshes` 缓存网格。破坏阶段继续执行原版路径；告示牌在文字绘制前提交木牌；玩家头颅同时缓存外层皮肤几何并保留半透明材质。
+- `LayerArmorBase` 护甲本体、两层附魔光效，以及第三人称手持物品与光效接入批处理；第一人称、GUI、非活动实体批次及不支持的 GL 状态保留原版路径。世界光效开关只控制世界中的光效。
+- 上游 `BossStatus`/`IBossDisplayData` replay hook 不移植：它们不在 1.12.2 API 中；该版本用服务端 `BossInfo` 经 `SPacketUpdateBossInfo` 更新客户端 `GuiBossOverlay`，Boss 血条不由实体渲染方法写入全局状态。
+- 扩展 `TesrMixinSignatureTest`，从 1.12.2 目标方法字节码核对 Mixin 调用点、ordinal 与 handler 参数，并覆盖新增宿主 mixin。
+
+验证记录：
+
+- `e7e7d329` 提交了 `MixinTextureManager` 纹理跟踪与实例化 FFP overlay varying 声明；overlay 变体真实 GL 编译/链接回归通过。
+- 2026-11-18 用户在 otl 场景运行 `probe06`，记录到 `draws=138124`、`cubes=4934592`、`parts=4789407`、`texture=0`、`atlasResidents=5`、`atlasPages=1`，证明 CUBE 实例化与纹理识别路径已执行。没有普通 TEMPLATE 实例计数；末影人/骷髅仍存在单独的拒绝原因。
+- `probe06` 的 CPU 帧耗时比关闭批处理的样本低，但场景和实体数量没有固定，该差异只记作性能信号，不作为收益结论。三个 Cleanroom、otl、Forge 实例已部署相同 SHA-256 `2fac553a63b10fc3d4b62f37604058a14a92e561a4dad95f2d4bad3c3946a96b` 的诊断包。
+- 2026-11-19：`./gradlew check --no-daemon` 通过，包含 1584 个测试、5 个跳过、分发 Jar/remap 与模块边界检查；新增的 TESR Mixin 参数及注入配置测试通过。定向 `glIntegrationTest` 中 `DroppedItemInstancingGLTest` 10 项与 `FfpInstancingGLTest` 1 项全部通过。
+- 末影人手持方块路径已在 `LayerHeldBlock` 入口刷新前序实体批次，并把原版即时方块绘制计入预期 draw；骷髅持物走第三人称手持物品实例化入口。新增 `MixinLayerHeldBlockBatchEligibility` 的目标签名与 mixin 配置由完整检查验证。
+- 客户端画面仍需验证箱子动画、告示牌文字、头颅皮肤、护甲光效、第三人称手持物品、末影人手持方块、实体脚下阴影及着火效果，覆盖无光影与目标光影包。此轮没有启动 `runClient`。
+
+代码落地状态更新为“本地自动验证通过，等待新增原版路径实机确认”。第三方 mod 专用入口不属于本项验收范围。

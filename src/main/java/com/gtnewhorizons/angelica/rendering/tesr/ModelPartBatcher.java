@@ -2,9 +2,11 @@ package com.gtnewhorizons.angelica.rendering.tesr;
 
 import com.gtnewhorizon.gtnhlib.client.renderer.MatrixHelper;
 import com.gtnewhorizon.gtnhlib.client.renderer.RuntimeOptionsBridge;
+import com.gtnewhorizon.gtnhlib.client.renderer.TessellatorManager;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.DefaultVertexFormat;
 import com.gtnewhorizons.angelica.api.tesr.ModelPartMeshBuilder;
 import com.gtnewhorizons.angelica.api.tesr.TesrMaterial;
+import com.gtnewhorizons.angelica.client.rendering.DeferredDrawBatcher;
 import com.gtnewhorizons.angelica.compat.mojang.RenderLayer;
 import com.gtnewhorizons.angelica.config.AngelicaConfig;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager;
@@ -58,9 +60,8 @@ import com.gtnewhorizon.gtnhlib.client.renderer.DirectTessellator;
 import com.gtnewhorizons.angelica.glsm.ITessellatorData;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.Tessellator;
-import net.minecraft.entity.Entity;
+import net.minecraft.client.renderer.texture.ITextureObject;
 import net.minecraft.util.ResourceLocation;
-import net.minecraft.world.World;
 import net.minecraftforge.client.MinecraftForgeClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -106,7 +107,6 @@ public final class ModelPartBatcher {
 
     private final AngelicaBufferSource bufferSource = new AngelicaBufferSource();
     private final AngelicaBufferSource entitySource = new AngelicaBufferSource();
-    private final EntityShadowBatcher shadows = new EntityShadowBatcher();
     private final RetainedTesrGroups groups = new RetainedTesrGroups(bufferSource);
     private final RetainedTesrGroups entityGroups = new RetainedTesrGroups(entitySource);
     private final RetainedTesrGroups shadowGroups = new RetainedTesrGroups(bufferSource);
@@ -132,7 +132,10 @@ public final class ModelPartBatcher {
     private boolean texCaptured;
     private boolean texIdentity;
     private boolean active;
-    private int entityFireDepth;
+    private final BoundTexture entityEffectCallerTexture = new BoundTexture();
+    private RenderLayer pendingEntityEffect;
+    private long shadowQuads;
+    private long shadowBatches;
     private Mode mode = Mode.BLOCK_ENTITIES;
     private boolean instancedThisCycle;
     private DeferredWorldRenderingPipeline shaderPipeline;
@@ -166,8 +169,8 @@ public final class ModelPartBatcher {
         return sum;
     }
     public long statBail(BailReason reason) { return bails[reason.ordinal()]; }
-    public long statShadowQuads() { return shadows.statQuads(); }
-    public long statShadowDraws() { return shadows.statDraws(); }
+    public long statShadowQuads() { return shadowQuads; }
+    public long statShadowDraws() { return shadowBatches; }
 
     private void bail(BailReason reason) {
         bails[reason.ordinal()]++;
@@ -345,6 +348,7 @@ public final class ModelPartBatcher {
     private void flushNow(boolean allowHold) {
         if (!active) return;
         active = false;
+        pendingEntityEffect = null;
         final boolean hold = allowHold && mode == Mode.ENTITIES && !shadow && MinecraftForgeClient.getRenderPass() == 0
             && shaderPipeline != null && shaderPipeline.shouldSeparateEntityDraws();
         if (shadow) {
@@ -355,7 +359,6 @@ public final class ModelPartBatcher {
             if (wrapEntities) GbufferPrograms.beginEntities();
             else if (inEntityLoop) GbufferPrograms.onEntityRenderBoundary();
             try {
-                shadows.flush(activeSource);
                 drawBatches(hold);
             } finally {
                 if (wrapEntities) GbufferPrograms.endEntities();
@@ -437,7 +440,7 @@ public final class ModelPartBatcher {
     }
 
     boolean hasQueuedGeometry() {
-        return active && (activeSource.hasPendingLayers() || shadows.hasPendingGeometry());
+        return active && activeSource.hasPendingLayers();
     }
 
     public boolean beginGlintCapture(GlintCapture capture) {
@@ -668,10 +671,6 @@ public final class ModelPartBatcher {
         return active && shadow && mode == Mode.ENTITIES && activeGroups == groups;
     }
 
-    public static boolean recordShadow(World world, Entity entity, double x, double y, double z, float shadowAlpha, float partialTicks, float shadowSize) {
-        return INSTANCE.shadows.record(world, entity, x, y, z, shadowAlpha, partialTicks, shadowSize);
-    }
-
     public static boolean partDraw(ModelRenderer part, float scale, ModelPartMeshBuilder builder) {
         final ModelPartBatcher r = INSTANCE;
         if (!r.active) {
@@ -862,6 +861,8 @@ public final class ModelPartBatcher {
 
     void replay(EntityRenderCommands.Stream entry) {
         final RenderLayer layer = replayLayer(entry, null);
+        orderEntityEffect(layer);
+        pendingEntityEffect = layer;
         replayTransform.mul(entry.modelView, replayView);
         final CapturedRenderingState state = CapturedRenderingState.INSTANCE;
         state.pushEntityState();
@@ -880,11 +881,7 @@ public final class ModelPartBatcher {
     public static int drawTessellator(ITessellatorData tess) {
         switch (INSTANCE.routeTessellatorDraw(tess)) {
             case QUEUE -> {
-                tess.setDrawing(false);
-                final int result = tess.getRawBufferIndex() * 4;
-                TessellatorEntityIds.onReset(tess);
-                tess.angelica$reset();
-                return result;
+                return consumeTessellator(tess);
             }
             case DRAW_NOW_EXPECTED -> {
                 BatchEligibility.beginExpectedDraws(GLSMDraws.drawCalls);
@@ -900,38 +897,116 @@ public final class ModelPartBatcher {
         }
     }
 
-    public void beginEntityFire() { entityFireDepth++; }
-    public void endEntityFire() { entityFireDepth--; }
+    private static int consumeTessellator(ITessellatorData tess) {
+        final int bytes = tess.getRawBufferIndex() * Integer.BYTES;
+        tess.setDrawing(false);
+        TessellatorEntityIds.onReset(tess);
+        tess.angelica$reset();
+        return bytes;
+    }
+
+    /** Transfers the vertices emitted by the vanilla shadow or fire renderer into the entity batch. */
+    public boolean queueEntityEffect(ITessellatorData tess, ResourceLocation texture, boolean fire) {
+        if (!entitiesActive() || !GLStateManager.isMainThread() || (!fire && shadow)
+            || DisplayListManager.isRecording() || DeferredDrawBatcher.isActive()
+            || TessellatorManager.shouldInterceptBufferBuilderDraw()) return false;
+        final int vertexCount = tess.getVertexCount();
+        RenderLayer layer = entityEffectLayer(tess, texture, fire);
+        if (layer == null) {
+            if (vertexCount != 0 && pendingEntityEffect != null) flushEntityEffects();
+            return false;
+        }
+
+        if (orderEntityEffect(layer)) {
+            layer = entityEffectLayer(tess, texture, fire);
+            if (layer == null) return false;
+        }
+        if (!fire) {
+            shadowQuads += vertexCount / 4;
+            if (pendingEntityEffect == null) shadowBatches++;
+        }
+        if (!shadow) pendingEntityEffect = layer;
+        // The Iris flame ID is still active at the vanilla draw call, including in the shadow pass.
+        final EntityRenderCommands.DrawInputs inputs = drawInputs;
+        TessellatorStreamingDrawer.fillMissingAttributes(tess);
+        activeGroups.streamAndRecord(layer, tessellatorGroupId(inputs.pass), tess.getRawBuffer(), vertexCount, currentModelView(), inputs);
+        consumeTessellator(tess);
+        return true;
+    }
+
+    private RenderLayer entityEffectLayer(ITessellatorData tess, ResourceLocation texture, boolean fire) {
+        if (!canStreamTessellator(tess) || !BatchDrawDefaults.drawsToPassFramebuffer()
+            || GLSMTextures.getActiveTextureUnit() != 0 || GLSMRasterizer.getPolygonState().getOffsetClamp() != 0) return null;
+        final ITextureObject boundTexture = Minecraft.getMinecraft().getTextureManager().getTexture(texture);
+        final int textureId = GLSMTextures.getBoundTextureForServerState(0);
+        if (boundTexture == null || boundTexture.getGlTextureId() != textureId) return null;
+        final TesrMaterial material = VanillaEntityEffects.material(fire);
+        if (material == null) return null;
+
+        final EntityRenderCommands.DrawInputs inputs = tessellatorInputs(texture, textureId, material);
+        return layerFor(texture, inputs);
+    }
+
+    private boolean orderEntityEffect(RenderLayer layer) {
+        // The buffer source submits opaque layers before translucent layers.
+        if (pendingEntityEffect == null || pendingEntityEffect == layer) return false;
+        flushEntityEffects();
+        return true;
+    }
+
+    private void flushEntityEffects() {
+        final int matrixMode = GLSMMatrices.getMatrixMode().getMode();
+        entityEffectCallerTexture.capture();
+        BatchStateGuard.suspend();
+        try {
+            GLSMMatrices.glMatrixMode(GL11.GL_MODELVIEW);
+            flushForStateChange();
+        } finally {
+            try {
+                GLSMMatrices.glMatrixMode(matrixMode);
+                entityEffectCallerTexture.apply();
+            } finally {
+                BatchStateGuard.resume();
+            }
+        }
+    }
 
     private TessellatorRoute routeTessellatorDraw(ITessellatorData tess) {
-        if (!active || !GLStateManager.isMainThread()) return TessellatorRoute.DRAW_NOW;
-        final boolean entityFire = entityFireDepth != 0 && mode == Mode.ENTITIES;
-        if (!entityFire && (mode != Mode.BLOCK_ENTITIES || !BatchEligibility.insideRenderer())) return TessellatorRoute.DRAW_NOW;
-        final int vertexCount = tess.getVertexCount();
-        if (!tess.isDrawing() || tess.getDrawMode() != GL11.GL_QUADS || vertexCount == 0 || (vertexCount & 3) != 0) return TessellatorRoute.DRAW_NOW;
-        if (shaderPipeline != null && TessellatorEntityIds.hasIdChanges(tess)) return TessellatorRoute.DRAW_NOW;
-        if (DisplayListManager.isRecording() || !GLSMDepthStencilAlpha.getDepthTest().isEnabled() || !unitTexIdentity()) return TessellatorRoute.DRAW_NOW;
-        if (!passProgramBound()) return TessellatorRoute.DRAW_NOW;
+        if (!active || !GLStateManager.isMainThread() || mode != Mode.BLOCK_ENTITIES || !BatchEligibility.insideRenderer()) {
+            return TessellatorRoute.DRAW_NOW;
+        }
+        if (!canStreamTessellator(tess)) return TessellatorRoute.DRAW_NOW;
         final TesrMaterial material = EntityMaterials.fromCurrentState(true);
         if (material == null || material == EntityMaterials.OVERLAY) return TessellatorRoute.DRAW_NOW;
         if (lastBoundLocation == null || GLSMTextures.getBoundTextureForServerState() != lastBoundGlId) return TessellatorRoute.DRAW_NOW;
-        if (!entityFire && !BatchEligibility.batchingAllowed()) return TessellatorRoute.DRAW_NOW_EXPECTED;
+        if (!BatchEligibility.batchingAllowed()) return TessellatorRoute.DRAW_NOW_EXPECTED;
 
+        final EntityRenderCommands.DrawInputs inputs = tessellatorInputs(lastBoundLocation, lastBoundGlId, material);
+        final RenderLayer layer = layerFor(lastBoundLocation, inputs);
+        TessellatorStreamingDrawer.fillMissingAttributes(tess);
+        activeGroups.streamVertices(layer, tessellatorGroupId(inputs.pass), tess.getRawBuffer(), tess.getVertexCount(), currentModelView());
+        return TessellatorRoute.QUEUE;
+    }
+
+    private boolean canStreamTessellator(ITessellatorData tess) {
+        final int count = tess.getVertexCount();
+        return tess.isDrawing() && tess.getDrawMode() == GL11.GL_QUADS && count > 0 && (count & 3) == 0
+            && (shaderPipeline == null || !TessellatorEntityIds.hasIdChanges(tess))
+            && !DisplayListManager.isRecording() && GLSMDepthStencilAlpha.getDepthTest().isEnabled()
+            && unitTexIdentity() && passProgramBound();
+    }
+
+    private EntityRenderCommands.DrawInputs tessellatorInputs(ResourceLocation texture, int textureId, TesrMaterial material) {
         GLStateManager.requireExitDrawState(false);
         final PassOverride pass = shaderPipeline != null ? PassOverride.capture() : PassOverride.NONE;
-        final EntityRenderCommands.DrawInputs inputs = liveInputs(lastBoundLocation, lastBoundGlId, material, pass, ShaderGlint.NO_TINT,
-            DrawState.liveCull(material), DrawState.liveLit(material), DrawState.liveLightmap(), false);
-        final RenderLayer layer = layerFor(lastBoundLocation, inputs);
-        // Flames carry entity_flame, which some packs may voxelize as a light source in the shadow pass
-        final int groupId = groupId(shaderPipeline != null, mode == Mode.ENTITIES || pass.isEntityPhase(), CapturedRenderingState.INSTANCE.getCurrentRenderedEntity(), CapturedRenderingState.INSTANCE.getCurrentRenderedBlockEntity());
-        TessellatorStreamingDrawer.fillMissingAttributes(tess);
-        final Matrix4f modelView = currentModelView();
-        if (entityFire) {
-            activeGroups.streamAndRecord(layer, groupId, tess.getRawBuffer(), vertexCount, modelView, inputs);
-        } else {
-            activeGroups.streamVertices(layer, groupId, tess.getRawBuffer(), vertexCount, modelView);
-        }
-        return TessellatorRoute.QUEUE;
+        return liveInputs(texture, textureId, material, pass, ShaderGlint.NO_TINT, DrawState.liveCull(material),
+            DrawState.liveLit(material), DrawState.liveLightmap(), false);
+    }
+
+    private int tessellatorGroupId(PassOverride pass) {
+        final CapturedRenderingState state = CapturedRenderingState.INSTANCE;
+        return groupId(shaderPipeline != null, mode == Mode.ENTITIES || pass.isEntityPhase(),
+            state.getCurrentRenderedEntity(), state.getCurrentRenderedBlockEntity());
     }
 
     private final ReferenceOpenHashSet<Class<?>> loggedMaterialBails = new ReferenceOpenHashSet<>();
@@ -1067,8 +1142,7 @@ public final class ModelPartBatcher {
 
     public void clear() {
         if (AngelicaConfig.entityShadowReplayEnabled()) EntityShadowReplay.clear();
-        entityFireDepth = 0;
-        shadows.reset();
+        pendingEntityEffect = null;
         for (RetainedTesrGroups group : allGroups) group.clear();
         templates.clear();
         entitySource.discard();

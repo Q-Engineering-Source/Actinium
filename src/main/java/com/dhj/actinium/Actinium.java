@@ -21,6 +21,7 @@ import com.dhj.actinium.startup.SdlGpuBootstrap;
 import com.gtnewhorizons.angelica.proxy.ClientProxy;
 import com.gtnewhorizons.angelica.config.AngelicaConfig;
 import com.gtnewhorizons.angelica.rendering.tesr.AngelicaTesrMeshCache;
+import com.gtnewhorizons.angelica.rendering.tesr.EntityTextureAtlas;
 import com.gtnewhorizons.angelica.rendering.tesr.TesrLifecycle;
 import com.gtnewhorizon.gtnhlib.compat.Mods;
 import net.coderbot.iris.celeritas.WorldRendererCompatBridge;
@@ -201,8 +202,7 @@ public class Actinium {
 
         ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
                 .registerReloadListener(resourceManager -> MissingModelCompat.onResourceManagerReload());
-        // A resource reload invalidates every stitched texture, so cached TESR meshes and the entity
-        // atlas pages built from them have to be dropped before the new textures are stitched.
+        GLSMHooks.TEXTURE_DELETE.addListener(deletion -> EntityTextureAtlas.INSTANCE.onTextureDeleted(deletion.textureId));
         ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
                 .registerReloadListener(resourceManager -> TesrLifecycle.reset());
         MinecraftForge.EVENT_BUS.register(new AngelicaTesrMeshCache.ReloadListener());

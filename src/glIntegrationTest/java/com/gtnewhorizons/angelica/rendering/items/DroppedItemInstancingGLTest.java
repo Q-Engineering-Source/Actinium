@@ -22,6 +22,7 @@ import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.block.model.IBakedModel;
 import net.minecraft.client.renderer.block.model.ItemCameraTransforms;
+import net.minecraft.client.renderer.block.model.ItemCameraTransforms.TransformType;
 import net.minecraft.client.renderer.block.model.ItemOverrideList;
 import net.minecraft.client.renderer.block.model.SimpleBakedModel;
 import net.minecraft.client.renderer.color.ItemColors;
@@ -48,6 +49,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.gtnewhorizon.gtnhlib.client.renderer.cel.util.ModelQuadUtil.COLOR_INDEX;
 import static com.gtnewhorizon.gtnhlib.client.renderer.cel.util.ModelQuadUtil.LIGHT_INDEX;
@@ -233,6 +235,32 @@ class DroppedItemInstancingGLTest extends GLStateManagerIntegrationFixture {
             "disabling glint must not remove the base item");
         assertEquals(baseBefore + 1, DroppedItemInstancer.statInstanced(), "the base geometry is still instanced");
         assertEquals(glintBefore, DroppedItemInstancer.statGlintInstanced(), "no glint layer may be queued while world glint is off");
+    }
+
+    @Test
+    void onlyThirdPersonHeldItemsWithDepthWritesEnterTheEntityBatch() {
+        DroppedItemInstancer.exitScope();
+        final ItemStack stack = stack(false);
+        final IBakedModel model = model(quad(EnumFacing.NORTH, -1, 0xFFFFFFFF), genericQuad(-1, 0xFFFFFFFF));
+        final AtomicInteger immediateDraws = new AtomicInteger();
+        final long baseBefore = DroppedItemInstancer.statInstanced();
+        BatchEligibility.begin(BatchEligibility.SAFE, GLSMDraws.drawCalls);
+        try {
+            DroppedItemInstancer.renderHeldItem(QUADS, COLORS, stack, model, TransformType.THIRD_PERSON_RIGHT_HAND, immediateDraws::incrementAndGet);
+            DroppedItemInstancer.renderHeldItem(QUADS, COLORS, stack, model, TransformType.THIRD_PERSON_LEFT_HAND, immediateDraws::incrementAndGet);
+            assertEquals(baseBefore + 2, DroppedItemInstancer.statInstanced());
+            assertEquals(0, immediateDraws.get());
+
+            DroppedItemInstancer.renderHeldItem(QUADS, COLORS, stack, model, TransformType.FIRST_PERSON_RIGHT_HAND, immediateDraws::incrementAndGet);
+            DroppedItemInstancer.renderHeldItem(QUADS, COLORS, stack, model, TransformType.GUI, immediateDraws::incrementAndGet);
+            GLSMDepthStencilAlpha.glDepthMask(false);
+            DroppedItemInstancer.renderHeldItem(QUADS, COLORS, stack, model, TransformType.THIRD_PERSON_RIGHT_HAND, immediateDraws::incrementAndGet);
+            assertEquals(baseBefore + 2, DroppedItemInstancer.statInstanced());
+            assertEquals(3, immediateDraws.get());
+        } finally {
+            GLSMDepthStencilAlpha.glDepthMask(true);
+            BatchEligibility.end(BatchEligibility.SAFE, GLSMDraws.drawCalls);
+        }
     }
 
     @Test

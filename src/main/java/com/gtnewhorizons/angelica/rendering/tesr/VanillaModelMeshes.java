@@ -1,14 +1,18 @@
 package com.gtnewhorizons.angelica.rendering.tesr;
 
 import com.gtnewhorizon.gtnhlib.client.renderer.DirectTessellator;
+import com.gtnewhorizon.gtnhlib.client.renderer.RuntimeOptionsBridge;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.DefaultVertexFormat;
 import com.gtnewhorizons.angelica.api.tesr.TesrMaterial;
 import com.gtnewhorizons.angelica.api.tesr.TesrMeshBuilder;
 import com.gtnewhorizons.angelica.api.tesr.TesrMeshSink;
 import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.hooks.BatchStateGuard;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.client.model.ModelChest;
+import net.minecraft.client.model.ModelHumanoidHead;
 import net.minecraft.client.model.ModelRenderer;
 import net.minecraft.client.model.ModelSign;
 import net.minecraft.client.model.ModelSkeletonHead;
@@ -20,9 +24,8 @@ import java.util.Map;
 public final class VanillaModelMeshes {
 
     private static final float MODEL_SCALE = 0.0625f;
-    private static final float LID_CLOSED_EPS = 1.0e-4f;
-    private static final TesrMaterial WHITE = TesrMaterial.builder().color(1f, 1f, 1f, 1f).build();
-    private static final ResourceLocation SIGN_TEXTURE = new ResourceLocation("textures/entity/sign.png");
+    private static final TesrMaterial SKULL_MATERIAL = TesrMaterial.builder().cutout(0.1f).build();
+    private static final TesrMaterial PLAYER_SKULL_MATERIAL = TesrMaterial.builder().cutout(0.1f).translucent().build();
 
     private static final class ChestKeys {
         final Object closed = new Object();
@@ -42,10 +45,15 @@ public final class VanillaModelMeshes {
 
     private VanillaModelMeshes() {}
 
+    public static boolean canRenderCached() {
+        return RuntimeOptionsBridge.allowDirectMemoryAccess() && !GLStateManager.isRecordingDisplayList();
+    }
+
     public static void renderChest(ModelChest model, ResourceLocation texture, boolean isDouble) {
         final float lidAngle = model.chestLid.rotateAngleX;
+        model.chestKnob.rotateAngleX = lidAngle;
         final ChestKeys keys = chestKeys(texture, isDouble);
-        if (Math.abs(lidAngle) <= LID_CLOSED_EPS) {
+        if (lidAngle == 0.0f) {
             BUILDER.set(texture, MODEL_SCALE, model.chestLid, model.chestKnob, model.chestBelow);
             AngelicaTesrMeshCache.INSTANCE.renderCached(keys.closed, BUILDER);
             return;
@@ -68,45 +76,58 @@ public final class VanillaModelMeshes {
 
     private static void renderRotatedPart(Object key, ResourceLocation texture, ModelRenderer part, float angleX) {
         GLSMMatrices.glPushMatrix();
-        GLSMMatrices.glTranslatef(part.offsetX + part.rotationPointX * MODEL_SCALE, part.offsetY + part.rotationPointY * MODEL_SCALE, part.offsetZ + part.rotationPointZ * MODEL_SCALE);
-        GLSMMatrices.glRotatef(angleX * (180f / (float) Math.PI), 1.0f, 0.0f, 0.0f);
-        BUILDER.setLocal(texture, MODEL_SCALE, part);
-        AngelicaTesrMeshCache.INSTANCE.renderCached(key, BUILDER);
-        GLSMMatrices.glPopMatrix();
+        try {
+            GLSMMatrices.glTranslatef(part.offsetX + part.rotationPointX * MODEL_SCALE,
+                part.offsetY + part.rotationPointY * MODEL_SCALE, part.offsetZ + part.rotationPointZ * MODEL_SCALE);
+            GLSMMatrices.glRotatef(angleX * (180f / (float) Math.PI), 1.0f, 0.0f, 0.0f);
+            BUILDER.setLocal(texture, MODEL_SCALE, part);
+            AngelicaTesrMeshCache.INSTANCE.renderCached(key, BUILDER);
+        } finally {
+            GLSMMatrices.glPopMatrix();
+        }
     }
 
-    public static void renderSign(ModelSign model) {
+    public static void renderSign(ModelSign model, ResourceLocation texture) {
         final boolean standing = model.signStick.showModel;
-        BUILDER.set(SIGN_TEXTURE, MODEL_SCALE, model.signBoard, standing ? model.signStick : null, null);
+        BUILDER.set(texture, MODEL_SCALE, model.signBoard, standing ? model.signStick : null, null);
         AngelicaTesrMeshCache.INSTANCE.renderCached(standing ? KEY_SIGN_STANDING : KEY_SIGN_WALL, BUILDER);
+        if (TesrBatchRenderer.INSTANCE.hasActivePass()) {
+            // The font renderer writes color without depth. Draw the board before the glyphs.
+            BatchStateGuard.beforeChange();
+        }
     }
 
-    public static boolean renderSkull(ModelSkeletonHead model, ResourceLocation texture, float yawDegrees, float pitchDegrees, float scale) {
-        if (texture == null) {
-            return false;
-        }
+    public static void renderSkull(ModelSkeletonHead model, ResourceLocation texture, float yawDegrees, float pitchDegrees,
+                                   float scale, boolean playerSkin) {
         final Object key = SKULL_KEYS.computeIfAbsent(model, m -> new Object2ObjectOpenHashMap<>()).computeIfAbsent(texture, t -> new Object());
+        // ModelHumanoidHead appends its outer skin layer after ModelSkeletonHead's base part.
+        final ModelRenderer outerLayer = model instanceof ModelHumanoidHead ? model.boxList.get(1) : null;
         GLSMMatrices.glPushMatrix();
-        if (yawDegrees != 0.0f) {
-            GLSMMatrices.glRotatef(yawDegrees, 0.0f, 1.0f, 0.0f);
+        try {
+            if (yawDegrees != 0.0f) {
+                GLSMMatrices.glRotatef(yawDegrees, 0.0f, 1.0f, 0.0f);
+            }
+            if (pitchDegrees != 0.0f) {
+                GLSMMatrices.glRotatef(pitchDegrees, 1.0f, 0.0f, 0.0f);
+            }
+            BUILDER.set(texture, scale, model.skeletonHead, outerLayer, null);
+            BUILDER.material = playerSkin ? PLAYER_SKULL_MATERIAL : SKULL_MATERIAL;
+            AngelicaTesrMeshCache.INSTANCE.renderCached(key, BUILDER);
+        } finally {
+            GLSMMatrices.glPopMatrix();
         }
-        if (pitchDegrees != 0.0f) {
-            GLSMMatrices.glRotatef(pitchDegrees, 1.0f, 0.0f, 0.0f);
-        }
-        BUILDER.set(texture, scale, model.skeletonHead, null, null);
-        AngelicaTesrMeshCache.INSTANCE.renderCached(key, BUILDER);
-        GLSMMatrices.glPopMatrix();
-        return true;
     }
 
     private static final class Builder implements TesrMeshBuilder {
         private ResourceLocation texture;
+        private TesrMaterial material;
         private float scale;
         private ModelRenderer part0, part1, part2;
         private boolean partLocal;
 
         void set(ResourceLocation texture, float scale, ModelRenderer part0, ModelRenderer part1, ModelRenderer part2) {
             this.texture = texture;
+            this.material = TesrMaterial.CURRENT_STATE;
             this.scale = scale;
             this.part0 = part0;
             this.part1 = part1;
@@ -121,7 +142,7 @@ public final class VanillaModelMeshes {
 
         @Override
         public void angelica$build(TesrMeshSink sink) {
-            final DirectTessellator t = sink.angelica$bucket(DefaultVertexFormat.POSITION_TEXTURE_NORMAL, texture, WHITE);
+            final DirectTessellator t = sink.angelica$bucket(DefaultVertexFormat.POSITION_TEXTURE_NORMAL, texture, material);
             if (partLocal) {
                 ModelPartMesher.emitPartLocal(t, part0, scale);
                 return;
