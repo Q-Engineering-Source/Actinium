@@ -143,6 +143,11 @@ Actinium 接管：`MixinRenderGlobal` 在 `loadRenderers` 的 HEAD 注入把 `mc
 `rendering/items/ItemGlint` 的 `eligible` 与 `needsImmediateBase` 用它决定世界内物品的附魔光效是否
 进入批处理光效路径；`eligible` 为 `false` 时 `ItemGlint.begin` 直接返回。
 
+`DroppedItemInstancer.shouldRenderEffect()` 还控制原版 `renderEffect` 与 Iris 的
+`SpecialCondition.GLINT` 作用域。它只在掉落物作用域内尊重该开关，手持和背包绘制保持原有光效。
+`beginGlintScope` 与 `endGlintScope` 共用同一判定，因此关闭世界光效后，取消 `renderEffect`
+不会把 `GLINT` 留给后续实体（2026-11-18，修复 commit `8c3553a7`）。
+
 ## 地形 alpha 语义（`CeleritasTerrainPipeline`）
 
 原版在 `EntityRenderer.renderWorld` 里先用 `disableAlpha()` 画 `SOLID` 层，之后 `enableAlpha()`

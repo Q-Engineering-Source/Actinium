@@ -1,6 +1,6 @@
 # Actinium 兼容性矩阵
 
-最后更新：2026-11-07。
+最后更新：2026-11-18。
 
 状态定义：`已验证` 表示在记录的版本和场景中通过；`部分` 表示能运行但存在已知缺口；
 `无法启用` 表示光影包不能成功开启；`未验证` 不代表不兼容。更新记录时必须填写 Actinium commit、
@@ -8,6 +8,14 @@
 
 本轮验证环境：Actinium `30c7ffb`、Java 25.0.3、Cleanroom 0.5.12-alpha、Distant Horizons 3.1.2-b、
 Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
+
+> 2026-11-18 追加：BSL_v10.1p1 下，关闭世界附魔光效后丢出附魔书会让后续实体全部进入
+> `GLINT` 发光程序，已修复并由用户实机确认。`MixinRenderItemDroppedInstancing` 在 `HEAD` 取消
+> `renderEffect`，而 `RenderItemIrisMixin` 在同一阶段已设置 `SpecialCondition.GLINT`，方法不再执行
+> `RETURN` 清理。修复后 `DroppedItemInstancer.beginGlintScope` 与 `endGlintScope` 只在
+> `shouldRenderEffect()` 允许时改变光效状态，取消路径不进入 `GLINT`；手持和背包光效保持原行为。
+> `RenderItemIrisMixinTest` 先复现状态残留再验证修复，`DroppedItemInstancingGLTest` 与
+> `./gradlew check build --no-daemon` 均通过。修复 commit `8c3553a7`。
 
 > 2026-11-07 追加：Derivative Main d24.4.14 的普通草与部分单格花不摆动、双格高草上下段分离已修复。
 > ID 映射只在显式声明 `11202` 时使用旧版分支，其他包统一使用现代条目；修复条件块续行丢失
