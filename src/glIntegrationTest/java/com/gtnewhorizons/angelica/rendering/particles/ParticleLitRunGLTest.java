@@ -7,6 +7,7 @@ import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
 import com.gtnewhorizons.angelica.glsm.ffp.ParticleQuadMesh;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import com.dhj.actinium.render.TessellatorDrawRouter;
+import com.gtnewhorizons.angelica.rendering.ParticleItemPickupRenderer;
 import com.gtnewhorizons.angelica.rendering.ParticleRunSplitter;
 import com.gtnewhorizons.angelica.rendering.tesr.TesrBatchRenderer;
 import net.minecraft.client.particle.Particle;
@@ -19,7 +20,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lwjgl.opengl.GL11;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -86,6 +89,23 @@ class ParticleLitRunGLTest extends GLStateManagerIntegrationFixture {
         ParticleRunSplitter.afterNestedDraw(true);
 
         assertTrue(ParticleRunSplitter.beforeNestedDraw(), "the reopened run accepts the same boundary again");
+    }
+
+    @Test
+    void vanillaPickupEntityCanUseTheSharedBuilder() {
+        ParticleLitRun.begin();
+        final BufferBuilder run = Tessellator.getInstance().getBuffer();
+        try {
+            assertDoesNotThrow(() -> ParticleItemPickupRenderer.render(() -> {
+                run.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_TEX_COLOR);
+                run.finishDrawing();
+            }, false));
+
+            assertSame(DefaultVertexFormats.PARTICLE_POSITION_TEX_COLOR_LMAP, run.getVertexFormat());
+            assertEquals(0, run.getVertexCount());
+        } finally {
+            ParticleLitRun.end();
+        }
     }
 
     @Test

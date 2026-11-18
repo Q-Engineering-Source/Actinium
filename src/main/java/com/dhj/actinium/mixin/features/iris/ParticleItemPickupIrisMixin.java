@@ -1,8 +1,7 @@
 package com.dhj.actinium.mixin.features.iris;
 
-import com.gtnewhorizons.angelica.rendering.ParticleRunSplitter;
+import com.gtnewhorizons.angelica.rendering.ParticleItemPickupRenderer;
 import net.coderbot.iris.apiimpl.IrisApiV0Impl;
-import net.coderbot.iris.layer.GbufferPrograms;
 import net.minecraft.client.particle.ParticleItemPickup;
 import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.entity.Entity;
@@ -26,18 +25,9 @@ public class ParticleItemPickupIrisMixin {
         float partialTicks,
         boolean debugBoundingBox
     ) {
-        if (!IrisApiV0Impl.INSTANCE.isShaderPackInUse()) {
-            renderManager.renderEntity(entity, x, y, z, yaw, partialTicks, debugBoundingBox);
-            return;
-        }
-
-        final boolean reopen = ParticleRunSplitter.beforeNestedDraw();
-        GbufferPrograms.beginEntities();
-        try {
-            renderManager.renderEntity(entity, x, y, z, yaw, partialTicks, debugBoundingBox);
-        } finally {
-            GbufferPrograms.endEntities();
-            ParticleRunSplitter.afterNestedDraw(reopen);
-        }
+        ParticleItemPickupRenderer.render(
+            () -> renderManager.renderEntity(entity, x, y, z, yaw, partialTicks, debugBoundingBox),
+            IrisApiV0Impl.INSTANCE.isShaderPackInUse()
+        );
     }
 }

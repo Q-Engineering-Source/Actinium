@@ -13,6 +13,7 @@ import net.minecraft.client.particle.ParticleSpell;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.renderer.vertex.VertexFormat;
 
 /**
  * Splits a particle run between {@code gbuffers_particles} and {@code gbuffers_particles_translucent}.
@@ -34,6 +35,8 @@ public final class ParticleRunSplitter {
     private static boolean runTranslucent;
     private static boolean runOpen;
     private static boolean nestedBatcherActive;
+    private static int nestedDrawMode;
+    private static VertexFormat nestedVertexFormat;
     private static Boolean previousDeclaration;
 
     private ParticleRunSplitter() {}
@@ -70,6 +73,9 @@ public final class ParticleRunSplitter {
     public static boolean beforeNestedDraw() {
         if (!runOpen) return false;
         ParticleInstancer.endLayer();
+        final BufferBuilder run = Tessellator.getInstance().getBuffer();
+        nestedDrawMode = run.getDrawMode();
+        nestedVertexFormat = run.getVertexFormat();
         nestedBatcherActive = DeferredDrawBatcher.isActive();
         if (nestedBatcherActive) DeferredDrawBatcher.exitAndFlush();
         Tessellator.getInstance().draw();
@@ -80,7 +86,7 @@ public final class ParticleRunSplitter {
     public static void afterNestedDraw(boolean reopen) {
         if (!reopen) return;
         final BufferBuilder run = Tessellator.getInstance().getBuffer();
-        run.begin(run.getDrawMode(), run.getVertexFormat());
+        run.begin(nestedDrawMode, nestedVertexFormat);
         if (nestedBatcherActive) DeferredDrawBatcher.enter();
         ParticleInstancer.beginLayer();
     }
