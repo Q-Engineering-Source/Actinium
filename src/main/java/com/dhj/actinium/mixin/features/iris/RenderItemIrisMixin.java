@@ -2,10 +2,9 @@ package com.dhj.actinium.mixin.features.iris;
 
 import com.dhj.actinium.render.FastLitItemDisplayListCache;
 import com.dhj.actinium.render.ItemRenderStateBoundary;
+import com.gtnewhorizons.angelica.rendering.items.DroppedItemInstancer;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
-import net.coderbot.iris.gbuffer_overrides.matching.SpecialCondition;
-import net.coderbot.iris.layer.GbufferPrograms;
 import net.minecraft.client.renderer.RenderItem;
 import net.minecraft.client.renderer.block.model.IBakedModel;
 import net.minecraft.client.resources.IResourceManager;
@@ -37,13 +36,13 @@ public class RenderItemIrisMixin {
     }
 
     @Inject(method = "renderEffect(Lnet/minecraft/client/renderer/block/model/IBakedModel;)V", at = @At("HEAD"))
-    private void actinium$beginItemGlint(IBakedModel model, CallbackInfo ci) {
-        GbufferPrograms.setupSpecialRenderCondition(SpecialCondition.GLINT);
+    void actinium$beginItemGlint(IBakedModel model, CallbackInfo ci) {
+        DroppedItemInstancer.beginGlintScope();
     }
 
     @Inject(method = "renderEffect(Lnet/minecraft/client/renderer/block/model/IBakedModel;)V", at = @At("RETURN"))
-    private void actinium$endItemGlint(IBakedModel model, CallbackInfo ci) {
-        GbufferPrograms.teardownSpecialRenderCondition();
+    void actinium$endItemGlint(IBakedModel model, CallbackInfo ci) {
+        DroppedItemInstancer.endGlintScope();
     }
 
     @Inject(method = "onResourceManagerReload", at = @At("HEAD"))

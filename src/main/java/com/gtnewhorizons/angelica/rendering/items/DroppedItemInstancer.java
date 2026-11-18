@@ -4,7 +4,6 @@ import com.dhj.actinium.render.FastLitItemDisplayListCache;
 import com.dhj.actinium.render.ItemVertexAlphaOverrides;
 import com.gtnewhorizons.angelica.api.tesr.TesrMaterial;
 import com.gtnewhorizons.angelica.config.AngelicaConfig;
-import com.gtnewhorizons.angelica.config.AngelicaConfig;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.GLSMDraws;
 import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
@@ -16,6 +15,8 @@ import com.gtnewhorizons.angelica.rendering.tesr.ModelPartBatcher;
 import com.gtnewhorizons.angelica.rendering.tesr.TemplateBuffer;
 import com.gtnewhorizons.angelica.rendering.tesr.TemplateCapture;
 import com.gtnewhorizon.gtnhlib.client.renderer.TessellatorManager;
+import net.coderbot.iris.gbuffer_overrides.matching.SpecialCondition;
+import net.coderbot.iris.layer.GbufferPrograms;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.block.model.BakedQuad;
@@ -146,6 +147,20 @@ public final class DroppedItemInstancer {
     /** Whether the vanilla glint pass may run for the current render scope. */
     public static boolean shouldRenderEffect() {
         return scopeDepth == 0 || AngelicaConfig.glintWorld();
+    }
+
+    /** Starts the Iris glint scope when the current render effect is enabled. */
+    public static void beginGlintScope() {
+        if (shouldRenderEffect()) {
+            GbufferPrograms.setupSpecialRenderCondition(SpecialCondition.GLINT);
+        }
+    }
+
+    /** Ends the Iris glint scope when the current render effect is enabled. */
+    public static void endGlintScope() {
+        if (shouldRenderEffect()) {
+            GbufferPrograms.teardownSpecialRenderCondition();
+        }
     }
 
     /**
