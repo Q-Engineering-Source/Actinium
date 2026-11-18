@@ -58,6 +58,7 @@
     "features.tesr.MixinRenderManagerBatchEligibility",
     "features.tesr.MixinShadowRendererEntities",
     "features.tesr.MixinShadowRendererTesr",
+    "features.tesr.MixinTextureManager",
     "features.tesr.MixinTileEntityBeaconRenderer",
     "features.tesr.MixinTileEntityRendererDispatcherTesr",
     "features.tesr.MixinTileEntityRendererDispatcherTesrLight",

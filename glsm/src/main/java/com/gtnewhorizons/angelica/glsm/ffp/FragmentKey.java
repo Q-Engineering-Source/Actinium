@@ -13,7 +13,7 @@ import org.lwjgl.opengl.GL13;
  * Packed-long fragment shader permutation key for FFP emulation.
  *
  * Layout:
- *   long[0]: global bits (13) + unit 0 (47 bits at offset 13)
+ *   long[0]: global bits (14) + unit 0 (47 bits at offset 14)
  *   long[1..3]: unit 1..3 (47 bits each, low-aligned)
  * Only max(1, nrEnabledUnits) longs are significant.
  *

@@ -62,6 +62,9 @@ public final class FragmentShaderGenerator {
     private static void emitInputs(StringBuilder sb, FragmentKey key) {
         sb.append("// Inputs from vertex shader\n");
         sb.append("in vec4 v_Color;\n");
+        if (key.overlayInstanced()) {
+            sb.append("in vec4 v_Overlay;\n");
+        }
         if (key.separateSpecular()) {
             sb.append("in vec3 v_SpecularColor;\n");
         }
