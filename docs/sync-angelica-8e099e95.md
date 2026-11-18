@@ -539,3 +539,23 @@ TESR 批处理的引入顺序按依赖链固定下来，每一步只需新增文
   与本项无关。
 
 实机验证与性能数据尚未进行，本节不给出画面、兼容性或性能结论。
+
+### 第 15 项模板捕获修复与 otl 实机确认（2026-11-18）
+
+旧模型回退路径没有把实际绘制报告给 `BatchEligibility`，导致渲染器停留在 `UNKNOWN`，模型部件无法进入批处理。`ModelRendererIrisMixin` 现在在使用显示列表、批量 quad 或 vanilla 回退后调用 `onPartFallback`，使资格判定能够根据实际 draw 数完成。
+
+资格状态推进后，首次模板捕获暴露出三处 1.12.2 适配问题：
+
+- `ModelPartBatcher.capture` 在 `ModelBox.render` 外调用共享 `BufferBuilder.begin`，而 `TexturedQuad.draw` 每个面还会自行 `begin/draw`，嵌套调用必然抛出 `Already building`。已删除外层调用，保留每个面经 `TessellatorDrawRouter` 进入独立捕获器的路径。
+- `TessellatorManager.copyBufferBuilderToDirect` 每次拦截都重复设置顶点格式，第一张面就会与捕获器的预置格式冲突。现在相同规范格式实例只设置一次；已有顶点时切换图元类型会立即抛出异常，避免错误解释模板。
+- 关闭直接内存访问时，vanilla 模型部件在 `templateFor` 前以 `TEMPLATE` 原因退回，避免面片进入即时批次后再次回退绘制。
+
+新增 `ModelPartCaptureGLTest` 覆盖首次捕获与模板复用、共享 builder 后续可再次 `begin`、直接内存关闭时在绘制任何面前拒绝捕获，以及同一捕获中混用 quad 与 triangle 时拒绝生成模板。三个用例均经过 RED/GREEN 验证，独立 Spec 与代码质量审查通过。
+
+验证记录：
+
+- 完整 `./gradlew check build --no-daemon` 通过；TESR 与掉落物相关 19 个真实 GL 用例全部通过。
+- 带周期实例计数的 `probe04` 再次通过完整构建与 3 个捕获回归。临时诊断已从最终源码撤除。
+- 用户在 otl 同一存档中对狼、猪、牛、羊及掉落物完成实机验证，确认崩溃消失且画面正常。
+- 本次 otl 日志中的 `parts`、`draws`、`instances`、`cubes` 仍为 `0`，实体实例化没有实际执行。当前性能对比不能归因于实体实例化收益，后续需继续分析 `MIXED_RENDERER` 与 `TEXTURE` 拒绝原因。
+- 全量 GL 任务仍只有两个既有 viewport 基线失败，均为 `expected 64 but was 854`，与本次改动无关。

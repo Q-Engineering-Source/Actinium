@@ -1,6 +1,7 @@
 package com.gtnewhorizons.angelica.rendering.tesr;
 
 import com.gtnewhorizon.gtnhlib.client.renderer.MatrixHelper;
+import com.gtnewhorizon.gtnhlib.client.renderer.RuntimeOptionsBridge;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.DefaultVertexFormat;
 import com.gtnewhorizons.angelica.api.tesr.ModelPartMeshBuilder;
 import com.gtnewhorizons.angelica.api.tesr.TesrMaterial;
@@ -57,7 +58,6 @@ import com.gtnewhorizon.gtnhlib.client.renderer.DirectTessellator;
 import com.gtnewhorizons.angelica.glsm.ITessellatorData;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.Tessellator;
-import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.World;
@@ -695,6 +695,10 @@ public final class ModelPartBatcher {
     }
 
     private boolean queuePart(ModelRenderer part, float scale, ModelPartMeshBuilder builder) {
+        if (builder == null && !RuntimeOptionsBridge.allowDirectMemoryAccess()) {
+            bail(BailReason.TEMPLATE);
+            return false;
+        }
         final PartTemplate entry = templateFor(part, scale, builder);
         if (entry.emptyVanillaPart) {
             return true;
@@ -995,11 +999,9 @@ public final class ModelPartBatcher {
             captureBackend.beginCapture(DefaultVertexFormat.POSITION_TEXTURE_NORMAL);
             try {
                 final BufferBuilder buffer = Tessellator.getInstance().getBuffer();
-                buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_TEX_NORMAL);
                 for (int i = 0, n = boxes.size(); i < n; i++) {
                     boxes.get(i).render(buffer, scale);
                 }
-                Tessellator.getInstance().draw();
             } finally {
                 entry.template = captureBackend.endCaptureToTemplate();
             }

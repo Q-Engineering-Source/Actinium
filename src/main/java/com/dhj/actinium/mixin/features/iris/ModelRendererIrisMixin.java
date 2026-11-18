@@ -3,6 +3,7 @@ package com.dhj.actinium.mixin.features.iris;
 import com.dhj.actinium.config.ActiniumRuntimeOptions;
 import com.dhj.actinium.compat.gibbed.ActiniumModelRenderer;
 import com.dhj.actinium.mixinterface.features.iris.ModelRenderState;
+import com.gtnewhorizons.angelica.rendering.tesr.BatchEligibility;
 import com.gtnewhorizons.angelica.rendering.tesr.ModelPartBatcher;
 import com.gtnewhorizons.angelica.mixins.interfaces.IModelRenderer;
 import net.irisshaders.iris.api.v0.IrisApi;
@@ -26,6 +27,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.List;
 import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
 import com.gtnewhorizons.angelica.glsm.GLSMDraws;
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
 
 @Mixin(ModelRenderer.class)
 public abstract class ModelRendererIrisMixin implements IModelRenderer, ActiniumModelRenderer, ModelRenderState {
@@ -213,63 +215,68 @@ public abstract class ModelRendererIrisMixin implements IModelRenderer, Actinium
             return;
         }
 
-        // Batched model formats do not carry per-vertex color, so they inherit the managed current color state.
-        // Refreshing it here keeps the default color attribute and u_CurrentColor in sync with vanilla-style model draws.
-        if (ActiniumRuntimeOptions.useModelRendererBatching()) {
-            final var color = com.gtnewhorizons.angelica.glsm.GLStateManager.getColor();
-            if (color.getRed() < 0.0F || color.getGreen() < 0.0F || color.getBlue() < 0.0F || color.getAlpha() < 0.0F) {
-                com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-            } else {
-                com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs.glColor4f(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        final long drawsBefore = GLSMDraws.drawCalls;
+        try {
+            // Batched model formats do not carry per-vertex color, so they inherit the managed current color state.
+            // Refreshing it here keeps the default color attribute and u_CurrentColor in sync with vanilla-style model draws.
+            if (ActiniumRuntimeOptions.useModelRendererBatching()) {
+                final var color = GLStateManager.getColor();
+                if (color.getRed() < 0.0F || color.getGreen() < 0.0F || color.getBlue() < 0.0F || color.getAlpha() < 0.0F) {
+                    GLSMCurrentAttribs.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+                } else {
+                    GLSMCurrentAttribs.glColor4f(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+                }
             }
-        }
 
-        boolean batchModelQuads = ActiniumRuntimeOptions.useModelRendererBatching();
-        boolean useDisplayLists = allowDisplayLists && batchModelQuads && ActiniumRuntimeOptions.useModelRendererDisplayLists();
+            boolean batchModelQuads = ActiniumRuntimeOptions.useModelRendererBatching();
+            boolean useDisplayLists = allowDisplayLists && batchModelQuads && ActiniumRuntimeOptions.useModelRendererDisplayLists();
 
-        if (useDisplayLists) {
-            int scaleBits = Float.floatToIntBits(scale);
-            if (this.actinium$displayList != 0 && this.actinium$displayListScaleBits != scaleBits) {
+            if (useDisplayLists) {
+                int scaleBits = Float.floatToIntBits(scale);
+                if (this.actinium$displayList != 0 && this.actinium$displayListScaleBits != scaleBits) {
+                    this.actinium$resetDisplayList();
+                }
+
+                if (this.actinium$displayList == 0) {
+                    this.actinium$compileDisplayList(scale, scaleBits);
+                }
+
+                GLSMDraws.glCallList(this.actinium$displayList);
+                return;
+            } else if (allowDisplayLists) {
                 this.actinium$resetDisplayList();
             }
 
-            if (this.actinium$displayList == 0) {
-                this.actinium$compileDisplayList(scale, scaleBits);
-            }
+            Tessellator tessellator = Tessellator.getInstance();
+            BufferBuilder buffer = tessellator.getBuffer();
 
-            com.gtnewhorizons.angelica.glsm.GLSMDraws.glCallList(this.actinium$displayList);
-            return;
-        } else if (allowDisplayLists) {
-            this.actinium$resetDisplayList();
-        }
-
-        Tessellator tessellator = Tessellator.getInstance();
-        BufferBuilder buffer = tessellator.getBuffer();
-
-        if (batchModelQuads) {
-            buffer.begin(7, DefaultVertexFormats.OLDMODEL_POSITION_TEX_NORMAL);
-            for (ModelBox cube : this.cubeList) {
-                for (TexturedQuad quad : ((ModelBoxAccessor) cube).actinium$getQuadList()) {
-                    actinium$appendQuad(buffer, quad, scale);
+            if (batchModelQuads) {
+                buffer.begin(7, DefaultVertexFormats.OLDMODEL_POSITION_TEX_NORMAL);
+                for (ModelBox cube : this.cubeList) {
+                    for (TexturedQuad quad : ((ModelBoxAccessor) cube).actinium$getQuadList()) {
+                        actinium$appendQuad(buffer, quad, scale);
+                    }
                 }
+                tessellator.draw();
+                return;
             }
-            tessellator.draw();
-            return;
-        }
 
-        for (ModelBox cube : this.cubeList) {
-            cube.render(buffer, scale);
+            for (ModelBox cube : this.cubeList) {
+                cube.render(buffer, scale);
+            }
+        } finally {
+            BatchEligibility.onPartFallback(drawsBefore, GLSMDraws.drawCalls);
         }
     }
 
     @Unique
     private void actinium$compileDisplayList(float scale, int scaleBits) {
-        int list = com.gtnewhorizons.angelica.glsm.GLSMDraws.glGenLists(1);
+        int list = GLSMDraws.glGenLists(1);
         if (list == 0) {
             throw new IllegalStateException("glGenLists returned 0 while compiling a ModelRenderer display list");
         }
 
-        com.gtnewhorizons.angelica.glsm.GLSMDraws.glNewList(list, GL11.GL_COMPILE);
+        GLSMDraws.glNewList(list, GL11.GL_COMPILE);
 
         try {
             Tessellator tessellator = Tessellator.getInstance();
@@ -283,7 +290,7 @@ public abstract class ModelRendererIrisMixin implements IModelRenderer, Actinium
             }
             tessellator.draw();
         } finally {
-            com.gtnewhorizons.angelica.glsm.GLSMDraws.glEndList();
+            GLSMDraws.glEndList();
         }
 
         this.actinium$displayList = list;
@@ -293,7 +300,7 @@ public abstract class ModelRendererIrisMixin implements IModelRenderer, Actinium
     @Unique
     private void actinium$resetDisplayList() {
         if (this.actinium$displayList > 0) {
-            com.gtnewhorizons.angelica.glsm.GLSMDraws.glDeleteLists(this.actinium$displayList, 1);
+            GLSMDraws.glDeleteLists(this.actinium$displayList, 1);
         }
         this.actinium$displayList = 0;
         this.actinium$displayListScaleBits = 0;
