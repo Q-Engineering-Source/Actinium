@@ -28,6 +28,7 @@ public class IrisExclusiveUniforms {
 
 		//All Iris-exclusive uniforms (uniforms which do not exist in either OptiFine or ShadersMod) should be registered here.
 		uniforms.uniform1f(UniformUpdateFrequency.PER_FRAME, "thunderStrength", IrisExclusiveUniforms::getThunderStrength);
+		uniforms.uniform1f(UniformUpdateFrequency.PER_FRAME, "cloudTime", IrisExclusiveUniforms::getCloudTime);
 		uniforms.uniform1f(UniformUpdateFrequency.PER_TICK, "currentPlayerHealth", IrisExclusiveUniforms::getCurrentHealth);
 		uniforms.uniform1f(UniformUpdateFrequency.PER_TICK, "maxPlayerHealth", IrisExclusiveUniforms::getMaxHealth);
 		uniforms.uniform1f(UniformUpdateFrequency.PER_TICK, "currentPlayerHunger", IrisExclusiveUniforms::getCurrentHunger);
@@ -45,6 +46,15 @@ public class IrisExclusiveUniforms {
 	private static float getThunderStrength() {
 		// Note: Ensure this is in the range of 0 to 1 - some custom servers send out of range values.
 		return Math.clamp(0.0F, 1.0F, Minecraft.getMinecraft().world.thunderingStrength);
+	}
+
+	private static float getCloudTime() {
+		final WorldClient level = Minecraft.getMinecraft().world;
+		if (level == null) return 0.0F;
+		final long cycle = CloudAnimationCycle.ticks();
+		if (cycle <= 0L) return 0.0F;
+		final long t = level.getTotalWorldTime() % cycle;
+		return (t + Minecraft.getMinecraft().getRenderPartialTicks()) * 0.03F;
 	}
 
 	private static float getCurrentHealth() {

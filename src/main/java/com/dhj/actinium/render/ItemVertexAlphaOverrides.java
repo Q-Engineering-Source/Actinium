@@ -55,7 +55,7 @@ public final class ItemVertexAlphaOverrides {
      * Removes every registered source, so a later registration starts from a clean slate. Used by
      * tests and by reload paths that re-register their sources.
      */
-    static void clear() {
+    public static void clear() {
         OVERRIDES.clear();
     }
 }

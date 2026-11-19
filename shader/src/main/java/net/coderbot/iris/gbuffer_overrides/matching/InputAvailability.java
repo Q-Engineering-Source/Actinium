@@ -17,6 +17,11 @@ public class InputAvailability {
 		this.color = color;
 	}
 
+	/** Availability of the shared colour input plus these two attributes. */
+	public static InputAvailability of(boolean texture, boolean lightmap) {
+		return new InputAvailability(texture, lightmap);
+	}
+
 	public static InputAvailability unpack(int packed) {
 		return new InputAvailability((packed & 1) == 1, (packed & 2) == 2, true);
 	}

@@ -14,6 +14,7 @@ import net.coderbot.iris.debug.IrisGlDebug;
 import net.coderbot.iris.gbuffer_overrides.state.StateTracker;
 import net.coderbot.iris.gl.blending.AlphaTestStorage;
 import net.coderbot.iris.gl.blending.BlendModeStorage;
+import net.coderbot.iris.uniforms.CapturedRenderingState;
 import net.coderbot.iris.gl.blending.DepthColorStorage;
 import net.coderbot.iris.gl.program.ProgramUniforms;
 import net.coderbot.iris.gl.state.StateUpdateNotifiers;
@@ -107,6 +108,14 @@ public final class IrisGLSMBridge {
         GLSMHooks.immediateExtendedHandler = new ImmediateExtendedAttribs();
         GLSMHooks.shaderPackReloaded = ImmediateExtendedAttribs::onShaderPackChanged;
         GLSMHooks.PROGRAM_DELETE.addListener(event -> ImmediateExtendedAttribs.onProgramDeleted(event.program));
+
+        IrisDisplayListStateRecorder.install();
+
+        final CapturedRenderingState capturedState = CapturedRenderingState.INSTANCE;
+        capturedState.setEntityIdsListener(() -> GLStateManager.setEntityIds(
+            capturedState.getCurrentRenderedEntity(),
+            capturedState.getCurrentRenderedBlockEntity(),
+            capturedState.getCurrentRenderedItem()));
 
         GLSMHooks.blendHandler = new DeferredBlendHandler() {
             @Override
@@ -401,4 +410,5 @@ public final class IrisGLSMBridge {
             deferredPipeline.restorePassAfterModProgram(event.newProgram);
         });
     }
+
 }

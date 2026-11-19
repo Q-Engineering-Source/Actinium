@@ -161,6 +161,11 @@ class ShadowRendererPhaseTest {
         }
 
         @Override
+        public void setDeclaredTranslucency(Boolean translucent) {
+            throw unsupported();
+        }
+
+        @Override
         public RenderTargetStateListener getRenderTargetStateListener() {
             throw unsupported();
         }

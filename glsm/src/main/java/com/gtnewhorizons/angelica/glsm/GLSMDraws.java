@@ -50,6 +50,9 @@ public final class GLSMDraws {
 
     private GLSMDraws() {}
 
+    /** Number of draw submissions issued through GLSM. */
+    public static long drawCalls;
+
     public static void glBegin(int mode) {
         rejectExitCapture();
         ctx().unit23TexCoordSetDuringDraw = false;
@@ -101,6 +104,7 @@ public final class GLSMDraws {
 
     public static void glDrawElements(int mode, ByteBuffer indices) {
         rejectExitCapture();
+        drawCalls++;
         CommandRecorder savedRecorder = null;
         final RecordMode recordMode = DisplayListManager.getRecordMode();
         if (recordMode != RecordMode.NONE) {
@@ -138,6 +142,7 @@ public final class GLSMDraws {
 
     public static void glDrawElements(int mode, IntBuffer indices) {
         rejectExitCapture();
+        drawCalls++;
         CommandRecorder savedRecorder = null;
         final RecordMode recordMode = DisplayListManager.getRecordMode();
         if (recordMode != RecordMode.NONE) {
@@ -179,6 +184,7 @@ public final class GLSMDraws {
 
     public static void glDrawElements(int mode, ShortBuffer indices) {
         rejectExitCapture();
+        drawCalls++;
         CommandRecorder savedRecorder = null;
         final RecordMode recordMode = DisplayListManager.getRecordMode();
         if (recordMode != RecordMode.NONE) {
@@ -220,6 +226,7 @@ public final class GLSMDraws {
 
     public static void glDrawElements(int mode, int count, int type, ByteBuffer indices) {
         rejectExitCapture();
+        drawCalls++;
         CommandRecorder savedRecorder = null;
         final RecordMode recordMode = DisplayListManager.getRecordMode();
         if (recordMode != RecordMode.NONE) {
@@ -265,6 +272,7 @@ public final class GLSMDraws {
 
     public static void glDrawElements(int mode, int indices_count, int type, long indices_buffer_offset) {
         rejectExitCapture();
+        drawCalls++;
         CommandRecorder savedRecorder = null;
         final RecordMode recordMode = DisplayListManager.getRecordMode();
         if (recordMode != RecordMode.NONE) {
@@ -319,6 +327,7 @@ public final class GLSMDraws {
 
     public static void glDrawArrays(int mode, int first, int count) {
         rejectExitCapture();
+        drawCalls++;
         CommandRecorder savedRecorder = null;
         final RecordMode recordMode = DisplayListManager.getRecordMode();
         if (recordMode != RecordMode.NONE) {
@@ -479,6 +488,7 @@ public final class GLSMDraws {
 
     public static void glMultiDrawElementsIndirect(int mode, int type, long indirect, int drawcount, int stride) {
         rejectExitCapture();
+        drawCalls += drawcount;
             preDrawFFP();
             prepareClientArrays();
             recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, drawcount);
@@ -487,6 +497,7 @@ public final class GLSMDraws {
 
     public static void glMultiDrawElementsBaseVertex(int mode, long pCount, int type, long pIndices, int drawcount, long pBaseVertex) {
         rejectExitCapture();
+        drawCalls += drawcount;
             preDrawFFP();
             prepareClientArrays();
             recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, drawcount);
@@ -495,6 +506,7 @@ public final class GLSMDraws {
 
     public static void glDrawElementsBaseVertex(int mode, int count, int type, long indices, int basevertex) {
         rejectExitCapture();
+        drawCalls++;
             preDrawFFP();
             prepareClientArrays();
             recordGpuCommand(GpuCommandType.DRAW_ELEMENTS, mode, count);
@@ -503,6 +515,7 @@ public final class GLSMDraws {
 
     public static void glDrawElementsInstanced(int mode, int count, int type, long indices, int primcount) {
         rejectExitCapture();
+        drawCalls++;
             warnIfInstancedWideLines(mode);
             preDrawFFP();
             prepareClientArrays();
@@ -512,6 +525,7 @@ public final class GLSMDraws {
 
     public static void glDrawArraysInstanced(int mode, int first, int count, int primcount) {
         rejectExitCapture();
+        drawCalls++;
             prepareWideLineEmulation(mode);
             warnIfInstancedWideLines(mode);
             preDrawFFP();

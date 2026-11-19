@@ -129,6 +129,7 @@ public final class ShaderManager {
         final boolean perfDebugEnabled = GLSMPerfDebug.isEnabled();
         final long perfStart = perfDebugEnabled ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.FFP_PREDRAW) : 0L;
         GLStateManager.flushDeferredVertexAttribs();
+        GLStateManager.flushEntityIds(GLStateManager.ctx());
         final DeferredBlendHandler bh = GLSMHooks.blendHandler;
         if (bh != null) bh.flushDeferredBlend();
 
@@ -169,6 +170,11 @@ public final class ShaderManager {
         if (hasTexCoord) vertexFlags |= VertexFlags.TEXTURE_BIT;
         if (hasLightmap) vertexFlags |= VertexFlags.BRIGHTNESS_BIT;
         observer.beforeDraw(vertexFlags);
+    }
+
+    /** @return whether the bound FFP program samples its atlas a whole texel at a time */
+    boolean isTextureSupersampling() {
+        return currentProgram != null && currentProgram.getFragmentKey().textureSupersamplingSamples() > 1;
     }
 
     public synchronized void preDraw(int vertexFlags) {

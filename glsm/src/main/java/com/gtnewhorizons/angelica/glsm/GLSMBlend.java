@@ -18,6 +18,7 @@ import net.minecraft.client.renderer.GlStateManager;
 import org.lwjgl.opengl.GL11;
 
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.BYPASS_CACHE;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.beforeUncapturedStateChange;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.isCachingEnabled;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.issueBlendFunc;
@@ -45,6 +46,7 @@ public final class GLSMBlend {
         final boolean caching = isCachingEnabled();
         final boolean bypass = BYPASS_CACHE || !caching;
         if (bypass || red != ctx().blendState.getBlendColorR() || green != ctx().blendState.getBlendColorG() || blue != ctx().blendState.getBlendColorB() || alpha != ctx().blendState.getBlendColorA()) {
+            beforeUncapturedStateChange();
             if (caching) {
                 mod(ctx().blendState);
                 ctx().blendState.setBlendColorR(red);
@@ -99,6 +101,7 @@ public final class GLSMBlend {
         final boolean caching = isCachingEnabled();
         final boolean bypass = BYPASS_CACHE || !caching;
         if (bypass || ctx().blendState.getEquationRgb() != modeRGB || ctx().blendState.getEquationAlpha() != modeAlpha) {
+            beforeUncapturedStateChange();
             if (caching) {
                 mod(ctx().blendState);
                 ctx().blendState.setEquationRgb(modeRGB);
@@ -167,6 +170,7 @@ public final class GLSMBlend {
                 return;
             }
         }
+        if (!isCachingEnabled() || ctx().logicOpMode.getValue() != opcode) beforeUncapturedStateChange();
         if (isCachingEnabled()) mod(ctx().logicOpMode).setValue(opcode);
         RENDER_BACKEND.logicOp(opcode);
     }
@@ -266,6 +270,9 @@ public final class GLSMBlend {
             final boolean caching = isCachingEnabled();
             final boolean bypass = BYPASS_CACHE || !caching;
             if (bypass || ctx().blendState.getEquationRgb() != mode || ctx().blendState.getEquationAlpha() != mode) {
+                // The batch records the blend factors per draw but not the equation, so changing it
+                // has to drain what is already queued.
+                beforeUncapturedStateChange();
                 if (caching) {
                     mod(ctx().blendState);
                     ctx().blendState.setEquationRgb(mode);

@@ -22,8 +22,8 @@ public class TextureInfo {
     protected int width = -1;
     protected int height = -1;
 
-    @Setter protected int minFilter = UNSET_INT;
-    @Setter protected int magFilter = UNSET_INT;
+    protected int minFilter = UNSET_INT;
+    protected int magFilter = UNSET_INT;
     @Setter protected int wrapS = UNSET_INT;
     @Setter protected int wrapT = UNSET_INT;
     @Setter protected int maxLevel = UNSET_INT;
@@ -35,11 +35,18 @@ public class TextureInfo {
     @Setter protected float maxAnisotropy = UNSET_FLOAT;
 
     @Getter @Setter protected boolean generateMipmap = false;
+    /** Texels between this atlas texture's sprites, or {@code 0} when it is not an atlas. */
+    @Getter @Setter protected int atlasGutter = 0;
 
     @Getter protected int uploadGeneration;
+    /** Whether something wrote this texture without going through the tracked upload entry points. */
+    @Getter protected boolean writtenOutsideUploads;
+    /** Counts every content or sampler change, so caches holding a copy can tell when it is stale. */
+    @Getter protected int changeStamp;
 
     void bumpUploadGeneration() {
         uploadGeneration++;
+        changeStamp++;
     }
 
     protected TextureInfo(int id) {
@@ -76,6 +83,16 @@ public class TextureInfo {
             height = RenderSystem.getTexLevelParameteri(id, 0, GL11.GL_TEXTURE_HEIGHT);
         }
         return height;
+    }
+
+    public void setMinFilter(int minFilter) {
+        this.minFilter = minFilter;
+        changeStamp++;
+    }
+
+    public void setMagFilter(int magFilter) {
+        this.magFilter = magFilter;
+        changeStamp++;
     }
 
     public int getMinFilter() {

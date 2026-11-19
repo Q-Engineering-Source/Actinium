@@ -564,11 +564,13 @@ public class RenderSystem {
 
     public static void bindTextureToUnit(int unit, int texture) {
         if (unit == 0) GLStateManager.recordExitTextureBind(GL11.GL_TEXTURE_2D, 0);
+        else if (GLSMTextures.getBoundTextureForServerState(unit) != texture) GLStateManager.beforeUncapturedStateChange();
         dsaState.bindTextureToUnit(unit, texture);
     }
 
     public static void bindTextureToUnit(int target, int unit, int texture) {
         if (unit == 0) GLStateManager.recordExitTextureBind(target, 0);
+        else if (GLSMTextures.getBoundTextureForServerState(unit) != texture) GLStateManager.beforeUncapturedStateChange();
         dsaState.bindTextureToUnit(target, unit, texture);
     }
 
@@ -764,18 +766,37 @@ public class RenderSystem {
     public static void bindSamplerToUnit(int unit, int sampler) {
         if (!supportsSamplerObjects) return;
         if (samplers[unit] == sampler) return;
+        bindSamplerNow(unit, sampler);
+    }
+
+    /**
+     * Binds a sampler on the driver and records it in the shared mirror. Every sampler entry point
+     * funnels through here, so the mirror stays correct whichever path took it.
+     */
+    static void bindSamplerNow(int unit, int sampler) {
         RENDER_BACKEND.bindSampler(unit, sampler);
-        samplers[unit] = sampler;
+        if (samplers != null && unit >= 0 && unit < samplers.length) {
+            samplers[unit] = sampler;
+        }
     }
 
     public static void unbindAllSamplers() {
-        if (!supportsSamplerObjects) return;
+        // The mirror only exists when sampler objects were supported at init, so it is the reliable
+        // gate here; the capability flag can be reset by a later context init.
+        if (samplers == null || !hasBoundSamplers()) return;
+        GLStateManager.beforeUncapturedStateChange();
         for (int i = 0; i < samplers.length; i++) {
             if (samplers[i] != 0) {
-                RENDER_BACKEND.bindSampler(i, 0);
-                samplers[i] = 0;
+                bindSamplerNow(i, 0);
             }
         }
+    }
+
+    private static boolean hasBoundSamplers() {
+        for (int sampler : samplers) {
+            if (sampler != 0) return true;
+        }
+        return false;
     }
 
     /** Parse a GL version string (e.g. "4.6.0 NVIDIA ...") into concatenated digits "460". Strips

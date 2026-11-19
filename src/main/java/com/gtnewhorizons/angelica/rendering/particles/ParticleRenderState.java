@@ -1,0 +1,65 @@
+package com.gtnewhorizons.angelica.rendering.particles;
+
+import com.gtnewhorizons.angelica.glsm.GLSMBlend;
+import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
+import com.gtnewhorizons.angelica.glsm.GLSMEnable;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
+import com.gtnewhorizons.angelica.glsm.states.BlendState;
+import org.lwjgl.opengl.GL11;
+
+/**
+ * The GL state one particle run draws under.
+ *
+ * <p>Vanilla binds the texture and sets the depth mask once per run, so every particle of a run
+ * reads the same values here. The instancer samples them per particle anyway, because a particle
+ * may change blend state inside its own {@code renderParticle}, and regroups instances by the
+ * sample before drawing.</p>
+ */
+public final class ParticleRenderState {
+
+    private final BlendState scratch = new BlendState();
+
+    public int texture;
+    public boolean blend;
+    public int blendSrc;
+    public int blendDst;
+    public int blendSrcAlpha;
+    public int blendDstAlpha;
+    public boolean depthMask;
+
+    public void sample() {
+        texture = GLSMTextures.getBoundTextureForServerState();
+        blend = GLSMBlend.isEffectiveBlendEnabled();
+        GLSMBlend.getEffectiveBlendState(scratch);
+        blendSrc = scratch.getSrcRgb();
+        blendDst = scratch.getDstRgb();
+        blendSrcAlpha = scratch.getSrcAlpha();
+        blendDstAlpha = scratch.getDstAlpha();
+        depthMask = GLSMDepthStencilAlpha.isEffectiveDepthMaskEnabled();
+    }
+
+    public void set(ParticleRenderState other) {
+        texture = other.texture;
+        blend = other.blend;
+        blendSrc = other.blendSrc;
+        blendDst = other.blendDst;
+        blendSrcAlpha = other.blendSrcAlpha;
+        blendDstAlpha = other.blendDstAlpha;
+        depthMask = other.depthMask;
+    }
+
+    public boolean matches(ParticleRenderState other) {
+        return texture == other.texture && blend == other.blend && blendSrc == other.blendSrc && blendDst == other.blendDst && blendSrcAlpha == other.blendSrcAlpha && blendDstAlpha == other.blendDstAlpha && depthMask == other.depthMask;
+    }
+
+    public void apply() {
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, texture);
+        if (blend) {
+            GLSMEnable.glEnable(GL11.GL_BLEND);
+            GLSMBlend.glBlendFuncSeparate(blendSrc, blendDst, blendSrcAlpha, blendDstAlpha);
+        } else {
+            GLSMEnable.glDisable(GL11.GL_BLEND);
+        }
+        GLSMDepthStencilAlpha.glDepthMask(depthMask);
+    }
+}

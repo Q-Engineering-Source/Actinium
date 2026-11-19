@@ -6,6 +6,7 @@ import com.gtnewhorizons.angelica.glsm.shader.ShaderDiskCache;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.taumc.glsl.ShaderParser;
+import org.taumc.glsl.grammar.GLSLParser;
 import org.taumc.glsl.Transformer;
 
 import java.io.IOException;
@@ -47,6 +48,20 @@ import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACK
  * </ul>
  */
 public class CompatShaderTransformer {
+
+    /**
+     * Told about every successfully transformed shader so a backend can pre-build its own
+     * representation from the already parsed tree.
+     */
+    public interface PostTransformListener {
+        void onTransformed(String source, GLSLParser.Translation_unitContext tree, int headerLength, boolean fragment);
+    }
+
+    private static volatile PostTransformListener postTransformListener;
+
+    public static void setPostTransformListener(PostTransformListener listener) {
+        postTransformListener = listener;
+    }
 
     private static final Logger LOGGER = LogManager.getLogger(CompatShaderTransformer.class);
 
@@ -284,13 +299,22 @@ public class CompatShaderTransformer {
         final String preprocessor = separatedSource.preprocessor().trim();
         final String header = versionDirective + (preprocessor.isEmpty() ? "" : "\n" + preprocessor + "\n");
         final StringBuilder result = new StringBuilder();
-        transformer.mutateTree(tree -> result.append(GlslTransformUtils.getFormattedShader(tree, header)));
+        final GLSLParser.Translation_unitContext[] treeRef = new GLSLParser.Translation_unitContext[1];
+        transformer.mutateTree(tree -> {
+            treeRef[0] = tree;
+            result.append(GlslTransformUtils.getFormattedShader(tree, header));
+        });
 
         // Restore pre-parse renames, except where the emitted version reserves the original word
         String output = GlslTransformUtils.restoreReservedWords(result.toString(), targetVersion);
 
         // Core profile: attribute → in, varying → out (vertex) / in (fragment)
         output = fixupQualifiers(output, isFragment);
+
+        final PostTransformListener listener = postTransformListener;
+        if (listener != null && treeRef[0] != null) {
+            listener.onTransformed(output, treeRef[0], header.length(), isFragment);
+        }
 
         return output;
     }

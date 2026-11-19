@@ -19,12 +19,14 @@ import dhj.embeddedt.embeddium.api.options.control.TickBoxControl;
 import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
 import dhj.embeddedt.embeddium.impl.gui.framework.TextComponent;
 import com.dhj.actinium.render.frame.FramePacer;
+import com.dhj.actinium.render.fps.FpsReducer;
 import dhj.embeddedt.embeddium.impl.render.chunk.MultiDrawMode;
 import dhj.embeddedt.embeddium.impl.render.culling.GpuCulling;
 import dhj.embeddedt.embeddium.impl.render.culling.GpuCullingMode;
 import com.dhj.actinium.render.terrain.GpuCullingSettings;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.startup.SdlGpuBootstrap;
+import com.gtnewhorizons.angelica.config.AngelicaConfig;
 import dhj.embeddedt.embeddium.api.options.structure.OptionFlag;
 import dhj.embeddedt.embeddium.api.options.structure.OptionGroup;
 import dhj.embeddedt.embeddium.api.options.structure.OptionImpact;
@@ -99,6 +101,18 @@ public class ActiniumGameOptionPages {
                 .setControl(option -> new ExternalButtonControl(option,
                         DeferredBlocksScreen::open,
                         TextComponent.translatable("sodium.options.actinium.deferred_blocks.button")))
+                .setBinding((opts, value) -> { }, opts -> null)
+                .build();
+    }
+
+    private static OptionImpl<SodiumGameOptions, Void> createShadowReplayExclusionsScreenOption() {
+        return OptionImpl.createBuilder(Void.class, sodiumOpts)
+                .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "entity_shadow_replay_excluded_classes", Void.class))
+                .setName(TextComponent.translatable("sodium.options.actinium.entity_shadow_replay_excluded_classes.name"))
+                .setTooltip(TextComponent.translatable("sodium.options.actinium.entity_shadow_replay_excluded_classes.tooltip"))
+                .setControl(option -> new ExternalButtonControl(option,
+                        EntityShadowReplayExcludedClassesScreen::open,
+                        TextComponent.translatable("sodium.options.actinium.entity_shadow_replay_excluded_classes.button")))
                 .setBinding((opts, value) -> { }, opts -> null)
                 .build();
     }
@@ -395,6 +409,28 @@ public class ActiniumGameOptionPages {
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .setDefaultValue(0)
                         .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "cloud_render_distance", int.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.cloud_render_distance.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.cloud_render_distance.tooltip"))
+                        .setControl(o -> new SliderControl(o, 0, 32, 1,
+                                ControlValueFormatter.translateDisabledOrVariable(
+                                        "sodium.options.actinium.cloud_render_distance.vanilla",
+                                        "sodium.options.actinium.cloud_render_distance.value")))
+                        .setImpact(OptionImpact.MEDIUM)
+                        .setBinding((opts, value) -> opts.quality.cloudRenderDistanceChunks = value,
+                                opts -> opts.quality.cloudRenderDistanceChunks)
+                        .setDefaultValue(0)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "cloud_scale", int.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.cloud_scale.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.cloud_scale.tooltip"))
+                        .setControl(o -> new SliderControl(o, 1, 4, 1, ControlValueFormatter.multiplier()))
+                        .setImpact(OptionImpact.LOW)
+                        .setBinding((opts, value) -> opts.quality.cloudScale = value, opts -> opts.quality.cloudScale)
+                        .setDefaultValue(1)
+                        .build())
                 .add(OptionImpl.createBuilder(boolean.class, vanillaOpts)
                         .setId(StandardOptions.Option.ENTITY_SHADOWS.cast())
                         .setName(TextComponent.translatable("options.entityShadows"))
@@ -412,6 +448,26 @@ public class ActiniumGameOptionPages {
                         .setBinding((opts, value) -> opts.quality.enableVignette = value, opts -> opts.quality.enableVignette)
                         .setImpact(OptionImpact.LOW)
                         .setDefaultValue(true)
+                        .build())
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "glint_world", boolean.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.glint_world.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.glint_world.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setBinding((opts, value) -> opts.quality.glintWorld = value, opts -> opts.quality.glintWorld)
+                        .setImpact(OptionImpact.LOW)
+                        .setDefaultValue(true)
+                        .build())
+                .add(OptionImpl.createBuilder(SodiumGameOptions.GuiSupersampling.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "gui_block_supersampling",
+                                SodiumGameOptions.GuiSupersampling.class))
+                        .setName(TextComponent.translatable("options.actinium.guiSupersampling.name"))
+                        .setTooltip(TextComponent.translatable("options.actinium.guiSupersampling.tooltip"))
+                        .setControl(option -> new CyclingControl<>(option, SodiumGameOptions.GuiSupersampling.class))
+                        .setBinding((opts, value) -> opts.quality.guiBlockSupersampling = value,
+                                opts -> opts.quality.guiBlockSupersampling)
+                        .setImpact(OptionImpact.LOW)
+                        .setDefaultValue(SodiumGameOptions.GuiSupersampling.OFF)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "circular_fog", boolean.class))
@@ -534,7 +590,7 @@ public class ActiniumGameOptionPages {
                         .setTooltip(TextComponent.translatable("sodium.options.cpu_render_ahead_limit.tooltip"))
                         .setControl(opt -> new SliderControl(opt, 0, 9, 1, ControlValueFormatter.translateVariable("sodium.options.cpu_render_ahead_limit.value")))
                         .setBinding((opts, value) -> opts.advanced.cpuRenderAheadLimit = value, opts -> opts.advanced.cpuRenderAheadLimit)
-                        .setEnabled(LWJGL.isOpenGLVersionSupported(3, 2))
+                        .setEnabledPredicate(() -> LWJGL.isOpenGLVersionSupported(3, 2))
                         .setDefaultValue(0)
                         .build()
                 )
@@ -542,12 +598,7 @@ public class ActiniumGameOptionPages {
                         .setId(StandardOptions.Option.MULTIDRAW_MODE.cast())
                         .setName(TextComponent.translatable("sodium.options.multidraw_mode.name"))
                         .setTooltip(TextComponent.translatable("sodium.options.multidraw_mode.tooltip"))
-                        .setControl(option -> {
-                            MultiDrawMode[] allowed = isIndirectMultiDrawSupported()
-                                    ? MultiDrawMode.values()
-                                    : new MultiDrawMode[] { MultiDrawMode.DIRECT, MultiDrawMode.INDIVIDUAL };
-                            return new CyclingControl<>(option, MultiDrawMode.class, allowed);
-                        })
+                        .setControl(option -> new CyclingControl<>(option, ActiniumGameOptionPages::allowedMultiDrawModes))
                         .setBinding((opts, value) -> opts.advanced.multiDrawMode = value, opts -> opts.advanced.multiDrawMode)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .setDefaultValue(MultiDrawMode.DIRECT)
@@ -596,6 +647,99 @@ public class ActiniumGameOptionPages {
                 .build());
 
         groups.add(OptionGroup.createBuilder()
+                .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer", Void.class))
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_enabled", boolean.class))
+                        .setName(TextComponent.translatable("options.actinium.fpsReducer.enabled"))
+                        .setTooltip(TextComponent.translatable("options.actinium.fpsReducer.enabled.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setBinding((opts, value) -> {
+                            opts.reducer.enabled = value;
+                            FpsReducer.markConfigChanged();
+                        }, opts -> opts.reducer.enabled)
+                        .setImpact(OptionImpact.MEDIUM)
+                        .setDefaultValue(false)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_unfocused_limit", int.class))
+                        .setName(TextComponent.translatable("options.actinium.fpsReducer.unfocusedLimit"))
+                        .setTooltip(TextComponent.translatable("options.actinium.fpsReducer.unfocusedLimit.tooltip"))
+                        .setControl(option -> new SliderControl(option, 5, 120, 5, ControlValueFormatter.fpsLimit()))
+                        .setBinding((opts, value) -> {
+                            opts.reducer.unfocusedFpsLimit = value;
+                            FpsReducer.markConfigChanged();
+                        }, opts -> opts.reducer.unfocusedFpsLimit)
+                        .setDefaultValue(10)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_idle_limit", int.class))
+                        .setName(TextComponent.translatable("options.actinium.fpsReducer.idleLimit"))
+                        .setTooltip(TextComponent.translatable("options.actinium.fpsReducer.idleLimit.tooltip"))
+                        .setControl(option -> new SliderControl(option, 5, 120, 5, ControlValueFormatter.fpsLimit()))
+                        .setBinding((opts, value) -> {
+                            opts.reducer.idleFpsLimit = value;
+                            FpsReducer.markConfigChanged();
+                        }, opts -> opts.reducer.idleFpsLimit)
+                        .setDefaultValue(30)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_idle_minutes", int.class))
+                        .setName(TextComponent.translatable("options.actinium.fpsReducer.idleMinutes"))
+                        .setTooltip(TextComponent.translatable("options.actinium.fpsReducer.idleMinutes.tooltip"))
+                        .setControl(option -> new SliderControl(option, 1, 30, 1, ControlValueFormatter.number()))
+                        .setBinding((opts, value) -> {
+                            opts.reducer.idleTimeoutMinutes = value;
+                            FpsReducer.markConfigChanged();
+                        }, opts -> opts.reducer.idleTimeoutMinutes)
+                        .setDefaultValue(5)
+                        .build())
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_limit_menu", boolean.class))
+                        .setName(TextComponent.translatable("options.actinium.fpsReducer.limitMenu"))
+                        .setTooltip(TextComponent.translatable("options.actinium.fpsReducer.limitMenu.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setBinding((opts, value) -> {
+                            opts.reducer.limitMenuFrameRate = value;
+                            FpsReducer.markConfigChanged();
+                        }, opts -> opts.reducer.limitMenuFrameRate)
+                        .setDefaultValue(true)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_unfocused_volume", int.class))
+                        .setName(TextComponent.translatable("options.actinium.fpsReducer.unfocusedVolume"))
+                        .setTooltip(TextComponent.translatable("options.actinium.fpsReducer.unfocusedVolume.tooltip"))
+                        .setControl(option -> new SliderControl(option, 0, 100, 5, ControlValueFormatter.percentage()))
+                        .setBinding((opts, value) -> {
+                            opts.reducer.unfocusedVolume = value;
+                            FpsReducer.markConfigChanged();
+                        }, opts -> opts.reducer.unfocusedVolume)
+                        .setDefaultValue(100)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_idle_volume", int.class))
+                        .setName(TextComponent.translatable("options.actinium.fpsReducer.idleVolume"))
+                        .setTooltip(TextComponent.translatable("options.actinium.fpsReducer.idleVolume.tooltip"))
+                        .setControl(option -> new SliderControl(option, 0, 100, 5, ControlValueFormatter.percentage()))
+                        .setBinding((opts, value) -> {
+                            opts.reducer.idleVolume = value;
+                            FpsReducer.markConfigChanged();
+                        }, opts -> opts.reducer.idleVolume)
+                        .setDefaultValue(100)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "fps_reducer_minimized_volume", int.class))
+                        .setName(TextComponent.translatable("options.actinium.fpsReducer.minimizedVolume"))
+                        .setTooltip(TextComponent.translatable("options.actinium.fpsReducer.minimizedVolume.tooltip"))
+                        .setControl(option -> new SliderControl(option, 0, 100, 5, ControlValueFormatter.percentage()))
+                        .setBinding((opts, value) -> {
+                            opts.reducer.minimizedVolume = value;
+                            FpsReducer.markConfigChanged();
+                        }, opts -> opts.reducer.minimizedVolume)
+                        .setDefaultValue(100)
+                        .build())
+                .build());
+
+        groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Option.ALLOW_DIRECT_MEMORY_ACCESS.cast())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(StandardOptions.Option.ALLOW_DIRECT_MEMORY_ACCESS.cast())
@@ -623,6 +767,63 @@ public class ActiniumGameOptionPages {
                 )
                 .build());
 
+        groups.add(OptionGroup.createBuilder()
+                .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "entity_batching_group", Void.class))
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "entity_batching", boolean.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.entity_batching.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.entity_batching.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setImpact(OptionImpact.HIGH)
+                        .setBinding((opts, value) -> opts.performance.enableEntityBatching = value, opts -> opts.performance.enableEntityBatching)
+                        .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
+                        .setDefaultValue(true)
+                        .build())
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "cube_instancing", boolean.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.cube_instancing.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.cube_instancing.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setImpact(OptionImpact.HIGH)
+                        .setBinding((opts, value) -> opts.performance.enableCubeInstancing = value, opts -> opts.performance.enableCubeInstancing)
+                        .setEnabledPredicate(AngelicaConfig::enableEntityBatching)
+                        .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
+                        .setDefaultValue(true)
+                        .build())
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "entity_texture_atlas", boolean.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.entity_texture_atlas.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.entity_texture_atlas.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setImpact(OptionImpact.MEDIUM)
+                        .setBinding((opts, value) -> opts.performance.enableEntityTextureAtlas = value, opts -> opts.performance.enableEntityTextureAtlas)
+                        .setEnabledPredicate(AngelicaConfig::cubeInstancingEnabled)
+                        .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
+                        .setDefaultValue(true)
+                        .build())
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "entity_shadow_replay", boolean.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.entity_shadow_replay.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.entity_shadow_replay.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setImpact(OptionImpact.MEDIUM)
+                        .setBinding((opts, value) -> opts.performance.enableEntityShadowReplay = value, opts -> opts.performance.enableEntityShadowReplay)
+                        .setEnabledPredicate(AngelicaConfig::enableEntityBatching)
+                        .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
+                        .setDefaultValue(false)
+                        .build())
+                .add(createShadowReplayExclusionsScreenOption())
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "item_renderer_cache_size", int.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.item_renderer_cache_size.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.item_renderer_cache_size.tooltip"))
+                        .setControl(option -> new SliderControl(option, 256, 1024, 64, ControlValueFormatter.number()))
+                        .setBinding((opts, value) -> opts.performance.itemRendererCacheSize = value, opts -> opts.performance.itemRendererCacheSize)
+                        .setImpact(OptionImpact.MEDIUM)
+                        .setDefaultValue(512)
+                        .build())
+                .build());
+
         return new OptionPage(StandardOptions.Pages.ADVANCED, TextComponent.translatable("sodium.options.pages.advanced"), ImmutableList.copyOf(groups));
     }
 
@@ -639,6 +840,15 @@ public class ActiniumGameOptionPages {
                         .setImpact(OptionImpact.LOW)
                         .setBinding((opts, value) -> opts.debug.enableProductionDiagnostics = value, opts -> opts.debug.enableProductionDiagnostics)
                         .setDefaultValue(true)
+                        .build())
+                .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
+                        .setId(OptionIdentifier.create(ActiniumRuntime.MODID, "entity_render_diagnostics", boolean.class))
+                        .setName(TextComponent.translatable("sodium.options.actinium.entity_render_diagnostics.name"))
+                        .setTooltip(TextComponent.translatable("sodium.options.actinium.entity_render_diagnostics.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setImpact(OptionImpact.MEDIUM)
+                        .setBinding((opts, value) -> opts.debug.enableEntityRenderDiagnostics = value, opts -> opts.debug.enableEntityRenderDiagnostics)
+                        .setDefaultValue(false)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(StandardOptions.Option.ACTINIUM_GL_DEBUG.cast())
@@ -761,6 +971,12 @@ public class ActiniumGameOptionPages {
                 .build());
 
         return new OptionPage(StandardOptions.Pages.DEBUG, TextComponent.translatable("sodium.options.pages.debug"), ImmutableList.copyOf(groups));
+    }
+
+    private static MultiDrawMode[] allowedMultiDrawModes() {
+        return isIndirectMultiDrawSupported()
+                ? MultiDrawMode.values()
+                : new MultiDrawMode[] { MultiDrawMode.DIRECT, MultiDrawMode.INDIVIDUAL };
     }
 
     private static boolean isIndirectMultiDrawSupported() {

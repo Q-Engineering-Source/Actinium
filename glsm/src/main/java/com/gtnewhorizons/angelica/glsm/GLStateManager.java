@@ -6,6 +6,7 @@ import com.gtnewhorizon.gtnhlib.client.renderer.stacks.IStateStack;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFlags;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormatElement.Usage;
 import com.gtnewhorizons.angelica.glsm.DisplayListManager.RecordMode;
+import com.gtnewhorizons.angelica.glsm.hooks.BatchStateGuard;
 import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
 import com.gtnewhorizons.angelica.glsm.backend.GLDebugMessageListener;
 import com.gtnewhorizons.angelica.glsm.backend.RenderBackend;
@@ -13,6 +14,7 @@ import com.gtnewhorizons.angelica.glsm.backend.VSyncMode;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GpuCheckpointTracker;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
+import com.gtnewhorizons.angelica.glsm.ffp.InstancedAttribs;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredAlphaHandler;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredBlendHandler;
 import com.gtnewhorizons.angelica.glsm.hooks.DeferredDepthColorHandler;
@@ -20,6 +22,8 @@ import com.gtnewhorizons.angelica.glsm.hooks.GLSMConfig;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMInitConfig;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandRecorder;
+import com.gtnewhorizons.angelica.glsm.hooks.ImmediateExtendedAttribHandler;
+import com.gtnewhorizons.angelica.glsm.streaming.TessellatorEntityIds;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandPhase;
 import com.gtnewhorizons.angelica.glsm.hooks.GpuCommandType;
 import com.gtnewhorizons.angelica.glsm.recording.CompiledDisplayList;
@@ -207,6 +211,44 @@ public class GLStateManager {
         else glCtx.exitCapture.reject();
     }
 
+    /**
+     * Called before a state change the batched TESR path cannot replay per draw, so a batch that is
+     * still open has to be flushed first.
+     *
+     * <p>State the batch does capture (blend function, depth test, alpha test, texture binding on
+     * unit 0, modelview) needs no guard; everything else does, otherwise the queued vertices would
+     * be drawn under state that belongs to the next draw.</p>
+     */
+    public static void beforeUncapturedStateChange() {
+        rejectExitCapture();
+        if (BatchStateGuard.isSuspended()) return;
+        if (DisplayListManager.getRecordMode() == RecordMode.COMPILE) return;
+        BatchStateGuard.beforeChange();
+        ctx().batchStateGeneration++;
+    }
+
+    /**
+     * Guard for capability toggles the batch does not record per draw: fog, scissor, stencil,
+     * colour logic, colour sum, rasterizer discard, multisampling and clip planes.
+     */
+    public static void beforeUncapturedCapabilityChange(int cap) {
+        if (cap == GL11.GL_FOG || cap == GL11.GL_SCISSOR_TEST || cap == GL11.GL_STENCIL_TEST
+            || cap == GL11.GL_COLOR_LOGIC_OP || cap == GL14.GL_COLOR_SUM || cap == GL30.GL_RASTERIZER_DISCARD
+            || cap == GL13.GL_SAMPLE_ALPHA_TO_COVERAGE || cap == GL13.GL_SAMPLE_ALPHA_TO_ONE || cap == GL13.GL_SAMPLE_COVERAGE
+            || (cap >= GL11.GL_CLIP_PLANE0 && cap < GL11.GL_CLIP_PLANE0 + MAX_CLIP_PLANES)) {
+            beforeUncapturedStateChange();
+        }
+    }
+
+    /**
+     * Guard for per-texture-unit capabilities. Enabling {@code GL_TEXTURE_2D} on units 0 and 1 is
+     * part of the captured draw state, everything else is not.
+     */
+    public static void beforeUncapturedTextureUnitChange(int cap, int unit) {
+        if (cap == GL11.GL_TEXTURE_2D && unit <= 1) return;
+        beforeUncapturedStateChange();
+    }
+
     public static final Logger LOGGER = LogManager.getLogger("GLSM");
     private static final Set<String> WARN_ONCE = ConcurrentHashMap.newKeySet();
 
@@ -222,6 +264,35 @@ public class GLStateManager {
         return Thread.currentThread() == MainThread;
     }
 
+    /**
+     * Records the entity, block entity and item ids of the draw being prepared. The ids only change at entity
+     * boundaries; the streaming drawer turns the recorded runs into one attribute value per vertex.
+     */
+    public static void setEntityIds(int entity, int blockEntity, int item) {
+        if (!isMainThread()) return;
+        final GLContextState glCtx = ctx();
+        final long ids = InstancedAttribs.packEntityInfo(entity, blockEntity, item);
+        if (ids == glCtx.entityIds) return;
+        TessellatorEntityIds.onIdsChanged(glCtx.entityIds, ids);
+        glCtx.entityIds = ids;
+        glCtx.dirtyEntityIdsAttrib = true;
+    }
+
+    /**
+     * Writes the recorded ids as the per-vertex attribute for draws that do not carry them in their buffer.
+     * Such draws cover a single entity, so the current value applies to every vertex.
+     */
+    public static void flushEntityIds(GLContextState glCtx) {
+        if (!glCtx.dirtyEntityIdsAttrib || glCtx.activeProgram == 0) return;
+        final ImmediateExtendedAttribHandler handler = GLSMHooks.immediateExtendedHandler;
+        if (handler == null || !handler.wantsEntityIds()) return;
+        final long ids = glCtx.entityIds;
+        RENDER_BACKEND.vertexAttrib4f(ImmediateExtendedAttribHandler.LOC_ENTITY_IDS,
+            InstancedAttribs.normalizedId(ids, 0), InstancedAttribs.normalizedId(ids, 16),
+            InstancedAttribs.normalizedId(ids, 32), 0.0f);
+        glCtx.dirtyEntityIdsAttrib = false;
+    }
+
     @Getter static GLSMInitConfig initConfig;
 
     public static ContextCapabilities capabilities;
@@ -234,6 +305,35 @@ public class GLStateManager {
     private static final IdentityHashMap<Object, GLContextState> drawableContexts = new IdentityHashMap<>();
     private static volatile boolean workerContextsActive;
     private static int workerContextCount;
+
+    /**
+     * Sets how many samples the fixed-function fragment shader takes per atlas texel. Only powers of two up to
+     * sixteen are meaningful; anything else is a caller bug.
+     *
+     * @return the previous setting, so the caller can restore it
+     */
+    public static int setTextureSupersamplingSamples(int samples) {
+        if (samples < 1 || samples > 16 || (samples & (samples - 1)) != 0) {
+            throw new IllegalArgumentException("Texture supersampling requires 1, 2, 4, 8, or 16 samples");
+        }
+        final GLContextState glCtx = ctx();
+        final int previous = glCtx.textureSupersamplingSamples;
+        if (previous != samples) {
+            beforeUncapturedStateChange();
+            glCtx.textureSupersamplingSamples = samples;
+        }
+        return previous;
+    }
+
+    /** Records the texel gutter of an atlas so the fragment shader can keep sampling inside a sprite. */
+    public static void markTextureAsAtlas(int texture, int gutter) {
+        if (texture <= 0) return;
+        final TextureInfo info = TextureInfoCache.INSTANCE.getInfo(texture);
+        if (info.getAtlasGutter() != gutter) {
+            beforeUncapturedStateChange();
+            info.setAtlasGutter(gutter);
+        }
+    }
 
     public static GLContextState ctx() {
         if (Thread.currentThread() == MainThread) {
@@ -1019,8 +1119,13 @@ public class GLStateManager {
         if (foreignDrawDepth <= 0) {
             throw new IllegalStateException("Foreign draw scope underflow");
         }
-        if (--foreignDrawDepth == 0 && GLSMHooks.FOREIGN_DRAW_END.hasListeners()) {
-            GLSMHooks.FOREIGN_DRAW_END.post(GLSMHooks.foreignDrawEndEvent);
+        if (--foreignDrawDepth == 0) {
+            // A pass change requested while the foreign renderer owned the program runs now, before
+            // the next batch decides which program it draws with.
+            GLSMHooks.resolvePendingProgram();
+            if (GLSMHooks.FOREIGN_DRAW_END.hasListeners()) {
+                GLSMHooks.FOREIGN_DRAW_END.post(GLSMHooks.foreignDrawEndEvent);
+            }
         }
     }
 
@@ -1180,6 +1285,9 @@ public class GLStateManager {
     static void changeSecondaryColor(float red, float green, float blue) {
         final GLContextState glCtx = ctx();
         if (!isCachingEnabled() || red != glCtx.secondaryColor.getRed() || green != glCtx.secondaryColor.getGreen() || blue != glCtx.secondaryColor.getBlue()) {
+            // The secondary colour reaches the fragment only through colour sum, which the batch
+            // does not record per draw.
+            if (glCtx.colorSumState.isEnabled()) beforeUncapturedStateChange();
             mod(glCtx.secondaryColor);
             glCtx.secondaryColor.setRed(red);
             glCtx.secondaryColor.setGreen(green);
@@ -1511,7 +1619,10 @@ public class GLStateManager {
         if (vaos.hasAnyClientSideEnabledAttrib()) {
             ffp.preDraw(vaos.currentClientArrayVertexFlags());
         } else {
-            ffp.preDraw();
+            // A bound vertex array carries no client-side pointers, so the flags that describe it are
+            // the ones recorded for it: the vertex format's flags, or the ones a batch set explicitly
+            // before drawing its own mesh.
+            ffp.preDraw(vaos.getVertexFlags());
         }
     }
 
@@ -2130,6 +2241,7 @@ public class GLStateManager {
         }
         final int depth = glCtx.attribDepth;
         glCtx.attribSets[depth] = set;
+        glCtx.savedBatchStateGen[depth] = glCtx.batchStateGeneration;
         snapshotGenerations(glCtx, set.bump);
         glCtx.modifiedCount[depth] = 0;
 
@@ -2177,6 +2289,9 @@ public class GLStateManager {
         final GLContextState glCtx = ctx();
         if (glCtx.attribDepth <= 0) {
             throw new IllegalStateException("Attrib stack underflow");
+        }
+        if (glCtx.savedBatchStateGen[glCtx.attribDepth - 1] != glCtx.batchStateGeneration) {
+            beforeUncapturedStateChange();
         }
         final int poppedDepth = glCtx.attribDepth;
         final StateSet set = glCtx.attribSets[poppedDepth - 1];
@@ -2281,6 +2396,8 @@ public class GLStateManager {
             public static void applyRetainedState(RetainedState in) { GLSMAttribStack.applyRetainedState(in); }
 
     static void applyRetainedChanges(GLContextState glCtx, RetainedState in, int first) {
+        // Replaying a retained snapshot changes state the batch did not record per draw.
+        beforeUncapturedStateChange();
         final boolean blendSnapshotted = snapshotVanillaBlendFunc();
         final int blendSrcRgbBeforeRestore = glCtx.blendState.getSrcRgb();
         final int blendDstRgbBeforeRestore = glCtx.blendState.getDstRgb();
@@ -3777,6 +3894,7 @@ public class GLStateManager {
      * GL_TEXTURE_ENV parameters including GL_COMBINE sub-params are tracked in per-unit TexEnvState.
      */
     static void handleTexEnvScalar(int target, int pname, float param) {
+        beforeUncapturedStateChange();
         if (target == GL14.GL_TEXTURE_FILTER_CONTROL) {
             // LOD bias via legacy glTexEnv path — remap to core-profile glTexParameterf
             glTexParameterf(GL11.GL_TEXTURE_2D, GL14.GL_TEXTURE_LOD_BIAS, param);

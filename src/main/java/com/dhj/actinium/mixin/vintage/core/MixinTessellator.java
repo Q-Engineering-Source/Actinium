@@ -1,8 +1,6 @@
 package com.dhj.actinium.mixin.vintage.core;
 
 import com.gtnewhorizon.gtnhlib.client.renderer.ITessellatorInstance;
-import com.gtnewhorizon.gtnhlib.client.renderer.TessellatorManager;
-import com.gtnewhorizons.angelica.client.rendering.DeferredDrawBatcher;
 import dhj.embeddedt.embeddium.api.shader.buffer.BufferBuilderExtension;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.Tessellator;
@@ -13,7 +11,8 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import com.dhj.actinium.render.VanillaBufferBuilderRenderer;
+import com.dhj.actinium.render.TessellatorDrawRouter;
+import com.gtnewhorizons.angelica.glsm.ITessellatorData;
 
 @Mixin(Tessellator.class)
 public class MixinTessellator implements ITessellatorInstance {
@@ -26,24 +25,9 @@ public class MixinTessellator implements ITessellatorInstance {
 
     @Inject(method = "draw", at = @At("HEAD"), cancellable = true)
     private void celeritas$coreProfileDraw(CallbackInfo ci) {
-        if (VanillaBufferBuilderRenderer.shouldUseVanillaPositionDraw(this.buffer)) {
-            return;
-        }
-
-        if (DeferredDrawBatcher.capture(this.buffer)) {
+        if (TessellatorDrawRouter.draw(this.buffer, (ITessellatorData) this.buffer)) {
             ci.cancel();
-            return;
         }
-
-        this.buffer.finishDrawing();
-        if (TessellatorManager.shouldInterceptBufferBuilderDraw()) {
-            TessellatorManager.interceptBufferBuilderDraw(this.buffer);
-            ci.cancel();
-            return;
-        }
-
-        VanillaBufferBuilderRenderer.draw(this.buffer, "Tessellator");
-        ci.cancel();
     }
 
     @Override

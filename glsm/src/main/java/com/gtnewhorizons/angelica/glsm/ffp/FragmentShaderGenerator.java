@@ -2,12 +2,20 @@ package com.gtnewhorizons.angelica.glsm.ffp;
 
 import org.lwjgl.opengl.GL11;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+
 /**
  * Generates GLSL 330 core fragment shaders for FFP emulation.
  * Supports per-unit texenv chain including GL_COMBINE mode.
  * Follows Mesa's ff_fragment_shader.c and st_nir_lower_fog.c.
  */
 public final class FragmentShaderGenerator {
+
+    /** Atlas supersampling snippet, loaded once; it is assembled with the sample count as a define. */
+    private static final String SUPERSAMPLING_SOURCE = loadSupersamplingSource();
 
     private FragmentShaderGenerator() {}
 
@@ -39,9 +47,24 @@ public final class FragmentShaderGenerator {
         return sb.toString();
     }
 
+    private static String loadSupersamplingSource() {
+        try (InputStream stream = FragmentShaderGenerator.class
+            .getResourceAsStream("/assets/actinium/shaders/texture_supersampling.glsl")) {
+            if (stream == null) {
+                throw new IllegalStateException("Missing /assets/actinium/shaders/texture_supersampling.glsl");
+            }
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException failure) {
+            throw new UncheckedIOException("Could not read the texture supersampling shader source", failure);
+        }
+    }
+
     private static void emitInputs(StringBuilder sb, FragmentKey key) {
         sb.append("// Inputs from vertex shader\n");
         sb.append("in vec4 v_Color;\n");
+        if (key.overlayInstanced()) {
+            sb.append("in vec4 v_Overlay;\n");
+        }
         if (key.separateSpecular()) {
             sb.append("in vec3 v_SpecularColor;\n");
         }
@@ -148,6 +171,10 @@ public final class FragmentShaderGenerator {
      * Emit the modern-style damage overlay mix.
      */
     private static void emitOverlay(StringBuilder sb, FragmentKey key) {
+        if (key.overlayInstanced()) {
+            sb.append("  color.rgb = mix(color.rgb, v_Overlay.rgb, v_Overlay.a);\n");
+            return;
+        }
         if (!key.overlayEnabled()) return;
         sb.append("  color.rgb = mix(color.rgb, u_OverlayColor.rgb, u_OverlayColor.a);\n");
     }

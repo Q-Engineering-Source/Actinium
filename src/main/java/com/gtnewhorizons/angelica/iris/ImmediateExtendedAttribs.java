@@ -5,12 +5,13 @@ import com.gtnewhorizons.angelica.glsm.GLSMTextures;
 import com.gtnewhorizons.angelica.glsm.ffp.FfpExtendedAttribs;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.glsm.hooks.ImmediateExtendedAttribHandler;
+import com.gtnewhorizons.angelica.rendering.tesr.TesrLifecycle;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import net.coderbot.iris.Iris;
-import net.coderbot.iris.uniforms.ItemIdManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.ITextureObject;
 import net.minecraft.client.renderer.texture.TextureMap;
+import com.dhj.actinium.render.RenderingState;
 import net.coderbot.iris.vertices.IrisQuadView;
 import net.coderbot.iris.vertices.NormI8;
 import net.coderbot.iris.vertices.NormalHelper;
@@ -18,6 +19,12 @@ import net.minecraft.util.ResourceLocation;
 import org.joml.Vector3f;
 
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memGetFloat;
+import static com.gtnewhorizon.gtnhlib.client.renderer.cel.util.ModelQuadUtil.TEX_X_INDEX;
+import static com.gtnewhorizon.gtnhlib.client.renderer.cel.util.ModelQuadUtil.TEX_Y_INDEX;
+import static com.gtnewhorizon.gtnhlib.client.renderer.cel.util.ModelQuadUtil.VERTEX_SIZE;
+import static com.gtnewhorizon.gtnhlib.client.renderer.cel.util.ModelQuadUtil.X_INDEX;
+import static com.gtnewhorizon.gtnhlib.client.renderer.cel.util.ModelQuadUtil.Y_INDEX;
+import static com.gtnewhorizon.gtnhlib.client.renderer.cel.util.ModelQuadUtil.Z_INDEX;
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memGetInt;
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memPutFloat;
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memPutInt;
@@ -35,6 +42,9 @@ public final class ImmediateExtendedAttribs implements ImmediateExtendedAttribHa
 
     private static final int WANTS_MID = 1;
     private static final int WANTS_TANGENT = 2;
+    private static final int WANTS_ENTITY_IDS = 4;
+    private static final int VANILLA_VERTEX_INTS = 8;
+    private static final int VANILLA_NORMAL_INDEX = 6;
 
     private static final int NEUTRAL_TANGENT = NormI8.pack(1.0f, 0.0f, 0.0f, 1.0f);
     private static final ResourceLocation ITEMS_ATLAS = new ResourceLocation("textures/atlas/items.png");
@@ -55,6 +65,7 @@ public final class ImmediateExtendedAttribs implements ImmediateExtendedAttribHa
             wants = 0;
             if (GLSMPrograms.glGetAttribLocation(program, "mc_midTexCoord") >= 0) wants |= WANTS_MID;
             if (GLSMPrograms.glGetAttribLocation(program, "at_tangent") >= 0) wants |= WANTS_TANGENT;
+            if (GLSMPrograms.glGetAttribLocation(program, "iris_Entity") == ImmediateExtendedAttribHandler.LOC_ENTITY_IDS) wants |= WANTS_ENTITY_IDS;
             programWantsExtCache.put(program, wants);
         }
         currentProgramWants = wants;
@@ -68,10 +79,13 @@ public final class ImmediateExtendedAttribs implements ImmediateExtendedAttribHa
         currentProgramWants = 0;
         programWantsExtCache.clear();
         FfpExtendedAttribs.reset();
+        // Programs and the passes they were baked for are gone, so are the batched TESR draws.
+        TesrLifecycle.reset();
     }
 
     private final Vector3f normal = new Vector3f();
     private final PackedQuadView packedQuad = new PackedQuadView();
+    private final RawQuadView rawQuad = new RawQuadView();
 
     private boolean limitTileExtent = true;
     private boolean needTangent = true;
@@ -86,9 +100,83 @@ public final class ImmediateExtendedAttribs implements ImmediateExtendedAttribHa
         return (currentProgramWants & WANTS_TANGENT) != 0;
     }
 
+    @Override
+    public boolean wantsEntityIds() {
+        return programWants(WANTS_ENTITY_IDS);
+    }
+
+    @Override
+    public boolean wantsExtendedCapture() {
+        return Iris.enabled && Iris.getCurrentPack().isPresent();
+    }
+
+    @Override
+    public boolean wantsFaceNormals() {
+        return RenderingState.isRenderingWorld();
+    }
+
+    /**
+     * Computes the face normal of each quad from its diagonals and writes it into the packed normal slot. Vanilla
+     * fills a constant normal when a draw carries none, which leaves flat-shaded geometry facing the wrong way
+     * under a shader pack; the quads drawn outside chunk meshing need the real normal instead.
+     */
+    @Override
+    public void writeFaceNormals(int[] rawBuffer, int vertexCount) {
+        for (int v = 0; v + 3 < vertexCount; v += 4) {
+            final int base = v * VANILLA_VERTEX_INTS;
+            final float dx1 = Float.intBitsToFloat(rawBuffer[base + 2 * VANILLA_VERTEX_INTS])
+                - Float.intBitsToFloat(rawBuffer[base]);
+            final float dy1 = Float.intBitsToFloat(rawBuffer[base + 2 * VANILLA_VERTEX_INTS + 1])
+                - Float.intBitsToFloat(rawBuffer[base + 1]);
+            final float dz1 = Float.intBitsToFloat(rawBuffer[base + 2 * VANILLA_VERTEX_INTS + 2])
+                - Float.intBitsToFloat(rawBuffer[base + 2]);
+            final float dx2 = Float.intBitsToFloat(rawBuffer[base + 3 * VANILLA_VERTEX_INTS])
+                - Float.intBitsToFloat(rawBuffer[base + VANILLA_VERTEX_INTS]);
+            final float dy2 = Float.intBitsToFloat(rawBuffer[base + 3 * VANILLA_VERTEX_INTS + 1])
+                - Float.intBitsToFloat(rawBuffer[base + VANILLA_VERTEX_INTS + 1]);
+            final float dz2 = Float.intBitsToFloat(rawBuffer[base + 3 * VANILLA_VERTEX_INTS + 2])
+                - Float.intBitsToFloat(rawBuffer[base + VANILLA_VERTEX_INTS + 2]);
+
+            float nx = dy1 * dz2 - dz1 * dy2;
+            float ny = dz1 * dx2 - dx1 * dz2;
+            float nz = dx1 * dy2 - dy1 * dx2;
+            final float length = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+            if (length > 1.0e-6f) {
+                nx /= length;
+                ny /= length;
+                nz /= length;
+            } else {
+                nx = 0.0f;
+                ny = 1.0f;
+                nz = 0.0f;
+            }
+            final int packed = NormI8.pack(nx, ny, nz, 0.0f);
+            for (int i = 0; i < 4; i++) {
+                rawBuffer[(v + i) * VANILLA_VERTEX_INTS + VANILLA_NORMAL_INDEX] = packed;
+            }
+        }
+    }
+
     private static boolean programWants(int mask) {
         if (!Iris.enabled) return false;
         return (currentProgramWants & mask) != 0 && GLSMPrograms.getActiveProgram() != 0;
+    }
+
+    @Override
+    public void build(int[] rawBuffer, int vertexCount, int vertsPerPrim, int normalIntIndex, long dstAddr, int dstStride) {
+        final boolean smooth = normalIntIndex >= 0;
+        limitTileExtent = isAtlasNotBound();
+        needTangent = wantsTangent();
+        long ptr = dstAddr;
+        for (int v = 0; v < vertexCount; v += vertsPerPrim) {
+            rawQuad.setup(rawBuffer, v, normalIntIndex);
+            if (vertsPerPrim == 4) {
+                writeQuadExt(rawQuad, ptr, dstStride);
+            } else {
+                writeTriExt(rawQuad, smooth, ptr, dstStride);
+            }
+            ptr += (long) dstStride * vertsPerPrim;
+        }
     }
 
     @Override
@@ -249,6 +337,25 @@ public final class ImmediateExtendedAttribs implements ImmediateExtendedAttribHa
 
     private interface NormalSource extends IrisQuadView {
         int packedNormal(int i);
+    }
+
+    private static final class RawQuadView implements NormalSource {
+        private int[] raw;
+        private int base;
+        private int normalIndex;
+
+        void setup(int[] raw, int firstVertex, int normalIndex) {
+            this.raw = raw;
+            this.base = firstVertex;
+            this.normalIndex = normalIndex;
+        }
+
+        @Override public float x(int i) { return Float.intBitsToFloat(raw[(base + i) * VERTEX_SIZE + X_INDEX]); }
+        @Override public float y(int i) { return Float.intBitsToFloat(raw[(base + i) * VERTEX_SIZE + Y_INDEX]); }
+        @Override public float z(int i) { return Float.intBitsToFloat(raw[(base + i) * VERTEX_SIZE + Z_INDEX]); }
+        @Override public float u(int i) { return Float.intBitsToFloat(raw[(base + i) * VERTEX_SIZE + TEX_X_INDEX]); }
+        @Override public float v(int i) { return Float.intBitsToFloat(raw[(base + i) * VERTEX_SIZE + TEX_Y_INDEX]); }
+        @Override public int packedNormal(int i) { return raw[(base + i) * VERTEX_SIZE + normalIndex]; }
     }
 
     private static final class PackedQuadView implements NormalSource {

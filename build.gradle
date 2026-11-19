@@ -795,7 +795,31 @@ tasks.register('glIntegrationTest', Test) {
         languageVersion = JavaLanguageVersion.of(25)
     }
     jvmArgs '--enable-native-access=ALL-UNNAMED'
+    // Forge's registry bootstrap accesses Field.modifiers, the same module access :test grants.
+    jvmArgs '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED'
     workingDir = rootProject.projectDir
+}
+
+// Opt-in javaagent that installs the production GL redirector in the integration-test JVM. The suite works without
+// it because GLStateManagerIntegrationFixture drives GLSM directly, but redirection is what the fixed-function path
+// sees in game; -PglsmRedirectAgent attaches it for verification runs.
+def glsmRedirectAgentJar = tasks.register('glsmRedirectAgentJar', Jar) {
+    archiveClassifier = 'glsm-redirect-agent'
+    from(sourceSets.glIntegrationTest.output) {
+        include 'com/dhj/actinium/test/GlsmRedirectAgent*.class'
+    }
+    manifest {
+        attributes 'Premain-Class': 'com.dhj.actinium.test.GlsmRedirectAgent'
+    }
+}
+
+if (project.hasProperty('glsmRedirectAgent')) {
+    tasks.named('glIntegrationTest') {
+        dependsOn glsmRedirectAgentJar
+        doFirst {
+            jvmArgs "-javaagent:${glsmRedirectAgentJar.get().archiveFile.get().asFile.absolutePath}"
+        }
+    }
 }
 
 tasks.named('processResources').configure {

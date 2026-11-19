@@ -1,6 +1,5 @@
 package com.dhj.actinium.render;
 
-import com.dhj.actinium.mixin.features.iris.RenderItemAccessor;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import net.minecraft.client.renderer.EntityRenderer;
 import net.minecraft.client.renderer.RenderItem;
@@ -86,7 +85,7 @@ public final class FastLitItemDisplayListCache {
             return null;
         }
 
-        int[] colors = getQuadColors(renderItem, quads, color, stack);
+        int[] colors = getQuadColors(renderItem.itemColors, quads, color, stack);
         CacheKey lookupKey = new CacheKey(model, colors);
         CachedDisplayList cached = CACHE.get(lookupKey);
         if (cached != null) {
@@ -113,7 +112,8 @@ public final class FastLitItemDisplayListCache {
         CACHE.clear();
     }
 
-    private static boolean isStableModel(IBakedModel model) {
+    /** Whether the model class guarantees the same quads on every frame, so a captured mesh stays valid. */
+    public static boolean isStableModel(IBakedModel model) {
         Class<?> modelClass = model.getClass();
         return modelClass == SimpleBakedModel.class
             || modelClass == BakedItemModel.class
@@ -132,18 +132,20 @@ public final class FastLitItemDisplayListCache {
         return CACHEABLE_QUADS;
     }
 
-    private static int[] getQuadColors(RenderItem renderItem, List<BakedQuad> quads, int color, ItemStack stack) {
+    /**
+     * Resolves the colour the vanilla quad loop multiplies into every vertex of each quad: the item
+     * colour table for a tinted quad of a non-empty stack, the given colour otherwise.
+     *
+     * @return one colour per quad, in list order
+     */
+    public static int[] getQuadColors(ItemColors itemColors, List<BakedQuad> quads, int color, ItemStack stack) {
         int[] colors = new int[quads.size()];
         boolean resolveTint = color == -1 && stack != null && !stack.isEmpty();
-        ItemColors itemColors = null;
 
         for (int i = 0; i < quads.size(); i++) {
             BakedQuad quad = quads.get(i);
             int quadColor = color;
             if (resolveTint && quad.hasTintIndex()) {
-                if (itemColors == null) {
-                    itemColors = ((RenderItemAccessor) renderItem).actinium$getItemColors();
-                }
                 quadColor = itemColors.colorMultiplier(stack, quad.getTintIndex());
                 if (EntityRenderer.anaglyphEnable) {
                     quadColor = TextureUtil.anaglyphColor(quadColor);
@@ -156,7 +158,8 @@ public final class FastLitItemDisplayListCache {
         return colors;
     }
 
-    private static boolean isItemFormat(BakedQuad quad) {
+    /** Whether the quad carries the 28 byte vertex layout {@code RenderItem.renderQuads} writes. */
+    public static boolean isItemFormat(BakedQuad quad) {
         return DefaultVertexFormats.ITEM.equals(quad.getFormat());
     }
 

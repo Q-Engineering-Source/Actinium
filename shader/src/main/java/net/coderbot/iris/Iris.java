@@ -1169,6 +1169,8 @@ public class Iris {
             shaderPackLoadId++;
             final DeferredWorldRenderingPipeline pipeline = new DeferredWorldRenderingPipeline(programSet);
             try {
+                // These are otherwise built lazily on the first draw or batch, after this pipeline is gone
+                pipeline.compileInstancedVariants();
                 final ShaderProvider provider = ShaderProviderHolder.getProvider();
                 if (provider instanceof IrisCeleritasShaderProvider terrain) {
                     terrain.compileTerrainPrograms(pipeline.getCeleritasTerrainPipeline());
@@ -1509,7 +1511,12 @@ public class Iris {
         }
     }
 
-    @NotNull
+    /** @return the pipeline manager, or null when Iris has not created one yet */
+    @Nullable
+    public static PipelineManager getPipelineManagerNullable() {
+        return pipelineManager;
+    }
+
     public static PipelineManager getPipelineManager() {
         if (pipelineManager == null) {
             pipelineManager = new PipelineManager(Iris::createPipeline);

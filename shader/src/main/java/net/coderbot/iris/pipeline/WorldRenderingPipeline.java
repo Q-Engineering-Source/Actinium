@@ -14,6 +14,7 @@ import net.coderbot.iris.shaderpack.CloudSetting;
 import net.coderbot.iris.shaderpack.texture.TextureStage;
 import net.coderbot.iris.uniforms.FrameUpdateNotifier;
 import net.minecraft.client.renderer.EntityRenderer;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.OptionalInt;
@@ -31,6 +32,13 @@ public interface WorldRenderingPipeline {
 	void setPhase(WorldRenderingPhase phase);
 	void setInputs(InputAvailability availability);
 	void setSpecialCondition(SpecialCondition special);
+
+	/**
+	 * Declares whether the following draws are translucent, or hands the decision back to the
+	 * live blend state when null.
+	 */
+	void setDeclaredTranslucency(@Nullable Boolean translucent);
+
 	RenderTargetStateListener getRenderTargetStateListener();
 
 	int getCurrentNormalTexture();
@@ -40,6 +48,14 @@ public interface WorldRenderingPipeline {
 
 	/** Reapplies the complete pass state after a temporary owned-program override. */
 	void restoreActivePass();
+
+	/** Rebinds the active pass program and framebuffer after a batch restored foreign draw state. */
+	default void rebindCurrentPass() {
+	}
+
+	/** Called at each entity render boundary so the pass can be re-matched between entities. */
+	default void onEntityRenderBoundary() {
+	}
 
 	void beginHand();
 

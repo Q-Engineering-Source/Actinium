@@ -39,6 +39,7 @@ import net.coderbot.iris.shadows.frustum.fallback.BoxCullingFrustum;
 import net.coderbot.iris.shadows.frustum.fallback.NonCullingFrustum;
 import net.coderbot.iris.uniforms.CapturedRenderingState;
 import net.coderbot.iris.uniforms.CelestialUniforms;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.client.renderer.EntityRenderer;
@@ -51,6 +52,8 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.profiler.Profiler;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.world.IBlockAccess;
+import net.minecraft.world.World;
 import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.math.BlockPos;
 import dhj.embeddedt.embeddium.impl.gl.device.RenderDevice;
@@ -118,6 +121,7 @@ public class ShadowRenderer {
 	private final boolean shouldRenderEntities;
 	private final boolean shouldRenderPlayer;
 	private final boolean shouldRenderBlockEntities;
+	private final boolean shouldRenderLightBlockEntities;
 	private final float sunPathRotation;
 	private final List<MipmapPass> mipmapPasses = new ArrayList<>();
 	private final String debugStringOverall;
@@ -165,6 +169,7 @@ public class ShadowRenderer {
 		this.shouldRenderEntities = shadowDirectives.shouldRenderEntities();
 		this.shouldRenderPlayer = shadowDirectives.shouldRenderPlayer();
 		this.shouldRenderBlockEntities = shadowDirectives.shouldRenderBlockEntities();
+		this.shouldRenderLightBlockEntities = shadowDirectives.shouldRenderLightBlockEntities();
 		this.shouldRenderDH = shadowDirectives.isDhShadowEnabled().orElse(false);
 
 		this.compositeRenderer = compositeRenderer;
@@ -672,6 +677,29 @@ public class ShadowRenderer {
 		TileEntityRendererDispatcher.staticPlayerZ = viewer.lastTickPosZ + (viewer.posZ - viewer.lastTickPosZ) * tickDelta;
 	}
 
+	/**
+	 * @param lightsOnly whether only the block entities whose block emits light may be drawn, which is
+	 *                   how a pack that switched the full set off keeps its light sources in the map
+	 */
+	private static boolean isShadowTileEntityVisible(TileEntity tileEntity, boolean hasEntityFrustum, BoxCuller culler, boolean lightsOnly) {
+		final BlockPos pos = tileEntity.getPos();
+		if (hasEntityFrustum && (culler.isCulled(pos.getX() - 1, pos.getY() - 1, pos.getZ() - 1, pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1))) {
+			return false;
+		}
+		return !lightsOnly || emitsLight(tileEntity);
+	}
+
+	private static boolean emitsLight(TileEntity tileEntity) {
+		final World world = tileEntity.getWorld();
+		final BlockPos pos = tileEntity.getPos();
+		return emitsLight(world.getBlockState(pos), world, pos);
+	}
+
+	/** @return whether the block state emits light, the filter the lights-only pass applies */
+	static boolean emitsLight(IBlockState state, IBlockAccess world, BlockPos pos) {
+		return state.getLightValue(world, pos) > 0;
+	}
+
     private void renderTileEntity(TileEntity tile, double cameraX, double cameraY, double cameraZ, float partialTicks) {
         BlockPos pos = tile.getPos();
         if (tile.getDistanceSq(cameraX, cameraY, cameraZ) >= tile.getMaxRenderDistanceSquared()) {
@@ -688,7 +716,7 @@ public class ShadowRenderer {
         );
     }
 
-	private void renderTileEntities(Object bufferSource, MatrixStack modelView, double cameraX, double cameraY, double cameraZ, float partialTicks, boolean hasEntityFrustum) {
+	private void renderTileEntities(Object bufferSource, MatrixStack modelView, double cameraX, double cameraY, double cameraZ, float partialTicks, boolean hasEntityFrustum, boolean lightsOnly) {
 		profiler.startSection("build blockentities");
 
 		int shadowTileEntities = 0;
@@ -714,8 +742,7 @@ public class ShadowRenderer {
             GbufferPrograms.setBlockEntityDefaults();
 
             for (TileEntity tileEntity : visibleTileEntities) {
-                BlockPos pos = tileEntity.getPos();
-                if (hasEntityFrustum && (culler.isCulled(pos.getX() - 1, pos.getY() - 1, pos.getZ() - 1, pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1))) {
+                if (!isShadowTileEntityVisible(tileEntity, hasEntityFrustum, culler, lightsOnly)) {
                     continue;
                 }
                 renderTileEntity(tileEntity, cameraX, cameraY, cameraZ, partialTicks);
@@ -723,8 +750,7 @@ public class ShadowRenderer {
                 shadowTileEntities++;
             }
             for (TileEntity tileEntity : globalTileEntities) {
-                BlockPos pos = tileEntity.getPos();
-                if (hasEntityFrustum && (culler.isCulled(pos.getX() - 1, pos.getY() - 1, pos.getZ() - 1, pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1))) {
+                if (!isShadowTileEntityVisible(tileEntity, hasEntityFrustum, culler, lightsOnly)) {
                     continue;
                 }
                 renderTileEntity(tileEntity, cameraX, cameraY, cameraZ, partialTicks);
@@ -809,14 +835,15 @@ public class ShadowRenderer {
 		}
 
 		PROJECTION.set(shadowProjection);
-		InternalShadowRenderingState.begin(MODELVIEW, PROJECTION, shouldRenderEntities, shouldRenderPlayer, shouldRenderBlockEntities);
+		final boolean rendersBlockEntities = shouldRenderBlockEntities || shouldRenderLightBlockEntities;
+		InternalShadowRenderingState.begin(MODELVIEW, PROJECTION, shouldRenderEntities, shouldRenderPlayer, rendersBlockEntities);
 		IrisGlDebug.logShadowPassState(
 			"begin",
 			shouldRenderTerrain,
 			shouldRenderTranslucent,
 			shouldRenderEntities,
 			shouldRenderPlayer,
-			shouldRenderBlockEntities,
+			rendersBlockEntities,
 			0,
 			0,
 			0
@@ -951,8 +978,9 @@ public class ShadowRenderer {
 				renderPlayerEntity(levelRenderer, entityShadowFrustum, null, modelView, renderOriginX, renderOriginY, renderOriginZ, tickDelta);
 			}
 
-			if (shouldRenderBlockEntities) {
-				renderTileEntities(null, modelView, renderOriginX, renderOriginY, renderOriginZ, tickDelta, hasEntityFrustum);
+			if (shouldRenderBlockEntities || shouldRenderLightBlockEntities) {
+				renderTileEntities(null, modelView, renderOriginX, renderOriginY, renderOriginZ, tickDelta, hasEntityFrustum,
+					!shouldRenderBlockEntities);
 			}
 		} finally {
 			if (perfDebugEnabled) {
@@ -1012,7 +1040,7 @@ public class ShadowRenderer {
 			shouldRenderTranslucent,
 			shouldRenderEntities,
 			shouldRenderPlayer,
-			shouldRenderBlockEntities,
+			shouldRenderBlockEntities || shouldRenderLightBlockEntities,
 			IrisDebugOptions.enableCeleritas() ? WorldRendererCompatBridge.instance().getVisibleChunkCount() : -1,
 			renderedShadowEntities,
 			renderedShadowTileEntities
@@ -1131,7 +1159,9 @@ public class ShadowRenderer {
 	}
 
 	private String getTileEntitiesDebugString() {
-		return shouldRenderBlockEntities ? (renderedShadowTileEntities + "/" + Minecraft.getMinecraft().world.loadedTileEntityList.size()) : "disabled by pack";
+		return shouldRenderBlockEntities || shouldRenderLightBlockEntities
+			? (renderedShadowTileEntities + "/" + Minecraft.getMinecraft().world.loadedTileEntityList.size())
+			: "disabled by pack";
 	}
 
 	private static class MipmapPass {

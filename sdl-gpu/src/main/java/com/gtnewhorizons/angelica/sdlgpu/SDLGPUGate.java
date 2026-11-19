@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.sdlgpu;
 
+import com.gtnewhorizons.angelica.glsm.CompatShaderTransformer;
 import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
 import com.gtnewhorizons.angelica.glsm.backend.BackendOptions;
 import com.gtnewhorizons.angelica.glsm.backend.BackendStartGuard;
@@ -7,6 +8,7 @@ import com.gtnewhorizons.angelica.glsm.backend.RenderBackendCandidates;
 import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
 import com.gtnewhorizons.angelica.glsm.loading.DependencyVerifier;
 import com.gtnewhorizons.angelica.glsm.loading.DependencyVerifier.Check;
+import com.gtnewhorizons.angelica.glsm.shader.ShaderType;
 import com.gtnewhorizons.angelica.sdlgpu.device.Device;
 import com.gtnewhorizons.angelica.sdlgpu.device.SDLDrawable;
 import com.gtnewhorizons.angelica.sdlgpu.shader.ShaderManager;
@@ -88,6 +90,8 @@ public final class SDLGPUGate {
             LOG.warn("SDL GPU is unavailable: {}", missingRequirement() == null ? "device creation failed" : missingRequirement());
             return;
         }
+        CompatShaderTransformer.setPostTransformListener((source, tree, headerLength, fragment) ->
+            prewarmSpirv(source, tree, headerLength, fragment ? ShaderType.FRAGMENT.id : ShaderType.VERTEX.id));
         RenderBackend backend = new OutlandsBackend();
         RenderBackends.register(backend);
         RenderBackendSelection.register(new RenderBackendSelection.Candidate(backend, () -> Boolean.TRUE.equals(deviceReady), 100));

@@ -44,6 +44,7 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
     public final NotificationSettings notifications = new NotificationSettings();
     public final DebugSettings debug = new DebugSettings();
     public final WindowSettings window = new WindowSettings();
+    public final ReducerSettings reducer = new ReducerSettings();
     public final PerformanceIndicatorSettings performanceIndicator = new PerformanceIndicatorSettings();
 
     private boolean readOnly;
@@ -95,6 +96,30 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         public boolean useFastBlockRenderer = true;
         /** Blocks whose geometry must be captured on the render thread, as {@code namespace:block} ids. */
         public List<String> deferredBlockIds = new ArrayList<>();
+
+        /** Batches entity model parts, items and shadows on the fixed-function passes. */
+        public boolean enableEntityBatching = true;
+        /** Draws cuboid model parts from a shared unit cube instead of per-part geometry. */
+        public boolean enableCubeInstancing = true;
+        /** Stitches one texture atlas across entity and block entity models so different textures batch together. */
+        public boolean enableEntityTextureAtlas = true;
+        /** Replays entity draws recorded in the shader shadow pass instead of running the renderer again. */
+        public boolean enableEntityShadowReplay = false;
+        /** Entity classes that re-run their renderer in the main view instead of replaying shadow pass draws. */
+        public List<String> entityShadowReplayExcludedClasses = new ArrayList<>(defaultEntityShadowReplayExcludedClasses());
+
+        /**
+         * {@return the exclusion list a fresh configuration starts with}. The load path restores the same list when the
+         * file carries an explicit null, so a hand-edited null cannot drop the classes the shipped defaults exclude.
+         */
+        static List<String> defaultEntityShadowReplayExcludedClasses() {
+            return List.of(
+                    "twilightforest.entity.passive.EntityTFMobileFirefly",
+                    "gregtech.common.entity.EntityDrone");
+        }
+
+        /** Upper bound for cached item meshes; larger values trade memory for fewer rebuilds. */
+        public int itemRendererCacheSize = 512;
         public AsyncOcclusionMode asyncOcclusionMode = AsyncOcclusionMode.ONLY_SHADOW;
         public boolean useRasterOcclusionCulling = true;
         public GpuCullingMode gpuCullingMode = GpuCullingMode.CPU_ONLY;
@@ -149,10 +174,49 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         // Biome color position noise (issue #56, inspired by Ambient Environment). Applied after
         // biome blending so the per-position variation survives blend averaging, with a
         // multiplicative factor of 1 +/- intensity so the result stays centered on the mean.
+        public GuiSupersampling guiBlockSupersampling = GuiSupersampling.OFF;
+
         public boolean useBiomeColorNoise = true;
         public float biomeColorNoiseGrassIntensity = 0.08F;
         public float biomeColorNoiseFoliageIntensity = 0.08F;
         public float biomeColorNoiseWaterIntensity = 0.08F;
+
+        // Zero keeps the vanilla render distance; a larger value widens the cloud disc beyond the terrain
+        // render distance so the layer stays populated when the player looks at the horizon.
+        public int cloudRenderDistanceChunks = 0;
+
+        // Multiplies the cloud cell footprint. One matches the vanilla 12x12 fancy cell.
+        public int cloudScale = 1;
+
+        /** Renders the enchantment glint on items held in the world; disabling it hides world glint entirely. */
+        public boolean glintWorld = true;
+    }
+
+
+    /** Atlas sample factors offered for GUI item rendering; the shader accepts powers of two up to sixteen. */
+    public enum GuiSupersampling implements TextProvider {
+        OFF(1, "options.actinium.guiSupersampling.off"),
+        X2(2, "options.actinium.guiSupersampling.x2"),
+        X4(4, "options.actinium.guiSupersampling.x4"),
+        X8(8, "options.actinium.guiSupersampling.x8"),
+        X16(16, "options.actinium.guiSupersampling.x16");
+
+        private final int samples;
+        private final String translationKey;
+
+        GuiSupersampling(int samples, String translationKey) {
+            this.samples = samples;
+            this.translationKey = translationKey;
+        }
+
+        public int samples() {
+            return samples;
+        }
+
+        @Override
+        public TextComponent getLocalizedName() {
+            return TextComponent.translatable(translationKey);
+        }
     }
 
     public static class NotificationSettings {
@@ -164,6 +228,7 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
 
     public static class DebugSettings {
         public boolean enableProductionDiagnostics = true;
+        public boolean enableEntityRenderDiagnostics = false;
         public boolean ignoreFramebufferErrors = false;
         public boolean enableActiniumGlDebug = false;
         public boolean enableLwjglDebug = false;
@@ -182,6 +247,22 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
     public static class WindowSettings {
         public String fullscreenMode;
         public String lastFullscreenMode;
+    }
+
+    /**
+     * Frame-rate and volume reductions applied while the window is unfocused, minimized or idle.
+     * Frame limits are frames per second, volumes are percentages of the user's setting; the
+     * reducer that consumes them lives in the root project.
+     */
+    public static class ReducerSettings {
+        public boolean enabled = false;
+        public int unfocusedFpsLimit = 10;
+        public int idleFpsLimit = 30;
+        public int idleTimeoutMinutes = 5;
+        public boolean limitMenuFrameRate = true;
+        public int unfocusedVolume = 100;
+        public int idleVolume = 100;
+        public int minimizedVolume = 100;
     }
 
     /** On-screen performance indicator state, persisted under {@code performance_indicator}. */
@@ -333,6 +414,11 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
 
         if (config.performance.deferredBlockIds == null) {
             config.performance.deferredBlockIds = new ArrayList<>();
+        }
+
+        if (config.performance.entityShadowReplayExcludedClasses == null) {
+            config.performance.entityShadowReplayExcludedClasses =
+                    new ArrayList<>(PerformanceSettings.defaultEntityShadowReplayExcludedClasses());
         }
 
         if (config.performanceIndicator.rows == null) {

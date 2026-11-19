@@ -3,6 +3,7 @@ package com.gtnewhorizons.angelica.glsm.ffp;
 import java.util.Arrays;
 
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.texture.TextureInfoCache;
 import com.gtnewhorizons.angelica.glsm.states.TexEnvState;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
@@ -12,7 +13,7 @@ import org.lwjgl.opengl.GL13;
  * Packed-long fragment shader permutation key for FFP emulation.
  *
  * Layout:
- *   long[0]: global bits (13) + unit 0 (47 bits at offset 13)
+ *   long[0]: global bits (14) + unit 0 (47 bits at offset 14)
  *   long[1..3]: unit 1..3 (47 bits each, low-aligned)
  * Only max(1, nrEnabledUnits) longs are significant.
  *
@@ -67,15 +68,16 @@ public final class FragmentKey {
     public static final int FOG_EXP    = 2;
     public static final int FOG_EXP2   = 3;
 
-    private static final int GLOBAL_BITS = 13;
+    private static final int GLOBAL_BITS = 14;
     private static final int BIT_FOG_MODE          = 0;  // 2 bits
     private static final int BIT_ALPHA_TEST        = 2;  // 1 bit
     private static final int BIT_ALPHA_FUNC        = 3;  // 3 bits
     private static final int BIT_SEPARATE_SPECULAR = 6;  // 1 bit
-    private static final int BIT_NR_ENABLED_UNITS  = 7;  // 3 bits
+    private static final int BIT_TEXTURE_SUPERSAMPLING = 7; // 3 bits, log2(samples)
     private static final int BIT_OVERLAY_ENABLED   = 10; // 1 bit
     private static final int BIT_LINE_STIPPLE      = 11; // 1 bit
     private static final int BIT_COLOR_SUM         = 12; // 1 bit
+    private static final int BIT_OVERLAY_INSTANCED = 13; // 1 bit
 
     private static final int U_ENABLED         = 0;
     private static final int U_MODE            = 1;   // 3 bits
@@ -127,7 +129,9 @@ public final class FragmentKey {
         }
 
         // Damage overlay
-        if (GLStateManager.getOverlayA() != 0.0f) {
+        if (GLStateManager.ctx().ffpInstancing.hasInstanceHead()) {
+            global |= (1L << BIT_OVERLAY_INSTANCED);
+        } else if (GLStateManager.getOverlayA() != 0.0f) {
             global |= (1L << BIT_OVERLAY_ENABLED);
         }
 
@@ -160,7 +164,10 @@ public final class FragmentKey {
         }
 
         final int nrEnabled = highestEnabled + 1;
-        global |= ((long) (nrEnabled & 0x7)) << BIT_NR_ENABLED_UNITS;
+        if (GLStateManager.ctx().textureSupersamplingSamples > 1 && (unit0Bits & 1L) != 0
+            && TextureInfoCache.INSTANCE.getInfo(GLStateManager.getTextures().getTextureUnitBindings(0).getBinding()).getAtlasGutter() > 0) {
+            global |= (long) Integer.numberOfTrailingZeros(GLStateManager.ctx().textureSupersamplingSamples) << BIT_TEXTURE_SUPERSAMPLING;
+        }
         global |= (unit0Bits << GLOBAL_BITS);
         out[0] = global;
 
@@ -247,8 +254,10 @@ public final class FragmentKey {
     public boolean separateSpecular() { return ((packed[0] >> BIT_SEPARATE_SPECULAR) & 1) != 0; }
     public boolean colorSum()         { return ((packed[0] >> BIT_COLOR_SUM) & 1) != 0; }
     public boolean lineStipple()      { return ((packed[0] >> BIT_LINE_STIPPLE) & 1) != 0; }
-    public int nrEnabledUnits()       { return (int) ((packed[0] >> BIT_NR_ENABLED_UNITS) & 0x7); }
+    public int nrEnabledUnits()       { return packed.length == 1 && !unitEnabled(0) ? 0 : packed.length; }
+    public int textureSupersamplingSamples() { return 1 << (int) ((packed[0] >> BIT_TEXTURE_SUPERSAMPLING) & 0x7); }
     public boolean overlayEnabled()   { return ((packed[0] >> BIT_OVERLAY_ENABLED) & 1) != 0; }
+    public boolean overlayInstanced() { return ((packed[0] >> BIT_OVERLAY_INSTANCED) & 1) != 0; }
 
     private long unitBits(int i) {
         return (i == 0) ? (packed[0] >>> GLOBAL_BITS) : packed[i];

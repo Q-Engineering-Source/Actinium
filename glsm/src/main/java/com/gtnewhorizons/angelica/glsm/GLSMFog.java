@@ -13,6 +13,7 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.HAS_MULTIPLE_SET;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.beforeUncapturedStateChange;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.getFogColor;
@@ -36,6 +37,7 @@ public final class GLSMFog {
         }
         if (HAS_MULTIPLE_SET.contains(pname)) {
             if (pname == GL11.GL_FOG_COLOR && isCachingEnabled()) {
+                beforeUncapturedStateChange();
                 final float red = param.get(0);
                 final float green = param.get(1);
                 final float blue = param.get(2);
@@ -82,24 +84,28 @@ public final class GLSMFog {
             switch (pname) {
                 case GL11.GL_FOG_DENSITY -> {
                     if (ctx().fogState.getDensity() != param) {
+                        beforeUncapturedStateChange();
                         mod(ctx().fogState).setDensity(param);
                         ctx().fragmentGeneration++;
                     }
                 }
                 case GL11.GL_FOG_START -> {
                     if (ctx().fogState.getStart() != param) {
+                        beforeUncapturedStateChange();
                         mod(ctx().fogState).setStart(param);
                         ctx().fragmentGeneration++;
                     }
                 }
                 case GL11.GL_FOG_END -> {
                     if (ctx().fogState.getEnd() != param) {
+                        beforeUncapturedStateChange();
                         mod(ctx().fogState).setEnd(param);
                         ctx().fragmentGeneration++;
                     }
                 }
                 case GL11.GL_FOG_MODE -> {
                     if (ctx().fogState.getFogMode() != (int) param) {
+                        beforeUncapturedStateChange();
                         mod(ctx().fogState).setFogMode((int) param);
                         ctx().fragmentGeneration++;
                     }
@@ -122,6 +128,7 @@ public final class GLSMFog {
             }
         }
         if (isCachingEnabled() && pname == GL11.GL_FOG_MODE) {
+            beforeUncapturedStateChange();
             mod(ctx().fogState).setFogMode(param);
             ctx().fragmentGeneration++;
             if (GLSMHooks.FOG_STATE_CHANGE.hasListeners()) {
@@ -166,6 +173,7 @@ public final class GLSMFog {
         rejectExitCapture();
             final boolean caching = isCachingEnabled();
             if (BYPASS_CACHE || !caching || red != ctx().fogState.getFogColor().x || green != ctx().fogState.getFogColor().y || blue != ctx().fogState.getFogColor().z || alpha != ctx().fogState.getFogAlpha()) {
+                beforeUncapturedStateChange();
                 if (caching) {
                     mod(ctx().fogState);
                     ctx().fogState.getFogColor().set(red, green, blue);

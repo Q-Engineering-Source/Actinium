@@ -30,6 +30,62 @@ class VertexShaderGeneratorTest {
     private static final int BIT_UNIT3_TEXMAT = 40;
     private static final int BIT_HAS_VERTEX_TEX2 = 43;
     private static final int BIT_HAS_VERTEX_TEX3 = 44;
+    private static final int BIT_HAS_VERTEX_COLOR = 16;
+    private static final int BIT_HAS_VERTEX_LIGHTMAP = 19;
+    private static final int BIT_UNIT_TEX_BASE = 12;
+    private static final int BIT_LIGHTING = 0;
+    private static final int BIT_HAS_VERTEX_NORMAL = 17;
+
+    @Test
+    void particleLayoutRebuildsPositionColorAndLightmapFromTheInstance() {
+        final long packed = (1L << BIT_TEXTURE) | (1L << BIT_HAS_VERTEX_TEX)
+            | (1L << BIT_HAS_VERTEX_COLOR) | (1L << BIT_HAS_VERTEX_LIGHTMAP);
+        final String shader = VertexShaderGenerator.generate(VertexKey.fromPacked(VertexKey.withInstancing(packed, Instancing.PARTICLE)));
+
+        assertTrue(shader.contains("layout(location = 2) in vec2 a_TexCoord0;"), shader);
+        assertFalse(shader.contains("in vec4 a_Color"), "the vertex colour slot belongs to the instance colour");
+        assertTrue(shader.contains("in vec4 a_InstCenterHalf;"), shader);
+        assertTrue(shader.contains("in vec4 a_InstUv;"), shader);
+        assertTrue(shader.contains("in vec4 a_InstColor;"), shader);
+        assertTrue(shader.contains("in vec2 a_InstLightmap;"), shader);
+        assertFalse(shader.contains("a_TexCoord1"), "the vertex format has no lightmap element");
+        assertFalse(shader.contains("a_Normal"), "the quad mesh has no normal element");
+    }
+
+    @Test
+    void particleLayoutSourcesPositionColorAndLightmapFromTheInstance() {
+        final long packed = (1L << BIT_TEXTURE) | (1L << BIT_HAS_VERTEX_TEX)
+            | (1L << BIT_HAS_VERTEX_COLOR) | (1L << BIT_HAS_VERTEX_LIGHTMAP)
+            | (1L << (BIT_UNIT_TEX_BASE + 1));
+        final String shader = VertexShaderGenerator.generate(VertexKey.fromPacked(VertexKey.withInstancing(packed, Instancing.PARTICLE)));
+
+        assertTrue(shader.contains("vec4 pos4 = vec4(a_InstCenterHalf.xyz + a_Position * a_InstCenterHalf.w, 1.0);"), shader);
+        assertTrue(shader.contains("v_Color = a_InstColor;"), shader);
+        assertTrue(shader.contains("mix(a_InstUv.x, a_InstUv.z, a_TexCoord0.x)"), shader);
+        assertTrue(shader.contains("v_TexCoord1 = u_LightmapTextureMatrix * vec4(a_InstLightmap, 0.0, 1.0);"), shader);
+    }
+
+    @Test
+    void templateInstancingTakesTheLightmapFromTheInstance() {
+        final long packed = (1L << (BIT_UNIT_TEX_BASE + 1)) | (1L << BIT_HAS_VERTEX_LIGHTMAP);
+        final String shader = VertexShaderGenerator.generate(VertexKey.fromPacked(VertexKey.withInstancing(packed, Instancing.TEMPLATE)));
+
+        assertTrue(shader.contains("in vec2 a_InstLightmap;"), shader);
+        assertTrue(shader.contains("v_TexCoord1 = u_LightmapTextureMatrix * vec4(a_InstLightmap, 0.0, 1.0);"), shader);
+        assertFalse(shader.contains("v_TexCoord1 = u_LightmapTextureMatrix * a_TexCoord1;"),
+            "a template drawn instanced reads the per-instance lightmap, not the lightmap element of its vertices");
+    }
+
+    @Test
+    void particleLayoutUsesTheBillboardNormalInsteadOfAVertexNormal() {
+        final long packed = (1L << BIT_LIGHTING) | (1L << BIT_TEXTURE) | (1L << BIT_HAS_VERTEX_TEX)
+            | (1L << BIT_HAS_VERTEX_COLOR) | (1L << BIT_HAS_VERTEX_LIGHTMAP) | (1L << BIT_HAS_VERTEX_NORMAL);
+        final String shader = VertexShaderGenerator.generate(VertexKey.fromPacked(VertexKey.withInstancing(packed, Instancing.PARTICLE)));
+
+        assertTrue(shader.contains("vec3 normal = u_NormalMatrix * vec3(0.0, 0.0, 1.0);"), shader);
+        assertFalse(shader.contains("a_Normal"), "the quad mesh has no normal attribute");
+        assertFalse(shader.contains("u_CurrentNormal"), "the billboard normal is a constant, not the per-draw one");
+    }
 
     @Test
     void lineStippleEmitsFlatLineStartVaryingAndViewportUniform() {

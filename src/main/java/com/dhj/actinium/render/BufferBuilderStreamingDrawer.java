@@ -5,10 +5,14 @@ import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
+import com.gtnewhorizons.angelica.glsm.hooks.ImmediateExtendedAttribHandler;
 import com.gtnewhorizons.angelica.glsm.streaming.OrphanStreamingBuffer;
+import com.gtnewhorizons.angelica.glsm.streaming.TessellatorEntityIds;
 import com.gtnewhorizons.angelica.glsm.streaming.PersistentStreamingBuffer;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.vertex.VertexFormat;
+import net.minecraft.client.renderer.vertex.VertexFormatElement;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import dhj.embeddedt.embeddium.api.debug.RenderDebugHooksHolder;
@@ -18,6 +22,11 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 
 import java.nio.ByteBuffer;
 import java.util.Map;
+
+import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memAddress0;
+import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memAlloc;
+import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memCopy;
+import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memFree;
 import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
 import com.gtnewhorizons.angelica.glsm.GLSMVertexInput;
 
@@ -28,6 +37,15 @@ public final class BufferBuilderStreamingDrawer {
     private static final Map<VertexFormat, DrawState> DRAW_STATES = new Object2ObjectOpenHashMap<>();
     private static PersistentStreamingBuffer persistentBuffer;
     private static boolean initialized;
+
+    private static ByteBuffer extScratch;
+    private static long extScratchAddress;
+    private static int extScratchCapacity;
+
+    private static OrphanStreamingBuffer entityIdBuffer;
+    private static ByteBuffer entityIdScratch;
+    private static long entityIdScratchAddress;
+    private static int entityIdScratchCapacity;
 
     private BufferBuilderStreamingDrawer() {
     }
@@ -54,7 +72,9 @@ public final class BufferBuilderStreamingDrawer {
             GLSMPerfDebug.countBufferBuilder(debugSource, drawMode, vertexCount);
         }
         // drawRaw already creates the bounded view and leaves the source buffer untouched.
-        drawRaw(bufferBuilder.getByteBuffer(), format, vertexCount, drawMode, debugSource);
+        drawRaw(bufferBuilder.getByteBuffer(), format, vertexCount, drawMode, debugSource,
+            TessellatorEntityIds.runsFor(bufferBuilder, vertexCount));
+        TessellatorEntityIds.onReset(bufferBuilder);
         bufferBuilder.reset();
         if (perfDebugEnabled) {
             GLSMPerfDebug.end(GLSMPerfDebug.Stage.BUFFERBUILDER_STREAM_DRAW, perfStart);
@@ -62,6 +82,11 @@ public final class BufferBuilderStreamingDrawer {
     }
 
     public static void drawRaw(ByteBuffer buffer, VertexFormat format, int vertexCount, int drawMode, String debugSource) {
+        drawRaw(buffer, format, vertexCount, drawMode, debugSource, 0);
+    }
+
+    private static void drawRaw(ByteBuffer buffer, VertexFormat format, int vertexCount, int drawMode, String debugSource,
+                                int idRuns) {
         if (vertexCount <= 0) {
             return;
         }
@@ -76,6 +101,24 @@ public final class BufferBuilderStreamingDrawer {
         ByteBuffer upload = buffer.duplicate();
         upload.position(0);
         upload.limit(byteCount);
+
+        final ImmediateExtendedAttribHandler extHandler = GLSMHooks.immediateExtendedHandler;
+        final int extPrim = extHandler == null ? 0 : ImmediateExtendedAttribHandler.extPrimVerts(drawMode, vertexCount);
+        final int texOffset = extPrim == 0 ? -1 : elementOffset(format, VertexFormatElement.EnumUsage.UV);
+        final int normalOffset = extPrim == 0 ? -1 : elementOffset(format, VertexFormatElement.EnumUsage.NORMAL);
+        final boolean doExt = extPrim != 0 && texOffset >= 0 && extHandler.wantsExtended();
+        if (doExt) {
+            final int baseSize = stride;
+            stride = baseSize + ImmediateExtendedAttribHandler.EXT_STRIDE;
+            byteCount = vertexCount * stride;
+            ensureExtScratch(byteCount);
+            interleaveBase(memAddress0(upload) + upload.position(), extScratchAddress, vertexCount, baseSize, stride);
+            extHandler.buildPacked(memAddress0(upload) + upload.position(), baseSize, 0, texOffset, normalOffset,
+                vertexCount, extPrim, extScratchAddress + baseSize, stride);
+            extScratch.position(0);
+            extScratch.limit(byteCount);
+            upload = extScratch;
+        }
 
         int savedVao = GLStateManager.getBoundVAO();
         int savedVbo = GLStateManager.getBoundVBO();
@@ -103,7 +146,20 @@ public final class BufferBuilderStreamingDrawer {
                 state.orphanVao = VanillaVertexBufferRenderer.createStreamingVertexArray(format, state.orphanBuffer.getBufferId());
             }
             final int persistentVbo = drawPath == DrawPath.PERSISTENT ? persistentBuffer.getBufferId() : 0;
-            final int vao = drawPath.select(state.persistentVao, state.orphanVao);
+            if (doExt) {
+                if (drawPath == DrawPath.PERSISTENT) {
+                    if (state.extendedPersistentVao == 0) {
+                        state.extendedPersistentVao = VanillaVertexBufferRenderer.createExtendedStreamingVertexArray(
+                            format, persistentVbo, stride);
+                    }
+                } else if (state.extendedOrphanVao == 0) {
+                    state.extendedOrphanVao = VanillaVertexBufferRenderer.createExtendedStreamingVertexArray(
+                        format, state.orphanBuffer.getBufferId(), stride);
+                }
+            }
+            final int vao = doExt
+                ? drawPath.select(state.extendedPersistentVao, state.extendedOrphanVao)
+                : drawPath.select(state.persistentVao, state.orphanVao);
             final int vbo = drawPath == DrawPath.PERSISTENT ? persistentVbo : state.orphanBuffer.getBufferId();
             // Force the real VAO binding even when the GLStateManager cache already matches.
             // Native code outside this drawer can change the actual binding without updating the cache.
@@ -152,8 +208,12 @@ public final class BufferBuilderStreamingDrawer {
                     }
                 }
             }
+            final boolean entityIdsBound = prepareEntityIds(idRuns, vertexCount);
             final long drawStart = perfDebugEnabled ? GLSMPerfDebug.now() : 0L;
             VanillaVertexBufferRenderer.drawArrays(drawMode, firstVertex, vertexCount);
+            if (entityIdsBound) {
+                GLSMVertexInput.glDisableVertexAttribArray(ImmediateExtendedAttribHandler.LOC_ENTITY_IDS);
+            }
             if (perfDebugEnabled) {
                 GLSMPerfDebug.record(GLSMPerfDebug.Stage.BUFFERBUILDER_DRAW_CALL, drawStart, GLSMPerfDebug.now());
             }
@@ -249,10 +309,83 @@ public final class BufferBuilderStreamingDrawer {
         }
         initialized = true;
 
-        persistentBuffer = PersistentStreamingBuffer.createOrNull(PersistentStreamingBuffer.DEFAULT_CAPACITY);
+        persistentBuffer = PersistentStreamingBuffer.createOrNull(PersistentStreamingBuffer.DEFAULT_CAPACITY,
+            GLSMPerfDebug.FenceSource.BUFFER_BUILDER);
         if (persistentBuffer != null) {
             LOGGER.info("Persistent BufferBuilder streaming buffer created ({}MB)", PersistentStreamingBuffer.DEFAULT_CAPACITY / (1024 * 1024));
         }
+    }
+
+
+    /**
+     * Uploads the packed entity, block entity and item ids of this batch and points the id attribute at them.
+     * Only batches that cross an entity boundary need the per-vertex attribute; a single run is covered by the
+     * constant value ShaderManager writes before the draw.
+     *
+     * @return whether the attribute was bound, so the caller can disable it again
+     */
+
+
+    /** @return byte offset of the first element with the given usage, or {@code -1} when the format has none */
+    private static int elementOffset(VertexFormat format, VertexFormatElement.EnumUsage usage) {
+        for (int i = 0; i < format.getElementCount(); i++) {
+            if (format.getElement(i).getUsage() == usage) return format.getOffset(i);
+        }
+        return -1;
+    }
+
+    private static void interleaveBase(long src, long dst, int vertexCount, int vertexSize, int combinedStride) {
+        for (int vertex = 0; vertex < vertexCount; vertex++) {
+            memCopy(src + (long) vertex * vertexSize, dst + (long) vertex * combinedStride, vertexSize);
+        }
+    }
+
+    private static void ensureExtScratch(int requiredBytes) {
+        if (extScratch != null && requiredBytes <= extScratchCapacity) return;
+
+        int newCapacity = Math.max(0x4000, extScratchCapacity);
+        while (newCapacity < requiredBytes) {
+            newCapacity *= 2;
+        }
+        if (extScratch != null) memFree(extScratch);
+        extScratch = memAlloc(newCapacity);
+        extScratchAddress = memAddress0(extScratch);
+        extScratchCapacity = newCapacity;
+    }
+
+    private static boolean prepareEntityIds(int idRuns, int vertexCount) {
+        if (idRuns <= 1) return false;
+        final ImmediateExtendedAttribHandler handler = GLSMHooks.immediateExtendedHandler;
+        if (handler == null || !handler.wantsEntityIds()) return false;
+
+        final int stride = ImmediateExtendedAttribHandler.ENTITY_IDS_STRIDE;
+        final int bytes = vertexCount * stride;
+        ensureEntityIdScratch(bytes);
+        TessellatorEntityIds.write(entityIdScratchAddress, stride, vertexCount, idRuns);
+        entityIdScratch.position(0);
+        entityIdScratch.limit(bytes);
+
+        if (entityIdBuffer == null) entityIdBuffer = new OrphanStreamingBuffer();
+        entityIdBuffer.upload(entityIdScratch);
+
+        final int savedVbo = GLStateManager.getBoundVBO();
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, entityIdBuffer.getBufferId());
+        ImmediateExtendedAttribHandler.setupEntityIdsPointer(0L, stride);
+        GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, savedVbo);
+        return true;
+    }
+
+    private static void ensureEntityIdScratch(int requiredBytes) {
+        if (entityIdScratch != null && requiredBytes <= entityIdScratchCapacity) return;
+
+        int newCapacity = Math.max(0x4000, entityIdScratchCapacity);
+        while (newCapacity < requiredBytes) {
+            newCapacity *= 2;
+        }
+        if (entityIdScratch != null) memFree(entityIdScratch);
+        entityIdScratch = memAlloc(newCapacity);
+        entityIdScratchAddress = memAddress0(entityIdScratch);
+        entityIdScratchCapacity = newCapacity;
     }
 
     private static DrawState ensureDrawState(VertexFormat format) {
@@ -275,6 +408,8 @@ public final class BufferBuilderStreamingDrawer {
         private int vertexFlags;
         private int orphanVao;
         private int persistentVao;
+        private int extendedOrphanVao;
+        private int extendedPersistentVao;
         private OrphanStreamingBuffer orphanBuffer;
     }
 

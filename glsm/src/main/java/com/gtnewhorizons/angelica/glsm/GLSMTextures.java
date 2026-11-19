@@ -40,6 +40,7 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.BYPASS_CACHE;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.beforeUncapturedStateChange;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.MAX_TEXTURE_COORDS;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.changeFormatIfDeprecated;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
@@ -133,7 +134,7 @@ public final class GLSMTextures {
         // Rebinding a deferred-delete texture rescues it (Mesa/compat-profile behavior)
         final long claim = GLSMTextureLifetime.claimForBind(texture, target);
         if (claim == GLSMTextureLifetime.BIND_REJECTED) return;
-        if (texture != 0) {
+        if (texture > 0) {
             TextureInfoCache.INSTANCE.getInfo(texture).setTarget(target);
         }
 
@@ -152,6 +153,7 @@ public final class GLSMTextures {
         final int cachedTarget = textureUnit.getTarget();
 
         if (cachedBinding != texture || (texture == 0 && cachedTarget != target)) {
+            if (activeUnit != 0 || target != GL11.GL_TEXTURE_2D) beforeUncapturedStateChange();
             recordGpuCommand(GpuCommandType.TEXTURE_BIND, target, texture);
             RENDER_BACKEND.bindTexture(target, texture);
             mod(textureUnit).setBinding(texture, target);
@@ -392,6 +394,7 @@ public final class GLSMTextures {
                 return;
             }
         }
+        if (getActiveTextureUnit() != 0) beforeUncapturedStateChange();
         if (target != GL11.GL_TEXTURE_2D) {
             RENDER_BACKEND.texParameteri(target, pname, param);
             return;
@@ -412,6 +415,7 @@ public final class GLSMTextures {
                 return;
             }
         }
+        if (getActiveTextureUnit() != 0) beforeUncapturedStateChange();
         if (target != GL11.GL_TEXTURE_2D) {
             RENDER_BACKEND.texParameterf(target, pname, param);
             return;
@@ -946,7 +950,11 @@ public final class GLSMTextures {
         for (int sampler : samplers) glDeleteSamplers(sampler);
     }
 
-    public static void glBindSampler(int unit, int sampler) { RENDER_BACKEND.bindSampler(unit, sampler); }
+    public static void glBindSampler(int unit, int sampler) {
+        // Sampling state is not part of the captured draw state, so an open batch has to drain first.
+        beforeUncapturedStateChange();
+        RenderSystem.bindSamplerNow(unit, sampler);
+    }
 
     public static void glBindSamplers(int first, IntBuffer samplers) {
         if (samplers != null) glBindSamplers(first, samplers.remaining(), samplers);

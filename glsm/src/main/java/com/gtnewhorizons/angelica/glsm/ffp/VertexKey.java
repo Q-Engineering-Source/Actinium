@@ -54,6 +54,14 @@ public final class VertexKey {
     // Per-vertex texcoord availability for the extended multi-texture units 2/3 (issue #175).
     private static final int BIT_HAS_VERTEX_TEX2     = BIT_LINE_STIPPLE + 1;
     private static final int BIT_HAS_VERTEX_TEX3     = BIT_HAS_VERTEX_TEX2 + 1;
+    private static final int BIT_INSTANCING          = BIT_HAS_VERTEX_TEX3 + 1;
+    private static final long INSTANCING_MASK        = 0x7L;
+
+    static {
+        if (Instancing.VALUES.length > INSTANCING_MASK + 1) {
+            throw new IllegalStateException("Instancing has outgrown the VertexKey field; widen INSTANCING_MASK");
+        }
+    }
 
     public static final int TG_NONE                  = 0;
     public static final int TG_OBJ_LINEAR            = 1;
@@ -114,6 +122,7 @@ public final class VertexKey {
     public boolean texGenEnabled()        { return texGenModeS() != TG_NONE || texGenModeT() != TG_NONE || texGenModeR() != TG_NONE || texGenModeQ() != TG_NONE; }
     public boolean clipPlanesEnabled()    { return bit(BIT_CLIP_PLANES); }
     public boolean lineStipple()          { return bit(BIT_LINE_STIPPLE); }
+    public Instancing instancing()        { return Instancing.VALUES[(int) ((packed >> BIT_INSTANCING) & INSTANCING_MASK)]; }
     public boolean lineQuads()            { return bit(BIT_LINE_QUADS); }
 
     public boolean cmReplacesAmbient()    { final int m = colorMaterialMode(); return m == CM_AMBIENT || m == CM_AMBIENT_AND_DIFFUSE; }
@@ -260,11 +269,17 @@ public final class VertexKey {
             bits |= (1L << BIT_LINE_STIPPLE);
         }
 
+        bits |= (long) GLStateManager.ctx().ffpInstancing.ordinal() << BIT_INSTANCING;
+
         return bits;
     }
 
     public static VertexKey fromState(boolean hasColor, boolean hasNormal, boolean hasTexCoord, boolean hasLightmap, int fragUnitMask) {
         return new VertexKey(packFromState(hasColor, hasNormal, hasTexCoord, hasLightmap, fragUnitMask));
+    }
+
+    static long withInstancing(long packed, Instancing kind) {
+        return (packed & ~(INSTANCING_MASK << BIT_INSTANCING)) | ((long) kind.ordinal() << BIT_INSTANCING);
     }
 
     static VertexKey fromPacked(long packed) {

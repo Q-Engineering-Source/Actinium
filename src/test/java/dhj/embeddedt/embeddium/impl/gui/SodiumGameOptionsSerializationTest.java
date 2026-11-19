@@ -42,6 +42,28 @@ class SodiumGameOptionsSerializationTest {
     }
 
     @Test
+    void entityRenderDiagnosticsSurvivesASaveAndReload() {
+        SodiumGameOptions options = SodiumGameOptions.load(TEST_CONFIG_NAME);
+        assertFalse(options.debug.enableEntityRenderDiagnostics);
+
+        options.debug.enableEntityRenderDiagnostics = true;
+        options.save();
+
+        assertTrue(SodiumGameOptions.load(TEST_CONFIG_NAME).debug.enableEntityRenderDiagnostics);
+    }
+
+    @Test
+    void explicitNullExclusionListKeepsTheFieldDefaults() throws IOException {
+        Files.createDirectories(TEST_CONFIG_PATH.getParent());
+        Files.writeString(TEST_CONFIG_PATH, "{\"performance\":{\"entity_shadow_replay_excluded_classes\":null}}");
+
+        SodiumGameOptions loaded = SodiumGameOptions.load(TEST_CONFIG_NAME);
+
+        assertEquals(new SodiumGameOptions().performance.entityShadowReplayExcludedClasses,
+                loaded.performance.entityShadowReplayExcludedClasses);
+    }
+
+    @Test
     void performanceIndicatorSurvivesASaveAndReload() {
         SodiumGameOptions options = SodiumGameOptions.load(TEST_CONFIG_NAME);
         options.performanceIndicator.enabled = true;
