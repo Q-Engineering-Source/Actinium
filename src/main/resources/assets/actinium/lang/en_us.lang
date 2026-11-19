@@ -1,5 +1,7 @@
 sodium.options.actinium.production_diagnostics.name=Production Diagnostics
 sodium.options.actinium.production_diagnostics.tooltip=Logs Actinium environment, configuration, and key mixin application facts. Useful for comparing development and production behavior.
+sodium.options.actinium.entity_render_diagnostics.name=Entity Rendering Diagnostics
+sodium.options.actinium.entity_render_diagnostics.tooltip=Logs entity batching rejections, dropped-item immediate draws, and fire batching rejection reasons. Increases log output and is disabled by default.
 sodium.options.actinium.gl_debug.name=GL State Debug
 sodium.options.actinium.gl_debug.tooltip=Logs detailed Iris and GLSM state checkpoints while a shader pack is active. This can be very noisy.
 sodium.options.actinium.lwjgl_debug.name=LWJGL Debug Context

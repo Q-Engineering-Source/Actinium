@@ -1,5 +1,7 @@
 sodium.options.actinium.production_diagnostics.name=生产环境诊断
 sodium.options.actinium.production_diagnostics.tooltip=输出 Actinium 环境、配置和关键 mixin 应用情况，方便对比开发环境和生产环境行为。
+sodium.options.actinium.entity_render_diagnostics.name=实体渲染诊断
+sodium.options.actinium.entity_render_diagnostics.tooltip=记录实体批处理拒绝原因、掉落物即时绘制和火焰批次拒绝条件。日志会增加，默认关闭。
 sodium.options.actinium.gl_debug.name=GL 状态 DEBUG
 sodium.options.actinium.gl_debug.tooltip=在光影包启用时输出 Iris 和 GLSM 的详细状态检查点，日志会很多。
 sodium.options.actinium.lwjgl_debug.name=LWJGL 调试上下文

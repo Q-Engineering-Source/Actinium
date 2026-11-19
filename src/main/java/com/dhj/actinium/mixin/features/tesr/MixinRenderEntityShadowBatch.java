@@ -5,6 +5,7 @@ import com.gtnewhorizons.angelica.rendering.tesr.ModelPartBatcher;
 import com.gtnewhorizons.angelica.rendering.tesr.VanillaEntityEffects;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.llamalad7.mixinextras.sugar.Local;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.entity.Render;
 import net.minecraft.client.renderer.entity.RenderManager;
@@ -32,9 +33,10 @@ public abstract class MixinRenderEntityShadowBatch {
         method = "renderShadow(Lnet/minecraft/entity/Entity;DDDFF)V",
         at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/Tessellator;draw()V")
     )
-    private void actinium$batchShadow(Tessellator tessellator, Operation<Void> original) {
+    private void actinium$batchShadow(Tessellator tessellator, Operation<Void> original,
+                                      @Local(argsOnly = true) Entity entity) {
         if (!ModelPartBatcher.INSTANCE.queueEntityEffect((ITessellatorData) tessellator.getBuffer(),
-            VanillaEntityEffects.SHADOW_TEXTURE, false)) {
+            VanillaEntityEffects.SHADOW_TEXTURE, false, entity)) {
             original.call(tessellator);
         }
     }

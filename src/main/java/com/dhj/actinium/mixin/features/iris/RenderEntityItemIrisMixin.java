@@ -26,7 +26,7 @@ public class RenderEntityItemIrisMixin {
         Operation<Void> original
     ) {
         ItemIdManager.setItemId(entity.getItem());
-        DroppedItemInstancer.enterScope();
+        DroppedItemInstancer.enterScope(entity);
         try {
             original.call(entity, x, y, z, entityYaw, partialTicks);
         } finally {

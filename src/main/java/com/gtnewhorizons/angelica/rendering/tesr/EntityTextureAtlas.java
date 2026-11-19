@@ -154,6 +154,18 @@ public final class EntityTextureAtlas {
 
     private EntityTextureAtlas() {}
 
+    int debugResidentCount() {
+        int residents = 0;
+        for (Entry entry : entries.values()) {
+            if (entry.slot != null) residents++;
+        }
+        return residents;
+    }
+
+    int debugPageCount() {
+        return pages.size();
+    }
+
     Slot slotFor(int texture, boolean pbrPipeline) {
         if (texture == lastTexture && pbrPipeline == lastPbrPipeline && lastInfo.getChangeStamp() == lastChangeStamp
             && TextureInfoCache.INSTANCE.deleteCount() == lastDeleteCount && PBRTextureManager.INSTANCE.holderChanges() == lastPbrHolderChanges) {

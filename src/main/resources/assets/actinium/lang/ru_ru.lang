@@ -1,5 +1,7 @@
 sodium.options.actinium.production_diagnostics.name=Диагностика рабочей среды
 sodium.options.actinium.production_diagnostics.tooltip=Записывает в лог информацию об окружении Actinium, конфигурации и ключевых применённых миксах. Полезно для сравнения поведения в среде разработки и в сборке.
+sodium.options.actinium.entity_render_diagnostics.name=Диагностика рендеринга сущностей
+sodium.options.actinium.entity_render_diagnostics.tooltip=Записывает причины отказа пакетного рендеринга, немедленную отрисовку выброшенных предметов и причины отказа пакетного рендеринга огня. Увеличивает объём лога, по умолчанию отключено.
 sodium.options.actinium.gl_debug.name=Отладка состояния OpenGL
 sodium.options.actinium.gl_debug.tooltip=Записывает подробные контрольные точки состояния Iris и GLSM при активном паке шейдеров. Может создавать много шума в логе.
 sodium.options.actinium.lwjgl_debug.name=Отладочный контекст LWJGL

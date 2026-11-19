@@ -35,6 +35,7 @@ public abstract class MixinRenderItemDroppedInstancing {
         final RenderItem renderItem = (RenderItem) (Object) this;
         if (DroppedItemInstancer.renderItemPart(renderItem::renderQuads, renderItem.itemColors, stack, model)
             == DroppedItemInstancer.SKIP) {
+            DroppedItemInstancer.endPart();
             ci.cancel();
         }
     }

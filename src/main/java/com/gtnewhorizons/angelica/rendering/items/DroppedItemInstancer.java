@@ -2,6 +2,7 @@ package com.gtnewhorizons.angelica.rendering.items;
 
 import com.dhj.actinium.render.FastLitItemDisplayListCache;
 import com.dhj.actinium.render.ItemVertexAlphaOverrides;
+import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.gtnewhorizons.angelica.api.tesr.TesrMaterial;
 import com.gtnewhorizons.angelica.config.AngelicaConfig;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
@@ -27,16 +28,24 @@ import net.minecraft.client.renderer.block.model.IBakedModel;
 import net.minecraft.client.renderer.block.model.ItemCameraTransforms.TransformType;
 import net.minecraft.client.renderer.color.ItemColors;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import net.minecraft.entity.item.EntityItem;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumFacing;
 import net.minecraftforge.common.ForgeModContainer;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /** Shares baked item capture between dropped items and items held by world entities. */
 public final class DroppedItemInstancer {
+
+    private static final Logger LOGGER = LogManager.getLogger("DroppedItemInstancer");
+    private static final Set<String> loggedDiagnosticKeys = new HashSet<>();
 
     /** The item was queued; the caller must not run the vanilla draw. */
     public static final long SKIP = -2L;
@@ -58,7 +67,10 @@ public final class DroppedItemInstancer {
     private static final BufferBuilder CAPTURE = new BufferBuilder(CAPTURE_BYTES);
 
     private static int scopeDepth;
+    private static final ArrayList<EntityItem> scopeEntities = new ArrayList<>();
     private static long part = RUN;
+    private static final ArrayList<DiagnosticFrame> diagnosticFrames = new ArrayList<>();
+    private static int diagnosticDepth;
 
     private static long instanced;
     private static long glintInstanced;
@@ -97,6 +109,14 @@ public final class DroppedItemInstancer {
         GLINT;
 
         public static final BailReason[] VALUES = values();
+    }
+
+    private static final class DiagnosticFrame {
+        private EntityItem entity;
+        private ItemStack stack;
+        private IBakedModel model;
+        private BailReason bailReason;
+        private long drawsAtStart;
     }
 
     private static final long[] bails = new long[BailReason.VALUES.length];
@@ -152,14 +172,20 @@ public final class DroppedItemInstancer {
      * Opens the scope a dropped item render runs in. Only draws inside this scope are instanced,
      * which keeps the GUI, the held item and item frames on the vanilla path.
      */
-    public static void enterScope() {
+    public static void enterScope(EntityItem entity) {
         scopeDepth++;
+        scopeEntities.add(entity);
+    }
+
+    public static void enterScope() {
+        enterScope(null);
     }
 
     /** Closes the scope opened by {@link #enterScope}. */
     public static void exitScope() {
         if (scopeDepth > 0) {
             scopeDepth--;
+            scopeEntities.remove(scopeEntities.size() - 1);
         }
         forgetItemDraws();
     }
@@ -197,6 +223,7 @@ public final class DroppedItemInstancer {
 
     /** Returns {@link #SKIP} after queueing a dropped item or the draw count for its vanilla path. */
     public static long renderItemPart(ItemQuadWriter writer, ItemColors colors, ItemStack stack, IBakedModel model) {
+        beginDiagnosticFrame(stack, model);
         if (scopeDepth == 0) {
             return part = bail(BailReason.SCOPE, RUN);
         }
@@ -295,7 +322,48 @@ public final class DroppedItemInstancer {
     public static void endPart() {
         final long drawnFrom = part;
         part = RUN;
+        final DiagnosticFrame diagnostic = endDiagnosticFrame();
+        final long draws = diagnostic == null ? 0L : GLSMDraws.drawCalls - diagnostic.drawsAtStart;
+        if (ActiniumRuntime.options().debug.enableEntityRenderDiagnostics && diagnostic != null
+            && diagnostic.entity != null && diagnostic.stack != null && diagnostic.model != null
+            && draws > 0) {
+            final EntityItem entity = diagnostic.entity;
+            final String item = diagnostic.stack.isEmpty() ? "empty" : diagnostic.stack.getItem().getClass().getName();
+            final String key = entity.getClass().getName() + '|' + item + '|' + diagnostic.model.getClass().getName()
+                + '|' + diagnostic.bailReason;
+            if (loggedDiagnosticKeys.add(key)) {
+                LOGGER.info("[ACTINIUM-ENTITY-DIAGNOSTICS] droppedItem entity={}#{}@{},{},{} item={} count={} model={} bail={} immediateDraws={}",
+                    entity.getClass().getName(), entity.getEntityId(), entity.posX, entity.posY, entity.posZ,
+                    item, diagnostic.stack.getCount(), diagnostic.model.getClass().getName(), diagnostic.bailReason, draws);
+            }
+        }
         reportFallback(drawnFrom);
+        clearDiagnosticFrame(diagnostic);
+    }
+
+    private static void beginDiagnosticFrame(ItemStack stack, IBakedModel model) {
+        if (diagnosticDepth == diagnosticFrames.size()) {
+            diagnosticFrames.add(new DiagnosticFrame());
+        }
+        final DiagnosticFrame frame = diagnosticFrames.get(diagnosticDepth++);
+        frame.entity = scopeEntities.isEmpty() ? null : scopeEntities.get(scopeEntities.size() - 1);
+        frame.stack = stack;
+        frame.model = model;
+        frame.bailReason = null;
+        frame.drawsAtStart = GLSMDraws.drawCalls;
+    }
+
+    private static DiagnosticFrame endDiagnosticFrame() {
+        return diagnosticDepth == 0 ? null : diagnosticFrames.get(--diagnosticDepth);
+    }
+
+    private static void clearDiagnosticFrame(DiagnosticFrame frame) {
+        if (frame == null) return;
+        frame.entity = null;
+        frame.stack = null;
+        frame.model = null;
+        frame.bailReason = null;
+        frame.drawsAtStart = 0L;
     }
 
     private static void reportFallback(long drawnFrom) {
@@ -307,6 +375,10 @@ public final class DroppedItemInstancer {
     /** Drops the per-draw state a renderer that threw in the middle of an item left behind. */
     public static void forgetItemDraws() {
         part = RUN;
+        diagnosticDepth = 0;
+        for (DiagnosticFrame frame : diagnosticFrames) {
+            clearDiagnosticFrame(frame);
+        }
     }
 
     /** Drops every cached mesh, on a texture reload or a shader pack change. */
@@ -420,6 +492,9 @@ public final class DroppedItemInstancer {
     }
 
     private static long bail(BailReason reason, long drawsFrom) {
+        if (diagnosticDepth > 0) {
+            diagnosticFrames.get(diagnosticDepth - 1).bailReason = reason;
+        }
         bails[reason.ordinal()]++;
         return drawsFrom;
     }

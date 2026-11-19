@@ -1,12 +1,24 @@
 package com.gtnewhorizons.angelica.rendering.tesr;
 
+import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.item.EntityItem;
+import net.minecraft.item.ItemStack;
+import net.minecraft.tileentity.TileEntity;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 
 /** Excludes renderers that mix batched model parts with their own draws, which reorders their geometry. */
 public final class BatchEligibility {
+
+    private static final Logger LOGGER = LogManager.getLogger("BatchEligibility");
+    private static final Set<String> loggedDiagnosticKeys = new HashSet<>();
 
     public static final byte UNKNOWN = 0;
     public static final byte SAFE = 1;
@@ -180,13 +192,49 @@ public final class BatchEligibility {
         expectedDraws += (drawCount - bracketDrawsAtStart) - alreadyExpected;
     }
 
-    public static void onStateChange(Object renderer, byte state) {
+    public static void onStateChange(Object renderer, Object subject, byte state) {
         if (state != DENIED) return;
+        if (ActiniumRuntime.options().debug.enableEntityRenderDiagnostics) {
+            final String name = renderer.getClass().getName();
+            final String reason = uncapturedState ? "uncaptured_state" : "mixed_renderer";
+            final String target = describeSubject(subject);
+            final String key = name + '|' + reason + '|' + describeSubjectType(subject);
+            if (loggedDiagnosticKeys.add(key)) {
+                LOGGER.warn("[ACTINIUM-ENTITY-DIAGNOSTICS] renderer={} reason={} target={} foreignDraws={} expectedDraws={} parts={} firstAllowedBail={}",
+                    name, reason, target, foreignDraws, expectedDraws, parts, allowedBail);
+            }
+        }
         final String name = renderer.getClass().getName();
         if (uncapturedState) {
             GLStateManager.warnOnce("tesr-state:" + name, "{} changes state outside the batch format - keeping its model parts immediate", name);
             return;
         }
         GLStateManager.warnOnce("tesr-mixed:" + name, "{} draws its own geometry alongside model parts ({} foreign draws, first allowed bail: {}) - excluding it from model part batching", name, foreignDraws, allowedBail);
+    }
+
+    private static String describeSubject(Object subject) {
+        if (subject instanceof Entity entity) {
+            String description = entity.getClass().getName() + "#" + entity.getEntityId() + "@"
+                + entity.posX + "," + entity.posY + "," + entity.posZ;
+            if (entity instanceof EntityItem droppedItem) {
+                final ItemStack stack = droppedItem.getItem();
+                return description + " item=" + (stack.isEmpty() ? "empty" : stack.getItem().getClass().getName())
+                    + " count=" + stack.getCount();
+            }
+            return description;
+        }
+        if (subject instanceof TileEntity tileEntity) {
+            return tileEntity.getClass().getName() + "@" + tileEntity.getPos();
+        }
+        return subject == null ? "unknown" : subject.getClass().getName();
+    }
+
+    private static String describeSubjectType(Object subject) {
+        if (subject instanceof EntityItem droppedItem) {
+            final ItemStack stack = droppedItem.getItem();
+            return subject.getClass().getName() + ':'
+                + (stack.isEmpty() ? "empty" : stack.getItem().getClass().getName());
+        }
+        return subject == null ? "unknown" : subject.getClass().getName();
     }
 }

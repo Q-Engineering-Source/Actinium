@@ -111,6 +111,7 @@ public final class ActiniumDiagnostics {
                  + ",preGlError=" + options.debug.enableFrameGlErrorCheck
                 + ",postGlError=" + options.debug.enablePostRenderGlErrorCheck
                 + ",diagnostics=" + options.debug.enableProductionDiagnostics
+                + ",entityRender=" + options.debug.enableEntityRenderDiagnostics
                 + ",redirectorDebug=" + options.debug.enableRedirectorDebug
                 + ",redirectorLogSpam=" + options.debug.enableRedirectorLogSpam
                 + ",redirectorClassDump=" + options.debug.enableRedirectorClassDump

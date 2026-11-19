@@ -60,7 +60,7 @@ public final class TesrBrackets {
                 final byte next = BatchEligibility.end(state, GLSMDraws.drawCalls);
                 if (next != state) {
                     holder.angelica$setBatchState(next);
-                    BatchEligibility.onStateChange(renderer, next);
+                    BatchEligibility.onStateChange(renderer, te, next);
                 }
             }
         } finally {
@@ -93,7 +93,7 @@ public final class TesrBrackets {
             }
             if (next != state) {
                 holder.angelica$setBatchState(next);
-                BatchEligibility.onStateChange(renderer, next);
+                BatchEligibility.onStateChange(renderer, entity, next);
             }
         }
     }

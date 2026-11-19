@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.rendering.tesr;
 
+import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.gtnewhorizon.gtnhlib.client.renderer.MatrixHelper;
 import com.gtnewhorizon.gtnhlib.client.renderer.RuntimeOptionsBridge;
 import com.gtnewhorizon.gtnhlib.client.renderer.TessellatorManager;
@@ -36,6 +37,7 @@ import com.gtnewhorizons.angelica.glsm.states.Color4;
 import com.gtnewhorizons.angelica.glsm.states.PolygonState;
 import com.gtnewhorizons.angelica.mixins.interfaces.ModelBoxData;
 import com.gtnewhorizons.angelica.rendering.GlintClock;
+import com.gtnewhorizons.angelica.rendering.items.DroppedItemInstancer;
 import com.gtnewhorizons.angelica.rendering.items.ItemGlint;
 import com.gtnewhorizons.angelica.shadercompat.ShaderGlint;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -61,6 +63,7 @@ import com.gtnewhorizons.angelica.glsm.ITessellatorData;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.texture.ITextureObject;
+import net.minecraft.entity.Entity;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.client.MinecraftForgeClient;
 import org.apache.logging.log4j.LogManager;
@@ -73,6 +76,7 @@ import org.lwjgl.opengl.GL13;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.StringJoiner;
 import java.util.function.ToLongFunction;
 
 public final class ModelPartBatcher {
@@ -136,6 +140,16 @@ public final class ModelPartBatcher {
     private RenderLayer pendingEntityEffect;
     private long shadowQuads;
     private long shadowBatches;
+    private long fireQuads;
+    private long fireDraws;
+    private long fireAttempts;
+    private long fireAccepted;
+    private long fireRejected;
+    private String fireLastReject = "none";
+    private String fireLastEntity = "unknown";
+    private int fireLastVertexCount;
+    private final Object2ObjectOpenHashMap<String, Long> fireRejectCounts = new Object2ObjectOpenHashMap<>();
+    private final long[] nextProbeLogMs = new long[Mode.values().length * 2];
     private Mode mode = Mode.BLOCK_ENTITIES;
     private boolean instancedThisCycle;
     private DeferredWorldRenderingPipeline shaderPipeline;
@@ -150,6 +164,7 @@ public final class ModelPartBatcher {
     private long armorBaseReuses, glintPassReuses, armorLoopSkips, armorSectionSkips;
     private final long[] bails = new long[BailReason.VALUES.length];
     private long lastParts, lastLiveFallbacks;
+    private final String[] lastProbeLogKeys = new String[Mode.values().length * 2];
 
     public long statParts() { return parts; }
     public long statArmorBaseReuses() { return armorBaseReuses; }
@@ -364,6 +379,46 @@ public final class ModelPartBatcher {
                 if (wrapEntities) GbufferPrograms.endEntities();
             }
         }
+        logProbeStats();
+    }
+
+    private void logProbeStats() {
+        if (!ActiniumRuntime.options().debug.enableEntityRenderDiagnostics) {
+            Arrays.fill(lastProbeLogKeys, null);
+            return;
+        }
+        final long now = System.currentTimeMillis();
+        final int probeIndex = mode.ordinal() * 2 + (shadow ? 1 : 0);
+        if (now < nextProbeLogMs[probeIndex]) return;
+        nextProbeLogMs[probeIndex] = now + 10_000L;
+        final StringJoiner batchBails = new StringJoiner(",");
+        for (BailReason reason : BailReason.VALUES) {
+            batchBails.add(reason.name().toLowerCase() + ":" + statBail(reason));
+        }
+        final StringJoiner itemBails = new StringJoiner(",");
+        for (DroppedItemInstancer.BailReason reason : DroppedItemInstancer.BailReason.VALUES) {
+            itemBails.add(reason.name().toLowerCase() + ":" + DroppedItemInstancer.statBail(reason));
+        }
+        final StringJoiner fireRejects = new StringJoiner(",");
+        for (var entry : this.fireRejectCounts.object2ObjectEntrySet()) {
+            fireRejects.add(entry.getKey() + ":" + entry.getValue());
+        }
+        final Object[] values = {
+            mode, shadow, instancedThisCycle, shaderPipeline != null, GLSMDraws.drawCalls, statParts(),
+            statInstancedDraws(), statInstancedInstances(), statCubeInstances(), statRedrawnInstances(),
+            statLiveFallbacks(), statBail(BailReason.MATERIAL), statArmorBaseReuses(), statGlintPassReuses(),
+            statArmorLoopSkips(), statArmorSectionSkips(), statShadowQuads(), statShadowDraws(), fireAttempts,
+            fireAccepted, fireRejected, fireRejects, fireLastReject, fireLastEntity, fireLastVertexCount,
+            fireQuads, fireDraws, DroppedItemInstancer.statInstanced(), DroppedItemInstancer.statGlintInstanced(),
+            DroppedItemInstancer.statCaptured(), DroppedItemInstancer.statCached(),
+            EntityTextureAtlas.INSTANCE.debugResidentCount(), EntityTextureAtlas.INSTANCE.debugPageCount(),
+            batchBails, itemBails
+        };
+        final String key = Arrays.deepToString(values);
+        if (Objects.equals(lastProbeLogKeys[probeIndex], key)) return;
+        lastProbeLogKeys[probeIndex] = key;
+        LOGGER.info("[ACTINIUM-ENTITY-DIAGNOSTICS] mode={} shadow={} instancedCapable={} shaderPipeline={} glDrawCalls={} parts={} draws={} instances={} cubes={} redrawn={} fallback={} materialFallback={} armorBaseReuse={} glintReuse={} armorLoopSkip={} armorSectionSkip={} shadowQuads={} shadowBatches={} fireAttempts={} fireAccepted={} fireRejected={} fireRejects=[{}] fireLastReject={} fireLastEntity={} fireLastVertices={} fireQuads={} fireDraws={} droppedItems={} itemGlint={} itemCaptured={} itemCached={} atlasResidents={} atlasPages={} bails=[{}] itemBails=[{}]",
+            values);
     }
 
     private void drawBatches(boolean hold) {
@@ -907,23 +962,38 @@ public final class ModelPartBatcher {
 
     /** Transfers the vertices emitted by the vanilla shadow or fire renderer into the entity batch. */
     public boolean queueEntityEffect(ITessellatorData tess, ResourceLocation texture, boolean fire) {
-        if (!entitiesActive() || !GLStateManager.isMainThread() || (!fire && shadow)
-            || DisplayListManager.isRecording() || DeferredDrawBatcher.isActive()
-            || TessellatorManager.shouldInterceptBufferBuilderDraw()) return false;
+        return queueEntityEffect(tess, texture, fire, null);
+    }
+
+    public boolean queueEntityEffect(ITessellatorData tess, ResourceLocation texture, boolean fire, Entity entity) {
+        final boolean entityDiagnostics = ActiniumRuntime.options().debug.enableEntityRenderDiagnostics;
+        if (fire && entityDiagnostics) fireAttempts++;
         final int vertexCount = tess.getVertexCount();
-        RenderLayer layer = entityEffectLayer(tess, texture, fire);
+        if (!entitiesActive()) return rejectEntityEffect(fire, "entity_batch_inactive", entity, vertexCount);
+        if (!GLStateManager.isMainThread()) return rejectEntityEffect(fire, "not_render_thread", entity, vertexCount);
+        if (!fire && shadow) return rejectEntityEffect(fire, "shadow_pass", entity, vertexCount);
+        if (DisplayListManager.isRecording()) return rejectEntityEffect(fire, "display_list_recording", entity, vertexCount);
+        if (DeferredDrawBatcher.isActive()) return rejectEntityEffect(fire, "deferred_draw_active", entity, vertexCount);
+        if (TessellatorManager.shouldInterceptBufferBuilderDraw()) return rejectEntityEffect(fire, "tessellator_interception", entity, vertexCount);
+        RenderLayer layer = entityEffectLayer(tess, texture, fire, entity, "");
         if (layer == null) {
             if (vertexCount != 0 && pendingEntityEffect != null) flushEntityEffects();
             return false;
         }
 
         if (orderEntityEffect(layer)) {
-            layer = entityEffectLayer(tess, texture, fire);
+            layer = entityEffectLayer(tess, texture, fire, entity, "after_flush_");
             if (layer == null) return false;
         }
         if (!fire) {
             shadowQuads += vertexCount / 4;
             if (pendingEntityEffect == null) shadowBatches++;
+        } else {
+            if (entityDiagnostics) {
+                fireQuads += vertexCount / 4;
+                fireDraws++;
+                fireAccepted++;
+            }
         }
         if (!shadow) pendingEntityEffect = layer;
         // The Iris flame ID is still active at the vanilla draw call, including in the shadow pass.
@@ -934,17 +1004,41 @@ public final class ModelPartBatcher {
         return true;
     }
 
-    private RenderLayer entityEffectLayer(ITessellatorData tess, ResourceLocation texture, boolean fire) {
-        if (!canStreamTessellator(tess) || !BatchDrawDefaults.drawsToPassFramebuffer()
-            || GLSMTextures.getActiveTextureUnit() != 0 || GLSMRasterizer.getPolygonState().getOffsetClamp() != 0) return null;
+    private RenderLayer entityEffectLayer(ITessellatorData tess, ResourceLocation texture, boolean fire, Entity entity, String reasonPrefix) {
+        final String tessellatorReason = tessellatorRejectReason(tess);
+        if (tessellatorReason != null) return rejectEntityEffectLayer(fire, reasonPrefix + tessellatorReason, entity, tess.getVertexCount());
+        if (!BatchDrawDefaults.drawsToPassFramebuffer()) return rejectEntityEffectLayer(fire, reasonPrefix + "not_pass_framebuffer", entity, tess.getVertexCount());
+        if (GLSMTextures.getActiveTextureUnit() != 0) return rejectEntityEffectLayer(fire, reasonPrefix + "active_texture_unit", entity, tess.getVertexCount());
+        if (GLSMRasterizer.getPolygonState().getOffsetClamp() != 0) return rejectEntityEffectLayer(fire, reasonPrefix + "polygon_offset_clamp", entity, tess.getVertexCount());
         final ITextureObject boundTexture = Minecraft.getMinecraft().getTextureManager().getTexture(texture);
         final int textureId = GLSMTextures.getBoundTextureForServerState(0);
-        if (boundTexture == null || boundTexture.getGlTextureId() != textureId) return null;
+        if (boundTexture == null) return rejectEntityEffectLayer(fire, reasonPrefix + "texture_object_missing", entity, tess.getVertexCount());
+        if (boundTexture.getGlTextureId() != textureId) return rejectEntityEffectLayer(fire, reasonPrefix + "texture_binding_mismatch", entity, tess.getVertexCount());
         final TesrMaterial material = VanillaEntityEffects.material(fire);
-        if (material == null) return null;
+        if (material == null) return rejectEntityEffectLayer(fire, reasonPrefix + "material_state", entity, tess.getVertexCount());
 
         final EntityRenderCommands.DrawInputs inputs = tessellatorInputs(texture, textureId, material);
         return layerFor(texture, inputs);
+    }
+
+    private RenderLayer rejectEntityEffectLayer(boolean fire, String reason, Entity entity, int vertexCount) {
+        rejectEntityEffect(fire, reason, entity, vertexCount);
+        return null;
+    }
+
+    private boolean rejectEntityEffect(boolean fire, String reason, Entity entity, int vertexCount) {
+        if (fire) rejectEntityEffect(reason, entity, vertexCount);
+        return false;
+    }
+
+    private void rejectEntityEffect(String reason, Entity entity, int vertexCount) {
+        if (!ActiniumRuntime.options().debug.enableEntityRenderDiagnostics) return;
+        fireRejected++;
+        fireRejectCounts.put(reason, fireRejectCounts.getOrDefault(reason, 0L) + 1L);
+        fireLastReject = reason;
+        fireLastEntity = entity == null ? "unknown" : entity.getClass().getName() + "#" + entity.getEntityId()
+            + "@" + entity.posX + "," + entity.posY + "," + entity.posZ;
+        fireLastVertexCount = vertexCount;
     }
 
     private boolean orderEntityEffect(RenderLayer layer) {
@@ -989,11 +1083,20 @@ public final class ModelPartBatcher {
     }
 
     private boolean canStreamTessellator(ITessellatorData tess) {
+        return tessellatorRejectReason(tess) == null;
+    }
+
+    private String tessellatorRejectReason(ITessellatorData tess) {
         final int count = tess.getVertexCount();
-        return tess.isDrawing() && tess.getDrawMode() == GL11.GL_QUADS && count > 0 && (count & 3) == 0
-            && (shaderPipeline == null || !TessellatorEntityIds.hasIdChanges(tess))
-            && !DisplayListManager.isRecording() && GLSMDepthStencilAlpha.getDepthTest().isEnabled()
-            && unitTexIdentity() && passProgramBound();
+        if (!tess.isDrawing()) return "tessellator_not_drawing";
+        if (tess.getDrawMode() != GL11.GL_QUADS) return "tessellator_draw_mode";
+        if (count == 0 || (count & 3) != 0) return "tessellator_vertex_count";
+        if (shaderPipeline != null && TessellatorEntityIds.hasIdChanges(tess)) return "tessellator_entity_ids";
+        if (DisplayListManager.isRecording()) return "display_list_recording";
+        if (!GLSMDepthStencilAlpha.getDepthTest().isEnabled()) return "depth_test_disabled";
+        if (!unitTexIdentity()) return "texture_matrix_not_identity";
+        if (!passProgramBound()) return "pass_program_not_bound";
+        return null;
     }
 
     private EntityRenderCommands.DrawInputs tessellatorInputs(ResourceLocation texture, int textureId, TesrMaterial material) {
