@@ -37,6 +37,7 @@ import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -46,6 +47,7 @@ public final class DroppedItemInstancer {
 
     private static final Logger LOGGER = LogManager.getLogger("DroppedItemInstancer");
     private static final Set<String> loggedDiagnosticKeys = new HashSet<>();
+    private static final Set<String> loggedHeldItemSites = new HashSet<>();
 
     /** The item was queued; the caller must not run the vanilla draw. */
     public static final long SKIP = -2L;
@@ -233,17 +235,42 @@ public final class DroppedItemInstancer {
     /** Runs after Forge applies the camera transform, with vanilla still owning the outer render state. */
     public static void renderHeldItem(ItemQuadWriter writer, ItemColors colors, ItemStack stack, IBakedModel model,
                                       TransformType transform, Runnable drawVanilla) {
-        if ((transform != TransformType.THIRD_PERSON_LEFT_HAND && transform != TransformType.THIRD_PERSON_RIGHT_HAND)
-            || scopeDepth != 0 || !ModelPartBatcher.INSTANCE.entitiesActive()) {
-            drawVanilla.run();
+        final boolean entityBatchActive = ModelPartBatcher.INSTANCE.entitiesActive();
+        final String bypassReason = transform != TransformType.THIRD_PERSON_LEFT_HAND
+            && transform != TransformType.THIRD_PERSON_RIGHT_HAND ? "transform"
+            : scopeDepth != 0 ? "item_scope" : !entityBatchActive ? "batch_inactive" : null;
+        if (bypassReason != null) {
+            drawHeldItemVanilla(drawVanilla, stack, model, transform, bypassReason, entityBatchActive);
             return;
         }
         final long drawnFrom = queueItem(writer, colors, stack, model, EntityMaterials.ITEM_GLINT);
         if (drawnFrom != SKIP) {
             try {
-                drawVanilla.run();
+                drawHeldItemVanilla(drawVanilla, stack, model, transform, "instancing_fallback", entityBatchActive);
             } finally {
                 reportFallback(drawnFrom);
+            }
+        }
+    }
+
+    private static void drawHeldItemVanilla(Runnable draw, ItemStack stack, IBakedModel model, TransformType transform,
+                                            String route, boolean entityBatchActive) {
+        final boolean logDiagnostics = entityBatchActive && ActiniumRuntime.options().debug.enableEntityRenderDiagnostics;
+        final long drawsBefore = logDiagnostics ? GLSMDraws.drawCalls : 0L;
+        final Throwable trace = logDiagnostics ? new Throwable() : null;
+        try {
+            draw.run();
+        } finally {
+            final long draws = logDiagnostics ? GLSMDraws.drawCalls - drawsBefore : 0L;
+            if (logDiagnostics && draws > 0L) {
+                final String item = stack == null || stack.isEmpty() ? "empty" : stack.getItem().getClass().getName();
+                final String modelName = model == null ? "null" : model.getClass().getName();
+                final String key = route + '|' + transform + '|' + item + '|' + modelName
+                    + '|' + Arrays.toString(trace.getStackTrace());
+                if (loggedHeldItemSites.add(key)) {
+                    LOGGER.warn("[ACTINIUM-ENTITY-DIAGNOSTICS] heldItem route={} transform={} item={} model={} immediateDraws={} stack",
+                        route, transform, item, modelName, draws, trace);
+                }
             }
         }
     }
