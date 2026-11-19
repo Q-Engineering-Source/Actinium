@@ -1,5 +1,6 @@
 package com.dhj.actinium.mixin.features.iris;
 
+import com.dhj.actinium.mixinterface.features.iris.IndependentParticleDraw;
 import com.dhj.actinium.render.particle.ParticleViewportCulling;
 import com.dhj.actinium.render.terrain.ActiniumWorldRenderer;
 import com.gtnewhorizons.angelica.rendering.ParticleRunSplitter;
@@ -52,7 +53,7 @@ public class ParticleManagerCullingMixin {
         method = "renderParticles",
         at = @At(value = "INVOKE", target = "Lnet/minecraft/client/particle/Particle;renderParticle(Lnet/minecraft/client/renderer/BufferBuilder;Lnet/minecraft/entity/Entity;FFFFFF)V")
     )
-    private void actinium$submitParticle(
+    private void actinium$cullParticle(
         Particle particle,
         BufferBuilder buffer,
         Entity entityIn,
@@ -64,23 +65,10 @@ public class ParticleManagerCullingMixin {
         float rotationXZ,
         Operation<Void> original
     ) {
-        if (!ParticleViewportCulling.isVisible(particle, this.actinium$cullingViewport)) {
-            return;
-        }
-        ParticleRunSplitter.splitIfNeeded(particle, buffer);
-        if (ParticleInstancer.renderParticle(particle, buffer, entityIn, partialTicks,
-            rotationX, rotationZ, rotationYZ, rotationXY, rotationXZ)) {
-            return;
-        }
-        original.call(particle, buffer, entityIn, partialTicks, rotationX, rotationZ, rotationYZ, rotationXY, rotationXZ);
+        this.actinium$submitParticle(particle, buffer, entityIn, partialTicks, rotationX, rotationZ, rotationYZ,
+            rotationXY, rotationXZ, original);
     }
 
-    /**
-     * The third layer gets its own run from {@code ParticleManagerIrisMixin}, so its particles are
-     * split, batched and culled exactly like the main loop's: the run is drawn and reopened when a
-     * particle needs the other particle program, and the new run keeps the batch and the declaration
-     * in step.
-     */
     @WrapOperation(
         method = "renderLitParticles",
         at = @At(value = "INVOKE", target = "Lnet/minecraft/client/particle/Particle;renderParticle(Lnet/minecraft/client/renderer/BufferBuilder;Lnet/minecraft/entity/Entity;FFFFFF)V")
@@ -97,7 +85,20 @@ public class ParticleManagerCullingMixin {
         float rotationXZ,
         Operation<Void> original
     ) {
+        this.actinium$submitParticle(particle, buffer, entityIn, partialTicks, rotationX, rotationZ, rotationYZ,
+            rotationXY, rotationXZ, original);
+    }
+
+    @Unique
+    private void actinium$submitParticle(Particle particle, BufferBuilder buffer, Entity entityIn, float partialTicks,
+                                        float rotationX, float rotationZ, float rotationYZ, float rotationXY,
+                                        float rotationXZ, Operation<Void> original) {
         if (!ParticleViewportCulling.isVisible(particle, this.actinium$cullingViewport)) {
+            return;
+        }
+        if (particle instanceof IndependentParticleDraw) {
+            ParticleRunSplitter.renderIndependent(particle, () -> original.call(particle, buffer, entityIn, partialTicks,
+                rotationX, rotationZ, rotationYZ, rotationXY, rotationXZ));
             return;
         }
         ParticleRunSplitter.splitIfNeeded(particle, buffer);

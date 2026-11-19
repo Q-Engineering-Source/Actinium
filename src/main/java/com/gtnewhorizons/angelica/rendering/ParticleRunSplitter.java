@@ -67,7 +67,7 @@ public final class ParticleRunSplitter {
     }
 
     /**
-     * Flushes the open run before a particle invokes an entity renderer that needs the same builder.
+     * Flushes the open particle run before another renderer uses the shared builder.
      * Returns whether the caller must reopen it with {@link #afterNestedDraw(boolean)}.
      */
     public static boolean beforeNestedDraw() {
@@ -79,6 +79,7 @@ public final class ParticleRunSplitter {
         nestedBatcherActive = DeferredDrawBatcher.isActive();
         if (nestedBatcherActive) DeferredDrawBatcher.exitAndFlush();
         Tessellator.getInstance().draw();
+        runOpen = false;
         return true;
     }
 
@@ -87,8 +88,24 @@ public final class ParticleRunSplitter {
         if (!reopen) return;
         final BufferBuilder run = Tessellator.getInstance().getBuffer();
         run.begin(nestedDrawMode, nestedVertexFormat);
+        runOpen = true;
         if (nestedBatcherActive) DeferredDrawBatcher.enter();
         ParticleInstancer.beginLayer();
+    }
+
+    /** Runs a particle that owns its draw, with its own translucency and the shared builder idle. */
+    public static void renderIndependent(Particle particle, Runnable render) {
+        final boolean reopen = beforeNestedDraw();
+        try {
+            final Boolean previous = GbufferPrograms.beginTranslucencyDeclaration(isTranslucent(particle));
+            try {
+                render.run();
+            } finally {
+                GbufferPrograms.endTranslucencyDeclaration(previous);
+            }
+        } finally {
+            afterNestedDraw(reopen);
+        }
     }
 
     /**

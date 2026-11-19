@@ -109,6 +109,38 @@ class ParticleLitRunGLTest extends GLStateManagerIntegrationFixture {
     }
 
     @Test
+    void particleCollectionOwnsItsDrawAndResumesInstancing() {
+        ParticleLitRun.begin();
+        final BufferBuilder run = Tessellator.getInstance().getBuffer();
+        try {
+            assertTrue(ParticleInstancer.renderParticle(new CaptureParticle(), run, null, 0.5F,
+                ROT_X, ROT_XZ, ROT_Z, ROT_YZ, ROT_XY));
+
+            final Particle collection = new CaptureParticle() {
+                @Override
+                public void renderParticle(BufferBuilder buffer, Entity entity, float partialTicks,
+                                           float rotationX, float rotationZ, float rotationYZ,
+                                           float rotationXY, float rotationXZ) {
+                    buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_TEX_COLOR);
+                    assertSame(run, buffer);
+                    Tessellator.getInstance().draw();
+                }
+            };
+            ParticleRunSplitter.renderIndependent(collection,
+                () -> collection.renderParticle(run, null, 0.5F, ROT_X, ROT_Z, ROT_YZ, ROT_XY, ROT_XZ));
+
+            assertEquals(drawsBefore + 1, ParticleInstancer.getDraws());
+            assertSame(DefaultVertexFormats.PARTICLE_POSITION_TEX_COLOR_LMAP, run.getVertexFormat());
+            assertTrue(ParticleInstancer.renderParticle(new CaptureParticle(), run, null, 0.5F,
+                ROT_X, ROT_XZ, ROT_Z, ROT_YZ, ROT_XY));
+        } finally {
+            ParticleLitRun.end();
+        }
+        assertEquals(drawsBefore + 2, ParticleInstancer.getDraws());
+        assertClosedBuilder(run);
+    }
+
+    @Test
     void opensTheRunAndDrawsTheDecodedQuadAsInstances() {
         ParticleLitRun.begin();
         final BufferBuilder run = Tessellator.getInstance().getBuffer();
