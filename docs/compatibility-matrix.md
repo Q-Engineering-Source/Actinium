@@ -17,6 +17,15 @@ Windows 10、NVIDIA GeForce RTX 5070 Laptop GPU（驱动 610.74）。
 > `RenderItemIrisMixinTest` 先复现状态残留再验证修复，`DroppedItemInstancingGLTest` 与
 > `./gradlew check build --no-daemon` 均通过。修复 commit `8c3553a7`。
 
+> 2026-11-15 追加：性能指示器（issue #247，Actinium `06228a414f26`）加入独立双列拖放设置界面、
+> FPS / 1% Low / 内存 / CPU / GPU / 显存六类指标和 100–2000ms 刷新间隔。HUD 在
+> `RenderTickEvent.END` 绘制，避开 StellarCore/Gnetum 的 HUD 缓存；OSHI 采样使用独立守护线程，
+> 不受支持的字段显示 `N/A` 并记录日志。`./gradlew check build --no-daemon` 通过。
+> crl_t 生产实例验证环境为 Windows 11、Java 25.0.4.1、RTX 5070 Laptop（驱动 621.24）和
+> SDL GPU/Vulkan；用户在该环境发现 1% Low 文案显示 `Format error`，已定位为 `.lang` 中 `%` 未转义，
+> 三份语言文件改为 `%%` 并加入真实 `Locale.formatMessage` 回归测试。六类硬件数据、拖放与刷新频率、
+> 光影及 StellarCore/Gnetum HUD 缓存组合仍待完整实机回归。
+
 > 2026-11-07 追加：Derivative Main d24.4.14 的普通草与部分单格花不摆动、双格高草上下段分离已修复。
 > ID 映射只在显式声明 `11202` 时使用旧版分支，其他包统一使用现代条目；修复条件块续行丢失
 > `short_grass` 的问题并保持规则声明顺序。双格植物上半格按实际状态的品种生成 `0x8 | variant`，

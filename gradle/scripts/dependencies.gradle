@@ -26,6 +26,7 @@ dependencies {
     def lwjglVersion = rootProject.ext.lwjglVersion
     def lombokVersion = '1.18.46'
     def asmVersion = '9.9.1'
+    def oshiVersion = '7.3.2'
 
     compileOnly 'com.cleanroommc:sponge-mixin:0.20.13+mixin.0.8.7'
     compileOnly 'org.jetbrains:annotations:24.1.0'
@@ -62,6 +63,11 @@ dependencies {
     compileOnly "org.ow2.asm:asm-commons:${asmVersion}"
     compileOnly "org.ow2.asm:asm-tree:${asmVersion}"
     compileOnly "org.ow2.asm:asm-util:${asmVersion}"
+    // OSHI 7.3.2 supplies the CPU, memory and GPU counters of the performance indicator. Compile-only
+    // because the Cleanroom loader already carries both jars at runtime; the FFM backend needs JDK 25+,
+    // so bundling it would only add classes that older runtimes cannot load.
+    compileOnly "com.github.oshi:oshi-common:${oshiVersion}"
+    compileOnly "com.github.oshi:oshi-core-ffm:${oshiVersion}"
     implementation 'com.google.code.gson:gson:2.10.1'
     // These parser classes are used while FML is still showing the splash screen. They must be
     // expanded into the mod body because ContainedDeps/NonModDeps are injected after that phase.

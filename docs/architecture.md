@@ -236,8 +236,14 @@ pack 变体与 FFP 都用常量法线 `(0, 0, 1)`，与 billboard 朝向一致�
   important 队列与按距离排序的普通队列）、`DeferredSectionMesh`（跨线程传递的 mesh，内含
   `DeferredCapture` 原始顶点池）、`DeferredFinishTask`（构建线程收尾任务）、`DeferredBlock`、
   `ObjectPool`。判据由 `rendering/BlockRenderSafetyRegistry` 提供。
-- **`render/terrain/fog/`**：`GLStateManagerFogService` —— FogService SPI 实现。
+- **`render/terrain/fog/`**：`GLStateManagerFogService`，FogService SPI 实现。
 - **`render/terrain/sprite/`**：`SpriteUtil`。
+
+### 性能指示器
+
+`com.dhj.actinium.hud` 按职责拆为六个子包：`layout` 保存行类型与唯一布局，`frame` 统计帧时间窗口，`system` 在独立守护线程采集 OSHI 硬件数据，`metric` 按刷新间隔发布快照并维护世界会话极值，`render` 生成文本与绘制 HUD，`runtime` 接入 Forge 渲染事件、应用配置并管理采样生命周期。独立双列拖放界面位于 `gui/IndicatorScreen`，配置仅保存字符串行 id、启用状态与刷新间隔。
+
+HUD 在 `RenderTickEvent.END` 绘制，此时 StellarCore/Gnetum 的 HUD 缓存合成已完成，Minecraft 主 framebuffer 尚未解绑，因此文本进入 F2 截图且不受缓存刷新频率影响。pass 绑定主 framebuffer 并保留其 display viewport，使用 program 0、texture unit 0、straight-alpha blend 和 GUI 正交投影；depth test 与 depth write 在绘制期间关闭，矩阵、深度与固定管线状态在返回前恢复。F1、F3 或任意 GUI 屏幕打开时隐藏 HUD，世界为空时停止硬件采样。采样线程只发布不可变快照，不访问 Minecraft、GL 或 GLSM；客户端退出时关闭执行器与 `GpuStats` 会话。
 
 ### 世界与数据
 

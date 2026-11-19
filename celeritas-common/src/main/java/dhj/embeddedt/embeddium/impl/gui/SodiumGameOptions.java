@@ -45,6 +45,7 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
     public final DebugSettings debug = new DebugSettings();
     public final WindowSettings window = new WindowSettings();
     public final ReducerSettings reducer = new ReducerSettings();
+    public final PerformanceIndicatorSettings performanceIndicator = new PerformanceIndicatorSettings();
 
     private boolean readOnly;
 
@@ -264,6 +265,36 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         public int minimizedVolume = 100;
     }
 
+    /** On-screen performance indicator state, persisted under {@code performance_indicator}. */
+    public static class PerformanceIndicatorSettings {
+        private static final int REFRESH_MIN_MILLIS = 100;
+        private static final int REFRESH_MAX_MILLIS = 2000;
+        private static final int REFRESH_STEP_MILLIS = 100;
+        private static final int DEFAULT_REFRESH_MILLIS = 500;
+
+        /** Row ids used until the player picks a layout, and when a loaded config stored none. */
+        private static final List<String> DEFAULT_ROWS = List.of("fps");
+
+        public boolean enabled = false;
+        public int refreshIntervalMillis = DEFAULT_REFRESH_MILLIS;
+        public List<String> rows = new ArrayList<>(DEFAULT_ROWS);
+
+        /** Minimum refresh interval exposed to option controls. */
+        public static int refreshMinMillis() {
+            return REFRESH_MIN_MILLIS;
+        }
+
+        /** Maximum refresh interval exposed to option controls. */
+        public static int refreshMaxMillis() {
+            return REFRESH_MAX_MILLIS;
+        }
+
+        /** Step used by the refresh interval slider. */
+        public static int refreshStepMillis() {
+            return REFRESH_STEP_MILLIS;
+        }
+    }
+
     /** Driver identifiers understood by SDL, exposed without depending on a native backend. */
     public enum SdlGpuDriver implements TextProvider {
         AUTO("", "options.actinium.sdl_driver.auto"),
@@ -388,6 +419,10 @@ public class SodiumGameOptions implements OptionStorage<SodiumGameOptions> {
         if (config.performance.entityShadowReplayExcludedClasses == null) {
             config.performance.entityShadowReplayExcludedClasses =
                     new ArrayList<>(PerformanceSettings.defaultEntityShadowReplayExcludedClasses());
+        }
+
+        if (config.performanceIndicator.rows == null) {
+            config.performanceIndicator.rows = new ArrayList<>(PerformanceIndicatorSettings.DEFAULT_ROWS);
         }
 
         try {
