@@ -1,5 +1,6 @@
 package net.coderbot.iris.layer;
 
+import net.coderbot.iris.gbuffer_overrides.matching.SpecialCondition;
 import net.coderbot.iris.pipeline.WorldRenderingPhase;
 import org.junit.jupiter.api.Test;
 
@@ -219,6 +220,21 @@ class GbufferProgramsEntityPhaseTest {
             this.assertOwnedPhase(GbufferPrograms.OwnedPhase.BLOCK_ENTITIES);
             this.ownedPhase = GbufferPrograms.OwnedPhase.NONE;
             this.pipelinePhase = WorldRenderingPhase.NONE;
+        }
+
+        @Override
+        public void setOverridePhase(WorldRenderingPhase phase) {
+            throw new UnsupportedOperationException("override phases are covered by GbufferProgramsStateStackTest");
+        }
+
+        @Override
+        public void setDeclaredTranslucency(Boolean translucent) {
+            throw new UnsupportedOperationException("translucency declarations are covered by GbufferProgramsStateStackTest");
+        }
+
+        @Override
+        public void setSpecialCondition(SpecialCondition condition) {
+            throw new UnsupportedOperationException("special conditions are covered by GbufferProgramsStateStackTest");
         }
 
         private void assertOwnedPhase(GbufferPrograms.OwnedPhase expected) {

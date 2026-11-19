@@ -19,9 +19,14 @@ import com.dhj.actinium.render.terrain.GpuCullingSettings;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.startup.SdlGpuBootstrap;
 import com.gtnewhorizons.angelica.proxy.ClientProxy;
+import com.gtnewhorizons.angelica.config.AngelicaConfig;
+import com.gtnewhorizons.angelica.rendering.tesr.AngelicaTesrMeshCache;
+import com.gtnewhorizons.angelica.rendering.tesr.EntityTextureAtlas;
+import com.gtnewhorizons.angelica.rendering.tesr.TesrLifecycle;
 import com.gtnewhorizon.gtnhlib.compat.Mods;
 import net.coderbot.iris.celeritas.WorldRendererCompatBridge;
 import net.coderbot.iris.debug.IrisDebugOptions;
+import net.coderbot.iris.pipeline.InstancingSupportProvider;
 import net.coderbot.iris.uniforms.CloudAnimationCycle;
 import com.gtnewhorizon.gtnhlib.client.renderer.RuntimeOptionsBridge;
 import com.gtnewhorizon.gtnhlib.client.renderer.postprocessing.PostProcessingBridge;
@@ -46,6 +51,8 @@ import net.minecraftforge.client.event.GuiOpenEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.Loader;
+import net.minecraftforge.event.world.WorldEvent;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.Mod.EventHandler;
 import net.minecraftforge.fml.common.event.FMLConstructionEvent;
@@ -91,6 +98,7 @@ public class Actinium {
             (entity, partialTicks) -> ((AccessorEntityRenderer) Minecraft.getMinecraft().entityRenderer)
                 .invokeGetNightVisionBrightness(entity, partialTicks));
         WorldRendererCompatBridge.setProvider(ActiniumWorldRenderer::instanceNullable);
+        InstancingSupportProvider.setProvider(AngelicaConfig::cubeInstancingEnabled);
         CloudAnimationCycle.setTicks(CloudRenderer::cloudCycleTicks);
         IrisDebugOptions.setBridge(new IrisDebugOptions.Bridge() {
             @Override
@@ -194,6 +202,10 @@ public class Actinium {
 
         ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
                 .registerReloadListener(resourceManager -> MissingModelCompat.onResourceManagerReload());
+        GLSMHooks.TEXTURE_DELETE.addListener(deletion -> EntityTextureAtlas.INSTANCE.onTextureDeleted(deletion.textureId));
+        ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
+                .registerReloadListener(resourceManager -> TesrLifecycle.reset());
+        MinecraftForge.EVENT_BUS.register(new AngelicaTesrMeshCache.ReloadListener());
 
         if ((Boolean) Launch.blackboard.get("fml.deobfuscatedEnvironment")) {
             ClientCommandHandler.instance.registerCommand(new TogglePassCommand());
@@ -206,6 +218,16 @@ public class Actinium {
         }
 
         ActiniumDiagnostics.logInitialization(ActiniumRuntime.version());
+    }
+
+    /**
+     * Drops every cache keyed by world or pass state when a world is left: batched TESR meshes,
+     * the entity atlas pages and the interned layers all belong to the world that produced them.
+     */
+    @SubscribeEvent
+    public void onWorldUnload(WorldEvent.Unload event) {
+        if (!event.getWorld().isRemote) return;
+        TesrLifecycle.reset();
     }
 
     /**

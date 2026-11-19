@@ -50,6 +50,15 @@ public class TextureInfoCache {
         return deleteCount;
     }
 
+    /** Reports a texture write that bypassed the tracked upload entry points, so copies of it are no longer trusted. */
+    public void onWrittenOutsideUploads(int texture) {
+        if (texture <= 0) return;
+        final TextureInfo info = getInfo(texture);
+        if (info == null || info.writtenOutsideUploads) return;
+        info.writtenOutsideUploads = true;
+        info.changeStamp++;
+    }
+
     public TextureInfo getInfo(int id) {
         if (id < 0) return null;
 

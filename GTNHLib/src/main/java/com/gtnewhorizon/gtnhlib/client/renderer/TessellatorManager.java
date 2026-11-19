@@ -148,7 +148,14 @@ public final class TessellatorManager {
     private static void copyBufferBuilderToDirect(BufferBuilder bufferBuilder, DirectTessellator tessellator) {
         final net.minecraft.client.renderer.vertex.VertexFormat mcFormat = bufferBuilder.getVertexFormat();
         final VertexFormat directFormat = mapVertexFormat(mcFormat);
-        tessellator.setVertexFormat(directFormat);
+        if (tessellator.getVertexFormat() != directFormat) {
+            tessellator.setVertexFormat(directFormat);
+        }
+        if (tessellator.getVertexCount() > 0 && tessellator.getDrawMode() != bufferBuilder.getDrawMode()) {
+            throw new IllegalStateException("A single capture cannot switch draw mode: it already holds "
+                + tessellator.getVertexCount() + " vertices drawn as mode " + tessellator.getDrawMode()
+                + ", and the draw being forwarded uses mode " + bufferBuilder.getDrawMode());
+        }
         tessellator.startDrawing(bufferBuilder.getDrawMode());
 
         final int vertexCount = bufferBuilder.getVertexCount();

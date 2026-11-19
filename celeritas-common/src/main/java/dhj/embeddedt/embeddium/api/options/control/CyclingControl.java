@@ -8,10 +8,18 @@ import dhj.embeddedt.embeddium.impl.gui.framework.TextFormattingStyle;
 import dhj.embeddedt.embeddium.impl.gui.options.TextProvider;
 import dhj.embeddedt.embeddium.impl.util.Dim2i;
 
+import org.jetbrains.annotations.Nullable;
+
+import java.util.function.Supplier;
+
 public class CyclingControl<T> implements Control<T> {
     private final Option<T> option;
-    private final T[] allowedValues;
-    private final TextComponent[] names;
+
+    /** Supplies the values when no eager array was handed in; resolved by {@link #resolveValues()}. */
+    private final @Nullable Supplier<T[]> valueSource;
+
+    private T[] allowedValues;
+    private TextComponent[] names;
 
     public CyclingControl(Option<T> option, Class<T> enumType) {
         this(option, enumType.getEnumConstants(), determineNames(enumType.getEnumConstants()));
@@ -30,8 +38,30 @@ public class CyclingControl<T> implements Control<T> {
         if (allowedValues.length != names.length) {
             throw new IllegalArgumentException();
         }
+        this.valueSource = null;
         this.allowedValues = allowedValues;
         this.names = names;
+    }
+
+    /**
+     * Creates a control whose values are read on first use instead of when the option is built, which is what a
+     * capability-dependent list needs: the page that owns the option is built before the capability can be read.
+     *
+     * @param valueSource supplies all values the player may cycle through
+     */
+    public CyclingControl(Option<T> option, Supplier<T[]> valueSource) {
+        this.option = option;
+        this.valueSource = valueSource;
+    }
+
+    private void resolveValues() {
+        if (this.allowedValues != null) {
+            return;
+        }
+
+        T[] values = this.valueSource.get();
+        this.names = determineNames(values);
+        this.allowedValues = values;
     }
 
     private static TextComponent[] determineNames(Object[] universe) {
@@ -54,11 +84,15 @@ public class CyclingControl<T> implements Control<T> {
     }
 
     public TextComponent[] getNames() {
+        this.resolveValues();
+
         return this.names.clone();
     }
 
     /** Returns the ordered values exposed by this control without leaking its backing array. */
     public T[] getAllowedValues() {
+        this.resolveValues();
+
         return this.allowedValues.clone();
     }
 
@@ -69,6 +103,8 @@ public class CyclingControl<T> implements Control<T> {
 
     @Override
     public ControlElement<T> createElement(Dim2i dim) {
+        this.resolveValues();
+
         return new CyclingControlElement<>(this.option, dim, this.allowedValues, this.names);
     }
 

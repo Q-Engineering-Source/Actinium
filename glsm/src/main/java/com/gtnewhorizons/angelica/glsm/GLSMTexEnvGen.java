@@ -8,6 +8,7 @@ import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL14;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.handleTexEnvScalar;
 import static com.gtnewhorizons.angelica.glsm.GLSMDraws.guardUnsupportedFFP;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.beforeUncapturedStateChange;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.glTexParameterf;
@@ -29,6 +30,7 @@ public final class GLSMTexEnvGen {
     public static void glTexEnv(int target, int pname, FloatBuffer params) {
         rejectExitCapture();
             if (target == GL11.GL_TEXTURE_ENV && pname == GL11.GL_TEXTURE_ENV_COLOR && params.remaining() >= 4) {
+                beforeUncapturedStateChange();
                 final int pos = params.position();
                 final var envState = ctx().textures.getTexEnvState(ctx().activeTextureUnit.getValue());
                 envState.beforeModify();
@@ -115,6 +117,7 @@ public final class GLSMTexEnvGen {
         }
 
     public static void glTexGeni(int coord, int pname, int param) {
+            beforeUncapturedStateChange();
             if (!isCachingEnabled()) return;
             if (pname == GL11.GL_TEXTURE_GEN_MODE) {
                 final int unit = ctx().activeTextureUnit.getValue();
@@ -133,6 +136,7 @@ public final class GLSMTexEnvGen {
         }
 
     public static void glTexGen(int coord, int pname, FloatBuffer params) {
+            beforeUncapturedStateChange();
             if (!isCachingEnabled()) return;
             final int unit = ctx().activeTextureUnit.getValue();
             final var texGenState = ctx().textures.getTexGenState(unit);
@@ -162,6 +166,7 @@ public final class GLSMTexEnvGen {
         }
 
     public static void glTexGen(int coord, int pname, DoubleBuffer params) {
+            beforeUncapturedStateChange();
             if (!isCachingEnabled()) return;
             final int pos = params.position();
             texGenTempPlane[0] = (float) params.get(pos);
@@ -187,6 +192,7 @@ public final class GLSMTexEnvGen {
         }
 
     public static void glTexGen(int coord, int pname, IntBuffer params) {
+            beforeUncapturedStateChange();
             if (!isCachingEnabled()) return;
             if (pname == GL11.GL_TEXTURE_GEN_MODE) {
                 final int unit = ctx().activeTextureUnit.getValue();

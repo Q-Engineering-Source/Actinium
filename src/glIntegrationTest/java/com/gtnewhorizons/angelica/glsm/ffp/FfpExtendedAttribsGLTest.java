@@ -125,7 +125,17 @@ class FfpExtendedAttribsGLTest extends GLStateManagerIntegrationFixture {
         }
 
         @Override
+        public boolean wantsExtendedCapture() {
+            return false;
+        }
+
+        @Override
         public void writeFaceNormals(int[] rawBuffer, int vertexCount) {
+        }
+
+        @Override
+        public void build(int[] rawBuffer, int vertexCount, int vertsPerPrim, int normalIntIndex, long dstAddr, int dstStride) {
+            throw new UnsupportedOperationException("this handler only records the packed path");
         }
 
         @Override

@@ -75,6 +75,7 @@ import net.coderbot.iris.shaderpack.ProgramDirectives;
 import net.coderbot.iris.shaderpack.ProgramFallbackResolver;
 import net.coderbot.iris.shaderpack.ProgramSet;
 import net.coderbot.iris.shaderpack.ProgramSource;
+import net.coderbot.iris.shaderpack.loading.ProgramGroup;
 import net.coderbot.iris.shaderpack.loading.ProgramId;
 import net.coderbot.iris.shaderpack.option.values.OptionValues;
 import net.coderbot.iris.shaderpack.texture.TextureStage;
@@ -107,9 +108,12 @@ import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL42;
 import org.lwjgl.opengl.GL43;
+import org.taumc.glsl.ShaderParser;
+import org.taumc.glsl.Transformer;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -119,20 +123,26 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiConsumer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
 import com.gtnewhorizons.angelica.glsm.GLSMDepthStencilAlpha;
 import com.gtnewhorizons.angelica.glsm.GLSMEnable;
 import com.gtnewhorizons.angelica.glsm.GLSMFramebuffer;
+import com.gtnewhorizons.angelica.glsm.hooks.BatchStateGuard;
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
+import com.gtnewhorizons.angelica.glsm.hooks.PendingProgramSelection;
 import com.gtnewhorizons.angelica.glsm.GLSMQueries;
 import com.gtnewhorizons.angelica.glsm.GLSMRasterizer;
 import com.gtnewhorizons.angelica.glsm.GLSMTextures;
+import com.gtnewhorizons.angelica.glsm.ffp.Instancing;
 
 /**
  * Encapsulates the compiled shader program objects for the currently loaded shaderpack.
  */
-public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, RenderTargetStateListener  {
+public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, RenderTargetStateListener, TesrInstancingPipeline, PendingProgramSelection  {
 	private final RenderTargets renderTargets;
 
 	@Nullable
@@ -185,6 +195,8 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	private final AdaptiveShadowBoundsStats adaptiveShadowBoundsStats;
 
 	private final Map<Pair<String, InputAvailability>, Map<PatchShaderType, String>> attributeTransforms;
+	/** Transformed sources per instance layout, keyed the same way as {@link #attributeTransforms}. */
+	private final EnumMap<Instancing, Map<Pair<String, InputAvailability>, Map<PatchShaderType, String>>> instancedAttributeTransforms = new EnumMap<>(Instancing.class);
 
 	private final HorizonRenderer horizonRenderer = new HorizonRenderer();
     @Nullable
@@ -219,6 +231,10 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	private boolean isRenderingShadow = false;
 	private InputAvailability inputs = new InputAvailability(false, false);
 	private SpecialCondition special = null;
+	private final DeferredProgramMatch programMatch = DeferredProgramMatch.forDisplayLists(
+		this,
+		DeferredWorldRenderingPipeline::selectionOwnedElsewhere,
+		this::matchPassNow);
 	private boolean refreshingPass;
 	private boolean modProgramOverrode;
 	private int programBeforeModOverride = -1;
@@ -251,7 +267,14 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 				.orElse(null);
 
 		resolver = new ProgramFallbackResolver(programs);
-		final Map<Pair<String, InputAvailability>, CompletableFuture<Map<PatchShaderType, String>>> attributeTransformFutures = submitAttributeTransforms(resolver);
+		final Map<String, Boolean> mvBuiltinsMemo = new ConcurrentHashMap<>();
+		final Map<Pair<String, InputAvailability>, CompletableFuture<Map<PatchShaderType, String>>> attributeTransformFutures = submitAttributeTransforms(resolver, attributeProgramIds(Instancing.NONE), Instancing.NONE, mvBuiltinsMemo);
+		final EnumMap<Instancing, Map<Pair<String, InputAvailability>, CompletableFuture<Map<PatchShaderType, String>>>> instancedTransformFutures = new EnumMap<>(Instancing.class);
+		for (Instancing kind : Instancing.VALUES) {
+			if (kind != Instancing.NONE && attributeProgramIds(kind).length > 0) {
+				instancedTransformFutures.put(kind, submitAttributeTransforms(resolver, attributeProgramIds(kind), kind, mvBuiltinsMemo));
+			}
+		}
 
 		final Optional<ProgramSource> terrainSource = first(programs.getGbuffersTerrain(), programs.getGbuffersTexturedLit(), programs.getGbuffersTextured(), programs.getGbuffersBasic());
 		final Optional<ProgramSource> translucentSource = first(programs.getGbuffersWater(), terrainSource);
@@ -419,28 +442,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		this.finalPassRenderer = new FinalPassRenderer(programs, compositeBuildContext, flipper.snapshot(), this.compositeRenderer.getFlippedAtLeastOnceFinal(), finalTransformFuture, "final");
 
 		// [(textured=false,lightmap=false), (textured=true,lightmap=false), (textured=true,lightmap=true)]
-		final ProgramId[] ids = new ProgramId[] {
-				ProgramId.Basic, ProgramId.Textured, ProgramId.TexturedLit,
-				ProgramId.SkyBasic, ProgramId.SkyTextured, ProgramId.SkyTextured,
-				null, null, ProgramId.Terrain,
-				null, null, ProgramId.Water,
-				null, ProgramId.Clouds, ProgramId.Clouds,
-				null, ProgramId.DamagedBlock, ProgramId.DamagedBlock,
-				ProgramId.Block, ProgramId.Block, ProgramId.Block,
-				ProgramId.BlockTrans, ProgramId.BlockTrans, ProgramId.BlockTrans,
-				ProgramId.BeaconBeam, ProgramId.BeaconBeam, ProgramId.BeaconBeam,
-				ProgramId.Entities, ProgramId.Entities, ProgramId.Entities,
-				ProgramId.EntitiesTrans, ProgramId.EntitiesTrans, ProgramId.EntitiesTrans,
-				null, ProgramId.ArmorGlint, ProgramId.ArmorGlint,
-				null, ProgramId.SpiderEyes, ProgramId.SpiderEyes,
-				ProgramId.Hand, ProgramId.Hand, ProgramId.Hand,
-				ProgramId.HandWater, ProgramId.HandWater, ProgramId.HandWater,
-				null, null, ProgramId.Weather,
-				// world border uses textured_lit even though it has no lightmap :/
-				null, ProgramId.TexturedLit, ProgramId.TexturedLit,
-				ProgramId.ShadowWater, ProgramId.ShadowWater, ProgramId.ShadowWater,
-				ProgramId.Shadow, ProgramId.Shadow, ProgramId.Shadow
-		};
+		final ProgramId[] ids = PROGRAM_IDS;
 
 		if (ids.length != RenderCondition.values().length * 3) {
 			throw new IllegalStateException("Program ID table length mismatch");
@@ -453,6 +455,26 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			} catch (Exception e) {
 				Iris.logger.error("Failed to transform shader: {}", entry.getKey().getLeft(), e);
 				throw new RuntimeException("Shader transformation failed for " + entry.getKey().getLeft(), e);
+			}
+		}
+
+		// A kind whose transform fails only loses its own variants; the remaining kinds and the
+		// per-vertex path keep working.
+		for (Map.Entry<Instancing, Map<Pair<String, InputAvailability>, CompletableFuture<Map<PatchShaderType, String>>>> kindEntry : instancedTransformFutures.entrySet()) {
+			final Instancing kind = kindEntry.getKey();
+			final Map<Pair<String, InputAvailability>, Map<PatchShaderType, String>> joined = new HashMap<>();
+			this.instancedAttributeTransforms.put(kind, joined);
+			for (Map.Entry<Pair<String, InputAvailability>, CompletableFuture<Map<PatchShaderType, String>>> entry : kindEntry.getValue().entrySet()) {
+				try {
+					final Map<PatchShaderType, String> transformed = entry.getValue().join();
+					if (transformed == null) continue;
+					joined.put(entry.getKey(), transformed);
+				} catch (Exception e) {
+					Iris.logger.warn("{} instanced transform failed for {}; disabling it", kind, entry.getKey().getLeft(), e);
+					supportsInstancing[kind.ordinal()] = false;
+					joined.clear();
+					break;
+				}
 			}
 		}
 
@@ -781,17 +803,21 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		}
 
 		switch (phase) {
-			case NONE, OUTLINE, DEBUG, PARTICLES:
+			case NONE, OUTLINE, DEBUG:
 				return RenderCondition.DEFAULT;
+			case PARTICLES:
+				// The run declares its translucency, so gbuffers_particles_translucent is selected by
+				// the sprite the run is drawing rather than by the live blend state.
+				return isTranslucentDraw() ? RenderCondition.PARTICLES_TRANSLUCENT : RenderCondition.PARTICLES;
 			case SKY, SUNSET, CUSTOM_SKY, SUN, MOON, STARS, VOID:
 				return RenderCondition.SKY;
 			case TERRAIN_SOLID, TERRAIN_CUTOUT, TERRAIN_CUTOUT_MIPPED:
 				return RenderCondition.TERRAIN_OPAQUE;
 			case ENTITIES:
-				return TranslucentBlendMatcher.matchesCurrentState()
+				return isTranslucentDraw()
 					? RenderCondition.ENTITIES_TRANSLUCENT : RenderCondition.ENTITIES;
 			case BLOCK_ENTITIES:
-				return TranslucentBlendMatcher.matchesCurrentState()
+				return isTranslucentDraw()
 					? RenderCondition.BLOCK_ENTITIES_TRANSLUCENT : RenderCondition.BLOCK_ENTITIES;
 			case DESTROY:
 				return RenderCondition.DESTROY;
@@ -843,6 +869,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			getActivePassProgramId()
 		);
 		current = null;
+		programMatch.clear();
 	}
 
 	/** Restores the current Iris pass after a foreign renderer has returned control. */
@@ -868,7 +895,9 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 		refreshingPass = true;
 		try {
-			if (current != null) {
+			if (programMatch.isPending()) {
+				programMatch.resolve();
+			} else if (current != null) {
 				drivingProgram = true;
 				try {
 					current.use();
@@ -885,9 +914,16 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		}
 	}
 
-	/** Re-evaluates entity translucency after vanilla changes blend state. */
+	/**
+	 * Re-evaluates entity translucency after vanilla changes blend state. A declared translucency
+	 * wins over the live blend state, so the selection cannot change while one is active.
+	 */
 	public void onVanillaBlendChanged() {
 		if (matchingBlend || drivingProgram || refreshingPass) {
+			return;
+		}
+
+		if (declaredTranslucent != null) {
 			return;
 		}
 
@@ -898,13 +934,17 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 		matchingBlend = true;
 		try {
-			matchPass();
+			programMatch.request();
 		} finally {
 			matchingBlend = false;
 		}
 	}
 
 	private void matchPass() {
+		programMatch.matchNow();
+	}
+
+	private void matchPassNow() {
 		if (!isRenderingWorld || isRenderingFullScreenPass || isPostChain || (!isMainBound && !isRenderingShadow)) {
             IrisGlDebug.logPipelineSkip(
                 "match-pass-skip",
@@ -943,9 +983,13 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	private static final InputAvailability SHADOW_INPUTS = new InputAvailability(true, true);
 
 	public void beginPass(Pass pass) {
+		programMatch.runUnrecorded(() -> beginPassNow(pass));
+	}
+
+	private void beginPassNow(Pass pass) {
         WorldRenderingPhase activePhase = getPhase();
         int previousProgram = getActivePassProgramId();
-		int nextProgram = pass != null && pass.getProgram() != null ? pass.getProgram().getProgramId() : 0;
+		int nextProgram = expectedProgramId(pass);
 
 		if (current == pass) {
 			int currentProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
@@ -997,6 +1041,9 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	public void restoreActivePass() {
 		drivingProgram = true;
 		try {
+			if (programMatch.isPending()) {
+				programMatch.resolve();
+			}
 			if (current != null) {
 				current.use();
 			} else {
@@ -1005,6 +1052,130 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		} finally {
 			drivingProgram = false;
 		}
+	}
+
+	private Instancing activeInstancing = Instancing.NONE;
+
+	/**
+	 * Which instance layouts can produce a variant for this pack. It starts from the host options and
+	 * a kind is cleared when its transform or a variant link fails.
+	 */
+	private final boolean[] supportsInstancing = initialInstancingSupport();
+
+	/**
+	 * A pass change has to wait while a foreign renderer owns the GL program, and while a batch is
+	 * being built: both replace the program the rest of the batch expects to stay bound.
+	 */
+	private static boolean selectionOwnedElsewhere() {
+		return GLStateManager.isForeignDraw() || BatchStateGuard.isBatching();
+	}
+
+	@Override
+	public void resolvePendingProgram() {
+		programMatch.resolve();
+	}
+
+	@Override
+	public void rebindCurrentPass() {
+		activeInstancing = Instancing.NONE;
+		GLSMHooks.resolvePendingProgram();
+		final Pass pass = this.current;
+		if (pass == null) {
+			if (GLSMPrograms.getActiveProgram() == 0) {
+				matchPass();
+			}
+			return;
+		}
+		final Program program = pass.getProgram();
+		final GlFramebuffer expected = isBeforeTranslucent ? pass.framebufferBeforeTranslucents : pass.framebufferAfterTranslucents;
+		if (program != null && GLSMPrograms.getActiveProgram() == program.getProgramId() && GLSMFramebuffer.getDrawFramebuffer() == expected.getId()) {
+			return;
+		}
+		pass.use();
+	}
+
+	@Override
+	public void onEntityRenderBoundary() {
+		GLSMHooks.resolvePendingProgram();
+
+		if (!shouldOverrideShaders()) {
+			return;
+		}
+
+		// The pass is re-matched rather than compared against a cached condition so a pack whose
+		// inputs change per entity gets the program its availability now selects.
+		matchPass();
+	}
+
+	/** Whether the pack requires one pass match per entity instead of a single match for the whole loop. */
+	public boolean shouldSeparateEntityDraws() {
+		return packDirectives.shouldUseSeparateEntityDraws();
+	}
+
+	/** {@return whether the pipeline is drawing world geometry rather than a full-screen or post pass} */
+	public boolean isRenderingLevelGeometry() {
+		return isRenderingWorld && !isRenderingFullScreenPass && !isPostChain;
+	}
+
+	public boolean supportsInstancing(Instancing kind) {
+		return supportsInstancing[kind.ordinal()];
+	}
+
+	@Override
+	public boolean hasInstancedVariant(Instancing kind) {
+		return current != null && current.instancedVariant(kind) != null;
+	}
+
+	public boolean hasInstancedVariant(RenderCondition condition, InputAvailability availability, Instancing kind) {
+		final Pass pass = table.match(condition, availability);
+		return pass != null && pass.instancedVariant(kind) != null;
+	}
+
+	@Override
+	public void bindInstancedVariant(Instancing kind) {
+		final Program variant = current != null ? current.instancedVariant(kind) : null;
+		if (variant == null) {
+			throw new IllegalStateException("No " + kind + " variant is available for the active pass");
+		}
+		activeInstancing = kind;
+		variant.use();
+		this.customUniforms.push(variant);
+	}
+
+	/**
+	 * @return the program {@code pass} would bind right now, which is its instanced variant while a
+	 * batch draws from one and its own program otherwise
+	 */
+	private int expectedProgramId(@Nullable Pass pass) {
+		if (pass == null) {
+			return 0;
+		}
+		if (activeInstancing != Instancing.NONE) {
+			final Program variant = pass.instancedVariant(activeInstancing);
+			if (variant != null) {
+				return variant.getProgramId();
+			}
+		}
+		return pass.getProgram() != null ? pass.getProgram().getProgramId() : 0;
+	}
+
+	/**
+	 * Binds the active layout's variant of {@code pass} when that pass has one.
+	 *
+	 * @return whether the variant replaced the pass's own program; a pass without one keeps its
+	 * program so a variant that failed to build cannot break drawing for the rest of the batch
+	 */
+	private boolean applyInstancing(Pass pass) {
+		if (activeInstancing == Instancing.NONE || pass.program == null) {
+			return false;
+		}
+		final Program variant = pass.instancedVariant(activeInstancing);
+		if (variant == null) {
+			return false;
+		}
+		variant.use();
+		this.customUniforms.push(variant);
+		return true;
 	}
 
 	private Pass createDefaultPass() {
@@ -1016,7 +1187,37 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			null, Collections.emptyList(), false);
 	}
 
-	private static ProgramId gbufferProgramId(ProgramId[] ids, RenderCondition condition, InputAvailability availability) {
+	/**
+	 * The program each render condition selects, three columns per condition:
+	 * {@code (texture=false, lightmap=false)}, {@code (texture=true, lightmap=false)} and
+	 * {@code (texture=true, lightmap=true)}. A null entry falls back to the first column.
+	 */
+	static final ProgramId[] PROGRAM_IDS = {
+		ProgramId.Basic, ProgramId.Textured, ProgramId.TexturedLit,
+		ProgramId.SkyBasic, ProgramId.SkyTextured, ProgramId.SkyTextured,
+		null, null, ProgramId.Terrain,
+		null, null, ProgramId.Water,
+		null, ProgramId.Clouds, ProgramId.Clouds,
+		null, ProgramId.DamagedBlock, ProgramId.DamagedBlock,
+		ProgramId.Block, ProgramId.Block, ProgramId.Block,
+		ProgramId.BlockTrans, ProgramId.BlockTrans, ProgramId.BlockTrans,
+		ProgramId.BeaconBeam, ProgramId.BeaconBeam, ProgramId.BeaconBeam,
+		ProgramId.Entities, ProgramId.Entities, ProgramId.Entities,
+		ProgramId.EntitiesTrans, ProgramId.EntitiesTrans, ProgramId.EntitiesTrans,
+		ProgramId.Particles, ProgramId.Particles, ProgramId.Particles,
+		ProgramId.ParticlesTrans, ProgramId.ParticlesTrans, ProgramId.ParticlesTrans,
+		null, ProgramId.ArmorGlint, ProgramId.ArmorGlint,
+		null, ProgramId.SpiderEyes, ProgramId.SpiderEyes,
+		ProgramId.Hand, ProgramId.Hand, ProgramId.Hand,
+		ProgramId.HandWater, ProgramId.HandWater, ProgramId.HandWater,
+		null, null, ProgramId.Weather,
+		// world border uses textured_lit even though it has no lightmap :/
+		null, ProgramId.TexturedLit, ProgramId.TexturedLit,
+		ProgramId.ShadowWater, ProgramId.ShadowWater, ProgramId.ShadowWater,
+		ProgramId.Shadow, ProgramId.Shadow, ProgramId.Shadow
+	};
+
+	static ProgramId gbufferProgramId(ProgramId[] ids, RenderCondition condition, InputAvailability availability) {
 		final int idx;
 
 		if (availability.texture && availability.lightmap) {
@@ -1048,6 +1249,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		if (shared != null) {
 			final Pass pass = createPassInner(shared.program(), source.getDirectives(), shadow, id);
 			this.customUniforms.mapPassLike(shared.firstPass(), pass);
+			pass.setInstancingKey(source.getName(), availability, shadow);
 			return pass;
 		}
 
@@ -1079,6 +1281,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 		final Pass pass = createPassInner(program, source.getDirectives(), shadow, id);
 		this.customUniforms.mapholderToPass(builder, pass);
+		pass.setInstancingKey(source.getName(), availability, shadow);
 		if (shareKey != null) {
 			builtPrograms.put(shareKey, new BuiltProgram(program, pass));
 		}
@@ -1305,6 +1508,17 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		private final List<BufferBlendOverride> bufferBlendOverrides;
 		private final boolean shadowViewport;
 
+		/**
+		 * Source and availability this pass was created from. A pass that did not come from the
+		 * attribute transform map (a default or shadow-only pass) leaves the name null and has no
+		 * variants.
+		 */
+		private String instancingSourceName;
+		private InputAvailability instancingAvailability;
+		private boolean instancingShadow;
+		private final Program[] instancedVariants = new Program[Instancing.VALUES.length];
+		private final boolean[] instancedVariantAttempted = new boolean[Instancing.VALUES.length];
+
 		private Pass(@Nullable Program program, GlFramebuffer framebufferBeforeTranslucents, GlFramebuffer framebufferAfterTranslucents,
 					 @Nullable AlphaTestOverride alphaTestOverride, @Nullable BlendModeOverride blendModeOverride, @Nullable List<BufferBlendOverride> bufferBlendOverrides, boolean shadowViewport) {
 			this.program = program;
@@ -1352,13 +1566,14 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 				bufferBlendOverrides.forEach(BufferBlendOverride::apply);
 			}
 
-			if (program != null) {
-				program.use();
-			} else {
-				Program.unbind();
+			if (!DeferredWorldRenderingPipeline.this.applyInstancing(this)) {
+				if (program != null) {
+					program.use();
+				} else {
+					Program.unbind();
+				}
+				DeferredWorldRenderingPipeline.this.customUniforms.push(this);
 			}
-
-			DeferredWorldRenderingPipeline.this.customUniforms.push(this);
 		}
 
 		public void stopUsing() {
@@ -1378,11 +1593,130 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			return program;
 		}
 
+		void setInstancingKey(String sourceName, InputAvailability availability, boolean shadow) {
+			this.instancingSourceName = sourceName;
+			this.instancingAvailability = availability;
+			this.instancingShadow = shadow;
+		}
+
+		/**
+		 * @return this pass's variant for the given layout, building it on first use; null when the
+		 * layout is unsupported, the pack has no transformed source for it, or the link failed
+		 */
+		@Nullable
+		Program instancedVariant(Instancing kind) {
+			final int index = kind.ordinal();
+			if (!instancedVariantAttempted[index]) {
+				instancedVariantAttempted[index] = true;
+				if (instancingSourceName != null && supportsInstancing[index]) {
+					instancedVariants[index] = sharedInstancedVariant(instancingSourceName, instancingAvailability, instancingShadow, kind);
+				}
+			}
+			return instancedVariants[index];
+		}
+
 		public void destroy() {
 			if (this.program != null) {
 				this.program.destroy();
 			}
 		}
+	}
+
+	private record InstancedVariantKey(String sourceName, InputAvailability availability, boolean shadow, Instancing kind) {}
+
+	/**
+	 * Variants keyed by source and layout. Passes that share a program also share the variant built
+	 * from it, so one link serves every condition that resolved to the same source. A key that
+	 * produced no variant is kept as a null entry so a failing source is not re-linked on every query.
+	 */
+	private final InstancedVariantCache<Program> instancedVariantPrograms =
+		new InstancedVariantCache<>(Program::destroy);
+
+	@Nullable
+	private Program sharedInstancedVariant(String sourceName, InputAvailability availability, boolean shadow, Instancing kind) {
+		return instancedVariantPrograms.get(new InstancedVariantKey(sourceName, availability, shadow, kind), this::buildInstancedVariant);
+	}
+
+	/**
+	 * Links one variant from the pre-computed instanced transform. A failed link only disables this
+	 * kind, so the batcher falls back to per-instance draws for it and keeps the other kinds working.
+	 */
+	@Nullable
+	private Program buildInstancedVariant(InstancedVariantKey key) {
+		final Map<Pair<String, InputAvailability>, Map<PatchShaderType, String>> transforms = instancedAttributeTransforms.get(key.kind());
+		final Map<PatchShaderType, String> transformed = transforms != null ? transforms.get(Pair.of(key.sourceName(), key.availability())) : null;
+		if (transformed == null) {
+			return null;
+		}
+
+		final Instancing kind = key.kind();
+		final InputAvailability availability = key.availability();
+		final boolean shadow = key.shadow();
+		final String name = key.sourceName() + kind.variantSuffix;
+		try {
+			final String vertex = transformed.get(PatchShaderType.VERTEX);
+			final String geometry = transformed.get(PatchShaderType.GEOMETRY);
+			final String tessControl = transformed.get(PatchShaderType.TESS_CONTROL);
+			final String tessEval = transformed.get(PatchShaderType.TESS_EVAL);
+			final String fragment = transformed.get(PatchShaderType.FRAGMENT);
+
+			PatchedShaderPrinter.debugPatchedShaders(name, vertex, geometry, tessControl, tessEval, fragment);
+
+			final ProgramBuilder builder = ProgramBuilder.begin(name, vertex, geometry, tessControl, tessEval, fragment,
+				IrisSamplers.WORLD_RESERVED_TEXTURE_UNITS);
+			wireGbufferProgram(builder, availability, shadow);
+			final Program variant = builder.build();
+			vertexWriteReplays.attach(name, variant, transformed,
+				(samplers, images) -> wireGbufferResources(samplers, images, availability, shadow));
+			this.customUniforms.mapholderToPass(builder, variant);
+			return variant;
+		} catch (Exception e) {
+			Iris.logger.warn("{} instanced variant link failed for {}; disabling it", kind, key.sourceName(), e);
+			supportsInstancing[kind.ordinal()] = false;
+			return null;
+		}
+	}
+
+	/**
+	 * Resolves every variant the pack can produce, once. The full-compile path calls this so the
+	 * binaries are written to the pack cache; the batch host calls it before it opens a batch, when
+	 * creating a variant would otherwise happen while queued vertices wait for a bound program.
+	 */
+	public void compileInstancedVariants() {
+		if (instancedVariantsCompiled) {
+			return;
+		}
+		instancedVariantsCompiled = true;
+		forEachInstancingTarget(table, (pass, kind) -> pass.instancedVariant(kind));
+	}
+
+	/**
+	 * Visits every pass in {@code table} once per layout that can produce a variant. The table holds
+	 * one entry per render condition and availability, so this covers every condition the batches can
+	 * ask for rather than a hand-picked list, and passes that several rows share are visited once.
+	 */
+	static <P> void forEachInstancingTarget(ProgramTable<P> table, BiConsumer<P, Instancing> visitor) {
+		final Set<P> visited = new HashSet<>();
+		table.forEach(pass -> {
+			if (pass == null || !visited.add(pass)) return;
+			for (Instancing kind : Instancing.VALUES) {
+				if (kind != Instancing.NONE) {
+					visitor.accept(pass, kind);
+				}
+			}
+		});
+	}
+
+	private boolean instancedVariantsCompiled;
+
+	static boolean[] initialInstancingSupport() {
+		final boolean[] out = new boolean[Instancing.VALUES.length];
+		out[Instancing.TEMPLATE.ordinal()] = true;
+		out[Instancing.CUBE.ordinal()] = InstancingSupportProvider.cubeInstancingEnabled();
+		// Particle quad instancing only needs the fixed particle layout, so it is always attempted;
+		// a pack whose particle program cannot be transformed or linked clears this again.
+		out[Instancing.PARTICLE.ordinal()] = true;
+		return out;
 	}
 
 	@Override
@@ -1398,6 +1732,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 		FullScreenQuadRenderer.clearLocCache();
 		destroyPasses(table);
+		destroyInstancedVariants();
 
 		// Destroy the composite rendering pipeline
 		// This destroys all the loaded composite programs as well.
@@ -1484,6 +1819,14 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			pass.destroy();
 			destroyed.add(pass);
 		});
+	}
+
+	/**
+	 * Destroys the instanced variants once each. They are keyed by source and layout rather than
+	 * owned by a pass, so several passes can reference the same program.
+	 */
+	private void destroyInstancedVariants() {
+		instancedVariantPrograms.destroyAll();
 	}
 
 	private void prepareRenderTargets() {
@@ -1897,6 +2240,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
         IrisGlDebug.markStage("level:begin");
 		isRenderingFullScreenPass = false;
 		hasRenderedPreparePass = false;
+		programMatch.clear();
 		isRenderingWorld = true;
 		isBeforeTranslucent = true;
 		isMainBound = true;
@@ -1969,6 +2313,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		isRenderingWorld = false;
 		phase = WorldRenderingPhase.NONE;
 		overridePhase = null;
+		programMatch.clear();
 
 		isRenderingFullScreenPass = true;
 
@@ -2066,7 +2411,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	@Override
 	public void setOverridePhase(WorldRenderingPhase phase) {
 		this.overridePhase = phase;
-		matchPass();
+		programMatch.request();
 		GbufferPrograms.runPhaseChangeNotifier();
 	}
 
@@ -2085,7 +2430,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			isPostChain,
 			inputs.toString()
 		);
-		matchPass();
+		programMatch.request();
 		GbufferPrograms.runPhaseChangeNotifier();
 	}
 
@@ -2101,13 +2446,26 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			isRenderingFullScreenPass,
 			isPostChain
 		);
-		matchPass();
+		programMatch.request();
 	}
 
 	@Override
 	public void setSpecialCondition(SpecialCondition special) {
 		this.special = special;
-		matchPass();
+		programMatch.request();
+	}
+
+	@Override
+	public void setDeclaredTranslucency(@Nullable Boolean translucent) {
+		this.declaredTranslucent = translucent;
+		programMatch.request();
+	}
+
+	@Nullable
+	private Boolean declaredTranslucent;
+
+	private boolean isTranslucentDraw() {
+		return TranslucentBlendMatcher.resolveTranslucency(declaredTranslucent);
 	}
 
 	@Override
@@ -2145,8 +2503,14 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	private static final InputAvailability INPUT_NONE = new InputAvailability(false, false);
 	private static final InputAvailability INPUT_TEXTURE = new InputAvailability(true, false);
 	private static final InputAvailability INPUT_TEXTURE_LIGHTMAP = new InputAvailability(true, true);
+	private static final InputAvailability INPUT_LIGHTMAP = new InputAvailability(false, true);
 	private static final InputAvailability INPUT_TEXTURE_NO_COLOR = new InputAvailability(true, false, false);
-	private static final InputAvailability[] INPUT_AVAILABILITIES = { INPUT_NONE, INPUT_TEXTURE, INPUT_TEXTURE_LIGHTMAP, INPUT_TEXTURE_NO_COLOR };
+	/**
+	 * Availability keys the attribute transforms are pre-computed for. A build asked for a key that is
+	 * missing here resolves no transform and silently keeps the CPU path, so this must cover every
+	 * combination the batch paths can query.
+	 */
+	static final InputAvailability[] INPUT_AVAILABILITIES = { INPUT_NONE, INPUT_TEXTURE, INPUT_TEXTURE_LIGHTMAP, INPUT_LIGHTMAP, INPUT_TEXTURE_NO_COLOR };
 
 	private static CompletableFuture<Map<PatchShaderType, String>> submitCompositeTransform(ProgramSource source, TextureStage stage,
 		Object2ObjectMap<Tri<String, TextureType, TextureStage>, String> textureMap) {
@@ -2177,20 +2541,107 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	}
 
 	private static Map<Pair<String, InputAvailability>, CompletableFuture<Map<PatchShaderType, String>>>
-			submitAttributeTransforms(ProgramFallbackResolver resolver) {
+			submitAttributeTransforms(ProgramFallbackResolver resolver, ProgramId[] ids, Instancing instancing, Map<String, Boolean> mvBuiltinsMemo) {
+		final boolean instanced = instancing != Instancing.NONE;
+		final boolean matrixInstanced = instancing.hasInstanceHead();
 		final Map<Pair<String, InputAvailability>, CompletableFuture<Map<PatchShaderType, String>>> futures = new HashMap<>();
 		final Set<String> processedSourceNames = new HashSet<>();
-		for (ProgramId id : ProgramId.values()) {
+		for (ProgramId id : ids) {
+			if (id.getGroup() == ProgramGroup.Dh) continue;
 			ProgramSource source = resolver.resolveNullable(id);
-			if (source != null && !processedSourceNames.contains(source.getName())) {
-				processedSourceNames.add(source.getName());
-				for (InputAvailability avail : INPUT_AVAILABILITIES) {
-					Pair<String, InputAvailability> key = Pair.of(source.getName(), avail);
-					futures.put(key, Iris.ShaderTransformExecutor.submitTracked(() -> TransformPatcher.patchAttributes(source.getVertexSource().orElse(null), source.getGeometrySource().orElse(null), source.getTessControlSource().orElse(null), source.getTessEvalSource().orElse(null), source.getFragmentSource().orElse(null), avail)));
-				}
+			if (source == null || !processedSourceNames.add(source.getName())) continue;
+
+			final String vertexSource = source.getVertexSource().orElse(null);
+			for (InputAvailability avail : INPUT_AVAILABILITIES) {
+				Pair<String, InputAvailability> key = Pair.of(source.getName(), avail);
+				futures.put(key, Iris.ShaderTransformExecutor.submitTracked(() -> {
+					// A stage outside the vertex one that reads the model-view builtins would see the
+					// per-draw matrix instead of the instance one, so that program keeps the CPU path.
+					if (matrixInstanced && mvBuiltinsMemo.computeIfAbsent(source.getName(), name -> {
+						final boolean references = referencesMvBuiltinsOutsideVertex(source);
+						if (references) {
+							Iris.logger.info("TESR instancing: {} references MV builtins outside the vertex stage, keeping CPU path", name);
+						}
+						return references;
+					})) {
+						return null;
+					}
+					final String geometry = source.getGeometrySource().orElse(null);
+					final String tessControl = source.getTessControlSource().orElse(null);
+					final String tessEval = source.getTessEvalSource().orElse(null);
+					final String fragment = source.getFragmentSource().orElse(null);
+					return instanced
+						? TransformPatcher.patchAttributesInstanced(vertexSource, geometry, tessControl, tessEval, fragment, avail, instancing)
+						: TransformPatcher.patchAttributes(vertexSource, geometry, tessControl, tessEval, fragment, avail);
+				}));
 			}
 		}
 		return futures;
+	}
+
+	private static final ProgramId[] PARTICLE_PROGRAM_IDS = {
+		ProgramId.Particles, ProgramId.ParticlesTrans
+	};
+
+	private static final ProgramId[] INSTANCED_PROGRAM_IDS = {
+		ProgramId.Block, ProgramId.BlockTrans, ProgramId.Entities, ProgramId.EntitiesTrans,
+		ProgramId.Shadow, ProgramId.ShadowWater, ProgramId.ArmorGlint, ProgramId.SpiderEyes
+	};
+
+	/**
+	 * The programs a layout can produce a variant for. The entity batch draws entities, block
+	 * entities, glint and shadows, the particle batch draws the two particle programs, and the weather
+	 * layout has no transform of its own yet, so it returns no ids and reports itself unsupported.
+	 */
+	static ProgramId[] attributeProgramIds(Instancing kind) {
+		return switch (kind) {
+			case NONE -> ProgramId.values();
+			case TEMPLATE, CUBE -> INSTANCED_PROGRAM_IDS;
+			case PARTICLE -> PARTICLE_PROGRAM_IDS;
+			case WEATHER -> new ProgramId[0];
+		};
+	}
+
+	private static final String[] MV_BUILTINS = {
+		"gl_ModelViewMatrix", "gl_ModelViewMatrixInverse",
+		"gl_ModelViewProjectionMatrix", "gl_ModelViewProjectionMatrixInverse",
+		"gl_NormalMatrix", "ftransform",
+		"modelViewMatrix", "modelViewMatrixInverse", "normalMatrix"
+	};
+
+	static boolean referencesMvBuiltins(String source) {
+		if (source == null) {
+			return false;
+		}
+		boolean mentioned = false;
+		for (String builtin : MV_BUILTINS) {
+			if (source.contains(builtin)) {
+				mentioned = true;
+				break;
+			}
+		}
+		if (!mentioned) {
+			return false;
+		}
+		try {
+			final Transformer transformer = new Transformer(ShaderParser.parseShader(source).full());
+			for (String builtin : MV_BUILTINS) {
+				if (transformer.containsCall(builtin)) {
+					return true;
+				}
+			}
+			return false;
+		} catch (Exception e) {
+			Iris.logger.warn("Failed to parse a shader stage while checking for model-view builtins; keeping the CPU path", e);
+			return true;
+		}
+	}
+
+	private static boolean referencesMvBuiltinsOutsideVertex(ProgramSource source) {
+		return referencesMvBuiltins(source.getGeometrySource().orElse(null))
+			|| referencesMvBuiltins(source.getTessControlSource().orElse(null))
+			|| referencesMvBuiltins(source.getTessEvalSource().orElse(null))
+			|| referencesMvBuiltins(source.getFragmentSource().orElse(null));
 	}
 
 	private static CompletableFuture<Map<PatchShaderType, String>> submitCeleritasTerrainTransform(ProgramSource source) {

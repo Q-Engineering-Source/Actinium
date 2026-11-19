@@ -25,6 +25,8 @@ import net.coderbot.iris.pipeline.SkyRenderDistance;
 import net.coderbot.iris.pipeline.WorldRenderingPhase;
 import net.coderbot.iris.pipeline.WorldRenderingPipeline;
 import net.coderbot.iris.shaderpack.CloudSetting;
+import com.gtnewhorizons.angelica.config.AngelicaConfig;
+import com.gtnewhorizons.angelica.rendering.tesr.EntityShadowReplay;
 import net.coderbot.iris.uniforms.CapturedRenderingState;
 import net.coderbot.iris.uniforms.SystemTimeUniforms;
 import net.irisshaders.iris.api.v0.IrisApi;
@@ -175,6 +177,23 @@ public abstract class EntityRendererIrisMixin implements IResourceManagerReloadL
         pipeline.renderShadows((EntityRenderer) (Object) this, Camera.INSTANCE);
         IrisGlDebug.markStage("mixin:shadows:done");
         IrisGlDebug.recordWorldPassStage("setup-terrain-to-shadows");
+    }
+
+    @Inject(
+        method = "renderWorldPass(IFJ)V",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/RenderGlobal;renderEntities(Lnet/minecraft/entity/Entity;Lnet/minecraft/client/renderer/culling/ICamera;F)V",
+            shift = At.Shift.BEFORE
+        )
+    )
+    private void actinium$publishMainViewFrustum(int pass, float partialTicks, long finishTimeNano, CallbackInfo ci,
+                                                  @Local ICamera camera) {
+        // The shadow replay only returns draws for entities the main view still covers, so the main
+        // frustum has to reach the replay bookkeeping before the entity loop starts.
+        if (AngelicaConfig.entityShadowReplayEnabled()) {
+            EntityShadowReplay.setMainView(camera);
+        }
     }
 
     @Inject(

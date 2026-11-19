@@ -109,6 +109,8 @@ public final class IrisGLSMBridge {
         GLSMHooks.shaderPackReloaded = ImmediateExtendedAttribs::onShaderPackChanged;
         GLSMHooks.PROGRAM_DELETE.addListener(event -> ImmediateExtendedAttribs.onProgramDeleted(event.program));
 
+        IrisDisplayListStateRecorder.install();
+
         final CapturedRenderingState capturedState = CapturedRenderingState.INSTANCE;
         capturedState.setEntityIdsListener(() -> GLStateManager.setEntityIds(
             capturedState.getCurrentRenderedEntity(),
@@ -408,4 +410,5 @@ public final class IrisGLSMBridge {
             deferredPipeline.restorePassAfterModProgram(event.newProgram);
         });
     }
+
 }

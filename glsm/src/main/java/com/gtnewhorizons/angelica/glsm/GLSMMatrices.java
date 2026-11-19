@@ -19,6 +19,7 @@ import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.LOGGER;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.beforeUncapturedStateChange;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.bumpMatrixGeneration;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.conversionMatrix4d;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.conversionMatrix4f;
@@ -45,6 +46,16 @@ public final class GLSMMatrices {
     /** Absolute changes replace the matrix, so a capture cannot model them as a relative edit. */
     private static void beforeMatrixChange(GLContextState c, boolean absolute) {
         c.exitCapture.matrixChange(absolute);
+        if (isUncapturedMatrix(c)) beforeUncapturedStateChange();
+    }
+
+    /**
+     * Matrices the batches replay themselves: the modelview stack and the texture matrix of unit 0.
+     * Projection and every other texture unit change what a queued vertex means, so they flush.
+     */
+    private static boolean isUncapturedMatrix(GLContextState c) {
+        final int mode = c.matrixMode.getMode();
+        return mode == GL11.GL_PROJECTION || (mode == GL11.GL_TEXTURE && c.activeTextureUnit.getValue() != 0);
     }
 
     public static void glMatrixMode(int mode) {
@@ -293,6 +304,7 @@ public final class GLSMMatrices {
     public static void glPopMatrix() {
         final GLContextState glCtx = ctx();
         glCtx.exitCapture.popMatrix();
+        if (isUncapturedMatrix(glCtx)) beforeUncapturedStateChange();
         final RecordMode mode = DisplayListManager.getRecordMode();
         if (mode != RecordMode.NONE) {
             DisplayListManager.recordPopMatrix();
@@ -376,6 +388,7 @@ public final class GLSMMatrices {
     public static void setTextureMatrix(int unit, Matrix4fc m) {
             final GLContextState glCtx = ctx();
             glCtx.exitCapture.matrixChange(GL11.GL_TEXTURE, unit, true);
+            if (unit != 0) beforeUncapturedStateChange();
             if (isCachingEnabled()) {
                 glCtx.textures.getTextureUnitMatrix(unit).set(m);
                 glCtx.texMatrixGeneration++;

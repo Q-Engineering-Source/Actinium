@@ -1,0 +1,19 @@
+package com.dhj.actinium.mixin.features.tesr;
+
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
+import com.gtnewhorizons.angelica.rendering.tesr.ModelPartBatcher;
+import net.minecraft.client.renderer.texture.TextureManager;
+import net.minecraft.util.ResourceLocation;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+@Mixin(TextureManager.class)
+public abstract class MixinTextureManager {
+
+    @Inject(method = "bindTexture", at = @At("RETURN"))
+    private void actinium$trackBind(ResourceLocation location, CallbackInfo ci) {
+        ModelPartBatcher.onTextureBind(location, GLSMTextures.getBoundTextureForServerState());
+    }
+}

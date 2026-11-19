@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.glsm.hooks;
 
+import com.gtnewhorizons.angelica.glsm.DisplayListManager;
 import com.gtnewhorizons.angelica.glsm.hooks.events.AlphaStateChangeEvent;
 import com.gtnewhorizons.angelica.glsm.hooks.events.BlendFuncChangeEvent;
 import com.gtnewhorizons.angelica.glsm.hooks.events.FogStateChangeEvent;
@@ -33,6 +34,16 @@ public final class GLSMHooks {
     public static PerFrameUniformBlock perPassUniformBlock;
     /** Waits for asynchronously prepared uniform-block layouts before a backend compiles a dependent shader. */
     public static Runnable uniformBlockBarrier;
+    /** Host observer that turns {@code glColor} changes into the enchantment glint tint while glint draws. */
+    public static GlintColorHandler glintColorHandler;
+    /** Pending shader-pack program selection that has to run outside display-list recording. */
+    public static PendingProgramSelection pendingProgramSelection;
+
+    /** Resolves a program selection deferred while a batch or a display list owned the program. */
+    public static void resolvePendingProgram() {
+        final PendingProgramSelection pending = pendingProgramSelection;
+        if (pending != null && !DisplayListManager.isRecording()) pending.resolvePendingProgram();
+    }
 
     /**
      * Optional host callback notified after each executed {@code GL_TEXTURE_2D} bind request,

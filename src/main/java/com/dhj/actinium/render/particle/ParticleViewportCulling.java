@@ -3,51 +3,34 @@ package com.dhj.actinium.render.particle;
 import com.dhj.actinium.mixinterface.features.iris.ParticleCullingBypass;
 import dhj.embeddedt.embeddium.impl.render.viewport.Viewport;
 import net.minecraft.client.particle.Particle;
-import net.minecraft.client.renderer.BufferBuilder;
-import net.minecraft.entity.Entity;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.AxisAlignedBB;
 
 /**
  * Applies the last world viewport to particle rendering while accounting for compound particles.
+ *
+ * <p>The answer is a predicate rather than a draw, so the caller can decide what an invisible
+ * particle costs: the batch must not take it and the vanilla write must not happen. A particle the
+ * batch takes never reaches the vanilla call, so this test always has to run here.</p>
  */
 public final class ParticleViewportCulling {
+
     private ParticleViewportCulling() {
     }
 
     /**
-     * Renders a particle when its bounds intersect the viewport or its bounds do not describe its geometry.
-     *
-     * @param particle particle whose geometry will be submitted when visible
-     * @param viewport viewport captured for the current world pass, or {@code null} when no culling data is available
-     * @param buffer vertex buffer receiving the particle geometry
-     * @param entity camera entity supplied by the particle manager
-     * @param partialTicks interpolation factor for the current frame
-     * @param rotationX camera billboard rotation component
-     * @param rotationZ camera billboard rotation component
-     * @param rotationYZ camera billboard rotation component
-     * @param rotationXY camera billboard rotation component
-     * @param rotationXZ camera billboard rotation component
+     * @param particle particle about to be drawn
+     * @param viewport viewport captured for the current world pass, or {@code null} when no culling
+     *                 data is available
+     * @return whether the particle has to be submitted
      */
-    public static void renderIfVisible(
-        Particle particle,
-        Viewport viewport,
-        BufferBuilder buffer,
-        Entity entity,
-        float partialTicks,
-        float rotationX,
-        float rotationZ,
-        float rotationYZ,
-        float rotationXY,
-        float rotationXZ
-    ) {
-        AxisAlignedBB box = particle.getBoundingBox();
-        if (viewport == null
-                || particle instanceof ParticleCullingBypass
-                || box == null
-                || box == TileEntity.INFINITE_EXTENT_AABB
-                || viewport.isBoxVisible(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ)) {
-            particle.renderParticle(buffer, entity, partialTicks, rotationX, rotationZ, rotationYZ, rotationXY, rotationXZ);
+    public static boolean isVisible(Particle particle, Viewport viewport) {
+        if (viewport == null || particle instanceof ParticleCullingBypass) {
+            return true;
         }
+        final AxisAlignedBB box = particle.getBoundingBox();
+        return box == null
+            || box == TileEntity.INFINITE_EXTENT_AABB
+            || viewport.isBoxVisible(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
     }
 }

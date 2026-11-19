@@ -9,7 +9,11 @@ import com.dhj.actinium.render.frame.FramePacer;
 import com.dhj.actinium.render.fps.FpsReducer;
 import com.dhj.actinium.runtime.ActiniumRuntime;
 import com.dhj.actinium.startup.SdlFrameLifecycle;
+import com.gtnewhorizons.angelica.config.AngelicaConfig;
+import com.gtnewhorizons.angelica.glsm.DisplayListManager;
 import com.gtnewhorizons.angelica.glsm.GLSMTextureLifetime;
+import com.gtnewhorizons.angelica.rendering.GlintClock;
+import com.gtnewhorizons.angelica.rendering.tesr.EntityShadowReplay;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
@@ -49,11 +53,23 @@ public class MixinMinecraft {
         }
     }
 
+    /** One shot, matching the upstream first-frame bootstrap: a list left open before the loop starts would swallow the next frame's records. */
+    @Unique
+    private boolean actinium$displayListsChecked;
+
     @Inject(method = "runGameLoop", at = @At("HEAD"))
     private void beginRenderFrame(CallbackInfo ci) {
+        if (!actinium$displayListsChecked) {
+            actinium$displayListsChecked = true;
+            DisplayListManager.abortIfLeaked();
+        }
         SdlFrameLifecycle.beginFrame();
         GlFlightRecording.beginFrame();
         EndPortalCompositeRenderer.beginFrame();
+        GlintClock.beginFrame(Minecraft.getSystemTime());
+        if (AngelicaConfig.entityShadowReplayEnabled()) {
+            EntityShadowReplay.beginFrame();
+        }
         final int limit = supportsCpuRenderAhead() ? ActiniumRuntime.options().advanced.cpuRenderAheadLimit : 0;
         if (limit > 0) {
             celeritas$renderAheadManager.startFrame(limit);

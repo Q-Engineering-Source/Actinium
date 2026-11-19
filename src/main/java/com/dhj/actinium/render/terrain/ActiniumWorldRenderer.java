@@ -1,6 +1,11 @@
 package com.dhj.actinium.render.terrain;
 
+import com.gtnewhorizons.angelica.glsm.GLSMMatrices;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.rendering.tesr.AngelicaTesrMeshCache;
+import com.gtnewhorizons.angelica.rendering.tesr.ModelPartBatcher;
+import com.gtnewhorizons.angelica.rendering.tesr.PendingTesrDraws;
+import com.gtnewhorizons.angelica.rendering.tesr.TesrBatchRenderer;
 import net.coderbot.iris.celeritas.WorldRendererCompat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.WorldClient;
@@ -307,9 +312,18 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
         // TESRs (e.g. HBM-CE machines) are not disciplined about GL state; guard the batch so
         // leaked depth/blend/texture state cannot reach the translucent pass or the HUD.
         TileEntityGlStateGuard.push();
+        // The batch brackets own the retained geometry of this pass; the model part batcher records
+        // the parts the block entity renderers draw into it.
+        // -1 means no Forge pass is active; it belongs to the first pass rather than the second.
+        TesrBatchRenderer.INSTANCE.beginPass(pass <= 0 ? TesrBatchRenderer.PASS_MAIN_0 : TesrBatchRenderer.PASS_MAIN_1,
+            GLSMMatrices.getModelViewMatrix(), TileEntityRendererDispatcher.staticPlayerX,
+            TileEntityRendererDispatcher.staticPlayerY, TileEntityRendererDispatcher.staticPlayerZ);
+        ModelPartBatcher.INSTANCE.begin(ModelPartBatcher.Mode.BLOCK_ENTITIES);
+        PendingTesrDraws.beginPass();
         try {
             TileEntityRendererDispatcher.instance.preDrawBatch();
             try {
+                AngelicaTesrMeshCache.INSTANCE.tick();
                 return super.renderBlockEntities(tileEntityRenderContext);
             } finally {
                 // Flush the FastTESR batch with the clean entry state (see TileEntityGlStateGuard.restoreForBatch).
@@ -317,6 +331,9 @@ public class ActiniumWorldRenderer extends SimpleWorldRenderer<WorldClient, Vint
                 TileEntityRendererDispatcher.instance.drawBatch(pass);
             }
         } finally {
+            PendingTesrDraws.endPass();
+            ModelPartBatcher.INSTANCE.flush();
+            TesrBatchRenderer.INSTANCE.flush();
             TileEntityGlStateGuard.pop();
         }
     }

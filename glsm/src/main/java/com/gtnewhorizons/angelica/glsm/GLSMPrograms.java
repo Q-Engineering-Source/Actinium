@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.glsm;
 
+import com.gtnewhorizons.angelica.glsm.ffp.Instancing;
 import com.gtnewhorizons.angelica.glsm.stacks.BooleanStateStack;
 import com.gtnewhorizons.angelica.glsm.stacks.IntegerStateStack;
 import org.lwjgl.opengl.ARBShaderObjects;
@@ -38,6 +39,11 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.glGetInteger;
 public final class GLSMPrograms {
 
     private GLSMPrograms() {}
+
+    /** Selects the instancing layout that the next FFP program selection compiles for. */
+    public static void setFfpInstancing(Instancing mode) {
+        ctx().ffpInstancing = mode;
+    }
 
     public static void glUseProgram(int program) {
         rejectExitCapture();

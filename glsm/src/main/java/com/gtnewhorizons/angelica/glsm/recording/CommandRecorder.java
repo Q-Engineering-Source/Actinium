@@ -20,10 +20,20 @@ public final class CommandRecorder {
     private final CommandBuffer buffer;
     private int commandCount;
     private final IndexedDrawBatchBuilder indexedDraws = new IndexedDrawBatchBuilder();
+    private DisplayListCommand lastComplexCommand;
+    private int lastComplexCommandEnd = -1;
 
     public CommandRecorder() {
         this.buffer = new CommandBuffer();
         this.commandCount = 0;
+    }
+
+    /**
+     * Reports whether {@code command} is the most recently recorded command and nothing was recorded after it.
+     * Callers use this to drop a state command that would repeat the current tail of the stream.
+     */
+    public boolean isLastCommand(DisplayListCommand command) {
+        return commandCount == lastComplexCommandEnd && command.equals(lastComplexCommand);
     }
 
     public CommandBuffer getBuffer() {
@@ -377,7 +387,7 @@ public final class CommandRecorder {
      */
     public void recordIndexedDrawCapture(IndexedDrawCapture capture) {
         indexedDraws.add(capture);
-        buffer.writeComplexRef(capture.placeholder);
+        writeTrackedComplexRef(capture.placeholder);
         commandCount++;
     }
 
@@ -392,7 +402,13 @@ public final class CommandRecorder {
     }
 
     public void recordComplexCommand(DisplayListCommand cmd) {
-        buffer.writeComplexRef(cmd);
+        writeTrackedComplexRef(cmd);
         commandCount++;
+    }
+
+    private void writeTrackedComplexRef(DisplayListCommand cmd) {
+        buffer.writeComplexRef(cmd);
+        lastComplexCommand = cmd;
+        lastComplexCommandEnd = commandCount + 1;
     }
 }

@@ -21,6 +21,9 @@ import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.Display;
 
+import java.util.function.BooleanSupplier;
+import java.util.function.IntPredicate;
+
 /**
  * Lowers the frame rate and the master volume while the window is unfocused, minimized, or idle.
  *
@@ -37,7 +40,9 @@ public final class FpsReducer {
     private static KeyBinding disableKey;
 
     private static final boolean[] MOUSE_BUTTONS = new boolean[3];
-    private static final boolean[] KEY_STATES = new boolean[Keyboard.KEYBOARD_SIZE];
+    /** LWJGL's native key-down buffer has 256 entries, while KEYBOARD_SIZE is a key-code limit. */
+    private static final int KEY_STATE_COUNT = 256;
+    private static final boolean[] KEY_STATES = new boolean[KEY_STATE_COUNT];
 
     private static State applied;
     private static int appliedVolumePercent = 100;
@@ -121,9 +126,13 @@ public final class FpsReducer {
     }
 
     private static void pollKeyboardActivity() {
-        if (!Keyboard.isCreated()) return;
+        pollKeyboardActivity(Keyboard::isCreated, Keyboard::isKeyDown);
+    }
+
+    static void pollKeyboardActivity(BooleanSupplier created, IntPredicate keyDown) {
+        if (!created.getAsBoolean()) return;
         for (int key = 0; key < KEY_STATES.length; key++) {
-            final boolean down = Keyboard.isKeyDown(key);
+            final boolean down = keyDown.test(key);
             if (down && !KEY_STATES[key]) MACHINE.onInput();
             KEY_STATES[key] = down;
         }

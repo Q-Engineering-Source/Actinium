@@ -16,8 +16,12 @@ public class FogState implements ISettableState<FogState> {
     protected float density = 1.0F;
     protected float start;
     protected float end = 1.0F;
-    /** Fog distance computation mode: 0=EYE_RADIAL, 1=EYE_PLANE, 2=EYE_PLANE_ABS */
-    protected int fogDistanceMode = 2;
+    public static final int DISTANCE_EYE_RADIAL = 0;
+    public static final int DISTANCE_EYE_PLANE = 1;
+    public static final int DISTANCE_EYE_PLANE_ABS = 2;
+
+    /** Fog distance computation mode: one of the DISTANCE_* constants. */
+    protected int fogDistanceMode = DISTANCE_EYE_PLANE_ABS;
 
     @Override
     public FogState set(FogState state) {

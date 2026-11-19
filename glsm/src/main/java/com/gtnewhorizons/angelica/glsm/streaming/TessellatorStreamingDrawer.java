@@ -1,6 +1,7 @@
 package com.gtnewhorizons.angelica.glsm.streaming;
 
 import com.gtnewhorizon.gtnhlib.client.renderer.DirectTessellator;
+import com.gtnewhorizon.gtnhlib.client.renderer.cel.util.ModelQuadUtil;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.DefaultVertexFormat;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFlags;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormat;
@@ -8,17 +9,22 @@ import com.gtnewhorizon.gtnhlib.client.renderer.vertex.VertexFormatElement;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.GLContextState;
 import com.gtnewhorizons.angelica.glsm.GLSMDraws;
+import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
 import com.gtnewhorizons.angelica.glsm.ITessellatorData;
 import com.gtnewhorizons.angelica.glsm.QuadConverter;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMDebug;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import com.gtnewhorizons.angelica.glsm.ffp.FfpExtendedAttribs;
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMConfig;
 import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
 import com.gtnewhorizons.angelica.glsm.hooks.ImmediateExtendedAttribHandler;
 import com.gtnewhorizons.angelica.glsm.hooks.LineDrawHandler;
+import com.gtnewhorizons.angelica.glsm.states.Color4;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.joml.Vector3f;
+import org.joml.Vector4f;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
 
@@ -83,7 +89,8 @@ public class TessellatorStreamingDrawer {
         if (initialized) return;
         initialized = true;
 
-        persistentBuffer = PersistentStreamingBuffer.createOrNull(PersistentStreamingBuffer.DEFAULT_CAPACITY);
+        persistentBuffer = PersistentStreamingBuffer.createOrNull(PersistentStreamingBuffer.DEFAULT_CAPACITY,
+            GLSMPerfDebug.FenceSource.TESSELLATOR);
         if (persistentBuffer != null) {
             LOGGER.info("Persistent streaming buffer created ({}MB)", PersistentStreamingBuffer.DEFAULT_CAPACITY / (1024 * 1024));
         }
@@ -178,6 +185,84 @@ public class TessellatorStreamingDrawer {
             GLSMPerfDebug.end(GLSMPerfDebug.Stage.STREAM_DRAW, perfStart);
         }
         return result;
+    }
+
+    /**
+     * Materialises the attributes the caller never supplied, so every vertex in the packed buffer
+     * carries the full streaming layout.
+     *
+     * <p>Batched entity and TESR draws read {@link ITessellatorData#getRawBuffer()} directly and
+     * merge vertices into shared buffers, so a missing colour, lightmap, normal or texture
+     * coordinate has to be filled from the current GL state before the buffer is queued rather
+     * than at draw time.</p>
+     */
+    public static void fillMissingAttributes(ITessellatorData tess) {
+        final int vertexCount = tess.getVertexCount();
+        final int[] rawBuffer = tess.getRawBuffer();
+        if (rawBuffer == null || rawBuffer.length < vertexCount * ModelQuadUtil.VERTEX_SIZE) {
+            throw new IllegalStateException("Packed vertex buffer does not hold " + vertexCount
+                + " vertices in the shared " + ModelQuadUtil.VERTEX_SIZE + "-int layout");
+        }
+
+        final int defaultColor;
+        if (!tess.hasColor()) {
+            final Color4 c = GLSMCurrentAttribs.getColor();
+            defaultColor = ((int) (Color4.clamp01(c.getAlpha()) * 255) << 24) | ((int) (Color4.clamp01(c.getBlue()) * 255) << 16)
+                | ((int) (Color4.clamp01(c.getGreen()) * 255) << 8) | (int) (Color4.clamp01(c.getRed()) * 255);
+        } else {
+            defaultColor = 0;
+        }
+
+        final int defaultBrightness = tess.hasBrightness() ? 0 : GLSMConfig.packedLastBrightness();
+
+        final ImmediateExtendedAttribHandler normalHandler = GLSMHooks.immediateExtendedHandler;
+        final boolean faceNormals = !tess.hasNormals() && normalHandler != null
+            && ImmediateExtendedAttribHandler.extPrimVerts(tess.getDrawMode(), vertexCount) == 4 && normalHandler.wantsFaceNormals();
+        final boolean fillNormal = !tess.hasNormals() && !faceNormals;
+        GLStateManager.requireExitVertexDefaults(fillNormal, !tess.hasTexture(), !tess.hasColor(), !tess.hasBrightness());
+
+        final int defaultNormal;
+        if (fillNormal) {
+            final Vector3f n = ShaderManager.getCurrentNormal();
+            defaultNormal = (packNormalComponent(n.z) << 16) | ((packNormalComponent(n.y) & 0xFF) << 8) | (packNormalComponent(n.x) & 0xFF);
+        } else {
+            defaultNormal = 0;
+        }
+
+        final int defaultTexU, defaultTexV;
+        if (!tess.hasTexture()) {
+            final Vector4f tc = ShaderManager.getCurrentTexCoord();
+            defaultTexU = Float.floatToRawIntBits(tc.x);
+            defaultTexV = Float.floatToRawIntBits(tc.y);
+        } else {
+            defaultTexU = 0;
+            defaultTexV = 0;
+        }
+
+        for (int i = 0; i < vertexCount; i++) {
+            final int base = i * ModelQuadUtil.VERTEX_SIZE;
+            if (!tess.hasTexture()) {
+                rawBuffer[base | ModelQuadUtil.TEX_X_INDEX] = defaultTexU;
+                rawBuffer[base | ModelQuadUtil.TEX_Y_INDEX] = defaultTexV;
+            }
+            if (!tess.hasColor()) {
+                rawBuffer[base | ModelQuadUtil.COLOR_INDEX] = defaultColor;
+            }
+            if (fillNormal) {
+                rawBuffer[base | ModelQuadUtil.NORMAL_INDEX] = defaultNormal;
+            }
+            if (!tess.hasBrightness()) {
+                rawBuffer[base | ModelQuadUtil.LIGHT_INDEX] = defaultBrightness;
+            }
+        }
+        if (faceNormals) {
+            normalHandler.writeFaceNormals(rawBuffer, vertexCount);
+        }
+    }
+
+    private static int packNormalComponent(float value) {
+        final float clamped = Math.max(-1.0f, Math.min(1.0f, value));
+        return (int) (clamped * 127);
     }
 
     /**
@@ -605,6 +690,7 @@ public class TessellatorStreamingDrawer {
     }
 
     private static void drawWithQuadConversion(int drawMode, int firstVertex, int vertexCount, boolean singleQuadFastPath) {
+        GLSMDraws.drawCalls++;
         FfpExtendedAttribs.beginInternalDraw();
         try {
             if (drawMode == GL11.GL_QUADS) {

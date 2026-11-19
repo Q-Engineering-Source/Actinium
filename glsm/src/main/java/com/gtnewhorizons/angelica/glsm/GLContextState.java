@@ -1,6 +1,7 @@
 package com.gtnewhorizons.angelica.glsm;
 
 import com.gtnewhorizon.gtnhlib.client.renderer.stacks.IStateStack;
+import com.gtnewhorizons.angelica.glsm.ffp.Instancing;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
 import com.gtnewhorizons.angelica.glsm.ffp.InstancedAttribs;
 import com.gtnewhorizons.angelica.glsm.ffp.VAOManager;
@@ -128,6 +129,13 @@ public class GLContextState {
     public final int[] savedColorGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
     public final int[] savedNormalGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
     public final int[] savedTexCoordGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
+    /**
+     * Counts state changes the batched TESR path has to flush for. An attrib scope records it on
+     * push and compares it on pop, so a scope that changed uncaptured state flushes the batch that
+     * spans it.
+     */
+    public int batchStateGeneration;
+    public final int[] savedBatchStateGen = new int[GLStateManager.MAX_ATTRIB_STACK_DEPTH];
     public final ShaderManager ffp = new ShaderManager();
     public final Vec3fStack normalStack = member(ffp.normalStack);
     public final Vec4fStack texCoordStack = member(ffp.texCoordStack);
@@ -238,6 +246,7 @@ public class GLContextState {
     public float savedFilterAniso = -1.0f;
     /** True while a line-quad draw is in flight, so the FFP vertex key picks the widening variant. */
     public boolean lineQuadsActive = false;
+    public Instancing ffpInstancing = Instancing.NONE;
     /** Packed entity, block entity and item ids of the draw being prepared. */
     public long entityIds = InstancedAttribs.DEFAULT_ENTITY_IDS;
     /** Whether the per-vertex id attribute still has to be written for the draw being prepared. */

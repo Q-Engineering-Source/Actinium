@@ -1,0 +1,214 @@
+package com.gtnewhorizons.angelica.shadercompat;
+
+import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
+import com.gtnewhorizons.angelica.glsm.GLSMTextures;
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
+import com.gtnewhorizons.angelica.glsm.hooks.GlintColorHandler;
+import com.gtnewhorizons.angelica.iris.IrisDisplayListState;
+import com.gtnewhorizons.angelica.rendering.tesr.ModelPartBatcher;
+import com.gtnewhorizons.angelica.rendering.tesr.EntityShadowReplay;
+import it.unimi.dsi.fastutil.ints.Int2IntLinkedOpenHashMap;
+import net.coderbot.iris.pipeline.ShadowRenderer;
+import net.irisshaders.iris.api.v0.IrisApi;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.texture.ITextureObject;
+import net.minecraft.util.ResourceLocation;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.lwjgl.BufferUtils;
+import org.lwjgl.opengl.GL11;
+
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.InputStream;
+import java.nio.ByteBuffer;
+
+import static org.joml.Math.clamp;
+
+/**
+ * Maybe overcomplicated, but it's required to bridge the gap between the modern glint texture and white texture 1.7.10
+ * has. Some shaders are able to render the glint just fine as they seem to have some amount of support for older
+ * Minecraft, but others like AstraLex do *not* render correctly. It expects the color to be within the texture.
+ * This might introduce some oddities that I'm not seeing, but for now this appears to fix the issue.
+ */
+public final class ShaderGlint {
+
+    private static final Logger LOGGER = LogManager.getLogger("Angelica/ShaderGlint");
+
+    private static final ResourceLocation GLINT_MASK = new ResourceLocation("textures/misc/enchanted_item_glint.png");
+    public static final int TINT_SLOTS = 64;
+    public static final int NO_TINT = -1;
+
+    private static boolean maskLoaded;
+    private static boolean maskFailed;
+    private static int maskW;
+    private static int maskH;
+    private static int[] maskLum;
+
+    private static final Int2IntLinkedOpenHashMap colorToSlot = new Int2IntLinkedOpenHashMap();
+    static {
+        colorToSlot.defaultReturnValue(NO_TINT);
+    }
+    private static final int[] slotTextures = new int[TINT_SLOTS];
+
+    private static final GlintColorHandler COLOR_HANDLER = ShaderGlint::onColorChanged;
+
+    private static boolean injecting;
+    private static boolean swapped;
+    private static int depth;
+
+    private static int prevTexture;
+
+    private static ByteBuffer tintBuffer;
+
+    private ShaderGlint() {}
+
+    public static void beginGlint() {
+        if (ShadowRenderer.ACTIVE) EntityShadowReplay.rejectShadowOnly();
+        IrisDisplayListState.recordGlintSpan(true);
+
+        // If a glint span is already active, keep the outer span's saved state and
+        // let the nested render ride on its handler.
+        if (depth++ > 0) return;
+
+        if (ShadowRenderer.ACTIVE || !IrisApi.getInstance().isShaderPackInUse()) return;
+
+        swapped = false;
+        injecting = false;
+
+        // Save the texture bound before the glint section so endGlint can put it back if we swap
+        prevTexture = GLSMTextures.getBoundTextureForServerState(0);
+
+        // Observe vertex-color changes for the rest of the glint section
+        GLSMHooks.glintColorHandler = COLOR_HANDLER;
+    }
+
+    public static void endGlint() {
+        IrisDisplayListState.recordGlintSpan(false);
+        if (depth == 0 || --depth > 0) return;
+        if (GLSMHooks.glintColorHandler != COLOR_HANDLER) return;
+        GLSMHooks.glintColorHandler = null;
+
+        if (swapped) {
+            GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, prevTexture);
+            ModelPartBatcher.onTextureSwap(prevTexture, NO_TINT);
+        }
+        swapped = false;
+        injecting = false;
+    }
+
+    private static void onColorChanged(float red, float green, float blue, float alpha) {
+        if (injecting) return;
+
+        final int slot = tintSlot(red, green, blue);
+        if (slot < 0) return;
+
+        final int texture = slotTextures[slot];
+        injecting = true;
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, texture);
+        GLSMCurrentAttribs.glColor4f(1.0F, 1.0F, 1.0F, alpha);
+        injecting = false;
+        swapped = true;
+        ModelPartBatcher.onTextureSwap(texture, slot);
+    }
+
+    public static void invalidate() {
+        for (int i = 0; i < slotTextures.length; i++) {
+            if (slotTextures[i] != 0) {
+                GLSMTextures.glDeleteTextures(slotTextures[i]);
+                slotTextures[i] = 0;
+            }
+        }
+        colorToSlot.clear();
+        maskLum = null;
+        tintBuffer = null;
+        maskLoaded = false;
+        maskFailed = false;
+    }
+
+    public static void bindTintedGlint(int slot) {
+        if (slot < 0) return;
+        if (ShadowRenderer.ACTIVE) {
+            EntityShadowReplay.rejectShadowOnly();
+            return;
+        }
+        if (!IrisApi.getInstance().isShaderPackInUse()) return;
+        final ITextureObject mask = Minecraft.getMinecraft().getTextureManager().getTexture(GLINT_MASK);
+        if (mask == null || GLSMTextures.getBoundTextureForServerState() != mask.getGlTextureId()) return;
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, slotTextures[slot]);
+    }
+
+    private static int tintSlot(float r, float g, float b) {
+        ensureMaskLoaded();
+        if (!maskLoaded) return NO_TINT;
+
+        final int ri = clamp8(r);
+        final int gi = clamp8(g);
+        final int bi = clamp8(b);
+        final int key = (ri << 16) | (gi << 8) | bi;
+
+        final int cached = colorToSlot.getAndMoveToLast(key);
+        if (cached != NO_TINT) return cached;
+
+        final int slot;
+        if (colorToSlot.size() >= TINT_SLOTS) {
+            slot = colorToSlot.remove(colorToSlot.firstIntKey());
+            GLSMTextures.glDeleteTextures(slotTextures[slot]);
+        } else {
+            slot = colorToSlot.size();
+        }
+        slotTextures[slot] = uploadTinted(ri / 255.0F, gi / 255.0F, bi / 255.0F);
+        colorToSlot.putAndMoveToLast(key, slot);
+        return slot;
+    }
+
+    private static int uploadTinted(float r, float g, float b) {
+        final ByteBuffer pixels = tintBuffer;
+        pixels.clear();
+        for (final int l : maskLum) {
+            pixels.put((byte) Math.round(l * r));
+            pixels.put((byte) Math.round(l * g));
+            pixels.put((byte) Math.round(l * b));
+            pixels.put((byte) 0xFF);
+        }
+        pixels.flip();
+
+        final int texture = GLSMTextures.glGenTextures();
+        GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, texture);
+        // Match the vanilla glint texture
+        GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+        GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+        GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL11.GL_REPEAT);
+        GLSMTextures.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL11.GL_REPEAT);
+        GLSMTextures.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, maskW, maskH, 0,
+            GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixels);
+        return texture;
+    }
+
+    private static void ensureMaskLoaded() {
+        if (maskLoaded || maskFailed) return;
+        try (final InputStream in = Minecraft.getMinecraft().getResourceManager().getResource(GLINT_MASK).getInputStream()) {
+            final BufferedImage img = ImageIO.read(in);
+            maskW = img.getWidth();
+            maskH = img.getHeight();
+            maskLum = new int[maskW * maskH];
+            final int[] argb = img.getRGB(0, 0, maskW, maskH, null, 0, maskW);
+            for (int i = 0; i < argb.length; i++) {
+                final int p = argb[i];
+                final int rr = (p >> 16) & 0xFF;
+                final int gg = (p >> 8) & 0xFF;
+                final int bb = p & 0xFF;
+                maskLum[i] = (rr + gg + bb) / 3;
+            }
+            tintBuffer = BufferUtils.createByteBuffer(maskW * maskH * 4);
+            maskLoaded = true;
+        } catch (final Exception e) {
+            maskFailed = true;
+            LOGGER.warn("Could not read the glint mask {}; glint colours fall back to the untinted texture", GLINT_MASK, e);
+        }
+    }
+
+    private static int clamp8(float v) {
+        return clamp(0, 255, Math.round(v * 255.0F));
+    }
+}

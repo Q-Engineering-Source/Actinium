@@ -62,6 +62,9 @@ public final class FragmentShaderGenerator {
     private static void emitInputs(StringBuilder sb, FragmentKey key) {
         sb.append("// Inputs from vertex shader\n");
         sb.append("in vec4 v_Color;\n");
+        if (key.overlayInstanced()) {
+            sb.append("in vec4 v_Overlay;\n");
+        }
         if (key.separateSpecular()) {
             sb.append("in vec3 v_SpecularColor;\n");
         }
@@ -168,6 +171,10 @@ public final class FragmentShaderGenerator {
      * Emit the modern-style damage overlay mix.
      */
     private static void emitOverlay(StringBuilder sb, FragmentKey key) {
+        if (key.overlayInstanced()) {
+            sb.append("  color.rgb = mix(color.rgb, v_Overlay.rgb, v_Overlay.a);\n");
+            return;
+        }
         if (!key.overlayEnabled()) return;
         sb.append("  color.rgb = mix(color.rgb, u_OverlayColor.rgb, u_OverlayColor.a);\n");
     }

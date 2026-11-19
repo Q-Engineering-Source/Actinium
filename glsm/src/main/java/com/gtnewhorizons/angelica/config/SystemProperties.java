@@ -57,6 +57,11 @@ public final class SystemProperties {
         return Boolean.TRUE.equals(Launch.blackboard.get("fml.deobfuscatedEnvironment"));
     }
 
+    /** Verbose renderer diagnostics: rejection logs and per-class batching counters stay in development. */
+    public static boolean debugTooling() {
+        return isDeobf();
+    }
+
     /** Overrides the SDL GPU driver chosen by the configuration value. Null when unset. */
     public static final String SDL_GPU_DRIVER_OVERRIDE = parseStringOverride("angelica.sdlgpu.driver");
 

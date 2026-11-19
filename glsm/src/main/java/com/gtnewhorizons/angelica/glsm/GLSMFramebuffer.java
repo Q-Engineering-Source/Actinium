@@ -12,6 +12,7 @@ import org.lwjgl.opengl.GL30;
 
 import java.nio.IntBuffer;
 
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.beforeUncapturedStateChange;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.gpuCheckpoint;
@@ -47,6 +48,7 @@ public final class GLSMFramebuffer {
                 return;
             }
         }
+        if (!isCachingEnabled() || ctx().drawBuffer.getValue() != mode) beforeUncapturedStateChange();
         if (isCachingEnabled()) mod(ctx().drawBuffer).setValue(mode);
         RENDER_BACKEND.drawBuffer(mode);
     }
@@ -99,6 +101,7 @@ public final class GLSMFramebuffer {
                 return;
             }
         }
+        beforeUncapturedStateChange();
         RENDER_BACKEND.drawBuffers(buffer);
     }
 
@@ -110,6 +113,7 @@ public final class GLSMFramebuffer {
                 return;
             }
         }
+        beforeUncapturedStateChange();
         RENDER_BACKEND.drawBuffers(bufs);
     }
 
@@ -121,6 +125,7 @@ public final class GLSMFramebuffer {
                 return;
             }
         }
+        beforeUncapturedStateChange();
         RENDER_BACKEND.drawBuffers(bufs);
     }
 

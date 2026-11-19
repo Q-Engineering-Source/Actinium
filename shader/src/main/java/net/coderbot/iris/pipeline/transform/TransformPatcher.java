@@ -2,6 +2,7 @@ package net.coderbot.iris.pipeline.transform;
 
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
 import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
+import com.gtnewhorizons.angelica.glsm.ffp.Instancing;
 import net.coderbot.iris.gl.image.ImageInformation;
 import java.util.Set;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
@@ -237,7 +238,20 @@ public class TransformPatcher {
     }
 
     public static Map<PatchShaderType, String> patchAttributes(String vertex, String geometry, String tessControl, String tessEval, String fragment, InputAvailability inputs) {
-        return transform(vertex, geometry, tessControl, tessEval, fragment, new AttributeParameters(Patch.ATTRIBUTES, geometry != null, inputs));
+        return transform(vertex, geometry, tessControl, tessEval, fragment, new AttributeParameters(Patch.ATTRIBUTES, geometry != null, hasTesselation(tessControl, tessEval), inputs, Instancing.NONE));
+    }
+
+    /**
+     * Transforms the vertex stage to read a per-instance attribute layout while leaving the other
+     * stages alone. The layout is a cache key component, so each {@link Instancing} kind keeps its
+     * own transformed source.
+     */
+    public static Map<PatchShaderType, String> patchAttributesInstanced(String vertex, String geometry, String tessControl, String tessEval, String fragment, InputAvailability inputs, Instancing instancing) {
+        return transform(vertex, geometry, tessControl, tessEval, fragment, new AttributeParameters(Patch.ATTRIBUTES, geometry != null, hasTesselation(tessControl, tessEval), inputs, instancing));
+    }
+
+    private static boolean hasTesselation(String tessControl, String tessEval) {
+        return tessControl != null || tessEval != null;
     }
 
     public static Map<PatchShaderType, String> patchAttributes(String vertex, String geometry, String fragment, InputAvailability inputs) {

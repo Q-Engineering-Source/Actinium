@@ -1,6 +1,6 @@
 # Actinium 架构说明
 
-最后更新：2026-11-13。
+最后更新：2026-11-17。
 
 ## 概述
 
@@ -92,6 +92,40 @@ Outlands 管理窗口和输入，并提供与 lwjgl3ify 对应的创建、销毁
 5. `AdaptiveShadowBoundsTransformer` 在可识别的 PCF helper 入口加入 shadow-map bounds
    early return；仅当 GLSM 性能调试开启且 SSBO/GLSL 4.30 可用时，
    `DeferredWorldRenderingPipeline` 才分配独立 SSBO 并注入运行期 `atomicAdd` 统计。
+
+TESR 实例化批次不新增 pass：`DeferredWorldRenderingPipeline` 为 `Instancing.TEMPLATE` 与
+`Instancing.CUBE` 从 `Block`、`BlockTrans`、`Entities`、`EntitiesTrans`、`Shadow`、
+`ShadowWater`、`ArmorGlint`、`SpiderEyes` 的程序源码另做一份属性变换，首次查询时链接为
+变体程序，并按 `(sourceName, availability, shadow, kind)` 共享，引用模型视图内置量的
+非顶点阶段会让该来源退回逐实例绘制。变体沿用所属 pass 的 framebuffer、viewport、
+alpha test 与混合覆盖，只替换 program，因此状态归属仍在 `Pass`。CUBE 变体由
+`InstancingSupportProvider` 的宿主开关决定可用性。
+
+变体程序与基程序走同一条 `ProgramBuilder`/`ProgramCreator` 路径，因此
+`ProgramBinaryCache` 会缓存它们。`Iris.compilePackFolder` 为每个 folder 构建一次性
+pipeline 时先调用 `compileInstancedVariants()` 再编译地形程序，使这些二进制在预编译阶段
+写入缓存；`compileInstancedVariants()` 只执行一次，之后由各 pass 惰性查询。
+`TesrBatchRenderer.beginPass` 也调用它以便批次记录前完成链接；主视图批次与阴影批次都从该入口
+进入，两条生产路径均已接线。
+
+粒子实例化同样不新增 pass：`Instancing.PARTICLE` 只变换 `gbuffers_particles` 与
+`gbuffers_particles_translucent` 的顶点阶段，可用性恒为尝试状态，链接失败时自动退回。
+`ParticleManagerIrisMixin` 在 `renderParticles` 的每个 `BufferBuilder.begin` 之后开启
+批次、在对应 `Tessellator.draw` 之前收尾，所以批次边界就是原版 6 个 run。
+`ParticleManagerCullingMixin`（`priority = 900`）用 `@WrapOperation` 包住两个
+`Particle.renderParticle` 调用点并保留唯一的 `Operation` 调用口，因此外部模组在同点挂
+`@Redirect` 仍可共存；它在实例化之前先做本地视锥判断，不可见的粒子既不进批次也不写原版。
+同一入口里 `ParticleRunSplitter` 按 sprite 透明度切换 `gbuffers_particles(_translucent)` 的
+声明并在 `renderParticles` 返回时恢复，切分只取决于是否存在延迟管线，与批次开关无关：
+关闭批次时 translucent 粒子仍会切到 translucent 程序。粒子 quad 网格只有位置与角点 UV，
+中心、半宽、颜色与 lightmap 来自实例属性，FFP 顶点着色器为 `PARTICLE` 单独声明
+`vec2 a_TexCoord0`，不声明顶点色、lightmap 与法线属性以免与实例属性共用槽位；网格没有法线，
+pack 变体与 FFP 都用常量法线 `(0, 0, 1)`，与 billboard 朝向一致，不再读取未提供的 location 4。
+第 3 层（lit）粒子在 1.12.2 只写共享 `BufferBuilder`、本层没有自己的 `begin`/`draw`，`ParticleLitRun`
+在 `renderLitParticles` 的 HEAD 打开该 run 并开启实例层、在 RETURN 收尾并 `Tessellator.draw()`，
+因此这一层也进入批次；批次装不下的顶点仍按原版顶点回放由该 run 自己的 draw 画出。这一层的
+`@WrapOperation` 与主循环共用同一条路径：先做视锥判断，再按 sprite 与粒子类判定是否切分 run，
+最后交给实例化或原版写入，切分后的 run 由 `ParticleLitRun` 的 begin/end 收尾。
 
 ## 根项目包详解（`com.dhj.actinium`）
 

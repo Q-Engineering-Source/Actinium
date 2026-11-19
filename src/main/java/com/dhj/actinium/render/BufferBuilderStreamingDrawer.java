@@ -309,7 +309,8 @@ public final class BufferBuilderStreamingDrawer {
         }
         initialized = true;
 
-        persistentBuffer = PersistentStreamingBuffer.createOrNull(PersistentStreamingBuffer.DEFAULT_CAPACITY);
+        persistentBuffer = PersistentStreamingBuffer.createOrNull(PersistentStreamingBuffer.DEFAULT_CAPACITY,
+            GLSMPerfDebug.FenceSource.BUFFER_BUILDER);
         if (persistentBuffer != null) {
             LOGGER.info("Persistent BufferBuilder streaming buffer created ({}MB)", PersistentStreamingBuffer.DEFAULT_CAPACITY / (1024 * 1024));
         }

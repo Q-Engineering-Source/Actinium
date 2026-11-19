@@ -53,7 +53,7 @@
 | 15 | `7f3fb35e` | Use actual camera when doing cloud related culling and fuctions (#2139) | 2026-09-26 | 待同步 | F01 | 云剔除改用真实相机，依赖 F01 |
 | 16 | `7c28a69b` | Optimize Enchant Glint Rendering (#2140) | 2026-09-26 | 待同步 | F02 | 附魔闪光合并渲染，本地缺 `CombinedGlint`、`GlintClock`、`ModelPartBatcher` |
 | 17 | `a8c29fa3` | Give each GL drawable its own GLSM context (#2142) | 2026-09-26 | 分 hunk 同步 | G02 | 取通用 hunks：`GLContextState` 构造与 `GLStateManager` 的按 drawable 取上下文路径、`DisplayListManager`/`DisplayListIDAllocator`、`FeedbackManager`、`CompatUniformManager`、`QuadConverter`、`ShaderCache`/`ShaderManager`/`Uniforms`/`VertexKey`/`FragmentKey`、`VAOManager`、`AttribSnapshot`、`StreamingVaos`、`StackIdAllocator` 与各 state stack。本地 `GLStateManager.ctx()` 目前只有主上下文与 worker `ThreadLocal`（`glsm/src/main/java/com/gtnewhorizons/angelica/glsm/GLStateManager.java:179`），无按 drawable 创建上下文的路径。排除 `sdl-gpu/` 与 `FrameHooks`、`TextureUtilHooks` 这类 SDL 生命周期钩子 |
-| 18 | `c9d46e70` | Update to Celeritas 2.5.12 with translucency sorting v3 (#2151) | 2026-09-27 | 部分已同步 | C01 + C04 + C06 + C07 + F02 + F07 + S02 | 按 `git show c9d46e70 --name-status` 的实际 diff 拆分。排序 v3 消费端与 `CutPlaneIndex`、`PartitionTree` 本地已有等价（`celeritas-common` 的 `sorting/SortState`、`sorting/PartitionTree`、`sorting/CutPlaneIndex` 与 `RenderSection.translucencySortStates`），不重复移植。待处理：新增 `debug/DebugKeyHandler` 与 `AngelicaConfig.verboseF3`（F3+V 切换）归 F07；新增 `MixinShaderLoader` 在 `RenderSystem.isGLES()` 时禁用 GLSL 1.20 路径归 C01；新增 `MixinSharedQuadIndexBuffer` 与 `MixinRenderRegionManager` 的 `TerrainDrawStats.recordIndexBufferGrowth`/`recordSectionUpload` 埋点、`TerrainDrawStats` 的三个累计计数与 getter、`CubeStatusTracker` 由 `implements ChunkTracker` 改为 `extends ChunkTracker`（本地 `celeritas-common/.../chunk/map/ChunkTracker` 是类，前置成立）归 C04；`ShadowRenderer` 删除 `preSubmitGraphUpdate` 与 `preSubmitFrustumHolder`、改 `shadowSearchPending`，`AngelicaRenderSectionManager` 的 `canSubmitShadowGraphSearch`/`submitShadowGraphSearch` 改 `protected` 并加 `shadowSearchSubmissions` 计数、删除 `initialCameraSectionReady` 与 `update` 的阴影 pass 早退归 C06；`CeleritasWorldRenderer` 新增 `shadowPassPlayerViewport` 字段与 `setShadowPassPlayerViewport`、新增无参的 `setupShadowTerrain` 重载（在 `clipRenderersByFrustum` 入口取回玩家视口，未捕获时回退到 `getLastViewport()`）、`setupTerrain` 改用 `renderSectionManager.didShadowPassRunThisFrame()` 配合 `lastCameraState` 复用阴影 pass 的相机状态，并删除 `setCurrentViewport`/`getCurrentViewport`/`collectTileEntitiesForShadow`，同样归 C06；本地 `SimpleWorldRenderer` 与 `RenderSectionManager` 已有 `setupShadowTerrain` 与 `didShadowPassRunThisFrame`（`celeritas-common/src/main/java/dhj/embeddedt/embeddium/impl/render/chunk/RenderSectionManager.java:339`），但 `CeleritasWorldRenderer` 尚无 `shadowPassPlayerViewport` 字段；`AngelicaFogService.INSTANCE` 与删除 `META-INF/services` 的 `FogService` 登记归 C07；`PackShadowDirectives.shouldRenderLightBlockEntities`（含 `ShadowRenderer` 的 `shouldRenderLightBlockEntities` 字段与 debug 串）归 F02；`AngelicaRenderPassConfiguration.samplerDefines` 抽取归 S02，但 `block_layer_opaque.fsh` 的 `v_RdhFactor`、`v_QuadCoord` 与 `u_FogShape` 输入本地已具备（`src/main/resources/assets/actinium/shaders/blocks/block_layer_opaque.fsh` 第 8、9、30 行，vsh 侧第 14、15、32 行），不重复同步。该提交在上游还删除 `SectionAgeMath`、`SectionAgeMathTest`、`AngelicaChunkTracker` 与 `MixinDefaultChunkShaderInterface`，本地不存在这四个文件，删除项不构成移植内容。排除：`sdl-gpu/` 全部、`gradle/libs.versions.toml` 的 Celeritas 版本与 `lang/en_US.lang` 文案。已同步（批次二第 11、13、15 项）：`MixinShaderLoader` 落 `src/main/java/com/dhj/actinium/mixin/vintage/core/terrain/MixinShaderLoader.java`；`TerrainDrawStats`、`MixinSharedQuadIndexBuffer`、`MixinRenderRegionManager` 落 `src/main/java/com/dhj/actinium/render/terrain/` 与同名 mixin 包，`TerrainDrawStats` 只移植三个累计计数与 getter（`take*` 系列依赖的 `recordBatch`/`recordCullRegion`/`recordSectionMetaBytes` 与 `Tracy` zone 归后续 F07 调试屏批次，本地无消费方）。`CubeStatusTracker` 已按 `extends ChunkTracker` 移植到 `src/main/java/com/dhj/actinium/render/terrain/CubeStatusTracker.java`，但本地无 CubicChunks 事件源（1.12.2 无 `com.cardinalstar.cubicchunks.util.HashSet3D`/`HashMap3D`，改用 fastutil 长整型集合打包 xyz），也没有 `MixinWorldClient` 的 `ModStatus.isCubicChunksLoaded` 分支，该类当前无构造点。shadow 适配已由批次二第 16 项完成：玩家视口经 1.12.2 的 `ICamera` 局部变量捕获，保留本地逐帧阴影绘制与实体收集，搜索计数关联列表和光照角度；角度门控、地形快照不在本批上游补丁范围。剩余未同步：`DebugKeyHandler` 与 `verboseF3`（F07）、`PackShadowDirectives.shouldRenderLightBlockEntities`（F02）、`samplerDefines`（S02）。
+| 18 | `c9d46e70` | Update to Celeritas 2.5.12 with translucency sorting v3 (#2151) | 2026-09-27 | 部分已同步 | C01 + C04 + C06 + C07 + F02 + F07 + S02 | 按 `git show c9d46e70 --name-status` 的实际 diff 拆分。排序 v3 消费端与 `CutPlaneIndex`、`PartitionTree` 本地已有等价（`celeritas-common` 的 `sorting/SortState`、`sorting/PartitionTree`、`sorting/CutPlaneIndex` 与 `RenderSection.translucencySortStates`），不重复移植。待处理：新增 `debug/DebugKeyHandler` 与 `AngelicaConfig.verboseF3`（F3+V 切换）归 F07；新增 `MixinShaderLoader` 在 `RenderSystem.isGLES()` 时禁用 GLSL 1.20 路径归 C01；新增 `MixinSharedQuadIndexBuffer` 与 `MixinRenderRegionManager` 的 `TerrainDrawStats.recordIndexBufferGrowth`/`recordSectionUpload` 埋点、`TerrainDrawStats` 的三个累计计数与 getter、`CubeStatusTracker` 由 `implements ChunkTracker` 改为 `extends ChunkTracker`（本地 `celeritas-common/.../chunk/map/ChunkTracker` 是类，前置成立）归 C04；`ShadowRenderer` 删除 `preSubmitGraphUpdate` 与 `preSubmitFrustumHolder`、改 `shadowSearchPending`，`AngelicaRenderSectionManager` 的 `canSubmitShadowGraphSearch`/`submitShadowGraphSearch` 改 `protected` 并加 `shadowSearchSubmissions` 计数、删除 `initialCameraSectionReady` 与 `update` 的阴影 pass 早退归 C06；`CeleritasWorldRenderer` 新增 `shadowPassPlayerViewport` 字段与 `setShadowPassPlayerViewport`、新增无参的 `setupShadowTerrain` 重载（在 `clipRenderersByFrustum` 入口取回玩家视口，未捕获时回退到 `getLastViewport()`）、`setupTerrain` 改用 `renderSectionManager.didShadowPassRunThisFrame()` 配合 `lastCameraState` 复用阴影 pass 的相机状态，并删除 `setCurrentViewport`/`getCurrentViewport`/`collectTileEntitiesForShadow`，同样归 C06；本地 `SimpleWorldRenderer` 与 `RenderSectionManager` 已有 `setupShadowTerrain` 与 `didShadowPassRunThisFrame`（`celeritas-common/src/main/java/dhj/embeddedt/embeddium/impl/render/chunk/RenderSectionManager.java:339`），但 `CeleritasWorldRenderer` 尚无 `shadowPassPlayerViewport` 字段；`AngelicaFogService.INSTANCE` 与删除 `META-INF/services` 的 `FogService` 登记归 C07；`PackShadowDirectives.shouldRenderLightBlockEntities`（含 `ShadowRenderer` 的 `shouldRenderLightBlockEntities` 字段与 debug 串）归批次三第 15 项；`AngelicaRenderPassConfiguration.samplerDefines` 抽取归 S02，但 `block_layer_opaque.fsh` 的 `v_RdhFactor`、`v_QuadCoord` 与 `u_FogShape` 输入本地已具备（`src/main/resources/assets/actinium/shaders/blocks/block_layer_opaque.fsh` 第 8、9、30 行，vsh 侧第 14、15、32 行），不重复同步。该提交在上游还删除 `SectionAgeMath`、`SectionAgeMathTest`、`AngelicaChunkTracker` 与 `MixinDefaultChunkShaderInterface`，本地不存在这四个文件，删除项不构成移植内容。排除：`sdl-gpu/` 全部、`gradle/libs.versions.toml` 的 Celeritas 版本与 `lang/en_US.lang` 文案。已同步（批次二第 11、13、15 项）：`MixinShaderLoader` 落 `src/main/java/com/dhj/actinium/mixin/vintage/core/terrain/MixinShaderLoader.java`；`TerrainDrawStats`、`MixinSharedQuadIndexBuffer`、`MixinRenderRegionManager` 落 `src/main/java/com/dhj/actinium/render/terrain/` 与同名 mixin 包，`TerrainDrawStats` 只移植三个累计计数与 getter（`take*` 系列依赖的 `recordBatch`/`recordCullRegion`/`recordSectionMetaBytes` 与 `Tracy` zone 归后续 F07 调试屏批次，本地无消费方）。`CubeStatusTracker` 已按 `extends ChunkTracker` 移植到 `src/main/java/com/dhj/actinium/render/terrain/CubeStatusTracker.java`，但本地无 CubicChunks 事件源（1.12.2 无 `com.cardinalstar.cubicchunks.util.HashSet3D`/`HashMap3D`，改用 fastutil 长整型集合打包 xyz），也没有 `MixinWorldClient` 的 `ModStatus.isCubicChunksLoaded` 分支，该类当前无构造点。shadow 适配已由批次二第 16 项完成：玩家视口经 1.12.2 的 `ICamera` 局部变量捕获，保留本地逐帧阴影绘制与实体收集，搜索计数关联列表和光照角度；角度门控、地形快照不在本批上游补丁范围。剩余未同步：`DebugKeyHandler` 与 `verboseF3`（F07）、`samplerDefines`（S02）。
 | 19 | `e17b45c8` | Fix NEI items vanishing with ModularUI2 screens open on SDL-GPU (#2153) | 2026-09-27 | 不适用 | — | 全部文件位于 `sdl-gpu/`，为 SDL 附件清除与管线 |
 | 20 | `233c74e0` | Better Biome Blending (#2152) | 2026-09-27 | 待同步 | F11 | 生物群系混色，本地缺 `BiomeVertexBlender`、`SmoothBiomeColorCache`、`SkyColorCache` |
 | 21 | `74ea5c47` | Add in-game Tracy capture (#2156) | 2026-09-27 | 分 hunk 同步 | F09 + F10 | 取通用 hunks：`rendering/FpsReducer`（帧率限制器，归 F09）；`zoom/Zoom`（仅将 `zoomKey` 的 key category 从 `key.categories.misc` 改为 `AngelicaMod.KEY_CATEGORY`，无 mixin 变更，归 F10）；`SodiumOptionsGUI`/`ActionOption`/`ButtonOption`/`SubScreenOption`/`ControlValueFormatter` 的选项控件、`AngelicaCommand`/`AngelicaMod`/`ClientProxy`/`Mixins`/`AngelicaConfig` 的入口接线与 `en_US.lang` 文案、`AsprofRecorder` 与 `EarlyLoadingBoundaryTest`。排除：`tracy-client/build.gradle.kts` 与 `tracy-client/src` 的原生采集、`glsm/profiling/Tracy*`、`client/gui/TracyOptionPages`、`debug/profiling/TracyCaptureNotifier`、`.github/scripts/build-tracy-natives.sh`、`.github/workflows/build-tracy-natives.yml`、`libs.versions.toml` 的 tracy 版本与 `scripts/flyby-capture.sh` 的采集参数 |
@@ -316,6 +316,14 @@ SDL 主模块按当前 GLSM 和 Outlands 宿主适配，资源与管线完整导
 
 与上游的差异：`getCloudTextureWidth`、`getScaleMult` 与 `supportsLayers` 未按原样保留，前两者的取值经 `CloudAnimationCycle` 供给 `shader` 子项目的 `cloudTime` uniform（周期等于纹理宽度乘 400 再乘云缩放），后者的判断并入渲染器的 `describeLayers`；`getRequiredFarPlaneDistance` 并入渲染器内部的 `requiredFarPlane`；`ea50e0a0` 的玻璃板部分不在云层范围。
 
+### 批次三第 15 项：代码已落地，待实机验证
+
+第 15 项按四批推进，四批均已落地。15-1（`24ee0432`）是 FFP 实例化变体层：`Instancing`、`CubeInstancedAttribs`、`InstancedGlslHelpers`，`VertexKey` 的 `BIT_INSTANCING`、`GLContextState.ffpInstancing`、`GLSMPrograms.setFfpInstancing`，以及顶点与片元生成器的模板、立方体分支（实例矩阵构造 `eyePos`、法线走实例 `mat3`、颜色乘 `a_InstColor`、立方体 UV 由 `a_CubeMid` 与 `a_CubeDelta` 重建、`v_Overlay` 承担伤害叠加色）；`FragmentKey.GLOBAL_BITS` 由 13 扩到 14 容纳叠加色实例位。15-2（`a9f94563`）是立方体数据：`UnitCubeMesh`、`CubeParams`、`ModelBoxCapture`、`ModelBoxData` 与 `MixinModelBoxCubeParams`，捕获结果写到 `ModelBox` 的注入接口，`CubeInstanceDataTest` 覆盖顶点流、面法线与 UV 网。
+
+这两批落地时都还没有实机路径：`setFfpInstancing` 没有调用方，实例化变体不会触发；`angelica$cubeParams()` 没有读取方。后续批次把两者接到运行时：`InstancedTemplateRenderer` 与 `ParticleInstancer` 调用 `setFfpInstancing`，`ModelPartBatcher` 经 `ModelBoxData` 读取 `angelica$cubeParams()`。15-3 的四段补齐 TESR 模板实例化、实体图集与宿主接入，阴影回放随后落地，交付清单见文末。
+
+15-3 再拆四段。15-3a（`4b5b4408`）是 `api/tesr` 的公开接口：`TesrMeshProvider`、`TesrMeshSink`、`TesrMeshBuilder`、`ModelPartMeshBuilder`、`TesrShader`、`TesrShaderUniforms`、`TesrShaders`、`TesrMaterial` 与 `package-info`，`cpw.mods.fml.common.API` 改为 `net.minecraftforge.fml.common.API`。`ModelPartBatch` 与 `TesrMeshCache` 依赖 `ModelPartBatcher`、`AngelicaTesrMeshCache`，随 15-3c 一起落。15-3b 是网格缓存与模板（`AngelicaTesrMeshCache`、`TemplateBuffer`、`TemplateCapture`、`VertexTransform`、`MeshBuffer`），15-3c 是批处理（`ModelPartBatcher`、`TesrBatchRenderer`、`RetainedTesrGroups`、`DrawState`、`BatchEligibility`、`BatchDrawDefaults`），15-3d 是宿主接入（`MixinTileEntityRendererDispatcher`、`EntityTextureAtlas`、`InstancedTemplateRenderer`）。
+
 ### 已收口记录（原表编号）
 
 以下内容按原表编号记录实现方式与偏差，编号不指上面的新批次。已在 PR #263 上合并：第 1、2、10、12、24 项。第 5 项（`ExitStateCapture`）在后续 PR 上，它不依赖 Tracy no-op 门面；`TextureUtilHooks`、`MixinTextureUtil`、`VanillaLayerRig` 三个上游文件因本地缺类整体跳过，`rejectExitCapture` 守卫留给第 6 项与那 54 个门面方法一起做。
@@ -387,7 +395,7 @@ SDL 主模块按当前 GLSM 和 Outlands 宿主适配，资源与管线完整导
 
 | 短 SHA | 拆解 |
 |---|---|
-| `c9d46e70` | `DebugKeyHandler` 与 `verboseF3` → F07；`MixinShaderLoader` → C01；`MixinSharedQuadIndexBuffer`、`MixinRenderRegionManager`、`TerrainDrawStats`、`CubeStatusTracker` 继承改造 → C04；shadow viewport 与搜索行为复用 → C06；`PackShadowDirectives.shouldRenderLightBlockEntities` → F02；`samplerDefines` → S02；fog 复位 → C07 |
+| `c9d46e70` | `DebugKeyHandler` 与 `verboseF3` → F07；`MixinShaderLoader` → C01；`MixinSharedQuadIndexBuffer`、`MixinRenderRegionManager`、`TerrainDrawStats`、`CubeStatusTracker` 继承改造 → C04；shadow viewport 与搜索行为复用 → C06；`PackShadowDirectives.shouldRenderLightBlockEntities` → 批次三第 15 项；`samplerDefines` → S02；fog 复位 → C07 |
 | `af599f29` | 实例化与 batching 的 Iris 交互（`InstancedAttribs`、`FfpExtendedAttribs`、`BatchStateGuard`、`recording/` 命令扩展）→ F02；图集与纹理动画（`IPatchedTextureAtlasSprite`、`MixinTextureAtlasSprite`、`DisplayListTextureAnimationTest`）→ S06 |
 | `5ed1c925` | Dragon API 与发光束、眼渲染 → F02；顶点重放与 `AttributeTransformer` 扩展 → G07 |
 | `8537835d` | 玩家反射捕获 → F04；顶点重写回放判定 → G07 |
@@ -434,3 +442,144 @@ PR 0 的任务 1 恢复了 GL 集成测试入口（`glIntegrationTest` source se
 6. **判定**：FPS 与 CPU frame time 的差值超出两次同构建重复采集的波动范围才计入回归。
 
 在采集到数据之前，任何 PR 都不得声称性能改进或回归；计时数据的解读以 `.superpowers/sdd/pr0-task2-report.md` 记录的采样语义为准（`BUFFERBUILDER_*` 按默认节奏采样，`SHADOW_*` 每次采样）。
+
+### 第 15 项依赖闭包与 1.12.2 适配清单
+
+TESR 批处理簇的完整依赖闭包是 233 个上游文件、26369 行。剔除 `sdl-gpu`、`lwjgl3`、`glsm/loading`、`TracyBackend`、`TracyOptions` 后仍需 168 个文件；其中 65 个是 1.7.10 专有依赖，按下列规则处置。
+
+| 上游依赖 | 1.12.2 情况 | 处置 |
+|---|---|---|
+| `jss.notfine` | 无，仅 1.7.10 | 用本地配置键替代；`MODE_GLINT_WORLD` → `QualitySettings.glintWorld` |
+| `me.jellysquid.mods.sodium`（1.7.10 移植） | 无 | 映射到 `dhj.embeddedt.embeddium` |
+| `me.flashyreese.mods.reeses_sodium_options` | 本地设置界面即该框架 | 映射到 `dhj.embeddedt.embeddium.api.options` 与 `ActiniumGameOptionPages` |
+| `com.prupe.mcpatcher` | 仅 1.7.10 | 去除 |
+| `com.gtnewhorizon.gtnhmixins` | 仅 1.7.10 | 去除，本地用 mixinbooter |
+| `com.cardinalstar.cubicchunks` | 1.12.2 是 `io.github.opencubicchunks` | 去除 |
+| `mods.battlegear2` | 无 1.12.2 | 去除 |
+| `com.gtnewhorizons.neid` | 1.12.2 无 ID 上限，JEID 承担扩展 | 去除 |
+| `baubles` / `thaumcraft` / `lain.mods.cos` / `mega.fluidlogged` / `xaero` / `com.kentington.thaumichorizons` | 有 1.12.2 版本 | 条件化适配 |
+| `de.odysseus.ithaka.digraph` | 上游自带源码 | 直接复制，22 类 2838 行，只依赖 fastutil |
+| `com.gtnewhorizon.gtnhlib.client.renderer.MatrixHelper` | 本地 GTNHLib 缺 | 已补，`getNormalMatrix` 用 joml 实现 |
+| `com.gtnewhorizons.angelica.sdlgpu` / `lwjgl3` | 本地 `sdl-gpu` 子项目已有 | 保留，不删 |
+
+已确认可行的 1.7.10 → 1.12.2 映射：`Vec3` → `Vec3d`（字段 `x/y/z`）、`MathHelper` → `net.minecraft.util.math.MathHelper`、`floor_double` → `floor`、`IRenderHandler` 由接口变抽象类、`EntityFX` → `Particle`、`RendererLivingEntity` → `RenderLivingBase`、`Frustrum` → `Frustum`、`Block.isOpaqueCube()` → `isOpaqueCube(state)`、`Block.getRenderBlockPass()` → `getRenderLayer()`、`ItemStack.hasEffect(int)` → `hasEffect()`、`Entity.getBrightnessForRender(f)` → `getBrightnessForRender()`、`Tessellator.setTranslation(float,float,float)` → `(double,double,double)`、`ModelBox.render(Tessellator,float)` → `(BufferBuilder,float)`。
+
+三处结构性差异已按以下方式适配：
+
+1. `DirectTessellator` 在 1.7.10 是 `Tessellator` 子类，1.12.2 不是。`TesrMeshSink`、`ModelPartMeshBuilder` 与 `AngelicaTesrMeshCache.MeshBackend` 已统一使用 `DirectTessellator`，调用方同步调整。
+2. `RenderLivingBase` 没有 1.7.10 的 `renderPassModel` 字段，`DeferredEntityOverlay` 已按 1.12.2 的真实 `LayerRenderer` 实例捕获并重放。
+3. `ParticleCaptureTessellator` 已由 `ParticleCaptureBuffer` 与 `ParticleQuadDecoder` 替代，顶点捕获、解码和溢出的原版顺序回放均按 `BufferBuilder` 实现。
+
+### 第 15 项逐文件依赖链与 GTNHLib/glsm 缺口
+
+TESR 批处理的引入顺序按依赖链固定下来，每一步只需新增文件或补一个方法。
+
+1. `net.coderbot.batchedentityrendering.impl` 的 `TransparencyType`、`BlendingStateHolder`、`BatchVertexFormats`。前两个逐字复制；`BatchVertexFormats` 把 `IVertexAttributeWriter` 的参数从 1.7.10 的 `Tessellator` 改为 GTNHLib 的 `DirectTessellator`。
+2. `com.gtnewhorizons.angelica.compat.mojang.RenderLayer`。本地 `net.coderbot.iris.layer.RenderLayer` 只是 `solid/cutout/translucent` 的占位类，不能替代；完整版依赖主项目的 `api/tesr`、`rendering/tesr`、`shadercompat`，因此放在主项目而不是 `glsm`。
+3. `shader` 的 `PassOverride` 加 `GbufferPrograms` 的 pass 栈：`getSpecialCondition`、`getDeclaredTranslucency`、`getOverridePhase`、`push/popOverridePhase`、`begin/endTranslucencyDeclaration`、`begin/endNestedEntityPhase`，以及 `WorldRenderingPipeline.setDeclaredTranslucency` 与两个管线实现的对应方法。
+4. `shader` 的 `CapturedRenderingState` 补 `StateRecorder` 接口与实体栈：`setCurrentEntityAndItem`、`push/popCurrentEntityAndItem`、`push/popCurrentEntityColor`、`push/popCurrentRenderedItem`、`push/popEntityState`、`setCurrentNamedEntity`、`setCurrentNamedItem`、`setCurrentRenderedItem(Item,int)`。录制部分经 `StateRecorder` 交给主项目，避免 `shader` 反向引用。
+5. `glsm` 的补丁：`GLSMConfig.packBrightness/packedLastBrightness/extendedAttribsExpected/expandVertexFormats`、`DisplayListManager.recordStateCommand/recordStateCommandIfChanged/abortIfLeaked`、`Uniforms.rescaleFactor`、`GLSMPrograms.setFfpInstancing`、`GLSMDraws.drawCalls`、`FrameHooks` 的 `pushGroup` 单参调用。
+6. `GTNHLib` 的 `DirectTessellator` 已有 `getVertexCount()` 与 `getDrawMode()`，无需再补；`MatrixHelper` 从上游 `client/renderer/MatrixHelper.java` 取，`getNormalMatrix` 用 joml 实现以避开未移植的 `NormalHelper`。
+7. 主项目的 `rendering/tesr` 全目录、`rendering/{RenderFailures,GlintClock,SkippedGlintBlock,BlockMaterialAttribute,DeferredEntityOverlay}`、`shadercompat/ShaderGlint`、`iris/IrisDisplayListState`、`config/AngelicaConfig`（门面，读 `SodiumGameOptions` 的六个新开关与 `glintWorld`）。
+8. 宿主接入留到最后：`MixinTileEntityRendererDispatcher`、`MixinModelRenderer`、`MixinRenderItem_Instanced`。
+
+`DeferredEntityOverlay` 不保存 `renderPassModel`，而是保存 `RenderLivingBase` 与实际 `LayerRenderer`，重放保留模组层和模型状态。`PassOverride` 不存在签名差异：上游当前 HEAD 的 `ModelPartBatcher` 只用 `PassOverride.capture()` 与 `PassOverride.NONE`，没有任何 `PassOverride.of` 调用，三参 `of` 由 `capture()` 内部使用。
+
+粒子实例化与掉落物实例化均已交付。粒子按 `ParticleManager` 的 6 个 run 接入：`Instancing.PARTICLE` 的 FFP 与 pack 变体、`ParticleCaptureBuffer` + `ParticleQuadDecoder` 的捕获与解码，以及 `ParticleLitRun` 给第 3 层补出的独立 run；`Tessellator` 的 1.7.10 构造与 `draw()` 返回值的签名要求在 1.12.2 无对应，已按 `BufferBuilder` 重写。掉落物按 `RenderItem.renderQuads` 的顶点接入（`DroppedItemInstancer` + `ModelPartBatcher`），`RenderBlocks` 与 `ItemRenderer.renderItemIn2D` 在 1.12.2 已移除，几何改由 baked model 路径提供，`BlockRenderListManager` 与 `ItemRenderListManager` 不再移植。
+
+### 批次三第 15 项交付摘要
+
+第 15 项在 `feat/ffp-instancing` 上全部落地，等待实机验证。以下按模块记录实际交付内容。
+
+**TESR 批处理、图集与阴影回放**：`rendering/tesr` 与 `api/tesr` 共 51 个新文件、约 8900 行。
+`ModelPartBatcher` 记录模型部件、物品与阴影的绘制并入队实例；`TesrBatchRenderer` 管理 pass、
+实例化能力与延迟管线；`RetainedTesrGroups` 持有分组、glint 层、立方体列与实例列；
+`AngelicaTesrMeshCache`、`TemplateCapture`、`TemplateBuffer`、`MeshBuffer`、`VertexTransform`、
+`BakedTransformCapture` 负责模板捕获与解码；`BatchEligibility`、`DrawState`、`BatchDrawDefaults`、
+`BatchStateFallback`、`PassRebindGate` 负责准入判定与状态还原；`EntityTextureAtlas` 提供跨纹理
+图集；`EntityShadowReplay`、`EntityShadowBatcher`、`EntityRenderCommands`、`InstanceRing` 负责
+阴影 pass 的录制与主视图重放；`TesrLightCache`、`TileEntityLight`、`TesrAttribution`、
+`TesrProviderDispatch`、`TesrAnchorMath`、`ShadowQuadMath`、`PendingTesrDraws`、
+`SectionBuiltBlockEntity`、`BeaconBeamMeshes`、`VanillaModelMeshes`、`EntityMaterials`、
+`GlintCapture` 补齐其余支持。
+
+**TEMPLATE/CUBE 与粒子变体**：`glsm` 的 `Instancing`（`TEMPLATE`、`CUBE`、`PARTICLE`）、
+`CubeInstancedAttribs`、`InstancedGlslHelpers`、`UnitCubeMesh`、`CubeParams` 与
+`GLSMPrograms.setFfpInstancing`，顶点与片元生成器的模板、立方体、粒子三个分支；`shader` 的
+`AttributeTransformer`、`CoreTransformHelper`、`InstancedVariantCache` 与
+`DeferredWorldRenderingPipeline` 的变体能力表负责程序变体的编译与缓存，`Instancing.PARTICLE`
+由 `ParticleInstancer` 在延迟管线中取用。`Instancing.WEATHER` 只有枚举项，没有共享程序变体。
+
+**宿主接入**：新增 13 个 mixin。渲染点是 `MixinTileEntityRendererDispatcherTesr`、
+`MixinTileEntityRendererDispatcherTesrLight`、`MixinModelRenderer`、`MixinRenderItemInstanced`、
+`MixinRenderItemDroppedInstancing`、`MixinShadowRendererTesr`、`MixinShadowRendererEntities`、
+`MixinTileEntityBeaconRenderer`；准入接口注入是 `MixinRenderBatchEligibility`、
+`MixinRenderManagerBatchEligibility`、`MixinTileEntitySpecialRendererBatchEligibility`；
+立方体参数落在 `MixinModelBoxCubeParams`，overlay 层遍历落在
+`RenderLivingBaseDeferredOverlayMixin`。
+
+**overlay**：`DeferredEntityOverlay` 按 1.12.2 的真实 `LayerRenderer` 捕获并重放，覆盖闪电苦力怕与凋灵光环及其子类，其它护甲和模组层保持原生路径。阴影 replay 的 overlay 走专用命令，内联模型命令不进入录制记录。
+
+**掉落物**：`DroppedItemInstancer`、`ItemPropCache`、`ItemGlint`、`ItemQuadWriter` 与
+`MixinRenderItemDroppedInstancing`。一次决策同时处理基础几何与两层 glint，回落时把实际 draw 数
+交给 `BatchEligibility.onPartFallback`。
+
+**动态光源桥**：`compat/celeritasdynamiclights` 的 `DynamicLightProvider`、
+`DynamicLightProviderImpl`、`CeleritasDynamicLightsCompat`，在 `TileEntityLight` 的两处返回与
+`MixinTileEntityRendererDispatcherTesrLight` 的缓存值上各合并一次。
+
+验证记录（2026-11-17）：
+
+- `./gradlew check --no-daemon`：通过。
+- `./gradlew build --no-daemon`：通过。
+- `./gradlew :test --no-daemon`：1575 个用例，5 个跳过，全部通过。
+- `./gradlew glIntegrationTest --no-daemon`：340 个用例，失败只有两个已确认的 viewport 基线
+  （`DrawableContextIntegrationTest.firstDrawableBindKeepsTheNativeWindowViewport` 与
+  `DrawableViewportIntegrationTest.firstDrawableViewportInitDoesNotJoinPreviousContextAttribScope`），
+  与本项无关。
+
+实机验证与性能数据尚未进行，本节不给出画面、兼容性或性能结论。
+
+### 第 15 项模板捕获修复与 otl 实机确认（2026-11-18）
+
+旧模型回退路径没有把实际绘制报告给 `BatchEligibility`，导致渲染器停留在 `UNKNOWN`，模型部件无法进入批处理。`ModelRendererIrisMixin` 现在在使用显示列表、批量 quad 或 vanilla 回退后调用 `onPartFallback`，使资格判定能够根据实际 draw 数完成。
+
+资格状态推进后，首次模板捕获暴露出三处 1.12.2 适配问题：
+
+- `ModelPartBatcher.capture` 在 `ModelBox.render` 外调用共享 `BufferBuilder.begin`，而 `TexturedQuad.draw` 每个面还会自行 `begin/draw`，嵌套调用必然抛出 `Already building`。已删除外层调用，保留每个面经 `TessellatorDrawRouter` 进入独立捕获器的路径。
+- `TessellatorManager.copyBufferBuilderToDirect` 每次拦截都重复设置顶点格式，第一张面就会与捕获器的预置格式冲突。现在相同规范格式实例只设置一次；已有顶点时切换图元类型会立即抛出异常，避免错误解释模板。
+- 关闭直接内存访问时，vanilla 模型部件在 `templateFor` 前以 `TEMPLATE` 原因退回，避免面片进入即时批次后再次回退绘制。
+
+新增 `ModelPartCaptureGLTest` 覆盖首次捕获与模板复用、共享 builder 后续可再次 `begin`、直接内存关闭时在绘制任何面前拒绝捕获，以及同一捕获中混用 quad 与 triangle 时拒绝生成模板。三个用例均经过 RED/GREEN 验证，独立 Spec 与代码质量审查通过。
+
+验证记录：
+
+- 完整 `./gradlew check build --no-daemon` 通过；TESR 与掉落物相关 19 个真实 GL 用例全部通过。
+- 带周期实例计数的 `probe04` 再次通过完整构建与 3 个捕获回归。临时诊断已从最终源码撤除。
+- 用户在 otl 同一存档中对狼、猪、牛、羊及掉落物完成实机验证，确认崩溃消失且画面正常。
+- 本次 otl 日志中的 `parts`、`draws`、`instances`、`cubes` 仍为 `0`，实体实例化没有实际执行。当前性能对比不能归因于实体实例化收益，后续需继续分析 `MIXED_RENDERER` 与 `TEXTURE` 拒绝原因。
+- 全量 GL 任务仍只有两个既有 viewport 基线失败，均为 `expected 64 but was 854`，与本次改动无关。
+
+### 第 15 项运行时入口补齐与 probe06 实测（2026-11-19）
+
+重新对照 Angelica `8e099e95` 后，修复了实例化实现已存在但宿主入口没有接线的部分：
+
+- `TextureManager.bindTexture` 接入纹理身份跟踪；`GLSMHooks.TEXTURE_DELETE` 通知 `EntityTextureAtlas` 释放已删除源纹理对应的 atlas 槽位。
+- `Render.renderShadow` 与 `renderEntityOnFire` 的原版顶点流接入实体批次；保持原版立即绘制条件，并在阴影/火焰材质切换时提交前一层，保留绘制顺序。Iris 阴影 pass 不生成原版投影阴影时，回放记录会拒绝该实体，主视图改走原版绘制。
+- 主模型与名称标签的即时 draw 接入 `BatchEligibility` 计数；名称标签仍会拒绝阴影 replay，避免回放出主视图文字。
+- 1.12.2 的 `LayerHeldBlock` 直接调用 `BlockRendererDispatcher`，绕过 `RenderItem` baked-model 入口。该层执行前先提交已排队实体几何，将即时方块 draw 计入预期绘制，并拒绝不完整的阴影 replay。
+- 原版箱子、末影箱、告示牌与头颅改走 `VanillaModelMeshes` 缓存网格。破坏阶段继续执行原版路径；告示牌在文字绘制前提交木牌；玩家头颅同时缓存外层皮肤几何并保留半透明材质。
+- `LayerArmorBase` 护甲本体、两层附魔光效，以及第三人称手持物品与光效接入批处理；第一人称、GUI、非活动实体批次及不支持的 GL 状态保留原版路径。世界光效开关只控制世界中的光效。
+- 上游 `BossStatus`/`IBossDisplayData` replay hook 不移植：它们不在 1.12.2 API 中；该版本用服务端 `BossInfo` 经 `SPacketUpdateBossInfo` 更新客户端 `GuiBossOverlay`，Boss 血条不由实体渲染方法写入全局状态。
+- 扩展 `TesrMixinSignatureTest`，从 1.12.2 目标方法字节码核对 Mixin 调用点、ordinal 与 handler 参数，并覆盖新增宿主 mixin。
+
+验证记录：
+
+- `e7e7d329` 提交了 `MixinTextureManager` 纹理跟踪与实例化 FFP overlay varying 声明；overlay 变体真实 GL 编译/链接回归通过。
+- 2026-11-18 用户在 otl 场景运行 `probe06`，记录到 `draws=138124`、`cubes=4934592`、`parts=4789407`、`texture=0`、`atlasResidents=5`、`atlasPages=1`，证明 CUBE 实例化与纹理识别路径已执行。没有普通 TEMPLATE 实例计数；末影人/骷髅仍存在单独的拒绝原因。
+- `probe06` 的 CPU 帧耗时比关闭批处理的样本低，但场景和实体数量没有固定，该差异只记作性能信号，不作为收益结论。三个 Cleanroom、otl、Forge 实例已部署相同 SHA-256 `2fac553a63b10fc3d4b62f37604058a14a92e561a4dad95f2d4bad3c3946a96b` 的诊断包。
+- 2026-11-19：`./gradlew check --no-daemon` 通过，包含 1584 个测试、5 个跳过、分发 Jar/remap 与模块边界检查；新增的 TESR Mixin 参数及注入配置测试通过。定向 `glIntegrationTest` 中 `DroppedItemInstancingGLTest` 10 项与 `FfpInstancingGLTest` 1 项全部通过。
+- 末影人手持方块路径已在 `LayerHeldBlock` 入口刷新前序实体批次，并把原版即时方块绘制计入预期 draw；骷髅持物走第三人称手持物品实例化入口。新增 `MixinLayerHeldBlockBatchEligibility` 的目标签名与 mixin 配置由完整检查验证。
+- 客户端画面仍需验证箱子动画、告示牌文字、头颅皮肤、护甲光效、第三人称手持物品、末影人手持方块、实体脚下阴影及着火效果，覆盖无光影与目标光影包。此轮没有启动 `runClient`。
+
+代码落地状态更新为“本地自动验证通过，等待新增原版路径实机确认”。第三方 mod 专用入口不属于本项验收范围。

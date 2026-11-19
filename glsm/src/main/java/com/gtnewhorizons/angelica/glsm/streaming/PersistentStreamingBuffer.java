@@ -1,6 +1,7 @@
 package com.gtnewhorizons.angelica.glsm.streaming;
 
 import com.gtnewhorizons.angelica.config.SystemProperties;
+import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug.FenceSource;
 import org.lwjgl.opengl.GL15;
 
 import java.nio.ByteBuffer;
@@ -24,7 +25,16 @@ public final class PersistentStreamingBuffer {
     }
 
     public static PersistentStreamingBuffer createOrNull(int capacity, boolean forceOrphan) {
-        final GlStreamingRing ring = GlStreamingRing.create(GL15.GL_ARRAY_BUFFER, capacity, forceOrphan);
+        return createOrNull(capacity, forceOrphan, FenceSource.UNATTRIBUTED);
+    }
+
+    /** Creates a streaming buffer whose fence polls are attributed to the supplied owner. */
+    public static PersistentStreamingBuffer createOrNull(int capacity, FenceSource fenceSource) {
+        return createOrNull(capacity, SystemProperties.FORCE_ORPHAN_STREAMING, fenceSource);
+    }
+
+    private static PersistentStreamingBuffer createOrNull(int capacity, boolean forceOrphan, FenceSource fenceSource) {
+        final GlStreamingRing ring = GlStreamingRing.create(GL15.GL_ARRAY_BUFFER, capacity, forceOrphan, fenceSource);
         return ring == null ? null : new PersistentStreamingBuffer(ring);
     }
 

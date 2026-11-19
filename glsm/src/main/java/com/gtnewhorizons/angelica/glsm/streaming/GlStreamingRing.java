@@ -1,10 +1,10 @@
 package com.gtnewhorizons.angelica.glsm.streaming;
 
-import com.gtnewhorizons.angelica.config.SystemProperties;
 import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
+import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug.FenceSource;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL32;
 import org.lwjgl.opengl.GL44;
@@ -20,6 +20,7 @@ import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memAddress0;
 final class GlStreamingRing {
 
     private final int target;
+    private final FenceSource fenceSource;
     private final int capacity;
     private final ByteBuffer mappedBuffer;
     private final long mappedAddress;
@@ -37,8 +38,9 @@ final class GlStreamingRing {
     private int fencesIssued;
     private int forcedReclaims;
 
-    private GlStreamingRing(int target, int capacity, int bufferId, ByteBuffer mappedBuffer) {
+    private GlStreamingRing(int target, int capacity, int bufferId, ByteBuffer mappedBuffer, FenceSource fenceSource) {
         this.target = target;
+        this.fenceSource = fenceSource;
         this.capacity = capacity;
         this.bufferId = bufferId;
         this.mappedBuffer = mappedBuffer;
@@ -46,11 +48,7 @@ final class GlStreamingRing {
         this.remaining = capacity;
     }
 
-    static GlStreamingRing create(int target, int capacity) {
-        return create(target, capacity, SystemProperties.FORCE_ORPHAN_STREAMING);
-    }
-
-    static GlStreamingRing create(int target, int capacity, boolean forceOrphan) {
+    static GlStreamingRing create(int target, int capacity, boolean forceOrphan, FenceSource fenceSource) {
         if (forceOrphan || !RenderSystem.supportsBufferStorage()) return null;
         final int id = GLSMBuffers.glGenBuffers();
         GLSMBuffers.glBindBuffer(target, id);
@@ -65,7 +63,7 @@ final class GlStreamingRing {
             return null;
         }
         GLStateManager.LOGGER.info("Streaming ring created (target=0x{}, {}KB)", Integer.toHexString(target), capacity / 1024);
-        return new GlStreamingRing(target, capacity, id, mapped);
+        return new GlStreamingRing(target, capacity, id, mapped, fenceSource);
     }
 
     /** Byte offset of a reserved range, or -1 when it can never be served. */
@@ -127,10 +125,10 @@ final class GlStreamingRing {
         while (!fences.isEmpty()) {
             final long fenceId = fences.firstId();
             final boolean perfDebugEnabled = GLSMPerfDebug.isEnabled();
-            final long perfStart = perfDebugEnabled ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.STREAM_FENCE_POLL) : 0L;
+            final long perfStart = perfDebugEnabled ? GLSMPerfDebug.now() : 0L;
             final boolean completed = signaled(GLSMBuffers.glClientWaitSync(fenceId, 0, 0L));
             if (perfDebugEnabled) {
-                GLSMPerfDebug.end(GLSMPerfDebug.Stage.STREAM_FENCE_POLL, perfStart);
+                GLSMPerfDebug.recordFencePoll(fenceSource, perfStart, GLSMPerfDebug.now());
             }
             if (!completed) break;
             final int bytes = fences.firstBytes();
