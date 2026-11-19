@@ -3,10 +3,7 @@ package com.gtnewhorizons.angelica.rendering.tesr;
 import com.gtnewhorizon.gtnhlib.client.renderer.DirectTessellator;
 import net.minecraft.client.model.ModelBox;
 import net.minecraft.client.model.ModelRenderer;
-import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.Tessellator;
-import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
-import org.lwjgl.opengl.GL11;
 
 import java.util.List;
 
@@ -26,11 +23,8 @@ public final class ModelPartMesher {
     /** Renders the part's boxes into the shared buffer the active capture reads its vertices from. */
     public static void emitPartLocal(DirectTessellator t, ModelRenderer part, float scale) {
         final List<ModelBox> boxes = part.cubeList;
-        final BufferBuilder buffer = Tessellator.getInstance().getBuffer();
-        buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_TEX_NORMAL);
         for (int i = 0, n = boxes.size(); i < n; i++) {
-            boxes.get(i).render(buffer, scale);
+            boxes.get(i).render(Tessellator.getInstance().getBuffer(), scale);
         }
-        Tessellator.getInstance().draw();
     }
 }

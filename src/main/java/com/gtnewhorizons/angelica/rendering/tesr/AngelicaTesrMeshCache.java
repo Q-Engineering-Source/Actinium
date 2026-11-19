@@ -172,8 +172,23 @@ public final class AngelicaTesrMeshCache {
             retireBuckets(entry);
         }
         final CaptureSink sink = new CaptureSink(entry);
-        builder.angelica$build(sink);
-        sink.close();
+        try {
+            builder.angelica$build(sink);
+            sink.close();
+        } catch (RuntimeException | Error failure) {
+            try {
+                sink.close();
+            } catch (RuntimeException | Error cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+            entries.remove(key);
+            try {
+                retireBuckets(entry);
+            } catch (RuntimeException | Error cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+            throw failure;
+        }
         if (entry.buckets.isEmpty() && sink.openedAnyBucket && !warnedEmptyCapture) {
             warnedEmptyCapture = true;
             LOG.debug("Capture produced 0 vertices across all buckets for {}", key.getClass().getName());
@@ -196,22 +211,25 @@ public final class AngelicaTesrMeshCache {
         @Override
         public DirectTessellator angelica$bucket(VertexFormat format, ResourceLocation texture, TesrMaterial material) {
             close();
+            final DirectTessellator tessellator = backend.beginCapture(format);
             openTexture = texture;
             openMaterial = material != null ? material : TesrMaterial.CURRENT_STATE;
             open = true;
             openedAnyBucket = true;
-            return backend.beginCapture(format);
+            return tessellator;
         }
 
         void close() {
             if (open) {
-                final TemplateBuffer template = backend.endCaptureToTemplate();
-                if (template != null) {
-                    entry.buckets.add(new Bucket(openTexture, openMaterial, template));
-                }
+                final ResourceLocation texture = openTexture;
+                final TesrMaterial material = openMaterial;
                 open = false;
                 openTexture = null;
                 openMaterial = null;
+                final TemplateBuffer template = backend.endCaptureToTemplate();
+                if (template != null) {
+                    entry.buckets.add(new Bucket(texture, material, template));
+                }
             }
         }
     }
@@ -277,21 +295,45 @@ public final class AngelicaTesrMeshCache {
 
     public static final class GtnhMeshBackend implements MeshBackend {
         private DirectTessellator direct;
+        private boolean captureStarted;
 
         @Override
         public DirectTessellator beginCapture(VertexFormat format) {
-            direct = TessellatorManager.startCapturingDirect(format);
-            direct.startDrawing(GL_QUADS);
-            direct.draw();
-            return direct;
+            direct = TessellatorManager.startCapturingDirect();
+            captureStarted = true;
+            try {
+                direct.setVertexFormat(format);
+                direct.startDrawing(GL_QUADS);
+                direct.draw();
+                return direct;
+            } catch (RuntimeException | Error failure) {
+                try {
+                    TessellatorManager.stopCapturingDirect();
+                } catch (RuntimeException | Error cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                } finally {
+                    direct = null;
+                    captureStarted = false;
+                }
+                throw failure;
+            }
         }
 
         @Override
         public TemplateBuffer endCaptureToTemplate() {
-            final TemplateBuffer template = TemplateCapture.toTemplate(direct);
-            TessellatorManager.stopCapturingDirect();
-            direct = null;
-            return template;
+            if (!captureStarted) {
+                throw new IllegalStateException("No GTNH mesh capture is active");
+            }
+            try {
+                return TemplateCapture.toTemplate(direct);
+            } finally {
+                try {
+                    TessellatorManager.stopCapturingDirect();
+                } finally {
+                    direct = null;
+                    captureStarted = false;
+                }
+            }
         }
     }
 }

@@ -22,6 +22,7 @@ import java.util.function.LongSupplier;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AngelicaTesrMeshCacheTest {
@@ -54,6 +55,39 @@ class AngelicaTesrMeshCacheTest {
         });
 
         assertEquals(List.of("begin", "queue", "queue", "end"), replay.events);
+    }
+
+    @Test
+    void failedBuilderClosesCaptureAndDiscardsPartialEntry() {
+        final TemplateBuffer partial = new TemplateBuffer(new int[8], 1, 7);
+        backend.nextTemplate = partial;
+        final IllegalStateException failure = new IllegalStateException("builder failed");
+
+        final IllegalStateException thrown = assertThrows(IllegalStateException.class, () ->
+            cache.renderCached(key, sink -> {
+                sink.angelica$bucket(DefaultVertexFormat.POSITION_TEXTURE_NORMAL, TEX_A);
+                throw failure;
+            })
+        );
+
+        assertSame(failure, thrown);
+        assertEquals(1, backend.endCaptures);
+        assertFalse(cache.hasEntry(key));
+        assertEquals(List.of(partial), replay.retired);
+    }
+
+    @Test
+    void failedCaptureStartDoesNotCloseAnUnopenedCapture() {
+        final IllegalStateException failure = new IllegalStateException("capture start failed");
+        backend.beginFailure = failure;
+
+        final IllegalStateException thrown = assertThrows(IllegalStateException.class, () ->
+            cache.renderCached(key, this::oneBucket)
+        );
+
+        assertSame(failure, thrown);
+        assertEquals(0, backend.endCaptures);
+        assertFalse(cache.hasEntry(key));
     }
 
     enum RetireTrigger { INVALIDATE, DIRTY_RECAPTURE, EVICT, CLEAR }
@@ -135,16 +169,25 @@ class AngelicaTesrMeshCacheTest {
 
     private static final class FakeBackend implements MeshBackend {
         int beginCaptures;
+        int endCaptures;
+        TemplateBuffer nextTemplate;
+        IllegalStateException beginFailure;
 
         @Override
         public DirectTessellator beginCapture(VertexFormat format) {
             beginCaptures++;
+            if (beginFailure != null) throw beginFailure;
             return null;
         }
 
         @Override
         public TemplateBuffer endCaptureToTemplate() {
-            return new TemplateBuffer(new int[8], 1, 7);
+            endCaptures++;
+            final TemplateBuffer template = nextTemplate != null
+                ? nextTemplate
+                : new TemplateBuffer(new int[8], 1, 7);
+            nextTemplate = null;
+            return template;
         }
     }
 
