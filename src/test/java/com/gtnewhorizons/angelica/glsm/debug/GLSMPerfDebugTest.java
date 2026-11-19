@@ -4,6 +4,8 @@ import com.gtnewhorizon.gtnhlib.client.renderer.DirectTessellator;
 import com.gtnewhorizon.gtnhlib.client.renderer.vertex.DefaultVertexFormat;
 import com.gtnewhorizons.angelica.glsm.ITessellatorData;
 import com.gtnewhorizons.angelica.glsm.QuadConverter;
+import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug.FenceSource;
+import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug.Stage;
 import com.gtnewhorizons.angelica.glsm.profiling.DebugCounters;
 import com.gtnewhorizons.angelica.glsm.streaming.TessellatorStreamingDrawer;
 import org.junit.jupiter.api.AfterEach;
@@ -272,6 +274,26 @@ class GLSMPerfDebugTest {
         final String report = GLSMPerfDebug.drainReport();
         assertTrue(report.contains("chunk.upload["), report);
         assertTrue(report.contains("debugCounters[pbrAnimDryRuns=2]"), report);
+    }
+
+    @Test
+    void fencePollCountsEachSourceOnceAndKeepsUnattributedPollsInTheTotal() {
+        GLSMPerfDebugHooks.setConfiguredEnabled(false);
+        GLSMPerfDebugHooks.setConfiguredEnabled(true);
+
+        GLSMPerfDebug.recordFencePoll(FenceSource.BUFFER_BUILDER, 100L, 120L);
+        GLSMPerfDebug.recordFencePoll(FenceSource.ENTITY_INSTANCES, 200L, 250L);
+        GLSMPerfDebug.recordFencePoll(FenceSource.UNATTRIBUTED, 300L, 400L);
+
+        assertEquals(3, GLSMPerfDebug.getSampledCount(Stage.STREAM_FENCE_POLL));
+        assertEquals(1, GLSMPerfDebug.getSampledCount(Stage.STREAM_FENCE_POLL_BUFFER_BUILDER));
+        assertEquals(1, GLSMPerfDebug.getSampledCount(Stage.STREAM_FENCE_POLL_ENTITY_INSTANCES));
+        assertEquals(0, GLSMPerfDebug.getSampledCount(Stage.STREAM_FENCE_POLL_TESSELLATOR));
+
+        GLSMPerfDebug.drainReport();
+
+        assertEquals(0, GLSMPerfDebug.getSampledCount(Stage.STREAM_FENCE_POLL));
+        assertEquals(0, GLSMPerfDebug.getSampledCount(Stage.STREAM_FENCE_POLL_ENTITY_INSTANCES));
     }
 
     @Test

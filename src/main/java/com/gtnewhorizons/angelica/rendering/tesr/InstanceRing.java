@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.rendering.tesr;
 
+import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug.FenceSource;
 import com.gtnewhorizons.angelica.glsm.streaming.OrphanStreamingBuffer;
 import com.gtnewhorizons.angelica.glsm.streaming.PersistentStreamingBuffer;
 
@@ -16,7 +17,8 @@ public final class InstanceRing {
     public long upload(ByteBuffer data, int stride) {
         if (!initialized) {
             initialized = true;
-            persistentRing = PersistentStreamingBuffer.createOrNull(PersistentStreamingBuffer.DEFAULT_CAPACITY);
+            persistentRing = PersistentStreamingBuffer.createOrNull(PersistentStreamingBuffer.DEFAULT_CAPACITY,
+                FenceSource.ENTITY_INSTANCES);
         }
         if (persistentRing != null) {
             final int index = persistentRing.upload(data, stride);

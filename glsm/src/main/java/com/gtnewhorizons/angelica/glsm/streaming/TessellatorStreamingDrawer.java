@@ -89,7 +89,8 @@ public class TessellatorStreamingDrawer {
         if (initialized) return;
         initialized = true;
 
-        persistentBuffer = PersistentStreamingBuffer.createOrNull(PersistentStreamingBuffer.DEFAULT_CAPACITY);
+        persistentBuffer = PersistentStreamingBuffer.createOrNull(PersistentStreamingBuffer.DEFAULT_CAPACITY,
+            GLSMPerfDebug.FenceSource.TESSELLATOR);
         if (persistentBuffer != null) {
             LOGGER.info("Persistent streaming buffer created ({}MB)", PersistentStreamingBuffer.DEFAULT_CAPACITY / (1024 * 1024));
         }

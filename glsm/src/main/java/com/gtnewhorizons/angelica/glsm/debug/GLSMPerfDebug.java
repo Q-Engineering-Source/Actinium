@@ -25,6 +25,9 @@ public final class GLSMPerfDebug {
         STREAM_ORPHAN_UPLOAD("stream.orphanUpload"),
         STREAM_FENCE_CREATE("stream.fenceCreate", true),
         STREAM_FENCE_POLL("stream.fencePoll", true),
+        STREAM_FENCE_POLL_TESSELLATOR("stream.fencePoll.tessellator", true),
+        STREAM_FENCE_POLL_BUFFER_BUILDER("stream.fencePoll.bufferBuilder", true),
+        STREAM_FENCE_POLL_ENTITY_INSTANCES("stream.fencePoll.entityInstances", true),
         STREAM_FENCE_WAIT("stream.fenceWait", true),
         STREAM_SHADER_PREDRAW("stream.shaderPreDraw"),
         STREAM_DRAW_CALL("stream.drawCall"),
@@ -182,6 +185,30 @@ public final class GLSMPerfDebug {
         }
     }
 
+    /** Identifies the buffer owner in the fence poll report. */
+    public enum FenceSource {
+        TESSELLATOR(Stage.STREAM_FENCE_POLL_TESSELLATOR),
+        BUFFER_BUILDER(Stage.STREAM_FENCE_POLL_BUFFER_BUILDER),
+        ENTITY_INSTANCES(Stage.STREAM_FENCE_POLL_ENTITY_INSTANCES),
+        UNATTRIBUTED(Stage.STREAM_FENCE_POLL);
+
+        private final Stage stage;
+
+        FenceSource(Stage stage) {
+            this.stage = stage;
+        }
+    }
+
+    /** Records one poll in both its source bucket and the aggregate window. */
+    public static void recordFencePoll(FenceSource source, long startNanos, long endNanos) {
+        if (startNanos == 0L) return;
+        if (source.stage != Stage.STREAM_FENCE_POLL) {
+            observedCounts[source.stage.ordinal()]++;
+            accumulateSample(source.stage, endNanos - startNanos);
+        }
+        record(Stage.STREAM_FENCE_POLL, startNanos, endNanos);
+    }
+
     public static void recordFenceReclaim(int bytes) {
         fenceReclaimedRegions++;
         fenceReclaimedBytes += bytes;
@@ -212,16 +239,20 @@ public final class GLSMPerfDebug {
     }
 
     private static void recordSample(Stage stage, long now, long elapsed) {
+        accumulateSample(stage, elapsed);
+        if (lastReportNanos == 0L) {
+            lastReportNanos = now;
+        } else if (now - lastReportNanos >= REPORT_INTERVAL_NS) {
+            report(now);
+        }
+    }
+
+    private static void accumulateSample(Stage stage, long elapsed) {
         final int index = stage.ordinal();
         totalNanos[index] += elapsed;
         sampledCounts[index]++;
         if (elapsed > maxNanos[index]) {
             maxNanos[index] = elapsed;
-        }
-        if (lastReportNanos == 0L) {
-            lastReportNanos = now;
-        } else if (now - lastReportNanos >= REPORT_INTERVAL_NS) {
-            report(now);
         }
     }
 
