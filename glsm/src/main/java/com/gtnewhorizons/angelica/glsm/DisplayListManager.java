@@ -36,6 +36,7 @@ import java.util.List;
 
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memAddress;
 import static com.gtnewhorizon.gtnhlib.bytebuf.MemoryUtilities.memGetInt;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.displayListIdAllocator;
 
 /**
  * VBO-based display list emulation with command recording, transform collapsing, and format-based batching.
@@ -109,6 +110,7 @@ public class DisplayListManager {
     // Nested compilation support - stack of parent contexts
     private static final Deque<CompilationContext> compilationStack = new ArrayDeque<>();
 
+    // Guard the cache with the allocator monitor so each publication or deletion updates both together.
     private static final Int2ObjectMap<CompiledDisplayList> displayListCache = new Int2ObjectOpenHashMap<>();
 
     /**
@@ -792,7 +794,7 @@ public class DisplayListManager {
      * Checks both DisplayListManager's cache and VBOManager for GTNHLib compatibility.
      */
     public static boolean displayListExists(int list) {
-        if (displayListCache.containsKey(list)) {
+        if (getDisplayList(list) != null) {
             return true;
         }
         // Check VBOManager for GTNHLib compatibility (negative IDs)
@@ -803,7 +805,9 @@ public class DisplayListManager {
     }
 
     public static CompiledDisplayList getDisplayList(int list) {
-        return displayListCache.get(list);
+        synchronized (displayListIdAllocator) {
+            return displayListCache.get(list);
+        }
     }
 
     /**
@@ -880,7 +884,6 @@ public class DisplayListManager {
         final boolean hasDraws = accumulatedDraws != null && !accumulatedDraws.isEmpty();
 
         if (hasCommands || hasDraws) {
-            // Phase 1: Compile format-based VBOs (shared by both optimized and unoptimized paths)
             final DisplayListVBO compiledBuffers = new DisplayListVBOBuilder().addDraws(accumulatedDraws).build();
 
             final CommandBuffer finalBuffer = new CommandBuffer();
@@ -913,9 +916,11 @@ public class DisplayListManager {
             // Empty display list - per OpenGL spec, still valid after glNewList/glEndList
             compiled = CompiledDisplayList.EMPTY;
         }
-        // Store the compiled list (even if empty - an empty list is still a valid list).
-        // Re-recording an existing id replaces it; free the previous list's GPU resources.
-        final CompiledDisplayList previous = displayListCache.put(glListId, compiled);
+        final CompiledDisplayList previous;
+        synchronized (displayListIdAllocator) {
+            displayListIdAllocator.reserve(glListId);
+            previous = displayListCache.put(glListId, compiled);
+        }
         if (previous != null && previous != CompiledDisplayList.EMPTY && previous != compiled) {
             previous.delete();
         }
@@ -1062,7 +1067,7 @@ public class DisplayListManager {
     }
 
     private static void executeDisplayList(int list) {
-        final CompiledDisplayList compiled = displayListCache.get(list);
+        final CompiledDisplayList compiled = getDisplayList(list);
         if (compiled != null) {
             final int prevList = currentRenderingList;
             currentRenderingList = list;
@@ -1087,12 +1092,33 @@ public class DisplayListManager {
      * Delete display lists and free their VBO resources.
      */
     public static void glDeleteLists(int list, int range) {
-        for (int i = list; i < list + range; i++) {
-            CompiledDisplayList compiled = displayListCache.remove(i);
-            if (compiled != null) {
-                compiled.delete();
+        if (range <= 0) return;
+        final long end = Math.min((long) list + range, (long) Integer.MAX_VALUE + 1);
+        final List<CompiledDisplayList> removed = new ArrayList<>();
+        synchronized (displayListIdAllocator) {
+            if (end - list <= displayListCache.size()) {
+                for (long id = list; id < end; id++) {
+                    final CompiledDisplayList compiled = displayListCache.remove((int) id);
+                    if (compiled != null && compiled != CompiledDisplayList.EMPTY) removed.add(compiled);
+                }
+            } else {
+                final var entries = displayListCache.int2ObjectEntrySet().iterator();
+                while (entries.hasNext()) {
+                    final var entry = entries.next();
+                    final int id = entry.getIntKey();
+                    if (id >= list && id < end) {
+                        final CompiledDisplayList compiled = entry.getValue();
+                        entries.remove();
+                        if (compiled != CompiledDisplayList.EMPTY) removed.add(compiled);
+                    }
+                }
+            }
+            final int firstPositive = Math.max(list, 1);
+            if (firstPositive < end) {
+                displayListIdAllocator.freeRange(firstPositive, (int) (end - firstPositive));
             }
         }
+        removed.forEach(CompiledDisplayList::delete);
     }
 
     public static void logCompiledDisplayList(int listId, CompiledDisplayList compiled, StackTraceElement[] stackTrace) {
