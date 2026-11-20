@@ -92,7 +92,8 @@ class EndPortalGeometryTest {
             0.0D,
             0.0D,
             -4.0D,
-            List.of(layer)
+            List.of(layer),
+            true
         );
         List<DividedVertex> vertices = new ArrayList<>();
 
@@ -129,7 +130,8 @@ class EndPortalGeometryTest {
             0.0D,
             0.0D,
             -4.0D,
-            layers
+            layers,
+            true
         );
         List<DividedVertex> vertices = new ArrayList<>();
 
