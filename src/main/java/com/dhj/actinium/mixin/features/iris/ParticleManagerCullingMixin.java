@@ -1,6 +1,5 @@
 package com.dhj.actinium.mixin.features.iris;
 
-import com.dhj.actinium.mixinterface.features.iris.IndependentParticleDraw;
 import com.dhj.actinium.render.particle.ParticleViewportCulling;
 import com.dhj.actinium.render.terrain.ActiniumWorldRenderer;
 import com.gtnewhorizons.angelica.rendering.ParticleRunSplitter;
@@ -18,22 +17,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * Decides, per particle, whether it is visible, whether the run has to change its declared
- * translucency, and whether the batch takes the particle instead of the vanilla write.
- *
- * <p>The two call sites are wrapped rather than redirected: a plain redirect occupies the
- * invocation, and ParticleCulling puts its own redirect on the same two invocations, which the
- * injector cannot chain with a second one at the same priority. A wrapped invocation leaves one
- * {@code Operation} that still performs the original call, so another redirect can sit beside it.
- * Mixin applies the lowest priority value first, so this class sits at 900, below the default 1000,
- * and discovers its targets before the default priority redirect rewrites them.</p>
- *
- * <p>The local frustum test always runs, for the batched and the fallback path alike: an invisible
- * particle must neither be batched nor written, and a particle the batch took never reaches the
- * {@code Operation}, so the test cannot be left to the caller. ParticleCulling, when present, adds
- * its own test on top; a second bounding-box test per particle is cheap.</p>
- */
+/** Wraps both particle call sites before ParticleCulling's default-priority redirects rewrite them. */
 @Mixin(value = ParticleManager.class, priority = 900)
 public class ParticleManagerCullingMixin {
     @Unique
@@ -96,7 +80,7 @@ public class ParticleManagerCullingMixin {
         if (!ParticleViewportCulling.isVisible(particle, this.actinium$cullingViewport)) {
             return;
         }
-        if (particle instanceof IndependentParticleDraw) {
+        if (ParticleRunSplitter.requiresIndependentDraw(particle)) {
             ParticleRunSplitter.renderIndependent(particle, () -> original.call(particle, buffer, entityIn, partialTicks,
                 rotationX, rotationZ, rotationYZ, rotationXY, rotationXZ));
             return;

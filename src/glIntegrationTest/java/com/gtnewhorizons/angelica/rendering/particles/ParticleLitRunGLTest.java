@@ -11,6 +11,7 @@ import com.gtnewhorizons.angelica.rendering.ParticleItemPickupRenderer;
 import com.gtnewhorizons.angelica.rendering.ParticleRunSplitter;
 import com.gtnewhorizons.angelica.rendering.tesr.TesrBatchRenderer;
 import net.minecraft.client.particle.Particle;
+import net.minecraft.client.particle.ParticleExplosionLarge;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
@@ -40,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ParticleLitRunGLTest extends GLStateManagerIntegrationFixture {
 
+    private static final String PARTICLE_BATCHING_PROPERTY = "actinium.deferredParticleBatching";
     private static final float ROT_X = 0.36F;
     private static final float ROT_XZ = 0.21F;
     private static final float ROT_Z = 0.48F;
@@ -106,6 +108,61 @@ class ParticleLitRunGLTest extends GLStateManagerIntegrationFixture {
         } finally {
             ParticleLitRun.end();
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void largeExplosionDrawsOutsideTheLitRunAndRestoresIt(boolean batching) {
+        final String previous = System.setProperty(PARTICLE_BATCHING_PROPERTY, Boolean.toString(batching));
+        try {
+            assertLargeExplosionDraw(batching);
+        } finally {
+            if (previous == null) {
+                System.clearProperty(PARTICLE_BATCHING_PROPERTY);
+            } else {
+                System.setProperty(PARTICLE_BATCHING_PROPERTY, previous);
+            }
+        }
+    }
+
+    private void assertLargeExplosionDraw(boolean batching) {
+        final BufferBuilder run = Tessellator.getInstance().getBuffer();
+        final var explosion = new ParticleExplosionLarge(null, null, 0, 0, 0, 0, 0, 0) {
+            private boolean drew;
+
+            @Override
+            public void renderParticle(BufferBuilder buffer, Entity entity, float partialTicks, float rotationX,
+                                       float rotationZ, float rotationYZ, float rotationXY, float rotationXZ) {
+                // Keep vanilla's begin/draw boundary without invoking the unpatched vertex uploader.
+                buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_TEX_COLOR);
+                assertSame(run, buffer);
+                Tessellator.getInstance().draw();
+                drew = true;
+            }
+        };
+        ParticleLitRun.begin();
+        try {
+            assertEquals(batching, ParticleInstancer.renderParticle(new CaptureParticle(), run, null, 0.5F,
+                ROT_X, ROT_XZ, ROT_Z, ROT_YZ, ROT_XY));
+
+            if (ParticleRunSplitter.requiresIndependentDraw(explosion)) {
+                ParticleRunSplitter.renderIndependent(explosion,
+                    () -> explosion.renderParticle(run, null, 0.5F, ROT_X, ROT_XZ, ROT_Z, ROT_YZ, ROT_XY));
+            } else if (!ParticleInstancer.renderParticle(explosion, run, null, 0.5F,
+                ROT_X, ROT_XZ, ROT_Z, ROT_YZ, ROT_XY)) {
+                explosion.renderParticle(run, null, 0.5F, ROT_X, ROT_XZ, ROT_Z, ROT_YZ, ROT_XY);
+            }
+
+            assertTrue(explosion.drew);
+            assertEquals(drawsBefore + (batching ? 1 : 0), ParticleInstancer.getDraws());
+            assertSame(DefaultVertexFormats.PARTICLE_POSITION_TEX_COLOR_LMAP, run.getVertexFormat());
+            assertEquals(batching, ParticleInstancer.renderParticle(new CaptureParticle(), run, null, 0.5F,
+                ROT_X, ROT_XZ, ROT_Z, ROT_YZ, ROT_XY));
+        } finally {
+            ParticleLitRun.end();
+        }
+        assertEquals(drawsBefore + (batching ? 2 : 0), ParticleInstancer.getDraws());
+        assertClosedBuilder(run);
     }
 
     @Test

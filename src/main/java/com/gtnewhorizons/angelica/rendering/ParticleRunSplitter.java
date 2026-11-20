@@ -1,5 +1,6 @@
 package com.gtnewhorizons.angelica.rendering;
 
+import com.dhj.actinium.mixinterface.features.iris.IndependentParticleDraw;
 import com.gtnewhorizons.angelica.client.rendering.DeferredDrawBatcher;
 import com.gtnewhorizons.angelica.rendering.particles.ParticleInstancer;
 import dhj.embeddedt.embeddium.impl.render.chunk.sprite.SpriteTransparencyLevel;
@@ -8,6 +9,7 @@ import net.coderbot.iris.layer.GbufferPrograms;
 import net.coderbot.iris.pipeline.DeferredWorldRenderingPipeline;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleCloud;
+import net.minecraft.client.particle.ParticleExplosionLarge;
 import net.minecraft.client.particle.ParticleFirework;
 import net.minecraft.client.particle.ParticleSpell;
 import net.minecraft.client.renderer.BufferBuilder;
@@ -92,6 +94,11 @@ public final class ParticleRunSplitter {
         runOpen = true;
         if (nestedBatcherActive) DeferredDrawBatcher.enter();
         ParticleInstancer.beginLayer();
+    }
+
+    /** Identifies particles that must run outside the shared batch and capture buffers. */
+    public static boolean requiresIndependentDraw(Particle particle) {
+        return particle instanceof IndependentParticleDraw || particle instanceof ParticleExplosionLarge;
     }
 
     /** Runs a particle that owns its draw, with its own translucency and the shared builder idle. */
