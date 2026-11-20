@@ -10,6 +10,7 @@ import com.gtnewhorizons.angelica.glsm.hooks.ImmediateExtendedAttribHandler;
 import com.gtnewhorizons.angelica.glsm.streaming.OrphanStreamingBuffer;
 import com.gtnewhorizons.angelica.glsm.streaming.TessellatorEntityIds;
 import com.gtnewhorizons.angelica.glsm.streaming.PersistentStreamingBuffer;
+import com.gtnewhorizons.angelica.glsm.streaming.StreamingDrawOptions;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.vertex.VertexFormat;
 import net.minecraft.client.renderer.vertex.VertexFormatElement;
@@ -191,7 +192,9 @@ public final class BufferBuilderStreamingDrawer {
                 ? GLSMPerfDebug.begin(GLSMPerfDebug.Stage.BUFFERBUILDER_PREPARE_DRAW) : 0L;
             try {
                 GLStateManager.prepareWideLineEmulation(drawMode);
-                ShaderManager.getInstance().preDraw(state.vertexFlags);
+                if (!StreamingDrawOptions.isExternalProgramPreserved()) {
+                    ShaderManager.getInstance().preDraw(state.vertexFlags);
+                }
             } finally {
                 if (perfDebugEnabled) {
                     GLSMPerfDebug.end(GLSMPerfDebug.Stage.BUFFERBUILDER_PREPARE_DRAW, prepareDrawStart);
