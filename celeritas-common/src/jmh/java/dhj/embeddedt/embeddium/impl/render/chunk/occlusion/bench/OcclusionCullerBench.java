@@ -1,6 +1,7 @@
 package dhj.embeddedt.embeddium.impl.render.chunk.occlusion.bench;
 
 import dhj.embeddedt.embeddium.impl.render.chunk.RenderSection;
+import dhj.embeddedt.embeddium.impl.render.chunk.lists.RenderListPool;
 import dhj.embeddedt.embeddium.impl.render.chunk.lists.VisibleChunkCollector;
 import dhj.embeddedt.embeddium.impl.render.chunk.occlusion.OcclusionCuller;
 import dhj.embeddedt.embeddium.impl.render.chunk.occlusion.SectionLattice;
@@ -65,6 +66,8 @@ public class OcclusionCullerBench {
         public Viewport staticViewport;
         public Viewport[] rotatingViewports;
 
+        private final RenderListPool renderListPool = new RenderListPool();
+
         /** Must increment per invocation; the culler early-outs on a reused frame number. */
         private int frame = 1;
         private int rotationIndex;
@@ -106,14 +109,20 @@ public class OcclusionCullerBench {
         }
 
         public void search(OcclusionCuller.Visitor visitor, Viewport viewport) {
+            this.search(visitor, viewport, this.nextFrame());
+        }
+
+        private void search(OcclusionCuller.Visitor visitor, Viewport viewport, int frame) {
             this.lattice.ensureWindowCovers(viewport.getChunkCoord(), this.searchDistance);
-            this.lattice.findVisible(visitor, viewport, this.searchDistance, this.numRegions, true, true, this.nextFrame());
+            this.lattice.findVisible(visitor, viewport, this.searchDistance, this.numRegions, true, true, frame);
         }
 
         /** One frame through the real {@code VisibleChunkCollector}. */
         public VisibleChunkCollector collect(Viewport viewport) {
-            var collector = new VisibleChunkCollector(this.lattice, this.frame, this.numRegions, TARGET_QUEUE_SIZE, viewport.getBlockCoord());
-            this.search(collector, viewport);
+            int frame = this.nextFrame();
+            var collector = new VisibleChunkCollector(this.lattice, this.renderListPool.beginSearch(this.numRegions),
+                    frame, TARGET_QUEUE_SIZE, viewport.getBlockCoord());
+            this.search(collector, viewport, frame);
             collector.finishRebuildLists();
 
             return collector;

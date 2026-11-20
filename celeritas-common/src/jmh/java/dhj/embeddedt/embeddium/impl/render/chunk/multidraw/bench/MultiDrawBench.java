@@ -10,6 +10,7 @@ import dhj.embeddedt.embeddium.impl.render.chunk.compile.ChunkBuildOutput;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.ChunkTaskOutput;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.executor.ChunkJobResult;
 import dhj.embeddedt.embeddium.impl.render.chunk.lists.ChunkRenderList;
+import dhj.embeddedt.embeddium.impl.render.chunk.lists.RenderListPool;
 import dhj.embeddedt.embeddium.impl.render.chunk.lists.SortedRenderLists;
 import dhj.embeddedt.embeddium.impl.render.chunk.lists.VisibleChunkCollector;
 import dhj.embeddedt.embeddium.impl.render.chunk.multidraw.BatchAssembler;
@@ -182,12 +183,13 @@ public class MultiDrawBench {
             }
         }
 
-        /** One frame through the real collector. */
         private SortedRenderLists collect(Viewport viewport) {
             int frame = ++this.frameCounter;
 
             int regionIds = BenchPlatform.regionManager().getRegionIdsLength();
-            var collector = new VisibleChunkCollector(this.lattice, frame, regionIds, TARGET_QUEUE_SIZE, viewport.getBlockCoord());
+            // Each cached frame needs its own lists; a shared pool would overwrite earlier frames.
+            var slot = new RenderListPool().beginSearch(regionIds);
+            var collector = new VisibleChunkCollector(this.lattice, slot, frame, TARGET_QUEUE_SIZE, viewport.getBlockCoord());
 
             this.lattice.ensureWindowCovers(viewport.getChunkCoord(), this.syntheticWorld.getSearchDistance());
             this.lattice.findVisible(collector, viewport, this.syntheticWorld.getSearchDistance(),

@@ -1,6 +1,7 @@
 package dhj.embeddedt.embeddium.impl.render.chunk.occlusion.bench;
 
 import dhj.embeddedt.embeddium.impl.render.chunk.RenderSection;
+import dhj.embeddedt.embeddium.impl.render.chunk.lists.RenderListPool;
 import dhj.embeddedt.embeddium.impl.render.chunk.lists.VisibleChunkCollector;
 import dhj.embeddedt.embeddium.impl.render.chunk.occlusion.SectionLattice;
 import dhj.embeddedt.embeddium.impl.render.viewport.Viewport;
@@ -75,6 +76,8 @@ public class ShadowOcclusionCullerBench {
         public Vector3f staticLight;
         public Vector3f[] rotatingLights;
 
+        private final RenderListPool renderListPool = new RenderListPool();
+
         /** Must increment per invocation; the culler early-outs on a reused frame number. */
         private int frame = 1;
         private int lightIndex;
@@ -145,9 +148,11 @@ public class ShadowOcclusionCullerBench {
 
         /** One shadow search through the real {@code VisibleChunkCollector}. */
         public VisibleChunkCollector collectShadow(Viewport shadowViewport, Vector3f light) {
-            var collector = new VisibleChunkCollector(this.lattice, this.frame, this.numRegions, TARGET_QUEUE_SIZE, shadowViewport.getBlockCoord());
+            int frame = this.nextFrame();
+            var collector = new VisibleChunkCollector(this.lattice, this.renderListPool.beginSearch(this.numRegions),
+                    frame, TARGET_QUEUE_SIZE, shadowViewport.getBlockCoord());
             this.lattice.findShadowVisible(collector, shadowViewport, this.shadowSearchDistance, this.numRegions,
-                    light, this.nextFrame());
+                    light, frame);
             collector.finishRebuildLists();
 
             return collector;
