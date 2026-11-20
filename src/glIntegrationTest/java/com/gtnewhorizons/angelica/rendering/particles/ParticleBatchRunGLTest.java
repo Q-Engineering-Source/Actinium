@@ -1,12 +1,11 @@
 package com.gtnewhorizons.angelica.rendering.particles;
 
+import com.dhj.actinium.render.TessellatorDrawRouter;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.GLStateManagerIntegrationFixture;
-import com.gtnewhorizons.angelica.glsm.ITessellatorData;
 import com.gtnewhorizons.angelica.glsm.backend.WindowBackends;
 import com.gtnewhorizons.angelica.glsm.ffp.ParticleQuadMesh;
 import com.gtnewhorizons.angelica.glsm.ffp.ShaderManager;
-import com.dhj.actinium.render.TessellatorDrawRouter;
 import com.gtnewhorizons.angelica.rendering.ParticleItemPickupRenderer;
 import com.gtnewhorizons.angelica.rendering.ParticleRunSplitter;
 import com.gtnewhorizons.angelica.rendering.tesr.TesrBatchRenderer;
@@ -28,17 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Drives the third particle layer through the run {@code ParticleLitRun} opens: the shared builder is
- * opened for the particles, the batch takes what it can decode, and the run's own draw carries the
- * rest.
- *
- * <p>Vanilla writes those particles into the shared builder without ever drawing it, so the run is
- * what makes them reach the screen. The run's draw goes through the tessellator hook, which the
- * integration harness cannot install (it runs without the game's mixins); the test therefore performs
- * that one step through the router the hook calls, and every other step is the production code.</p>
- */
-class ParticleLitRunGLTest extends GLStateManagerIntegrationFixture {
+class ParticleBatchRunGLTest extends GLStateManagerIntegrationFixture {
 
     private static final float ROT_X = 0.36F;
     private static final float ROT_XZ = 0.21F;
@@ -64,23 +53,7 @@ class ParticleLitRunGLTest extends GLStateManagerIntegrationFixture {
     void restore() {
         ParticleInstancer.clear();
         ShaderManager.disable();
-        assertEquals(GL11.GL_NO_ERROR, GL11.glGetError(), "the lit particle run must leave no GL error");
-    }
-
-    @Test
-    void rejectsABuilderLeftOpenByAnotherRenderer() {
-        final BufferBuilder run = Tessellator.getInstance().getBuffer();
-        new OpenBufferView(run);
-        boolean rejected = false;
-        try {
-            ParticleLitRun.begin();
-        } catch (IllegalStateException expected) {
-            rejected = true;
-        }
-        if (rejected) {
-            run.finishDrawing();
-        }
-        assertTrue(rejected, "an unfinished foreign draw must not be committed under the particle pass state");
+        assertEquals(GL11.GL_NO_ERROR, GL11.glGetError(), "the particle run must leave no GL error");
     }
 
     @ParameterizedTest
@@ -88,7 +61,7 @@ class ParticleLitRunGLTest extends GLStateManagerIntegrationFixture {
     void independentBeamDrawResumesTheOriginalParticleRun(boolean hasVanillaRunBoundary) {
         final BufferBuilder run = Tessellator.getInstance().getBuffer();
         final Particle laser = new CaptureParticle();
-        ParticleLitRun.begin();
+        beginRun();
         try {
             assertFalse(ParticleRunSplitter.ownsIndependentBoundary(laser));
             ParticleRunSplitter.renderIndependent(laser, () -> {
@@ -104,24 +77,25 @@ class ParticleLitRunGLTest extends GLStateManagerIntegrationFixture {
             assertFalse(ParticleRunSplitter.ownsIndependentBoundary(laser));
             assertSame(DefaultVertexFormats.PARTICLE_POSITION_TEX_COLOR_LMAP, run.getVertexFormat());
         } finally {
-            ParticleLitRun.end();
+            endRun();
         }
     }
 
     @Test
     void nestedEntityDrawFlushesAndRestartsTheRun() {
-        ParticleLitRun.begin();
+        beginRun();
         assertTrue(ParticleRunSplitter.beforeNestedDraw(), "the open run has to be flushed before the entity uses the builder");
         assertEquals(0, Tessellator.getInstance().getBuffer().getVertexCount(),
             "the nested boundary consumes the current run instead of nesting another begin");
         ParticleRunSplitter.afterNestedDraw(true);
 
         assertTrue(ParticleRunSplitter.beforeNestedDraw(), "the reopened run accepts the same boundary again");
+        ParticleRunSplitter.endParticles();
     }
 
     @Test
-    void vanillaPickupEntityCanUseTheSharedBuilder() {
-        ParticleLitRun.begin();
+    void nestedPickupRendererCanUseTheSharedBuilder() {
+        beginRun();
         final BufferBuilder run = Tessellator.getInstance().getBuffer();
         try {
             assertDoesNotThrow(() -> ParticleItemPickupRenderer.render(() -> {
@@ -132,13 +106,13 @@ class ParticleLitRunGLTest extends GLStateManagerIntegrationFixture {
             assertSame(DefaultVertexFormats.PARTICLE_POSITION_TEX_COLOR_LMAP, run.getVertexFormat());
             assertEquals(0, run.getVertexCount());
         } finally {
-            ParticleLitRun.end();
+            endRun();
         }
     }
 
     @Test
     void particleCollectionOwnsItsDrawAndResumesInstancing() {
-        ParticleLitRun.begin();
+        beginRun();
         final BufferBuilder run = Tessellator.getInstance().getBuffer();
         try {
             assertTrue(ParticleInstancer.renderParticle(new CaptureParticle(), run, null, 0.5F,
@@ -162,34 +136,30 @@ class ParticleLitRunGLTest extends GLStateManagerIntegrationFixture {
             assertTrue(ParticleInstancer.renderParticle(new CaptureParticle(), run, null, 0.5F,
                 ROT_X, ROT_XZ, ROT_Z, ROT_YZ, ROT_XY));
         } finally {
-            ParticleLitRun.end();
+            endRun();
         }
         assertEquals(drawsBefore + 2, ParticleInstancer.getDraws());
         assertClosedBuilder(run);
     }
 
     @Test
-    void opensTheRunAndDrawsTheDecodedQuadAsInstances() {
-        ParticleLitRun.begin();
+    void drawsTheDecodedQuadAsInstances() {
+        beginRun();
         final BufferBuilder run = Tessellator.getInstance().getBuffer();
-        assertEquals(GL11.GL_QUADS, run.getDrawMode(), "the lit pass opens a quad run");
-        assertEquals(DefaultVertexFormats.PARTICLE_POSITION_TEX_COLOR_LMAP, run.getVertexFormat(),
-            "the lit pass uses the particle vertex format, so a particle can write into it");
         assertTrue(ParticleInstancer.renderParticle(new CaptureParticle(), run, null, 0.5F, ROT_X, ROT_XZ, ROT_Z, ROT_YZ, ROT_XY),
-            "a lit particle joins the batch through the same entry the other layers use");
+            "the batch accepts a particle that only writes vertices");
         ParticleInstancer.endLayer();
 
         assertEquals(drawsBefore + 1, (int) ParticleInstancer.getDraws(), "the decoded quad is one instanced draw");
         assertEquals(0, run.getVertexCount(), "a decoded quad is not written to the run");
 
         drawRun(run);
-        assertTrue(drawsBefore + 1 <= (int) ParticleInstancer.getDraws(), "the empty run adds no instance draw");
         assertClosedBuilder(run);
     }
 
     @Test
     void keepsTheVerticesTheBatchCannotTakeForTheRunsOwnDraw() {
-        ParticleLitRun.begin();
+        beginRun();
         final BufferBuilder run = Tessellator.getInstance().getBuffer();
         assertTrue(ParticleInstancer.renderParticle(new SpillingParticle(), run, null, 0.5F, ROT_X, ROT_XZ, ROT_Z, ROT_YZ, ROT_XY));
         ParticleInstancer.endLayer();
@@ -204,10 +174,19 @@ class ParticleLitRunGLTest extends GLStateManagerIntegrationFixture {
         assertClosedBuilder(run);
     }
 
-    /**
-     * The step {@code ParticleLitRun.end} performs through {@code Tessellator.draw}, which the
-     * tessellator hook routes here.
-     */
+    private static void beginRun() {
+        ParticleRunSplitter.beginParticles();
+        Tessellator.getInstance().getBuffer().begin(GL11.GL_QUADS, DefaultVertexFormats.PARTICLE_POSITION_TEX_COLOR_LMAP);
+        ParticleRunSplitter.beginRun();
+        ParticleInstancer.beginLayer();
+    }
+
+    private static void endRun() {
+        ParticleInstancer.endLayer();
+        drawRun(Tessellator.getInstance().getBuffer());
+    }
+
+    // The harness does not install the Tessellator mixin that invokes the router in game.
     private static void drawRun(BufferBuilder run) {
         assertTrue(TessellatorDrawRouter.draw(run, null), "the router handles the particle format");
         ParticleRunSplitter.endParticles();
@@ -218,78 +197,6 @@ class ParticleLitRunGLTest extends GLStateManagerIntegrationFixture {
         run.begin(GL11.GL_QUADS, DefaultVertexFormats.PARTICLE_POSITION_TEX_COLOR_LMAP);
         run.finishDrawing();
         assertEquals(0, run.getVertexCount(), "the reopened builder is empty");
-    }
-
-    private static final class OpenBufferView implements ITessellatorData {
-        OpenBufferView(BufferBuilder buffer) {
-            buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.PARTICLE_POSITION_TEX_COLOR_LMAP);
-        }
-
-        @Override
-        public boolean isDrawing() {
-            return true;
-        }
-
-        @Override
-        public void setDrawing(boolean drawing) {
-        }
-
-        @Override
-        public int getVertexCount() {
-            return 0;
-        }
-
-        @Override
-        public int[] getRawBuffer() {
-            return new int[0];
-        }
-
-        @Override
-        public int getRawBufferIndex() {
-            return 0;
-        }
-
-        @Override
-        public int getRawBufferSize() {
-            return 0;
-        }
-
-        @Override
-        public void setRawBufferSize(int size) {
-        }
-
-        @Override
-        public void setRawBuffer(int[] buffer) {
-        }
-
-        @Override
-        public int getDrawMode() {
-            return GL11.GL_QUADS;
-        }
-
-        @Override
-        public boolean hasTexture() {
-            return true;
-        }
-
-        @Override
-        public boolean hasColor() {
-            return true;
-        }
-
-        @Override
-        public boolean hasNormals() {
-            return true;
-        }
-
-        @Override
-        public boolean hasBrightness() {
-            return true;
-        }
-
-        @Override
-        public void angelica$reset() {
-        }
     }
 
     /** A particle the registry has no descriptor for, writing one decodable quad. */

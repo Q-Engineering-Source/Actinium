@@ -94,18 +94,23 @@ public final class ParticleRunSplitter {
         ParticleInstancer.beginLayer();
     }
 
+    /** Selects the particle program without taking ownership of the renderer's buffer. */
+    public static void renderWithTranslucency(Particle particle, Runnable render) {
+        final Boolean previous = GbufferPrograms.beginTranslucencyDeclaration(isTranslucent(particle));
+        try {
+            render.run();
+        } finally {
+            GbufferPrograms.endTranslucencyDeclaration(previous);
+        }
+    }
+
     /** Runs a particle that owns its draw, with its own translucency and the shared builder idle. */
     public static void renderIndependent(Particle particle, Runnable render) {
         final boolean reopen = beforeNestedDraw();
         final Particle previousOwner = independentDrawOwner;
         if (reopen) independentDrawOwner = particle;
         try {
-            final Boolean previous = GbufferPrograms.beginTranslucencyDeclaration(isTranslucent(particle));
-            try {
-                render.run();
-            } finally {
-                GbufferPrograms.endTranslucencyDeclaration(previous);
-            }
+            renderWithTranslucency(particle, render);
         } finally {
             independentDrawOwner = previousOwner;
             afterNestedDraw(reopen);
