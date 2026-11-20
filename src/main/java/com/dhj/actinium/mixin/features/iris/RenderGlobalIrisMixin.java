@@ -1,6 +1,9 @@
 package com.dhj.actinium.mixin.features.iris;
 
 import com.dhj.actinium.render.CloudRenderSettings;
+import com.dhj.actinium.render.iris.EntityOutlinePass;
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.layer.GbufferPrograms;
 import net.coderbot.iris.pipeline.DeferredWorldRenderingPipeline;
@@ -11,21 +14,58 @@ import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.RenderGlobal;
 import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.client.renderer.culling.ICamera;
+import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.client.renderer.vertex.VertexBuffer;
 import net.minecraft.client.settings.GameSettings;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.RayTraceResult;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.Slice;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(RenderGlobal.class)
 public class RenderGlobalIrisMixin {
+    @Shadow @Final
+    private RenderManager renderManager;
+
+    @Unique
+    private final EntityOutlinePass actinium$entityOutlinePass = new EntityOutlinePass();
+
+    @WrapMethod(method = "renderEntities")
+    private void actinium$scopeEntityOutlinePass(Entity viewer, ICamera camera, float partialTicks, Operation<Void> original) {
+        this.actinium$entityOutlinePass.withinEntityRender(() -> original.call(viewer, camera, partialTicks));
+    }
+
+    @Inject(method = "renderEntities", at = @At(value = "INVOKE",
+        target = "Lnet/minecraft/client/shader/Framebuffer;framebufferClear()V"))
+    private void actinium$beginEntityOutlinePass(Entity viewer, ICamera camera, float partialTicks, CallbackInfo ci) {
+        if (actinium$getPipeline() instanceof DeferredWorldRenderingPipeline pipeline && pipeline.shouldOverrideShaders()) {
+            this.actinium$entityOutlinePass.begin(pipeline.getRenderTargetStateListener(), () -> {
+                this.renderManager.setRenderOutlines(false);
+                pipeline.restoreActivePass();
+            });
+        }
+    }
+
+    @Inject(method = "renderEntities",
+        slice = @Slice(from = @At(value = "FIELD",
+            target = "Lnet/minecraft/client/renderer/RenderGlobal;entityOutlineShader:Lnet/minecraft/client/shader/ShaderGroup;")),
+        at = @At(value = "INVOKE", target = "Lnet/minecraft/client/shader/Framebuffer;bindFramebuffer(Z)V",
+            ordinal = 0, shift = At.Shift.AFTER))
+    private void actinium$endEntityOutlinePass(Entity viewer, ICamera camera, float partialTicks, CallbackInfo ci) {
+        this.actinium$entityOutlinePass.finish();
+    }
+
     @Inject(method = "renderSky(FI)V", at = @At("HEAD"))
     private void actinium$beginSky(float partialTicks, int pass, CallbackInfo ci) {
         if (!Iris.enabled) {
