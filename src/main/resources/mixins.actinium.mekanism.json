@@ -1,0 +1,14 @@
+{
+  "package": "com.dhj.actinium.mixin.mod.mekanism",
+  "required": true,
+  "refmap": "mixins.actinium-refmap.json",
+  "target": "@env(DEFAULT)",
+  "minVersion": "0.8.5",
+  "compatibilityLevel": "JAVA_8",
+  "client": [
+    "MixinParticleLaser"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

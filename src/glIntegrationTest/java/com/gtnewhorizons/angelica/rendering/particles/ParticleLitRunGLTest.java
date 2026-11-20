@@ -18,10 +18,13 @@ import net.minecraft.entity.Entity;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.lwjgl.opengl.GL11;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -78,6 +81,31 @@ class ParticleLitRunGLTest extends GLStateManagerIntegrationFixture {
             run.finishDrawing();
         }
         assertTrue(rejected, "an unfinished foreign draw must not be committed under the particle pass state");
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void independentBeamDrawResumesTheOriginalParticleRun(boolean hasVanillaRunBoundary) {
+        final BufferBuilder run = Tessellator.getInstance().getBuffer();
+        final Particle laser = new CaptureParticle();
+        ParticleLitRun.begin();
+        try {
+            assertFalse(ParticleRunSplitter.ownsIndependentBoundary(laser));
+            ParticleRunSplitter.renderIndependent(laser, () -> {
+                if (hasVanillaRunBoundary && !ParticleRunSplitter.ownsIndependentBoundary(laser)) {
+                    Tessellator.getInstance().draw();
+                }
+                run.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_TEX_COLOR);
+                Tessellator.getInstance().draw();
+                if (hasVanillaRunBoundary && !ParticleRunSplitter.ownsIndependentBoundary(laser)) {
+                    run.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_TEX_COLOR);
+                }
+            });
+            assertFalse(ParticleRunSplitter.ownsIndependentBoundary(laser));
+            assertSame(DefaultVertexFormats.PARTICLE_POSITION_TEX_COLOR_LMAP, run.getVertexFormat());
+        } finally {
+            ParticleLitRun.end();
+        }
     }
 
     @Test
