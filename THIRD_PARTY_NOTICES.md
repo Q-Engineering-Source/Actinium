@@ -12,7 +12,7 @@ for the full license text or legal advice.
 
 | Component | Repository | Local paths | Upstream license | Actinium import record |
 | --- | --- | --- | --- | --- |
-| Angelica / GLSM | https://github.com/GTNewHorizons/Angelica | `glsm/`, `sdl-gpu/`, portions of `src/main/java/com/gtnewhorizons/angelica/`, Angelica resources | LGPL-3.0, with additional file-level notices | GLSM introduced in `119f607`; expanded with GTNHLib in `83ea1b7`; SDL-GPU synchronized from `8e099e952921a53ea5db88414e1071135f716ed4` |
+| Angelica / GLSM | https://github.com/GTNewHorizons/Angelica | `glsm/`, `sdl-gpu/`, portions of `src/main/java/com/gtnewhorizons/angelica/`, Angelica resources | LGPL-3.0, with additional file-level notices | GLSM introduced in `119f607`; expanded with GTNHLib in `83ea1b7`; SDL-GPU synchronized from `8e099e952921a53ea5db88414e1071135f716ed4`; display-list fixes adapted from `2b46b4f602dfd7c6b5dd67f42acd853adfa1d9c6` and `8840c2109ffb3603d95c72b18373abfb5fdd87b8` |
 | Angelica sky color blending | https://github.com/GTNewHorizons/Angelica | `src/main/java/com/dhj/actinium/world/biome/SkyColorCache.java`, `src/main/java/com/dhj/actinium/mixin/vintage/core/terrain/MixinWorldSkyColor.java` | LGPL-3.0 | adapted to Minecraft 1.12.2 from `233c74e0d71cb61a7046e06b085ea391c216e986` |
 | GTNHLib | https://github.com/GTNewHorizons/GTNHLib | `GTNHLib/` | LGPL-3.0, plus file-level notices | `83ea1b7` |
 | Iris | https://github.com/IrisShaders/Iris | `shader/src/main/java/net/coderbot/iris/`, Iris API/resources, Iris-oriented mixins | LGPL-3.0 | full pipeline import in `79306ba`; resource mappings below |

@@ -31,157 +31,80 @@ package com.gtnewhorizons.angelica.glsm;
  * Original author: Samuel Pitoiset <samuel.pitoiset@gmail.com>
  */
 
-/**
- * Bitmap ID allocator for display list IDs.
- *
- * <p>Bitmap-based: each bit in the {@code data} array represents one ID.
- * Bit set = allocated, bit clear = free. ID 0 is reserved (never returned).
- */
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.TreeMap;
+
+/** Tracks allocated positive display list names as disjoint, non-adjacent intervals. */
 public class DisplayListIDAllocator {
+    private final NavigableMap<Integer, Integer> allocated = new TreeMap<>();
 
-    private int[] data;
-    private int numElements;       // number of uint32 words allocated
-    private int numSetElements;    // highest word index with any bit set + 1
-    private int lowestFreeIdx;     // optimization: skip fully-allocated words
-
-    public DisplayListIDAllocator() {
-        this(32); // 1024 IDs initially
-    }
-
-    public DisplayListIDAllocator(int initialWords) {
-        if (initialWords < 1) initialWords = 1;
-        this.data = new int[initialWords];
-        this.numElements = initialWords;
-        this.numSetElements = 0;
-        this.lowestFreeIdx = 0;
-        // Reserve ID 0 (never returned), matching Mesa's skip_zero pattern
-        data[0] = 1;
-        numSetElements = 1;
-    }
-
-    public int allocRange(int count) {
+    /** Allocates consecutive names, or returns zero if no sufficiently large range is free. */
+    public synchronized int allocRange(int count) {
         if (count <= 0) throw new IllegalArgumentException("count must be > 0");
-        if (count == 1) return allocSingle();
-        return allocMultiple(count);
+
+        long base = 1;
+        for (Map.Entry<Integer, Integer> range : allocated.entrySet()) {
+            if (base + count <= range.getKey()) break;
+            base = (long) range.getValue() + 1;
+        }
+        final long last = base + count - 1;
+        if (last > Integer.MAX_VALUE) return 0;
+
+        addRange((int) base, (int) last);
+        return (int) base;
     }
 
-    private int allocSingle() {
-        for (int i = lowestFreeIdx; i < numElements; i++) {
-            if (data[i] == 0xFFFFFFFF) continue;
-
-            int bit = Integer.numberOfTrailingZeros(~data[i]);
-            data[i] |= 1 << bit;
-            lowestFreeIdx = i;
-            numSetElements = Math.max(numSetElements, i + 1);
-            return i * 32 + bit;
-        }
-
-        // No slots available, grow. Record old end, then mark first bit there.
-        int oldNumElements = numElements;
-        resize(Math.max(numElements, 1) * 2);
-        lowestFreeIdx = oldNumElements;
-        data[oldNumElements] |= 1;
-        numSetElements = Math.max(numSetElements, oldNumElements + 1);
-        return oldNumElements * 32;
+    /** Retains a name installed by compilation, including names already allocated by glGenLists. */
+    public synchronized void reserve(int id) {
+        if (id > 0 && !isAllocated(id)) addRange(id, id);
     }
 
-    private int allocMultiple(int num) {
-        int numWords = divRoundUp(num, 32);
-        int base = findFreeBlock(lowestFreeIdx);
-        boolean found = false;
-
-        while (!found) {
-            int i;
-            for (i = base; i < numElements && i - base < numWords && data[i] == 0; i++)
-                ;
-
-            if (i - base == numWords) {
-                found = true;
-            } else if (i == numElements) {
-                // Hit end — base is valid: data[base..end] are zero, resize extends the run into newly zeroed words.
-                resize(numElements * 2 + numWords);
-                found = true;
-            } else {
-                // Non-zero word at i, skip past it
-                base = i + 1;
-            }
+    private void addRange(int base, int last) {
+        final Map.Entry<Integer, Integer> before = allocated.lowerEntry(base);
+        if (before != null && before.getValue() == base - 1) {
+            base = before.getKey();
         }
-
-        // Mark bits as used
-        int fullWords = num / 32;
-        int remainder = num % 32;
-        for (int i = base; i < base + fullWords; i++) {
-            data[i] = 0xFFFFFFFF;
+        if (last < Integer.MAX_VALUE) {
+            final Integer after = allocated.remove(last + 1);
+            if (after != null) last = after;
         }
-        if (remainder != 0) {
-            data[base + fullWords] |= (1 << remainder) - 1;
-        }
-
-        if (lowestFreeIdx == base) {
-            lowestFreeIdx = base + num / 32;
-        }
-        numSetElements = Math.max(numSetElements, base + numWords);
-
-        return base * 32;
+        allocated.put(base, last);
     }
 
-    private int findFreeBlock(int start) {
-        for (int i = start; i < numElements; i++) {
-            if (data[i] == 0) return i;
-        }
-        return numElements;
-    }
-
+    /** Releases a positive name for reuse. */
     public void free(int id) {
-        if (id <= 0) return; // ID 0 is reserved
-        int idx = id / 32;
-        if (idx >= numElements) return;
+        freeRange(id, 1);
+    }
 
-        lowestFreeIdx = Math.min(idx, lowestFreeIdx);
-        data[idx] &= ~(1 << (id % 32));
+    /** Releases allocated names in the requested range up to the largest positive ID. */
+    public synchronized void freeRange(int base, int count) {
+        if (base <= 0 || count <= 0) return;
+        final int last = (int) Math.min((long) base + count - 1, Integer.MAX_VALUE);
 
-        if (numSetElements == idx + 1) {
-            while (numSetElements > 0 && data[numSetElements - 1] == 0) {
-                numSetElements--;
+        final Map.Entry<Integer, Integer> before = allocated.lowerEntry(base);
+        if (before != null && before.getValue() >= base) {
+            allocated.put(before.getKey(), base - 1);
+            if (before.getValue() > last) {
+                allocated.put(last + 1, before.getValue());
+                return;
+            }
+        }
+
+        Map.Entry<Integer, Integer> range;
+        while ((range = allocated.ceilingEntry(base)) != null && range.getKey() <= last) {
+            allocated.remove(range.getKey());
+            if (range.getValue() > last) {
+                allocated.put(last + 1, range.getValue());
+                return;
             }
         }
     }
 
-    public void freeRange(int base, int count) {
-        if (count <= 0 || base <= 0) return;
-
-        int startIdx = base / 32;
-        if (startIdx >= numElements) return;
-
-        int end = base + count;
-        for (int id = base; id < end; id++) {
-            int idx = id / 32;
-            if (idx >= numElements) break;
-            data[idx] &= ~(1 << (id % 32));
-        }
-
-        lowestFreeIdx = Math.min(startIdx, lowestFreeIdx);
-        while (numSetElements > 0 && data[numSetElements - 1] == 0) {
-            numSetElements--;
-        }
-    }
-
-    public boolean isAllocated(int id) {
+    /** Reports whether a positive name is reserved or part of a generated range. */
+    public synchronized boolean isAllocated(int id) {
         if (id <= 0) return false;
-        int idx = id / 32;
-        if (idx >= numSetElements) return false;
-        return (data[idx] & (1 << (id % 32))) != 0;
-    }
-
-    private void resize(int newNumElements) {
-        if (newNumElements <= numElements) return;
-        int[] newData = new int[newNumElements];
-        System.arraycopy(data, 0, newData, 0, numElements);
-        data = newData;
-        numElements = newNumElements;
-    }
-
-    private static int divRoundUp(int a, int b) {
-        return (a + b - 1) / b;
+        final Map.Entry<Integer, Integer> range = allocated.floorEntry(id);
+        return range != null && range.getValue() >= id;
     }
 }

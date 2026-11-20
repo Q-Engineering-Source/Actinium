@@ -28,7 +28,6 @@ import org.lwjgl.opengl.KHRDebugCallback;
 
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.DEBUG_DRAW_LOGS;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.ctx;
-import static com.gtnewhorizons.angelica.glsm.GLStateManager.displayListIdAllocator;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.initConfig;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.isVBOBound;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.preDrawFFP;
@@ -36,6 +35,7 @@ import static com.gtnewhorizons.angelica.glsm.GLStateManager.prepareClientArrays
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.prepareWideLineEmulation;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.recordGpuCommand;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.rejectExitCapture;
+import static com.gtnewhorizons.angelica.glsm.GLStateManager.displayListIdAllocator;
 import static com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.FFP_WARN_ON_UNSUPPORTED;
 import static com.gtnewhorizons.angelica.glsm.GLStateManager.LOGGER;
@@ -389,7 +389,6 @@ public final class GLSMDraws {
 
     public static void glDeleteLists(int list, int range) {
         rejectExitCapture();
-        displayListIdAllocator.freeRange(list, range);
         DisplayListManager.glDeleteLists(list, range);
     }
 
@@ -595,8 +594,8 @@ public final class GLSMDraws {
 
     public static boolean glIsList(int list) {
         rejectExitCapture();
-            return displayListIdAllocator.isAllocated(list);
-        }
+        return displayListIdAllocator.isAllocated(list);
+    }
 
     public static CompiledDisplayList getDisplayList(int list) {
             return DisplayListManager.getDisplayList(list);
