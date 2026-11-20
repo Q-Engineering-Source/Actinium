@@ -34,7 +34,8 @@ public final class BatchDrawDefaults {
     }
 
     public void apply() {
-        if (passFramebuffer >= 0 && TesrBatchRenderer.deferredPipeline() == null) {
+        final boolean deferred = TesrBatchRenderer.deferredPipeline() != null;
+        if (passFramebuffer >= 0 && !deferred) {
             final int framebuffer = GLSMFramebuffer.getDrawFramebuffer();
             if (framebuffer != passFramebuffer) {
                 callerFramebuffer = framebuffer;
@@ -42,7 +43,7 @@ public final class BatchDrawDefaults {
             }
         }
         final int program = GLSMPrograms.getActiveProgram();
-        if (program != 0 && !Program.isManagedBind(program) && !DepthColorStorage.isOwnedProgram(program)) {
+        if (program != 0 && !Program.isManagedBind(program) && !(deferred && DepthColorStorage.isOwnedProgram(program))) {
             callerProgram = program;
             GLSMPrograms.glUseProgram(0);
         }
