@@ -12,6 +12,7 @@ import net.minecraft.client.renderer.entity.Render;
 import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.entity.Entity;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 
 /**
  * Publishes the rendered entity to the shader pipeline (the Iris entity id consumed by
@@ -25,6 +26,8 @@ import org.spongepowered.asm.mixin.Mixin;
  */
 @Mixin(RenderManager.class)
 public class RenderManagerIrisMixin {
+    @Shadow
+    private boolean renderOutlines;
 
     @WrapMethod(method = "renderEntity(Lnet/minecraft/entity/Entity;DDDFFZ)V")
     private void actinium$renderEntityWithIrisId(
@@ -34,11 +37,11 @@ public class RenderManagerIrisMixin {
         double z,
         float yaw,
         float partialTicks,
-        boolean renderOutlines,
+        boolean skipDebugBoundingBox,
         Operation<Void> original
     ) {
-        if (!IrisApiV0Impl.INSTANCE.isShaderPackInUse()) {
-            original.call(entity, x, y, z, yaw, partialTicks, renderOutlines);
+        if (this.renderOutlines || !IrisApiV0Impl.INSTANCE.isShaderPackInUse()) {
+            original.call(entity, x, y, z, yaw, partialTicks, skipDebugBoundingBox);
             return;
         }
 
@@ -52,7 +55,7 @@ public class RenderManagerIrisMixin {
             entityPhase = GbufferPrograms.enterEntityPhase();
             beganEntityPhase = entityPhase.changedPhase();
             ShaderRegressionDebug.logEntityPhase("renderEntity:before", entity, render, previousPhase.name(), beganEntityPhase);
-            original.call(entity, x, y, z, yaw, partialTicks, renderOutlines);
+            original.call(entity, x, y, z, yaw, partialTicks, skipDebugBoundingBox);
         } finally {
             try {
                 if (entityPhase != null) {

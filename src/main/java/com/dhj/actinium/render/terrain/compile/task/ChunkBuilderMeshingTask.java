@@ -249,19 +249,14 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
 
                             buildContext.getBlockRenderer().resetSharedState();
 
-                            // A block travels to the render thread only when this build runs on a build
-                            // thread, the snapshot carries it and the player listed it as deferred.
                             boolean canRenderOffThread = !handoff || !isDeferred(deferredMask, x, y, z);
+                            int deferredPasses = 0;
+                            Material deferredMaterial = null;
 
                             if (!hidden) {
                                 BlockRenderLayer shaderLayerOverride = blockTypeIds != null ? blockTypeIds.get(block) : null;
-                                int deferredPasses = 0;
-                                Material deferredMaterial = null;
 
                                 if (!canRenderOffThread) {
-                                    // Nothing of this block may run on the build thread: the pass mask
-                                    // defers every layer and the capture lets the render thread decide
-                                    // which of them actually has geometry.
                                     if (shaderLayerOverride != null) {
                                         net.minecraft.util.BlockRenderLayer layer = shaderLayerOverride.toVanillaLayer();
                                         deferredPasses = 1 << layer.ordinal();
@@ -278,17 +273,17 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                                         this.renderBlockLayer(block, blockState, blockPos, slice, layer, false, buildContext);
                                     }
                                 }
+                            }
 
-                                if (deferredPasses != 0) {
+                            if (!canRenderOffThread) {
+                                // A hidden host can still supply fluid geometry on the render thread.
+                                if (deferredPasses != 0 || (FluidloggedCompat.IS_LOADED
+                                        && FluidloggedCompat.getStoredFluidBlock(slice, x, y, z) != null)) {
                                     this.deferredRenders.add(new DeferredRender(
                                             new DeferredBlock(x, y, z, block, deferredPasses, deferredMaterial),
                                             blockState));
                                 }
-                            }
-
-                            // A Fluidlogged fluid is rendered on the same thread as its block: it reaches
-                            // the vanilla dispatcher through the block's own buffer.
-                            if (FluidloggedCompat.IS_LOADED && canRenderOffThread) {
+                            } else if (FluidloggedCompat.IS_LOADED) {
                                 FluidloggedCompat.renderFluidState(slice, blockPos, blockState, buildContext, dispatcher);
                             }
 
@@ -347,7 +342,11 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
             return false;
         }
 
-        return prescanDeferred(worldSlice, minX, minY, minZ, buildContext.getDeferredMask());
+        SectionBlockLookup fluidBlocks = FluidloggedCompat.IS_LOADED
+                ? (x, y, z) -> FluidloggedCompat.getStoredFluidBlock(worldSlice, x, y, z)
+                : null;
+        return prescanDeferred((x, y, z) -> worldSlice.getBlockState(x, y, z).getBlock(), fluidBlocks,
+                minX, minY, minZ, buildContext.getDeferredMask());
     }
 
     /**
@@ -415,8 +414,16 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
         }
     }
 
-    /** Writes the blocks that need the render thread into the section's pass mask. */
-    private static boolean prescanDeferred(WorldSlice worldSlice, int minX, int minY, int minZ, long[] mask) {
+    /** Provides the host or stored fluid block from the section snapshot. */
+    @FunctionalInterface
+    interface SectionBlockLookup {
+        /** Returns the block at these world coordinates, or null for an absent stored fluid. */
+        @Nullable Block getBlock(int x, int y, int z);
+    }
+
+    /** Marks cells where either rendering path requires the render thread. */
+    static boolean prescanDeferred(SectionBlockLookup hosts, @Nullable SectionBlockLookup fluids,
+                                   int minX, int minY, int minZ, long[] mask) {
         Arrays.fill(mask, 0L);
 
         boolean anyDeferred = false;
@@ -424,10 +431,12 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
         for (int y = 0; y < 16; y++) {
             for (int z = 0; z < 16; z++) {
                 for (int x = 0; x < 16; x++) {
-                    Block block = worldSlice.getBlockState(minX + x, minY + y, minZ + z).getBlock();
+                    Block block = hosts.getBlock(minX + x, minY + y, minZ + z);
+                    if (block == Blocks.AIR) continue;
 
-                    if (block == Blocks.AIR || BlockRenderSafetyRegistry.canRenderOffThread(block)) {
-                        continue;
+                    if (BlockRenderSafetyRegistry.canRenderOffThread(block)) {
+                        Block fluid = fluids == null ? null : fluids.getBlock(minX + x, minY + y, minZ + z);
+                        if (fluid == null || BlockRenderSafetyRegistry.canRenderOffThread(fluid)) continue;
                     }
 
                     int bit = (y << 8) | (z << 4) | x;
@@ -440,7 +449,7 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
         return anyDeferred;
     }
 
-    private static boolean isDeferred(long[] mask, int x, int y, int z) {
+    static boolean isDeferred(long[] mask, int x, int y, int z) {
         int bit = ((y & 15) << 8) | ((z & 15) << 4) | (x & 15);
         return (mask[bit >>> 6] & (1L << bit)) != 0;
     }

@@ -1,7 +1,7 @@
 package com.gtnewhorizons.angelica.glsm.recording.commands;
 
-import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.GLSMDraws;
+import com.gtnewhorizons.angelica.glsm.GLSMVertexInput;
 
 /**
  * Placeholder command for one baked indexed draw. Recorded into the command stream as a
@@ -31,8 +31,13 @@ public final class BatchedIndexedDrawCmd implements DisplayListCommand {
     @Override
     public void execute() {
         if (batch == null) return;
-        batch.bind();
-        GLSMDraws.glDrawElements(drawMode, indexCount, indexType, indexByteOffset);
+        final int callerVao = GLSMVertexInput.getBoundVAO();
+        try {
+            batch.bind();
+            GLSMDraws.glDrawElements(drawMode, indexCount, indexType, indexByteOffset);
+        } finally {
+            GLSMVertexInput.glBindVertexArray(callerVao);
+        }
     }
 
     @Override

@@ -50,6 +50,7 @@
     "core.terrain.MixinSharedQuadIndexBuffer",
     "core.terrain.MixinSimpleBakedModelBuilder",
     "core.terrain.MixinWorldClient",
+    "core.terrain.MixinWorldSkyColor",
     "core.vertex.MixinVertexBuffer",
     "features.mipmaps.MixinTextureAtlasSprite",
     "features.mipmaps.MixinTextureUtil",

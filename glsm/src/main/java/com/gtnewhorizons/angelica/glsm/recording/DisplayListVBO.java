@@ -2,6 +2,7 @@ package com.gtnewhorizons.angelica.glsm.recording;
 
 import com.gtnewhorizon.gtnhlib.client.renderer.vao.IVertexArrayObject;
 import com.gtnewhorizons.angelica.glsm.GLSMDraws;
+import com.gtnewhorizons.angelica.glsm.GLSMVertexInput;
 import com.gtnewhorizons.angelica.glsm.streaming.LineQuads;
 import org.lwjgl.opengl.GL11;
 
@@ -62,25 +63,35 @@ public final class DisplayListVBO {
 
         public void render() {
             if (vao == null) return;
-            // The line width is only known at playback, so a line draw keeps its own range and gains quads to widen
-            if (lineQuads != null && GLSMDraws.ffpWidensLineQuads()) {
-                renderLineQuads();
-                return;
+            final int callerVao = GLSMVertexInput.getBoundVAO();
+            try {
+                if (lineQuads != null && GLSMDraws.ffpWidensLineQuads()) {
+                    renderLineQuads();
+                } else {
+                    vao.bind();
+                    try {
+                        vao.draw(drawMode, start, count);
+                    } finally {
+                        vao.unbind();
+                    }
+                }
+            } finally {
+                GLSMVertexInput.glBindVertexArray(callerVao);
             }
-            vao.bind();
-            vao.draw(drawMode, start, count);
-            vao.unbind();
         }
 
         private void renderLineQuads() {
             lineQuads.bind();
-            final boolean culled = LineQuads.beginDraw(lineQuadFlags);
             try {
-                lineQuads.draw(GL11.GL_TRIANGLES, lineQuadStart, lineQuadCount);
+                final boolean culled = LineQuads.beginDraw(lineQuadFlags);
+                try {
+                    lineQuads.draw(GL11.GL_TRIANGLES, lineQuadStart, lineQuadCount);
+                } finally {
+                    LineQuads.endDraw(culled);
+                }
             } finally {
-                LineQuads.endDraw(culled);
+                lineQuads.unbind();
             }
-            lineQuads.unbind();
         }
 
         public IVertexArrayObject getVAO() {

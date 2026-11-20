@@ -2,7 +2,7 @@
 
 兼容状态：部分（MakeUp UltraFast 9.1f 下的 dev 实测通过；其他光影包待验证）
 
-最后更新：2026-09-28
+最后更新：2026-11-20
 
 ## 验证范围
 
@@ -29,3 +29,17 @@ Iris 在 shaderpack pass 内锁定 blend state。GLSM 会把锁定期间的 vani
 - 诊断日志记录 13,529 个 shaderpack glow pass 应用了保存的 alpha blend 请求；506 个无光影 pass 未触发兼容覆盖。每个已覆盖 pass 都记录了 shaderpack blend 状态恢复。
 - 最终源码清理后，`./gradlew check --no-daemon` 通过。
 - 其他用户报告过问题的光影包仍待实测；手持物品的最终回归也待补。
+
+## 激光粒子
+
+GreedyCraft 2 的崩溃截图显示，`ParticleLaser.drawComponent` 在 `BufferBuilder.begin` 抛出
+`Already building!`。`ParticleInstancer` 给未注册描述器的粒子传入独立采集缓冲，而
+Mekanism 的 `ParticleLaser` 在该缓冲上开始绘制，却通过共享 `Tessellator` 结束绘制。
+绘制下一个激光组件时，采集缓冲仍处于打开状态。
+
+Actinium 在 Mekanism 与 `ParticleLaser` 类都存在时注册条件 Mixin。激光绕过实例化采集，
+先结束外层粒子批次，再使用空闲的共享缓冲绘制，结束后恢复外层批次原有的绘制模式和顶点格式。
+带外层 `draw` / `begin` 的 Mekanism 构建在这段调用内跳过这两个操作，激光组件自身的绘制保留。
+
+2026-11-20：`gradlew build --no-daemon` 与 13 项定向粒子 GL 测试通过，其中两个用例覆盖了带有和不带外层
+`draw` / `begin` 的激光绘制流程。GreedyCraft 2 内的实际激光场景待复测。

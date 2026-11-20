@@ -1,10 +1,10 @@
 package com.gtnewhorizons.angelica.glsm.recording.commands;
 
 import com.gtnewhorizons.angelica.glsm.GLContextState;
-import com.gtnewhorizons.angelica.glsm.GLStateManager;
-import org.lwjgl.opengl.GL15;
 import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
 import com.gtnewhorizons.angelica.glsm.GLSMVertexInput;
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import org.lwjgl.opengl.GL15;
 
 /**
  * Shared GPU triple (VAO + VBO + EBO) backing every baked indexed draw of one
@@ -47,6 +47,7 @@ public final class IndexedDrawBatch {
             GLSMVertexInput.glVertexAttribPointer(loc, layout.sizes[i], layout.types[i], layout.normalized[i], stride, layout.offset(i));
             GLSMVertexInput.glEnableVertexAttribArray(loc);
         }
+        glCtx.vaos.setFormatVertexFlags(glCtx.vaos.currentClientArrayVertexFlags());
         GLSMBuffers.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, sharedEBO);
         GLSMBuffers.glBindBuffer(GL15.GL_ARRAY_BUFFER, prevVBO);
         vao = v;
