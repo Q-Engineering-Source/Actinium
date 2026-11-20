@@ -66,6 +66,12 @@ class MixinLateTest {
             Set.copyOf(MixinLate.configsFor("dsurround"::equals, className -> false))
         );
 
+        assertEquals(Set.of(), Set.copyOf(MixinLate.configsFor("mekanism"::equals, name -> false)));
+        assertEquals(
+            Set.of("mixins.actinium.mekanism.json"),
+            Set.copyOf(MixinLate.configsFor("mekanism"::equals, "mekanism.client.entity.ParticleLaser"::equals))
+        );
+
         assertEquals(
             Set.of(
                 "mixins.actinium.gibbed.json",
@@ -87,7 +93,8 @@ class MixinLateTest {
                 "mixins.actinium.littletiles.json",
                 "mixins.actinium.architecturecraft.json",
                 "mixins.actinium.obscuretooltips.json",
-                "mixins.actinium.dsurround.json"
+                "mixins.actinium.dsurround.json",
+                "mixins.actinium.mekanism.json"
             ),
             Set.copyOf(MixinLate.configsFor(modId -> true, className -> true))
         );

@@ -38,6 +38,7 @@ public final class ParticleRunSplitter {
     private static int nestedDrawMode;
     private static VertexFormat nestedVertexFormat;
     private static Boolean previousDeclaration;
+    private static Particle independentDrawOwner;
 
     private ParticleRunSplitter() {}
 
@@ -96,6 +97,8 @@ public final class ParticleRunSplitter {
     /** Runs a particle that owns its draw, with its own translucency and the shared builder idle. */
     public static void renderIndependent(Particle particle, Runnable render) {
         final boolean reopen = beforeNestedDraw();
+        final Particle previousOwner = independentDrawOwner;
+        if (reopen) independentDrawOwner = particle;
         try {
             final Boolean previous = GbufferPrograms.beginTranslucencyDeclaration(isTranslucent(particle));
             try {
@@ -104,8 +107,14 @@ public final class ParticleRunSplitter {
                 GbufferPrograms.endTranslucencyDeclaration(previous);
             }
         } finally {
+            independentDrawOwner = previousOwner;
             afterNestedDraw(reopen);
         }
+    }
+
+    /** Returns whether this particle's enclosing run is already suspended by the splitter. */
+    public static boolean ownsIndependentBoundary(Object particle) {
+        return independentDrawOwner != null && independentDrawOwner == particle;
     }
 
     /**
