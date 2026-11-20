@@ -13,6 +13,7 @@ for the full license text or legal advice.
 | Component | Repository | Local paths | Upstream license | Actinium import record |
 | --- | --- | --- | --- | --- |
 | Angelica / GLSM | https://github.com/GTNewHorizons/Angelica | `glsm/`, `sdl-gpu/`, portions of `src/main/java/com/gtnewhorizons/angelica/`, Angelica resources | LGPL-3.0, with additional file-level notices | GLSM introduced in `119f607`; expanded with GTNHLib in `83ea1b7`; SDL-GPU synchronized from `8e099e952921a53ea5db88414e1071135f716ed4` |
+| Angelica sky color blending | https://github.com/GTNewHorizons/Angelica | `src/main/java/com/dhj/actinium/world/biome/SkyColorCache.java`, `src/main/java/com/dhj/actinium/mixin/vintage/core/terrain/MixinWorldSkyColor.java` | LGPL-3.0 | adapted to Minecraft 1.12.2 from `233c74e0d71cb61a7046e06b085ea391c216e986` |
 | GTNHLib | https://github.com/GTNewHorizons/GTNHLib | `GTNHLib/` | LGPL-3.0, plus file-level notices | `83ea1b7` |
 | Iris | https://github.com/IrisShaders/Iris | `shader/src/main/java/net/coderbot/iris/`, Iris API/resources, Iris-oriented mixins | LGPL-3.0 | full pipeline import in `79306ba`; resource mappings below |
 | Celeritas renderer | historical Celeritas/Embeddium/Sodium-derived code | `celeritas-common/` | mixed upstream provenance; preserve file-level notices and consult source history | present in standalone extraction `6167e49`, split to its current tree in `2835afe` |
