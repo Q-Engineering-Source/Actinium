@@ -19,6 +19,10 @@ final class EndPortalMesh {
     static final int MAXIMUM_SOURCE_TRIANGLES_PER_FACE = 2 << (MAXIMUM_SUBDIVISION_DEPTH * 2);
     // Clipping one triangle against two planes can produce at most a five-vertex polygon.
     static final int MAXIMUM_CLIPPED_TRIANGLES_PER_FACE = MAXIMUM_SOURCE_TRIANGLES_PER_FACE * 3;
+    private static final int LEFT = 1;
+    private static final int RIGHT = 1 << 1;
+    private static final int BOTTOM = 1 << 2;
+    private static final int TOP = 1 << 3;
 
     private EndPortalMesh() {
     }
@@ -62,6 +66,7 @@ final class EndPortalMesh {
      * @param renderY render-relative block Y
      * @param renderZ render-relative block Z
      * @param layers all layers whose rotated projective error must be bounded
+     * @param cullOffscreenFaces whether the active projection bounds the portal's draw
      * @return immutable clipped triangles
      */
     static List<Triangle> shaderTriangles(
@@ -70,13 +75,17 @@ final class EndPortalMesh {
         double renderX,
         double renderY,
         double renderZ,
-        List<EndPortalLayers.Layer> layers
+        List<EndPortalLayers.Layer> layers,
+        boolean cullOffscreenFaces
     ) {
         if (layers.isEmpty()) {
             throw new IllegalArgumentException("layers must not be empty");
         }
         List<Triangle> triangles = new ArrayList<>();
         for (FaceQuad face : faces) {
+            if (cullOffscreenFaces && outsideSidePlanes(face, projection, renderX, renderY, renderZ)) {
+                continue;
+            }
             int depth = subdivisionDepth(face, projection, renderX, renderY, renderZ, layers);
             int divisions = 1 << depth;
             for (int row = 0; row < divisions; row++) {
@@ -95,6 +104,23 @@ final class EndPortalMesh {
             }
         }
         return List.copyOf(triangles);
+    }
+
+    /** A face can be rejected only when all four corners lie outside the same side plane. */
+    private static boolean outsideSidePlanes(FaceQuad face, EndPortalProjection projection,
+                                             double x, double y, double z) {
+        int outside = sideMask(face.first(), projection, x, y, z);
+        outside &= sideMask(face.second(), projection, x, y, z);
+        outside &= sideMask(face.third(), projection, x, y, z);
+        outside &= sideMask(face.fourth(), projection, x, y, z);
+        return outside != 0;
+    }
+
+    private static int sideMask(LocalPosition corner, EndPortalProjection projection, double x, double y, double z) {
+        var clip = projection.clip(x + corner.x(), y + corner.y(), z + corner.z());
+        double w = clip.w();
+        return (clip.x() < -w ? LEFT : 0) | (clip.x() > w ? RIGHT : 0)
+            | (clip.y() < -w ? BOTTOM : 0) | (clip.y() > w ? TOP : 0);
     }
 
     private static int subdivisionDepth(

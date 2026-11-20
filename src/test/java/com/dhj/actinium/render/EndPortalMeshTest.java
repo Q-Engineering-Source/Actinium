@@ -25,14 +25,30 @@ class EndPortalMeshTest {
         List<EndPortalMesh.FaceQuad> face = EndPortalMesh.visibleFaces(direction -> direction == EnumFacing.UP, 0.75F);
 
         List<EndPortalMesh.Triangle> near = EndPortalMesh.shaderTriangles(
-            face, projection, 0.0D, 0.0D, -2.0D, List.of(layer)
+            face, projection, 0.0D, 0.0D, -2.0D, List.of(layer), true
         );
         List<EndPortalMesh.Triangle> far = EndPortalMesh.shaderTriangles(
-            face, projection, 0.0D, 0.0D, -32.0D, List.of(layer)
+            face, projection, 0.0D, 0.0D, -32.0D, List.of(layer), true
         );
 
         assertTrue(near.size() >= far.size());
         assertTrue(near.size() <= EndPortalMesh.MAXIMUM_CLIPPED_TRIANGLES_PER_FACE);
+    }
+
+    @Test
+    void stopsBuildingPortalTrianglesWhenTheFaceLeavesTheRightEdge() {
+        var faces = EndPortalMesh.visibleFaces(direction -> direction == EnumFacing.UP, 0.75F);
+        var layers = EndPortalLayers.create(9, 0.25F);
+        var crossing = new EndPortalProjection(PERSPECTIVE, new Matrix4f().rotateY((float) Math.toRadians(-49)));
+        var offscreen = new EndPortalProjection(PERSPECTIVE, new Matrix4f().rotateY((float) Math.toRadians(-53)));
+
+        var crossingTriangles = EndPortalMesh.shaderTriangles(faces, crossing, 0.0D, -0.75D, -12.0D, layers, true);
+        assertFalse(crossingTriangles.isEmpty());
+        assertEquals(EndPortalMesh.shaderTriangles(faces, crossing, 0.0D, -0.75D, -12.0D, layers, false), crossingTriangles);
+
+        var hiddenTriangles = EndPortalMesh.shaderTriangles(faces, offscreen, 0.0D, -0.75D, -12.0D, layers, true);
+        assertTrue(hiddenTriangles.isEmpty(), () -> "Offscreen portal emitted " + hiddenTriangles.size() + " triangles");
+        assertFalse(EndPortalMesh.shaderTriangles(faces, offscreen, 0.0D, -0.75D, -12.0D, layers, false).isEmpty());
     }
 
     @Test
@@ -46,7 +62,8 @@ class EndPortalMeshTest {
             0.0D,
             0.0D,
             -8.0D,
-            List.of(layer)
+            List.of(layer),
+            true
         );
 
         assertFalse(triangles.isEmpty());
@@ -73,7 +90,8 @@ class EndPortalMeshTest {
             0.0D,
             0.0D,
             -4.0D,
-            layers
+            layers,
+            true
         );
 
         assertFalse(triangles.isEmpty());
@@ -106,10 +124,10 @@ class EndPortalMeshTest {
         List<EndPortalMesh.FaceQuad> face = EndPortalMesh.visibleFaces(direction -> direction == EnumFacing.UP, 0.75F);
 
         List<EndPortalMesh.Triangle> firstOnly = EndPortalMesh.shaderTriangles(
-            face, projection, 0.0D, 0.0D, -8.0D, List.of(first)
+            face, projection, 0.0D, 0.0D, -8.0D, List.of(first), true
         );
         List<EndPortalMesh.Triangle> allLayers = EndPortalMesh.shaderTriangles(
-            face, projection, 0.0D, 0.0D, -8.0D, List.of(first, later)
+            face, projection, 0.0D, 0.0D, -8.0D, List.of(first, later), true
         );
 
         assertEquals(2, firstOnly.size());
@@ -125,9 +143,10 @@ class EndPortalMeshTest {
             face,
             projection,
             0.0D,
-            0.0D,
+            -0.75D,
             -0.5D,
-            List.of(layer)
+            List.of(layer),
+            true
         );
 
         assertFalse(triangles.isEmpty());

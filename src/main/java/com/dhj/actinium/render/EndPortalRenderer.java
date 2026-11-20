@@ -72,6 +72,7 @@ public final class EndPortalRenderer {
         // overlay) fire their fade hook from shouldRenderFace during face evaluation; snapshot
         // the pre-hook blend state so the hook cannot leak past this render call.
         boolean syntheticOverlay = shaderPackInUse && portal.getWorld() == null;
+        boolean cullOffscreenFaces = shaderPackInUse && !syntheticOverlay && !IrisApiV0Impl.INSTANCE.isRenderingShadowPass();
         BlendState preHookBlend = syntheticOverlay ? GLStateManager.getBlendState().copy() : null;
         EndPortalProjection projection;
         List<EndPortalMesh.FaceQuad> faces;
@@ -82,10 +83,14 @@ public final class EndPortalRenderer {
             projection = new EndPortalProjection(activeProjection, activeModelView);
             faces = EndPortalMesh.visibleFaces(portal::shouldRenderFace, topOffset);
             shaderTriangles = shaderPackInUse
-                ? EndPortalMesh.shaderTriangles(faces, projection, x, y, z, layers)
+                ? EndPortalMesh.shaderTriangles(faces, projection, x, y, z, layers, cullOffscreenFaces)
                 : List.of();
         } catch (IllegalArgumentException exception) {
             LOGGER.error("Invalid active matrix while building end portal geometry at {}", portal.getPos(), exception);
+            return;
+        }
+
+        if (cullOffscreenFaces && shaderTriangles.isEmpty()) {
             return;
         }
 
