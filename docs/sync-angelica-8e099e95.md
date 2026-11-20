@@ -1,5 +1,7 @@
 # Angelica 上游逐提交台账（02f0b0fc → 8e099e95）
 
+后续 18 个提交见 [Angelica 上游增量台账（8e099e95 → 996fb54c）](sync-angelica-996fb54c.md)。
+
 ## 基线与范围
 
 | 项 | 值 |
@@ -43,7 +45,7 @@
 | 5 | `87c83f06` | fix asm class dumper following rfb changes (#2123) | 2026-09-21 | 不适用 | — | 修正 RFB `ClassNodeHandle` 转储路径；本地 `AngelicaClassDump` 直接处理字节数组，不经过该 API |
 | 6 | `9dd60f6a` | Render pass and state stack optimizations (#2124) | 2026-09-21 | 分 hunk 同步 | G01 | 取通用 hunks：`StateSet`、`CowStateStack`/`CowDispatch`/`CowDepths`、`StackIdAllocator`、`ClipPlaneBooleanState`、`Feature`、`GLContextState`、`GLStateManager`、各状态栈与 FFP key 类，以及 `glsm/config/SystemProperties`。排除 `sdl-gpu/` 的 30 个文件与 `dependencies.gradle.kts` 的版本号变更 |
 | 7 | `53776684` | Properly handle display lists with the push/pop optimizations (#2126) | 2026-09-22 | 待同步 | G01 | display list 与 push/pop 优化交互，本地 `DisplayListManager` 无 `StateSet` 支撑 |
-| 8 | `f2c07dea` | Weather instancing (#2127) | 2026-09-22 | 待同步 | F01 | 天气实例化，本地缺 `Instancing`、`WeatherInstancedAttribs`、`WeatherQuadMesh` |
+| 8 | `f2c07dea` | Weather instancing (#2127) | 2026-09-22 | 部分已同步 | F01 | 本地已有 `Instancing.WEATHER`、`WeatherInstancedAttribs`、`WeatherQuadMesh`，待接入原版雨雪采集、绘制入口及 Iris 程序变体；这是[后续天气 API](sync-angelica-996fb54c.md#逐提交结论)的前置 |
 | 9 | `a23cefba` | Only enable shader DH compat if DH is enabled (#2130) | 2026-09-24 | 已有等价 | — | `shader/src/main/java/net/coderbot/iris/gl/shader/StandardMacros.java:121` 已用 `DHCompat.hasRenderingEnabled()` 作为 `DISTANT_HORIZONS` 宏门控 |
 | 10 | `888a4de0` | Add Galaxy Space compat and fix culling issues (#2131) | 2026-09-25 | 待同步 | F01 | 银河空间云层兼容与剔除修正，依赖 F01 云层重写 |
 | 11 | `1babfd96` | Properly reset/flush state for crash interceptors (#2133) | 2026-09-25 | 分 hunk 同步 | G05 | 取通用 hunks：`glsm/GLDebug`、`GLStateManager`、`backend/RenderBackend`、`glsm/ffp/ShaderManager`、`client/font/BatchingFontRenderer`、`commands/AngelicaCommand`、`compat/bettercrashes/BetterCrashesCompat`、`hudcaching/HUDCaching`、`rendering/RenderRecovery`、`rendering/tesr/ModelPartBatcher`、`TesrBatchRenderer`、`TesrBlendScope`、`MixinTileEntityRendererDispatcher`。本地缺 `RenderRecovery`、`HUDCaching`、`BetterCrashesCompat`。排除：`sdl-gpu/SDLGPURenderBackend`、`sdl-gpu/frame/ContextState` 两个 SDL 帧状态文件 |
