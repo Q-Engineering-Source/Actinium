@@ -70,7 +70,7 @@ public class ChunkMeshBufferBuilder {
     }
 
     static void postprocessVertices(ChunkVertexEncoder.Vertex[] vertices) {
-        if (vertices.length != 4) {
+        if (vertices.length != 4 || hasRepeatedPosition(vertices)) {
             for (var vertex : vertices) {
                 vertex.rdhFactor = 0;
             }
@@ -89,6 +89,20 @@ public class ChunkMeshBufferBuilder {
         for (var vertex : vertices) {
             vertex.rdhFactor = factor;
         }
+    }
+
+    /** A triangle encoded as a quad has no fourth corner for bilinear interpolation. */
+    private static boolean hasRepeatedPosition(ChunkVertexEncoder.Vertex[] vertices) {
+        for (int i = 0; i < vertices.length; i++) {
+            var first = vertices[i];
+            for (int j = i + 1; j < vertices.length; j++) {
+                var second = vertices[j];
+                if (first.x == second.x && first.y == second.y && first.z == second.z) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     static int encodeBilinearCorrection(int positive0, int positive1, int negative0, int negative1, int shift) {

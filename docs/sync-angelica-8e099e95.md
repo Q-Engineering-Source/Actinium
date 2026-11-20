@@ -114,9 +114,9 @@
 | 76 | `0d959c2b` | Add Darkmode Transformer target (#2221) | 2026-10-07 | 待同步 | F06 | 深色模式转换目标，同 `DarkModeFontTransform`；随 F06 的 darkmode 一组一并建立 |
 | 77 | `159f7ff8` | Fix NaNs on EP (#2231) | 2026-10-07 | 分 hunk 同步 | S05 | 取 `GlslVulkanPreprocess`、`SpirvShaderTranslator` 与 Iris `ShaderTransformer` 通用修正；SDL 着色器链与派生提升排除。已同步（批次二第 19 项）：新增 `ShaderIndex`（160 行，与上游逐字一致）与 `GlslTransformUtils.quietLexer`/`restoreReservedWordsInTree`；`GlslVulkanPreprocess.collectEdits` 改为 `ShaderIndex` 驱动，删 `versionDirectiveEnd`/`firstVersionDirective`/`collectDeclaredNames`；`SpirvShaderTranslator` 删 `glslToGlslEsRawForTest` 与 `rawOutput` 分支、uniform 判定改用 `ShaderIndex.hasStorageQualifier`；Iris 两处 `mutateTree` 改为内联 `restoreReservedWordsInTree` 后格式化，删无调用方的 `addIfNotExistsType`。排除：`parseBothQuiet`/`parsePreQuiet`（本地 `CompatShaderTransformer` 走 `org.taumc.glsl.ShaderParser`，该库内部已是单 lexer 双 parser，且 `BufferedTokenStream` 会漏掉前导注释与空行之后的指令，本地改用 `ShaderIndex.directives().versionEnd()`）、`RwImageStoreExtractor`（`mayWriteImages` 快速路径依赖 SDL compute 链路） |
 | 78 | `78abc057` | Update Readme | 2026-10-07 | 不适用 | — | README 更新与 HUD Caching 配置文案从 Experimental 改为 Semi-stable；本地没有 HUD Caching 功能（仅有 `StellarCoreHudCachingCompatTransformer` 兼容层），文案与状态标注对当前本地不构成代码同步项。若 G03 后续引入对应功能，再复核文案 |
-| 79 | `cae4fea2` | Fix Little Tiles rendering issues (#2238) | 2026-10-09 | 待同步 | F11 | Little Tiles 渲染问题，本地缺 `VertexArrayQuadView` |
+| 79 | `cae4fea2` | Fix Little Tiles rendering issues (#2238) | 2026-10-09 | 按 1.12.2 路径移植 | F11 | 重复顶点编码的三角形跳过双线性 AO 校正；区块缓冲转换已有 UV 查找与几何法线重算 |
 | 80 | `bfb66d84` | Fix interop with Serene Seasons and other similar mods (#2240) | 2026-10-08 | 待同步 | F11 | `BiomeGenBase` 互操作 mixin，本地无该 mixin |
-| 81 | `1946c2ad` | Fix dark AE2 cables when shaders enabled (#2223) | 2026-10-09 | 待同步 | F11 | AE2 线缆变暗，本地缺 `IsbrhDispatch` |
+| 81 | `1946c2ad` | Fix dark AE2 cables when shaders enabled (#2223) | 2026-10-09 | 不适用 | F11 | 1.12.2 AE2 通过烘焙模型的 UV1 携带全亮数据；本地读取并合并该亮度。上游修改的是 1.7.10 ISBRH 的共享 Tessellator 状态 |
 | 82 | `990dadc0` | Reject non 3.3 core with a more clear message (#2243) | 2026-10-10 | 待同步 | P01 | 非 3.3 core 的拒绝信息；本地由 `CoreProfileDisplayCreator` 承担，需评估信息合并方式 |
 | 83 | `2f1f380e` | Bug Cleanup after 2.9RC2 (#2239) | 2026-10-10 | 分 hunk 同步 | G07 + F11 | 宽线部分已同步（批次一第 8 项，`feat/glsm-line-quads`）：新增 `LineQuads`、`hooks/LineDrawHandler`，`GLSMDraws` 的 `widensLineDraw`、`drawLinesAsQuads`、`lineElementsFromBuffer`、`warnIfInstancedWideLines`、`readsBufferObject` 与各 draw 入口的宽线分支，`VertexKey` 的 `BIT_LINE_QUADS` 与 `lineQuads()`，`VertexShaderGenerator` 的顶点阶段加宽与跨线段雾/裁剪插值，`ImmediateModeRecorder.processDrawElementsFromAttribs`，`DisplayListVBO`/`DisplayListVBOBuilder` 的宽线录制与回放，`TessellatorStreamingDrawer` 的宽线路径与 `lineQuad*` VAO，`GLContextState.lineQuadsActive`，`hooks/GLSMHooks.lineDrawHandler`；删除 `GeometryShaderGenerator.java`，`ShaderCache`、`ShaderManager`、`Program` 的几何着色器分支同步移除。`SelectionBoxRenderer` 与 `selection_box.geom.glsl` 属 F11，本地无该类，用 `BoundingBoxOutline` 自承，跳过。排除：`sdl-gpu/` 的 `Device`、`InstancedConstantBuffers` 与实例化常量缓冲 |
 | 84 | `d29a8278` | Make API functions for enderstorage to use (#2244) | 2026-10-10 | 已同步（F11） | F11 | 已新增 `com.gtnewhorizons.angelica.api.shaders.ShaderPacks` 与 `package-info`，提供光影启用状态、帧时间、block/meta 作用域；`CapturedRenderingState` 增加 block entity 栈与按 block/meta 解析 ID，供第三方模组包裹方块实体渲染 |
@@ -128,7 +128,7 @@
 | 90 | `d3dee841` | Skip zero-size buffer uploads and readbacks on SDL-GPU (#2249) | 2026-10-11 | 不适用 | — | 全部 `sdl-gpu/` 缓冲上传与回读 |
 | 91 | `46f81570` | New workflow (#2252) | 2026-10-11 | 不适用 | — | CI 工作流替换 |
 | 92 | `85d0641a` | Speed up tests and run SDL-GPU device tests on CI (#2253) | 2026-10-12 | 分 hunk 同步 | G01 | 取架构约束测试思路，落在根项目 `src/test/java/com/dhj/actinium/architecture/`（现有 `DependencyDirectionTest.java` 即为该目录）；SDL 设备测试与 kts 构建脚本排除 |
-| 93 | `0cae2be1` | Fix Chisel energised voidstone missing its border corners (#2254) | 2026-10-12 | 待同步 | F11 | 凿子充能虚空石边角，本地缺 `QuadMaterialSelector` |
+| 93 | `0cae2be1` | Fix Chisel energised voidstone missing its border corners (#2254) | 2026-10-12 | 按 1.12.2 路径移植 | F11 | 原版顶点缓冲转码时按方块和面保留叠层顺序；光影包指定的目标层跳过材质降级 |
 | 94 | `01ff612d` | Make animation interpolation respect alpha (#2258) | 2026-10-14 | 不适用 | — | 交错纹理动画的 alpha 处理；NotFine 仅 1.7.10，上游把它的代码并进 `jss/notfine` 包，本地不引入该包，也没有交错动画设施，没有可改动的目标 |
 | 95 | `bd9a3c3c` | initial commit for witchery-cauldron-not-drawing-base (#2260) | 2026-10-14 | 待同步 | F02 | 命名牌绘制与炼药锅基座渲染，依赖 `ModelPartBatcher`、`RetainedTesrGroups` 与 `TessellatorStreamingDrawer` 签名调整 |
 | 96 | `49db8e11` | Allow Iris to use "more" Samplers on SDL-GPU (#2256) | 2026-10-14 | 分 hunk 同步 | G05 | 取 `glsm/shader` 的采样器别名去重（`SamplerAliasDeduplicator`）；SDL 采样器搬运、`Device`、`SamplerBinder` 排除 |
@@ -301,8 +301,8 @@ SDL 主模块按当前 GLSM 和 Outlands 宿主适配，资源与管线完整导
 | 13 | 云层重写与云 culling，同时落地 `MODE_CLOUDS`、`RENDER_DISTANCE_CLOUDS`、`CLOUD_SCALE` | `939e3146`、`c578970a`、`7f3fb35e`、`888a4de0`、`21a054a4`、`ea50e0a0` 的云部分 | 16 新 4 改，约 2600 行 | 无；云层参数走本地配置，不读 `jss/notfine` |
 | 14 | 自定义方块渲染的光影属性：只落地面法线（`wantsFaceNormals`/`writeFaceNormals`，`TessellatorStreamingDrawer` 对无法线的四边形计算真实法线）。该绘制器只服务 OldResearch 的 Tessellator，1.12.2 主路径走 `BufferBuilderStreamingDrawer`，因此本地无实际效果。`StateAwareTessellator` 是给 GT5uNH/GTNHLib 的 API，本地无消费者；`mc_Entity` 写入实测有害已回退；显示列表的常量属性录制与构建上下文覆盖 ID 未移植 | `fe67a22d` | 2 改 1 新，约 120 行 | 2（部分完成） |
 | 15 | TESR 批处理、实体图集与实体阴影重放 | `9814a96b`、`1f274a64`、`2f4ac2a9`、`7c28a69b`、`69428c12`、`fc8d3e8b`、`9f19d94c`、`db7d3284`、`bc08e4ba`、`7cc9cea3`、`af599f29`、`5ed1c925`、`c9d46e70` 的 `shouldRenderLightBlockEntities`、`2d9d1a45`、`b446968e`、`713509a8`、`8537835d` | 45 新 20 改，约 8000 行 | 2 |
-| 16 | 区块材质选择与 ISBRH 派发 | `0cae2be1`、`1946c2ad`、`cae4fea2` | 6 新 4 改，约 500 行 | 15 |
-| 17 | 与 1.12.2 ConnectedTexturesMod（`Chisel-Team/ConnectedTexturesMod` 的 `1.12/dev` 分支，本地参照 `D:/Code/CTM-Vintage`）兼容：核对 `Block.getExtendedState`、`Block.canRenderInLayer`、`TextureMap.registerSprite` 三个注入点，以及 `getModelForState` 与 `preparedModel` 短路是否拿到 CTM 按扩展状态包裹的 `IModelCTM` 模型 | 无对应上游提交 | 2 新 6 改，约 400 行 | 16；`SelectionBoxRenderer` 已由本地 `BoundingBoxOutline` 承担，不移植 |
+| 16 | 区块叠层材质选择与 LittleTiles 三角形 AO 校正已移植；AE2 的旧版 ISBRH 修复不适用 | `0cae2be1`、`1946c2ad`、`cae4fea2` | 已完成 | 15 |
+| 17 | 1.12.2 ConnectedTexturesMod：核对常规模型渲染路径，修复光影包覆盖渲染层时的丢面问题 | 无对应上游提交 | 已完成，见 [Chisel / CTM 兼容记录](compat/chisel-ctm.md) | 16；`SelectionBoxRenderer` 已由本地 `BoundingBoxOutline` 承担 |
 
 ### 批次三第 13 项：云层重写
 
@@ -377,7 +377,7 @@ SDL 主模块按当前 GLSM 和 Outlands 宿主适配，资源与管线完整导
 
 `C001` 到 `C09` 的多数 SHA 在 `D:/Code/celeritas` 仓库而非 Angelica，两条台账（本文件与 `docs/sync-celeritas-b2a70f7f28.md`）必须一起读。`69e91690`、`6bf6a433`、`f33e50ce`、`14cb5f7f`、`77aec052` 在本地两个仓库都不存在，只能用 `gh api repos/GTNewHorizons/Celeritas/commits/<sha>` 取证。
 
-`com/prupe/mcpatcher` 与 mcpatcherforge 是 1.7.10 的 MCPatcher 注入面，`jss/notfine` 是 1.7.10 专有模组被并进上游的包，三者都不移植。第 17 项按 1.12.2 CTM 的注入面核对：`VintageBlockRenderer.java:153` 已调 `getExtendedState`，`ChunkBuilderMeshingTask.java:389` 已调 `canRenderInLayer`，`TextureMap.registerSprite` 随图集加载时序验证，模型侧还要确认 `getModelForState` 与 `preparedModel` 短路能拿到 CTM 的 `IModelCTM` 包装。第 15 项里的体素化（`ShadowVoxelizer`、`VoxelRangeTable`、`SdlShadowVoxelizationSinkImpl`）已接进 `VintageRenderSectionManager`，范围里只剩顶点重放与体素阴影的重放侧。
+`com/prupe/mcpatcher` 与 mcpatcherforge 是 1.7.10 的 MCPatcher 注入面，`jss/notfine` 是并入上游的 1.7.10 专用模组，三者均不移植。第 17 项沿用 CTM 自己对 `Block.getExtendedState`、`Block.canRenderInLayer` 和 `TextureMap.registerSprite` 的注入；区块快速渲染保留 dispatcher 选中的烘焙模型与扩展状态，光影包指定渲染层时按 CTM 原层取面。第 15 项的体素化由 `VintageRenderSectionManager` 接入 `ShadowVoxelizer`、`VoxelRangeTable` 和 `SdlShadowVoxelizationSinkImpl`。
 
 ## 待查：光影下的方块与粒子亮度
 
