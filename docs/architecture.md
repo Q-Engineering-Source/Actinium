@@ -448,8 +448,9 @@ section metadata 并执行 compute；`CPU_ONLY` 与能力不足时沿用 `Defaul
 1. **构建线程扫描**：`ChunkBuilderMeshingTask.execute` 先做一次 16³ 的 `IBlockState` 预扫，把
    命中的方块写成 `VintageChunkBuildContext` 持有的 `long[64]` 位掩码，再从 scheduler 取池化
    `ChunkBuildBuffers`。命中的方块在该阶段不调用 `canRenderInLayer`，也不调用任何渲染方法；
-   pass mask 记为全部 layer，由主线程按谓词决定实际渲染哪些层。其余方块照原路径立即渲染，
-   Fluidlogged 流体跟随其方块所在线程。扫描结束后先把留在构建线程的原版顶点
+   pass mask 记为待渲染的层，由主线程按谓词决定实际渲染哪些层。Fluidlogged 的宿主或存储流体
+   方块任一个命中配置，整格交给主线程；隐藏宿主的 pass mask 为零，仍可捕获存储流体。
+   其余方块照原路径立即渲染。扫描结束后先把留在构建线程的原版顶点
    `convertVanillaDataToCeleritasData` 编码进池化 buffers（LittleTiles 的追加点也在此），再把
    context 快照 `swapWorldSlice` 到 `DeferredSectionMesh` 并提交。没有命中方块时完全不进入该路径。
 2. **主线程捕获**：`DeferredMeshScheduler.runImportant()`（important，`updateChunks` 内调用）与
