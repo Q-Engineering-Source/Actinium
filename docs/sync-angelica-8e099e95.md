@@ -492,7 +492,7 @@ TESR 批处理的引入顺序按依赖链固定下来，每一步只需新增文
 
 `DeferredEntityOverlay` 不保存 `renderPassModel`，而是保存 `RenderLivingBase` 与实际 `LayerRenderer`，重放保留模组层和模型状态。`PassOverride` 不存在签名差异：上游当前 HEAD 的 `ModelPartBatcher` 只用 `PassOverride.capture()` 与 `PassOverride.NONE`，没有任何 `PassOverride.of` 调用，三参 `of` 由 `capture()` 内部使用。
 
-粒子实例化与掉落物实例化均已交付。粒子按 `ParticleManager` 的 6 个 run 接入：`Instancing.PARTICLE` 的 FFP 与 pack 变体、`ParticleCaptureBuffer` + `ParticleQuadDecoder` 的捕获与解码，以及 `ParticleLitRun` 给第 3 层补出的独立 run；`Tessellator` 的 1.7.10 构造与 `draw()` 返回值的签名要求在 1.12.2 无对应，已按 `BufferBuilder` 重写。掉落物按 `RenderItem.renderQuads` 的顶点接入（`DroppedItemInstancer` + `ModelPartBatcher`），`RenderBlocks` 与 `ItemRenderer.renderItemIn2D` 在 1.12.2 已移除，几何改由 baked model 路径提供，`BlockRenderListManager` 与 `ItemRenderListManager` 不再移植。
+粒子实例化与掉落物实例化均已交付。粒子实例化覆盖 `ParticleManager.renderParticles` 的 6 个批次，通过 `ParticleCaptureBuffer` 和 `ParticleQuadDecoder` 捕获并解码顶点，`Instancing.PARTICLE` 提供 FFP 与光影包变体。第 3 层 `renderLitParticles` 交给粒子原有的渲染方法绘制，保留视锥裁剪和光影阶段。1.7.10 的 `Tessellator` 构造器和 `draw()` 返回值在 1.12.2 无对应签名，已按 `BufferBuilder` 重写捕获逻辑。掉落物通过 `RenderItem.renderQuads` 的顶点接入 `DroppedItemInstancer` 和 `ModelPartBatcher`。1.12.2 由 baked model 提供掉落物几何，`BlockRenderListManager` 和 `ItemRenderListManager` 不再移植。
 
 ### 批次三第 15 项交付摘要
 

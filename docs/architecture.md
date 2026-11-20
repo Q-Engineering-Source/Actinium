@@ -121,11 +121,10 @@ pipeline 时先调用 `compileInstancedVariants()` 再编译地形程序，使�
 中心、半宽、颜色与 lightmap 来自实例属性，FFP 顶点着色器为 `PARTICLE` 单独声明
 `vec2 a_TexCoord0`，不声明顶点色、lightmap 与法线属性以免与实例属性共用槽位；网格没有法线，
 pack 变体与 FFP 都用常量法线 `(0, 0, 1)`，与 billboard 朝向一致，不再读取未提供的 location 4。
-第 3 层（lit）粒子在 1.12.2 只写共享 `BufferBuilder`、本层没有自己的 `begin`/`draw`，`ParticleLitRun`
-在 `renderLitParticles` 的 HEAD 打开该 run 并开启实例层、在 RETURN 收尾并 `Tessellator.draw()`，
-因此这一层也进入批次；批次装不下的顶点仍按原版顶点回放由该 run 自己的 draw 画出。这一层的
-`@WrapOperation` 与主循环共用同一条路径：先做视锥判断，再按 sprite 与粒子类判定是否切分 run，
-最后交给实例化或原版写入，切分后的 run 由 `ParticleLitRun` 的 begin/end 收尾。
+第 3 层（`renderLitParticles`）由各粒子的原渲染方法管理缓冲区和绘制提交。Actinium 保留视锥裁剪和粒子光影阶段，
+为每个可见粒子声明透明度并在调用后恢复。该调用点把原来的 `BufferBuilder` 直接交给粒子；预先开启共享缓冲区
+或捕获缓冲区，会使原版大爆炸粒子及 Dungeon Additions 等模组的自绘粒子在再次调用 `begin()` 时抛出
+`Already building!`。粒子捕获与实例化只在第 0–2 层运行。
 
 ## 根项目包详解（`com.dhj.actinium`）
 

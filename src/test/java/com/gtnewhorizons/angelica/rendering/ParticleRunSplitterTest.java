@@ -1,11 +1,13 @@
 package com.gtnewhorizons.angelica.rendering;
 
+import net.coderbot.iris.layer.GbufferPrograms;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleCloud;
 import net.minecraft.client.particle.ParticleSpell;
 import net.minecraft.client.renderer.BufferBuilder;
+import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
-import org.junit.jupiter.api.BeforeEach;
+import net.minecraft.entity.Entity;
 import org.junit.jupiter.api.Test;
 import org.lwjgl.opengl.GL11;
 
@@ -13,20 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Covers the decision the run splitter makes and the gate in front of it.
- *
- * <p>A run is only split while a deferred pipeline owns it, and the split is what selects the
- * translucent particle program. The split's own bracket - draw the run, declare the new
- * translucency, reopen the run - is shared with every particle run and exercised through
- * {@code ParticleLitRun} on the third layer.</p>
- */
 class ParticleRunSplitterTest {
-
-    @BeforeEach
-    void resetRun() {
-        ParticleRunSplitter.beginRun();
-    }
 
     @Test
     void treatsParticlesMarkedByTheirClassAsTranslucent() {
@@ -39,6 +28,8 @@ class ParticleRunSplitterTest {
     void leavesTheRunAloneWithoutADeferredPipeline() {
         final BufferBuilder run = new BufferBuilder(256);
         run.begin(GL11.GL_QUADS, DefaultVertexFormats.PARTICLE_POSITION_TEX_COLOR_LMAP);
+        ParticleRunSplitter.beginParticles();
+        ParticleRunSplitter.beginRun();
         try {
             ParticleRunSplitter.splitIfNeeded(new CloudProbe(), run);
 
@@ -47,6 +38,25 @@ class ParticleRunSplitterTest {
             assertEquals(GL11.GL_QUADS, run.getDrawMode());
         } finally {
             run.finishDrawing();
+            ParticleRunSplitter.endParticles();
+        }
+    }
+
+    @Test
+    void selfDrawingLitParticlesOwnTheSharedBufferAcrossConsecutiveDraws() {
+        final BufferBuilder buffer = Tessellator.getInstance().getBuffer();
+        final SelfDrawingParticle particle = new SelfDrawingParticle();
+        final Boolean previous = GbufferPrograms.beginTranslucencyDeclaration(Boolean.TRUE);
+        try {
+            final Runnable originalDraw = () -> particle.renderParticle(buffer, null, 0.5F, 1, 1, 0, 0, 0);
+
+            ParticleRunSplitter.renderWithTranslucency(particle, originalDraw);
+            ParticleRunSplitter.renderWithTranslucency(particle, originalDraw);
+
+            assertEquals(2, particle.drawCount);
+            assertEquals(Boolean.TRUE, GbufferPrograms.getDeclaredTranslucency());
+        } finally {
+            GbufferPrograms.endTranslucencyDeclaration(previous);
         }
     }
 
@@ -67,6 +77,23 @@ class ParticleRunSplitterTest {
     private static final class PlainParticle extends Particle {
         PlainParticle() {
             super(null, 4.0D, 5.0D, 6.0D);
+        }
+    }
+
+    private static final class SelfDrawingParticle extends Particle {
+        private int drawCount;
+
+        SelfDrawingParticle() {
+            super(null, 0, 0, 0);
+        }
+
+        @Override
+        public void renderParticle(BufferBuilder buffer, Entity entity, float partialTicks, float rotationX,
+                                   float rotationZ, float rotationYZ, float rotationXY, float rotationXZ) {
+            assertEquals(Boolean.FALSE, GbufferPrograms.getDeclaredTranslucency());
+            buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_TEX_COLOR);
+            Tessellator.getInstance().draw();
+            drawCount++;
         }
     }
 }
