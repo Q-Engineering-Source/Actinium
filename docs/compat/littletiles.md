@@ -38,6 +38,12 @@ RGB 需要除去原始完整因子；alpha 只保留方向面因子剥离后的 
   LittleTiles 方块，确认光照问题已修复。
 - Solas V3.7b 及其他 shader pack 的交叉回归尚未完成。
 
+## 三角形 AO（2026-11-20）
+
+CreativeCore 将三角形编码为含重复顶点的四边形。双线性 AO 校正依赖四个独立的角，对这类三角形应用校正会在拼接处产生亮度差。区块网格现在跳过退化四边形的校正，保留原顶点颜色与光照数据。
+
+自动测试覆盖正常四边形与复用顶点后生成三角形的情况。用户在 Cleanroom 0.6.13-alpha、LittleTiles 1.5.87 和 CreativeCore 1.10.71 的实例中试跑，反馈未发现问题。
+
 ## 主要文件
 
 - `src/main/java/com/dhj/actinium/compat/littletiles/LittleTilesCompat.java`

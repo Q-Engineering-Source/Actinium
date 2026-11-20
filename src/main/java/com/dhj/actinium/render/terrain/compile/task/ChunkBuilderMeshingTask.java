@@ -41,6 +41,7 @@ import dhj.embeddedt.embeddium.api.shader.buffer.BufferBuilderExtension;
 import dhj.embeddedt.embeddium.api.shader.buffer.VanillaQuadContext;
 import com.dhj.actinium.compat.architecturecraft.ArchitectureCraftCompat;
 import com.dhj.actinium.compat.componentmodelhider.ComponentModelHiderCompat;
+import com.dhj.actinium.compat.ctm.CtmLayerCompat;
 import com.dhj.actinium.compat.farmersfuturedelight.FarmersFutureDelightCompat;
 import com.dhj.actinium.compat.fluidlogged.FluidloggedCompat;
 import com.dhj.actinium.compat.snowrealmagic.SnowRealMagicCompat;
@@ -54,6 +55,7 @@ import com.dhj.actinium.world.WorldSlice;
 import com.dhj.actinium.world.cloned.DeferredSlice;
 import com.dhj.actinium.world.cloned.ActiniumBlockAccess;
 import com.dhj.actinium.world.cloned.ChunkRenderContext;
+import com.dhj.actinium.render.terrain.compile.ChunkBufferBuilder;
 import com.dhj.actinium.render.terrain.compile.VintageChunkBuildContext;
 
 import java.nio.ByteBuffer;
@@ -269,8 +271,6 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                                         deferredPasses = ALL_RENDER_LAYERS_MASK;
                                     }
                                 } else if (shaderLayerOverride != null) {
-                                    // A shader pack moved this block onto another layer, so it takes the
-                                    // fast renderer directly and keeps render pass optimization off.
                                     net.minecraft.util.BlockRenderLayer layer = shaderLayerOverride.toVanillaLayer();
                                     this.renderBlockLayer(block, blockState, blockPos, slice, layer, true, buildContext);
                                 } else {
@@ -367,6 +367,13 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
 
         if (shaderLayerOverride) {
             ForgeHooksClient.setRenderLayer(layer);
+            if (blockState.getRenderType() == EnumBlockRenderType.MODEL
+                    && CtmLayerCompat.requiresSourceLayers(blockState, slice, blockPos, layer)) {
+                CtmLayerCompat.renderSourceLayers(blockState,
+                        () -> this.renderThroughDispatcher(dispatcher, blockState, blockPos, slice, layer, false, buildContext));
+                return true;
+            }
+
             block.canRenderInLayer(blockState, layer);
 
             if (blockState.getRenderType() == EnumBlockRenderType.MODEL && ActiniumRuntime.options().performance.useFastBlockRenderer
@@ -376,13 +383,7 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                 return true;
             }
 
-            var buffer = buildContext.getBufferForLayer(layer);
-            buildContext.beginVanillaBlockRender(buffer, blockPos, blockState, layer);
-            try {
-                dispatcher.renderBlock(blockState, blockPos, slice, buffer);
-            } finally {
-                buildContext.endVanillaRender(buffer);
-            }
+            this.renderThroughDispatcher(dispatcher, blockState, blockPos, slice, layer, false, buildContext);
             return true;
         }
 
@@ -392,17 +393,26 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
         }
 
         ForgeHooksClient.setRenderLayer(layer);
-        // The dispatcher hook sends model blocks to the fast renderer. Snow Real Magic,
-        // ArchitectureCraft and Fluidlogged blocks are marked on the buffer by
-        // beginVanillaBlockRender and keep the vanilla path.
-        var buffer = buildContext.getBufferForLayer(layer);
-        buildContext.beginVanillaBlockRender(buffer, blockPos, blockState, layer);
-        try {
-            dispatcher.renderBlock(blockState, blockPos, slice, buffer);
-        } finally {
-            buildContext.endVanillaRender(buffer);
-        }
+        this.renderThroughDispatcher(dispatcher, blockState, blockPos, slice, layer, true, buildContext);
         return true;
+    }
+
+    private void renderThroughDispatcher(BlockRendererDispatcher dispatcher, IBlockState blockState, BlockPos blockPos,
+                                         ActiniumBlockAccess slice, net.minecraft.util.BlockRenderLayer outputLayer,
+                                         boolean allowRenderPassOptimization, VintageChunkBuildContext buildContext) {
+        var buffer = (ChunkBufferBuilder) buildContext.getBufferForLayer(outputLayer);
+        boolean previousOptimization = buffer.isAllowRenderPassOptimization();
+        buffer.setAllowRenderPassOptimization(allowRenderPassOptimization);
+        try {
+            buildContext.beginVanillaBlockRender(buffer, blockPos, blockState, outputLayer);
+            try {
+                dispatcher.renderBlock(blockState, blockPos, slice, buffer);
+            } finally {
+                buildContext.endVanillaRender(buffer);
+            }
+        } finally {
+            buffer.setAllowRenderPassOptimization(previousOptimization);
+        }
     }
 
     /** Writes the blocks that need the render thread into the section's pass mask. */

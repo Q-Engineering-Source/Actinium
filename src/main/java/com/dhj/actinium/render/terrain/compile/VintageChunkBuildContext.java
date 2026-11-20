@@ -28,7 +28,6 @@ import dhj.embeddedt.embeddium.impl.render.chunk.compile.ChunkBuildBuffers;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.ChunkBuildContext;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.buffers.ChunkModelBuilder;
 import dhj.embeddedt.embeddium.impl.render.chunk.data.MinecraftBuiltRenderSectionData;
-import dhj.embeddedt.embeddium.impl.render.chunk.sprite.SpriteTransparencyLevel;
 import dhj.embeddedt.embeddium.impl.render.chunk.terrain.material.Material;
 import dhj.embeddedt.embeddium.impl.render.chunk.vertex.format.ChunkVertexEncoder;
 import dhj.embeddedt.embeddium.impl.util.QuadUtil;
@@ -211,14 +210,18 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
                 ? ExtendedDataHelper.FLUID_RENDER_TYPE
                 : ExtendedDataHelper.BLOCK_RENDER_TYPE;
 
-        extension.actinium$setActiveQuadContext(new VanillaQuadContext(
+        VanillaQuadContext context = new VanillaQuadContext(
                 pos.getX() & 15,
                 pos.getY() & 15,
                 pos.getZ() & 15,
                 shaderBlockId,
                 renderType,
                 (byte) state.getLightValue(this.worldSlice, pos)
-        ));
+        );
+        if (buffer instanceof ChunkBufferBuilder chunkBuffer && !chunkBuffer.isAllowRenderPassOptimization()) {
+            context = context.keepRenderPass();
+        }
+        extension.actinium$setActiveQuadContext(context);
     }
 
     public void beginVanillaFluidRender(BufferBuilder buffer, BlockPos pos, IBlockState state) {
@@ -299,14 +302,6 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         super.destroy();
     }
 
-    private Material selectMaterial(Material material, TextureAtlasSprite sprite, ChunkVertexEncoder.Vertex[] quad) {
-        SpriteTransparencyLevel transparencyLevel = null;
-        if (sprite != null && sprite.getClass() == TextureAtlasSprite.class && !sprite.hasAnimationMetadata() && this.useRenderPassOptimization) {
-            transparencyLevel = ((SpriteTransparencyLevel.Holder)sprite).embeddium$getTransparencyLevel();
-        }
-        return VanillaQuadMaterial.select(material, this.renderPassConfiguration, transparencyLevel, quad);
-    }
-
     private static final int BLOCK_VERTEX_FORMAT_SIZE;
 
     static {
@@ -333,9 +328,11 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
      */
     public void copyBlockData(ByteBuffer source, ChunkBuildBuffers buffers, Material material, BlockRenderLayer layer, List<VanillaQuadContext> quadContexts) {
         int vsize = BLOCK_VERTEX_FORMAT_SIZE;
-        int numQuads = source.limit() / (vsize * 4);
+        int numQuads = source.remaining() / (vsize * 4);
         long ptr = LWJGL.memAddress(source);
         var quad = ChunkVertexEncoder.Vertex.uninitializedQuad();
+        final var configuration = buffers.getRenderPassConfiguration();
+        final var materialSelector = new VanillaQuadMaterial(material, configuration, this.useRenderPassOptimization);
         var animatedSpritesList = ((MinecraftBuiltRenderSectionData<TextureAtlasSprite, TileEntity>)buffers.getSectionContextBundle()).animatedSprites;
 
         for(int q = 0; q < numQuads; q++) {
@@ -370,8 +367,8 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
             }
             boolean isFluidQuad = quadContext != null && quadContext.renderType() == ExtendedDataHelper.FLUID_RENDER_TYPE;
             Material correctMaterial = isFluidQuad
-                    ? VanillaQuadMaterial.selectFluid(material, buffers.getRenderPassConfiguration(), layer)
-                    : selectMaterial(material, sprite, quad);
+                    ? VanillaQuadMaterial.selectFluid(material, configuration, layer)
+                    : materialSelector.choose(quadContext, facing, sprite, quad);
 
             ChunkModelBuilder builder = buffers.get(correctMaterial);
             ContextAwareChunkVertexEncoder encoder = this.prepareVanillaEncoder(builder, quadContext);

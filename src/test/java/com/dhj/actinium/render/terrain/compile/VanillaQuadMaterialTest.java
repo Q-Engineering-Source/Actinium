@@ -1,5 +1,7 @@
 package com.dhj.actinium.render.terrain.compile;
 
+import dhj.embeddedt.embeddium.api.shader.buffer.VanillaQuadContext;
+import dhj.embeddedt.embeddium.impl.model.quad.properties.ModelQuadFacing;
 import dhj.embeddedt.embeddium.impl.render.chunk.RenderPassConfiguration;
 import dhj.embeddedt.embeddium.impl.render.chunk.compile.sorting.QuadPrimitiveType;
 import dhj.embeddedt.embeddium.impl.render.chunk.sprite.SpriteTransparencyLevel;
@@ -42,7 +44,7 @@ class VanillaQuadMaterialTest {
 
     @Test
     void opaqueVerticesStillAllowSolidAndCutoutOptimizations() {
-        assertSame(solid, VanillaQuadMaterial.select(translucent, configuration, SpriteTransparencyLevel.OPAQUE, opaqueQuad()));
+        assertSame(cutout, VanillaQuadMaterial.select(translucent, configuration, SpriteTransparencyLevel.OPAQUE, opaqueQuad()));
         assertSame(cutout, VanillaQuadMaterial.select(translucent, configuration, SpriteTransparencyLevel.TRANSPARENT, opaqueQuad()));
         assertSame(translucent, VanillaQuadMaterial.select(translucent, configuration, SpriteTransparencyLevel.TRANSLUCENT, opaqueQuad()));
         assertSame(solid, VanillaQuadMaterial.select(cutout, configuration, SpriteTransparencyLevel.OPAQUE, opaqueQuad()));
@@ -55,12 +57,46 @@ class VanillaQuadMaterialTest {
     }
 
     @Test
+    void overlayStaysInSourcePassAfterBaseQuadOnTheSameBlockFace() {
+        var unmippedCutout = material("cutout_unmipped");
+        var selector = new VanillaQuadMaterial(unmippedCutout, configuration, true);
+        var block = contextAt(0);
+        var quad = opaqueQuad();
+        assertSame(unmippedCutout, selector.selectForFace(block, ModelQuadFacing.POS_Z, null, quad));
+        assertSame(unmippedCutout, selector.selectForFace(contextAt(0), ModelQuadFacing.POS_Z, SpriteTransparencyLevel.OPAQUE, quad));
+        assertSame(solid, selector.selectForFace(block, ModelQuadFacing.NEG_Z, SpriteTransparencyLevel.OPAQUE, quad));
+        assertSame(solid, selector.selectForFace(contextAt(1), ModelQuadFacing.POS_Z, SpriteTransparencyLevel.OPAQUE, quad));
+    }
+
+    @Test
+    void vertexAlphaKeepsTheRestOfThatFaceInTheTranslucentPass() {
+        var selector = new VanillaQuadMaterial(translucent, configuration, true);
+        var block = contextAt(0);
+        var quad = opaqueQuad();
+        quad[0].color = 0x80FFFFFF;
+        assertSame(translucent, selector.selectForFace(block, ModelQuadFacing.POS_Z, SpriteTransparencyLevel.OPAQUE, quad));
+        assertSame(translucent, selector.selectForFace(block, ModelQuadFacing.POS_Z, SpriteTransparencyLevel.OPAQUE, opaqueQuad()));
+        assertSame(cutout, selector.selectForFace(block, ModelQuadFacing.NEG_Z, SpriteTransparencyLevel.OPAQUE, opaqueQuad()));
+    }
+
+    @Test
+    void explicitPassSurvivesShaderIdAndDeferredStateResolution() {
+        var context = contextAt(0).keepRenderPass().withBlockStateId(42).withResolvedBlockState(42, (byte) 0);
+        var selector = new VanillaQuadMaterial(cutout, configuration, true);
+        assertSame(cutout, selector.selectForFace(context, ModelQuadFacing.POS_Z, SpriteTransparencyLevel.OPAQUE, opaqueQuad()));
+    }
+
+    @Test
     void fluidQuadsKeepDedicatedFluidMaterialAndOpaqueLayerMaterial() {
         Material fluid = material("fluid");
         RenderPassConfiguration<?> fluidConfiguration = new RenderPassConfiguration<>(
                 Map.of(), Map.of(), solid, cutout, translucent, fluid);
         assertSame(fluid, VanillaQuadMaterial.selectFluid(translucent, fluidConfiguration, BlockRenderLayer.TRANSLUCENT));
         assertSame(cutout, VanillaQuadMaterial.selectFluid(cutout, fluidConfiguration, BlockRenderLayer.CUTOUT));
+    }
+
+    private static VanillaQuadContext contextAt(int x) {
+        return new VanillaQuadContext(x, 0, 0, 0, (short) 0, (byte) 0);
     }
 
     private static ChunkVertexEncoder.Vertex[] opaqueQuad() {

@@ -16,14 +16,15 @@ public final class VanillaQuadContext {
     private final @Nullable IBlockState deferredBlockState;
     /** Preserves an explicit shader material override while deferred state data is resolved. */
     private final boolean blockStateIdOverridden;
+    private final boolean allowRenderPassOptimization;
 
     public VanillaQuadContext(int localPosX, int localPosY, int localPosZ, int blockStateId, short renderType, byte lightValue) {
-        this(localPosX, localPosY, localPosZ, blockStateId, renderType, lightValue, null, false);
+        this(localPosX, localPosY, localPosZ, blockStateId, renderType, lightValue, null, false, true);
     }
 
     /** Creates a context whose block ID and light value will be resolved during chunk conversion. */
     public VanillaQuadContext(int localPosX, int localPosY, int localPosZ, IBlockState deferredBlockState, short renderType) {
-        this(localPosX, localPosY, localPosZ, -1, renderType, (byte) 0, deferredBlockState, false);
+        this(localPosX, localPosY, localPosZ, -1, renderType, (byte) 0, deferredBlockState, false, true);
     }
 
     private VanillaQuadContext(
@@ -34,7 +35,8 @@ public final class VanillaQuadContext {
             short renderType,
             byte lightValue,
             @Nullable IBlockState deferredBlockState,
-            boolean blockStateIdOverridden
+            boolean blockStateIdOverridden,
+            boolean allowRenderPassOptimization
     ) {
         this.localPosX = localPosX;
         this.localPosY = localPosY;
@@ -44,6 +46,7 @@ public final class VanillaQuadContext {
         this.lightValue = lightValue;
         this.deferredBlockState = deferredBlockState;
         this.blockStateIdOverridden = blockStateIdOverridden;
+        this.allowRenderPassOptimization = allowRenderPassOptimization;
     }
 
     public int localPosX() {
@@ -82,7 +85,8 @@ public final class VanillaQuadContext {
                 this.renderType,
                 this.lightValue,
                 this.deferredBlockState,
-                true
+                true,
+                this.allowRenderPassOptimization
         );
     }
 
@@ -96,8 +100,20 @@ public final class VanillaQuadContext {
                 this.renderType,
                 lightValue,
                 null,
-                false
+                false,
+                this.allowRenderPassOptimization
         );
+    }
+
+    /** Returns whether the quad may move to a cheaper pass than the caller selected. */
+    public boolean allowRenderPassOptimization() {
+        return this.allowRenderPassOptimization;
+    }
+
+    /** Keeps an explicitly selected render pass during chunk conversion. */
+    public VanillaQuadContext keepRenderPass() {
+        return new VanillaQuadContext(this.localPosX, this.localPosY, this.localPosZ, this.blockStateId,
+                this.renderType, this.lightValue, this.deferredBlockState, this.blockStateIdOverridden, false);
     }
 
     public short renderType() {
