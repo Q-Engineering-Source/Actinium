@@ -1,47 +1,42 @@
 package com.dhj.actinium.mixin.features.iris;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import net.coderbot.iris.gbuffer_overrides.matching.SpecialCondition;
 import net.coderbot.iris.layer.GbufferPrograms;
 import net.minecraft.client.renderer.tileentity.TileEntityBeaconRenderer;
 import net.minecraft.tileentity.TileEntityBeacon;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+import java.util.List;
 
 @Mixin(TileEntityBeaconRenderer.class)
 public class TileEntityBeaconRendererIrisMixin {
-    @Inject(
+    @WrapOperation(
         method = "render(Lnet/minecraft/tileentity/TileEntityBeacon;DDDFIF)V",
-        at = @At("HEAD")
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/tileentity/TileEntityBeaconRenderer;renderBeacon(DDDDDLjava/util/List;D)V"
+        )
     )
-    private void actinium$beginBeaconBeam(
-        TileEntityBeacon tileEntity,
+    private void actinium$drawVanillaBeaconBeam(
+        TileEntityBeaconRenderer renderer,
         double x,
         double y,
         double z,
-        float partialTicks,
-        int destroyStage,
-        float alpha,
-        CallbackInfo ci
+        double partialTicks,
+        double textureScale,
+        List<TileEntityBeacon.BeamSegment> segments,
+        double worldTime,
+        Operation<Void> original
     ) {
+        // Cached beams can cancel the TESR and set their condition when their render layer draws.
         GbufferPrograms.setupSpecialRenderCondition(SpecialCondition.BEACON_BEAM);
-    }
-
-    @Inject(
-        method = "render(Lnet/minecraft/tileentity/TileEntityBeacon;DDDFIF)V",
-        at = @At("RETURN")
-    )
-    private void actinium$endBeaconBeam(
-        TileEntityBeacon tileEntity,
-        double x,
-        double y,
-        double z,
-        float partialTicks,
-        int destroyStage,
-        float alpha,
-        CallbackInfo ci
-    ) {
-        GbufferPrograms.teardownSpecialRenderCondition();
+        try {
+            original.call(renderer, x, y, z, partialTicks, textureScale, segments, worldTime);
+        } finally {
+            GbufferPrograms.teardownSpecialRenderCondition();
+        }
     }
 }
