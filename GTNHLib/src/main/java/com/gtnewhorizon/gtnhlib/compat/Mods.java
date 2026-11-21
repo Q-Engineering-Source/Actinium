@@ -45,6 +45,7 @@ public final class Mods {
     public static final boolean RFP2 = isModPresent("rfp2");
     public static final boolean SCALINGGUIS = isModPresent("scalingguis");
     public static final boolean SNOWREALMAGIC = isModPresent("snowrealmagic");
+    public static final boolean TINKERSCONSTRUCT = isModPresent("tconstruct");
 
     private Mods() {}
 

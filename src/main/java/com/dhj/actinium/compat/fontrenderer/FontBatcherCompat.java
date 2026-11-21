@@ -13,6 +13,8 @@ public final class FontBatcherCompat {
     private static final boolean DISABLED_BY_PROPERTY = Boolean.getBoolean("actinium.disableFontBatcher");
     /** Cached presence of NeoFontRender, whose renderer owns the glyph path. */
     private static final boolean NEO_FONT_RENDER_LOADED = resolveNeoFontRenderLoaded();
+    /** Cached presence of Tinkers' Construct, whose Antique renderer decodes RGB marker glyphs. */
+    private static final boolean TINKERS_CONSTRUCT_LOADED = resolveTinkersConstructLoaded();
     /**
      * Cached presence of Goslingcord/Emojicord, which rewrites the vanilla {@link FontRenderer}
      * itself (emoji placeholder replacement in {@code renderStringAtPos}/{@code renderChar}), so
@@ -29,7 +31,7 @@ public final class FontBatcherCompat {
      * mod-specific glyph logic that Actinium's batch path would bypass.
      */
     public static boolean isBatcherDisabledFor(Class<?> rendererType) {
-        if (DISABLED_BY_PROPERTY || NEO_FONT_RENDER_LOADED || EMOJICORD_LOADED) {
+        if (DISABLED_BY_PROPERTY || NEO_FONT_RENDER_LOADED || TINKERS_CONSTRUCT_LOADED || EMOJICORD_LOADED) {
             return true;
         }
         if (!Mods.DRAGONCORE) {
@@ -45,6 +47,15 @@ public final class FontBatcherCompat {
         final boolean loaded = Mods.NEOFONTRENDER;
         if (Boolean.getBoolean("actinium.fontDebug")) {
             LOGGER.info("font-batcher-check neofontrender={} renderer={}", loaded, FontRenderer.class.getName());
+        }
+        return loaded;
+    }
+
+    /** Reads Tinkers' Construct presence once and records it when font diagnostics are enabled. */
+    private static boolean resolveTinkersConstructLoaded() {
+        final boolean loaded = Mods.TINKERSCONSTRUCT;
+        if (Boolean.getBoolean("actinium.fontDebug")) {
+            LOGGER.info("font-batcher-check tconstruct={} renderer={}", loaded, FontRenderer.class.getName());
         }
         return loaded;
     }
